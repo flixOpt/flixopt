@@ -721,6 +721,17 @@ class Interface:
                 processed_items.append(processed_item)
             return processed_items, extracted_arrays
 
+        # Handle ContainerMixin (FlowContainer, etc.) - serialize as list of values
+        # Must come BEFORE dict check since ContainerMixin inherits from dict
+        elif isinstance(obj, ContainerMixin):
+            processed_items = []
+            for i, item in enumerate(obj.values()):
+                item_context = f'{context_name}[{i}]' if context_name else f'item[{i}]'
+                processed_item, nested_arrays = self._extract_dataarrays_recursive(item, item_context)
+                extracted_arrays.update(nested_arrays)
+                processed_items.append(processed_item)
+            return processed_items, extracted_arrays
+
         # Handle dictionaries
         elif isinstance(obj, dict):
             processed_dict = {}
@@ -1019,6 +1030,10 @@ class Interface:
             return bool(obj)
         elif isinstance(obj, (np.ndarray, pd.Series, pd.DataFrame)):
             return obj.tolist() if hasattr(obj, 'tolist') else list(obj)
+        # Handle ContainerMixin (FlowContainer, etc.) - serialize as list of values
+        # Must come BEFORE dict check since ContainerMixin inherits from dict
+        elif isinstance(obj, ContainerMixin):
+            return [self._serialize_to_basic_types(item) for item in obj.values()]
         elif isinstance(obj, dict):
             return {k: self._serialize_to_basic_types(v) for k, v in obj.items()}
         elif isinstance(obj, (list, tuple)):
