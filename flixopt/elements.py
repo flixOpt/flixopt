@@ -777,17 +777,13 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
 
         Triggers cached property creation for:
         - flow|rate: For ALL flows
-        - flow|hours: For ALL flows
         - flow|status: For flows with status_parameters
-        - flow|hours_over_periods: For flows with that constraint
 
         Note: Investment variables (size, invested) are created by create_investment_model().
         """
         # Trigger variable creation via cached properties
         _ = self.rate
-        _ = self.hours
         _ = self.status
-        _ = self.hours_over_periods
 
         logger.debug(
             f'FlowsModel created variables: {len(self.elements)} flows, {len(self.data.with_status)} with status'
@@ -795,8 +791,8 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
 
     def create_constraints(self) -> None:
         """Create all batched constraints for flows."""
-        self.constraint_hours_tracking()
-        self.constraint_hours_over_periods()
+        self.constraint_flow_hours()
+        self.constraint_flow_hours_over_periods()
         self.constraint_load_factor()
         self.constraint_rate_bounds()
 
@@ -804,28 +800,39 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
 
     # === Constraints (methods with constraint_* naming) ===
 
-    def constraint_hours_tracking(self) -> None:
-        """hours = sum_temporal(rate) for flows with flow_hours constraints."""
-        if self.hours is None:
+    def constraint_flow_hours(self) -> None:
+        """Constrain sum_temporal(rate) within [min, max] for flows with flow_hours bounds."""
+        if not self.data.with_flow_hours:
             return
         dim = self.dim_name
-        rate_subset = self.rate.sel({dim: self.data.with_flow_hours})
-        rhs = self.model.sum_temporal(rate_subset)
-        self.add_constraints(self.hours == rhs, name='hours_eq')
+        flow_ids = self.data.with_flow_hours
+        rate_subset = self.rate.sel({dim: flow_ids})
+        hours = self.model.sum_temporal(rate_subset)
 
-    def constraint_hours_over_periods(self) -> None:
-        """hours_over_periods = weighted sum of rate across all timesteps and periods."""
-        if self.hours_over_periods is None:
+        # Add min/max constraints
+        self.add_constraints(hours >= self.data.flow_hours_minimum, name='flow_hours_min')
+        self.add_constraints(hours <= self.data.flow_hours_maximum, name='flow_hours_max')
+
+    def constraint_flow_hours_over_periods(self) -> None:
+        """Constrain weighted sum of hours across periods within [min, max]."""
+        if not self.data.with_flow_hours_over_periods:
             return
         dim = self.dim_name
-        # Sum rate over time for each flow, then weight by period
-        rate_subset = self.rate.sel({dim: self.data.with_flow_hours_over_periods})
+        flow_ids = self.data.with_flow_hours_over_periods
+        rate_subset = self.rate.sel({dim: flow_ids})
         hours_per_period = self.model.sum_temporal(rate_subset)
         period_weights = self.model.flow_system.period_weights
         if period_weights is None:
             period_weights = 1.0
-        weighted = (hours_per_period * period_weights).sum('period')
-        self.add_constraints(self.hours_over_periods == weighted, name='hours_over_periods_eq')
+        hours_over_periods = (hours_per_period * period_weights).sum('period')
+
+        # Add min/max constraints
+        self.add_constraints(
+            hours_over_periods >= self.data.flow_hours_minimum_over_periods, name='flow_hours_over_periods_min'
+        )
+        self.add_constraints(
+            hours_over_periods <= self.data.flow_hours_maximum_over_periods, name='flow_hours_over_periods_max'
+        )
 
     def constraint_load_factor(self) -> None:
         """Load factor min/max constraints for flows that have them."""
