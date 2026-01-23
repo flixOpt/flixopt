@@ -258,6 +258,10 @@ flow_system.topology.set_component_colors({'Oranges': ['Solar1', 'Solar2']})  # 
 flow_system.topology.set_component_colors('turbo', overwrite=False)  # Only unset colors
 ```
 
+#### FlowContainer for Component Flows (#587)
+
+`Component.inputs`, `Component.outputs`, and `Component.flows` now use `FlowContainer` (dict-like) with dual access by index or label: `inputs[0]` or `inputs['Q_th']`.
+
 ### 💥 Breaking Changes
 
 #### tsam v3 Migration
@@ -296,6 +300,7 @@ fs.transform.cluster(
 #### Other Breaking Changes
 
 - `FlowSystem.scenario_weights` are now always normalized to sum to 1 when set (including after `.sel()` subsetting)
+- `Component.inputs`/`outputs` and `Bus.inputs`/`outputs` are now `FlowContainer` (dict-like). Use `.values()` to iterate flows.
 
 ### ♻️ Changed
 

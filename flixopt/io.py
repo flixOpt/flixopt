@@ -1392,12 +1392,12 @@ def format_flow_details(obj: Any, has_inputs: bool = True, has_outputs: bool = T
 
     if has_inputs and hasattr(obj, 'inputs') and obj.inputs:
         flow_lines.append('  inputs:')
-        for flow in obj.inputs:
+        for flow in obj.inputs.values():
             flow_lines.append(f'    * {repr(flow)}')
 
     if has_outputs and hasattr(obj, 'outputs') and obj.outputs:
         flow_lines.append('  outputs:')
-        for flow in obj.outputs:
+        for flow in obj.outputs.values():
             flow_lines.append(f'    * {repr(flow)}')
 
     return '\n' + '\n'.join(flow_lines) if flow_lines else ''

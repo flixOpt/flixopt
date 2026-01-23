@@ -20,6 +20,7 @@ from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbs
 from .structure import (
     Element,
     ElementModel,
+    FlowContainer,
     FlowSystemModel,
     VariableCategory,
     register_class_for_io,
@@ -89,23 +90,44 @@ class Component(Element):
     def __init__(
         self,
         label: str,
-        inputs: list[Flow] | None = None,
-        outputs: list[Flow] | None = None,
+        inputs: list[Flow] | dict[str, Flow] | None = None,
+        outputs: list[Flow] | dict[str, Flow] | None = None,
         status_parameters: StatusParameters | None = None,
         prevent_simultaneous_flows: list[Flow] | None = None,
         meta_data: dict | None = None,
         color: str | None = None,
     ):
         super().__init__(label, meta_data=meta_data, color=color)
-        self.inputs: list[Flow] = inputs or []
-        self.outputs: list[Flow] = outputs or []
         self.status_parameters = status_parameters
         self.prevent_simultaneous_flows: list[Flow] = prevent_simultaneous_flows or []
 
-        self._check_unique_flow_labels()
-        self._connect_flows()
+        # Convert dict to list (for deserialization compatibility)
+        # FlowContainers serialize as dicts, but constructor expects lists
+        if isinstance(inputs, dict):
+            inputs = list(inputs.values())
+        if isinstance(outputs, dict):
+            outputs = list(outputs.values())
 
-        self.flows: dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
+        # Use temporary lists, connect flows first (sets component name on flows),
+        # then create FlowContainers (which use label_full as key)
+        _inputs = inputs or []
+        _outputs = outputs or []
+        self._check_unique_flow_labels(_inputs, _outputs)
+        self._connect_flows(_inputs, _outputs)
+
+        # Create FlowContainers after connecting (so label_full is correct)
+        self.inputs: FlowContainer = FlowContainer(_inputs, element_type_name='inputs')
+        self.outputs: FlowContainer = FlowContainer(_outputs, element_type_name='outputs')
+
+    @functools.cached_property
+    def flows(self) -> FlowContainer:
+        """All flows (inputs and outputs) as a FlowContainer.
+
+        Supports access by label_full or short label:
+            component.flows['Boiler(Q_th)']  # Full label
+            component.flows['Q_th']          # Short label
+        """
+        return self.inputs + self.outputs
 
     def create_model(self, model: FlowSystemModel) -> ComponentModel:
         self._plausibility_checks()
@@ -120,18 +142,29 @@ class Component(Element):
         super().link_to_flow_system(flow_system, self.label_full)
         if self.status_parameters is not None:
             self.status_parameters.link_to_flow_system(flow_system, self._sub_prefix('status_parameters'))
-        for flow in self.inputs + self.outputs:
+        for flow in self.flows.values():
             flow.link_to_flow_system(flow_system)
 
     def transform_data(self) -> None:
         if self.status_parameters is not None:
             self.status_parameters.transform_data()
 
-        for flow in self.inputs + self.outputs:
+        for flow in self.flows.values():
             flow.transform_data()
 
-    def _check_unique_flow_labels(self):
-        all_flow_labels = [flow.label for flow in self.inputs + self.outputs]
+    def _check_unique_flow_labels(self, inputs: list[Flow] = None, outputs: list[Flow] = None):
+        """Check that all flow labels within a component are unique.
+
+        Args:
+            inputs: List of input flows (optional, defaults to self.inputs)
+            outputs: List of output flows (optional, defaults to self.outputs)
+        """
+        if inputs is None:
+            inputs = list(self.inputs.values())
+        if outputs is None:
+            outputs = list(self.outputs.values())
+
+        all_flow_labels = [flow.label for flow in inputs + outputs]
 
         if len(set(all_flow_labels)) != len(all_flow_labels):
             duplicates = {label for label in all_flow_labels if all_flow_labels.count(label) > 1}
@@ -143,7 +176,7 @@ class Component(Element):
         # Component with status_parameters requires all flows to have sizes set
         # (status_parameters are propagated to flows in _do_modeling, which need sizes for big-M constraints)
         if self.status_parameters is not None:
-            flows_without_size = [flow.label for flow in self.inputs + self.outputs if flow.size is None]
+            flows_without_size = [flow.label for flow in self.flows.values() if flow.size is None]
             if flows_without_size:
                 raise PlausibilityError(
                     f'Component "{self.label_full}" has status_parameters, but the following flows have no size: '
@@ -151,9 +184,20 @@ class Component(Element):
                     f'(required for big-M constraints).'
                 )
 
-    def _connect_flows(self):
+    def _connect_flows(self, inputs: list[Flow] = None, outputs: list[Flow] = None):
+        """Connect flows to this component by setting component name and direction.
+
+        Args:
+            inputs: List of input flows (optional, defaults to self.inputs)
+            outputs: List of output flows (optional, defaults to self.outputs)
+        """
+        if inputs is None:
+            inputs = list(self.inputs.values())
+        if outputs is None:
+            outputs = list(self.outputs.values())
+
         # Inputs
-        for flow in self.inputs:
+        for flow in inputs:
             if flow.component not in ('UnknownComponent', self.label_full):
                 raise ValueError(
                     f'Flow "{flow.label}" already assigned to component "{flow.component}". '
@@ -162,7 +206,7 @@ class Component(Element):
             flow.component = self.label_full
             flow.is_input_in_component = True
         # Outputs
-        for flow in self.outputs:
+        for flow in outputs:
             if flow.component not in ('UnknownComponent', self.label_full):
                 raise ValueError(
                     f'Flow "{flow.label}" already assigned to component "{flow.component}". '
@@ -178,7 +222,7 @@ class Component(Element):
             self.prevent_simultaneous_flows = [
                 f for f in self.prevent_simultaneous_flows if id(f) not in seen and not seen.add(id(f))
             ]
-            local = set(self.inputs + self.outputs)
+            local = set(inputs + outputs)
             foreign = [f for f in self.prevent_simultaneous_flows if f not in local]
             if foreign:
                 names = ', '.join(f.label_full for f in foreign)
@@ -275,8 +319,13 @@ class Bus(Element):
         self._validate_kwargs(kwargs)
         self.carrier = carrier.lower() if carrier else None  # Store as lowercase string
         self.imbalance_penalty_per_flow_hour = imbalance_penalty_per_flow_hour
-        self.inputs: list[Flow] = []
-        self.outputs: list[Flow] = []
+        self.inputs: FlowContainer = FlowContainer(element_type_name='inputs')
+        self.outputs: FlowContainer = FlowContainer(element_type_name='outputs')
+
+    @property
+    def flows(self) -> FlowContainer:
+        """All flows (inputs and outputs) as a FlowContainer."""
+        return self.inputs + self.outputs
 
     def create_model(self, model: FlowSystemModel) -> BusModel:
         self._plausibility_checks()
@@ -289,7 +338,7 @@ class Bus(Element):
         Elements use their label_full as prefix by default, ignoring the passed prefix.
         """
         super().link_to_flow_system(flow_system, self.label_full)
-        for flow in self.inputs + self.outputs:
+        for flow in self.flows.values():
             flow.link_to_flow_system(flow_system)
 
     def transform_data(self) -> None:
@@ -959,10 +1008,10 @@ class BusModel(ElementModel):
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
         # inputs == outputs
-        for flow in self.element.inputs + self.element.outputs:
+        for flow in self.element.flows.values():
             self.register_variable(flow.submodel.flow_rate, flow.label_full)
-        inputs = sum([flow.submodel.flow_rate for flow in self.element.inputs])
-        outputs = sum([flow.submodel.flow_rate for flow in self.element.outputs])
+        inputs = sum([flow.submodel.flow_rate for flow in self.element.inputs.values()])
+        outputs = sum([flow.submodel.flow_rate for flow in self.element.outputs.values()])
         eq_bus_balance = self.add_constraints(inputs == outputs, short_name='balance')
 
         # Add virtual supply/demand to balance and penalty if needed
@@ -997,8 +1046,8 @@ class BusModel(ElementModel):
             )
 
     def results_structure(self):
-        inputs = [flow.submodel.flow_rate.name for flow in self.element.inputs]
-        outputs = [flow.submodel.flow_rate.name for flow in self.element.outputs]
+        inputs = [flow.submodel.flow_rate.name for flow in self.element.inputs.values()]
+        outputs = [flow.submodel.flow_rate.name for flow in self.element.outputs.values()]
         if self.virtual_supply is not None:
             inputs.append(self.virtual_supply.name)
         if self.virtual_demand is not None:
@@ -1007,7 +1056,7 @@ class BusModel(ElementModel):
             **super().results_structure(),
             'inputs': inputs,
             'outputs': outputs,
-            'flows': [flow.label_full for flow in self.element.inputs + self.element.outputs],
+            'flows': [flow.label_full for flow in self.element.flows.values()],
         }
 
 
@@ -1022,7 +1071,7 @@ class ComponentModel(ElementModel):
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
 
-        all_flows = self.element.inputs + self.element.outputs
+        all_flows = list(self.element.flows.values())
 
         # Set status_parameters on flows if needed
         if self.element.status_parameters:
@@ -1087,9 +1136,9 @@ class ComponentModel(ElementModel):
     def results_structure(self):
         return {
             **super().results_structure(),
-            'inputs': [flow.submodel.flow_rate.name for flow in self.element.inputs],
-            'outputs': [flow.submodel.flow_rate.name for flow in self.element.outputs],
-            'flows': [flow.label_full for flow in self.element.inputs + self.element.outputs],
+            'inputs': [flow.submodel.flow_rate.name for flow in self.element.inputs.values()],
+            'outputs': [flow.submodel.flow_rate.name for flow in self.element.outputs.values()],
+            'flows': [flow.label_full for flow in self.element.flows.values()],
         }
 
     @property
@@ -1098,7 +1147,7 @@ class ComponentModel(ElementModel):
         if self.element.status_parameters is None:
             raise ValueError(f'StatusModel not present in \n{self}\nCant access previous_status')
 
-        previous_status = [flow.submodel.status._previous_status for flow in self.element.inputs + self.element.outputs]
+        previous_status = [flow.submodel.status._previous_status for flow in self.element.flows.values()]
         previous_status = [da for da in previous_status if da is not None]
 
         if not previous_status:  # Empty list
