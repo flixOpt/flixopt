@@ -1437,7 +1437,31 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         """Combined effect factors with (flow, effect, ...) dims."""
         return self.data.effects_per_flow_hour
 
-    # --- Investment Subset Properties (for create_investment_model) ---
+    # --- Mixin Interface Properties (for InvestmentEffectsMixin) ---
+
+    @property
+    def _invest_params(self) -> dict[str, InvestParameters]:
+        """Investment parameters for flows with investment, keyed by label_full.
+
+        Required by InvestmentEffectsMixin.
+        """
+        return self.data.invest_params
+
+    @property
+    def with_investment(self) -> list[str]:
+        """IDs of flows with investment parameters.
+
+        Required by InvestmentEffectsMixin.
+        """
+        return self.data.with_investment
+
+    @property
+    def with_optional_investment(self) -> list[str]:
+        """IDs of flows with optional (non-mandatory) investment.
+
+        Required by InvestmentEffectsMixin.
+        """
+        return self.data.with_optional_investment
 
     # --- Investment Subset Properties (for create_investment_model) ---
 
