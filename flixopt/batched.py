@@ -323,6 +323,60 @@ class FlowsData:
         # Inf for flows without size
         return xr.where(self.effective_size_upper.isnull(), np.inf, base)
 
+    # --- Investment Bounds (for size variable) ---
+
+    @cached_property
+    def investment_size_minimum(self) -> xr.DataArray | None:
+        """(flow, period, scenario) - minimum size for flows with investment.
+
+        For mandatory: minimum_or_fixed_size
+        For optional: 0 (invested variable controls actual minimum)
+        """
+        if not self.with_investment:
+            return None
+        flow_ids = self.with_investment
+        values = []
+        for fid in flow_ids:
+            params = self.invest_params[fid]
+            if params.mandatory:
+                values.append(params.minimum_or_fixed_size)
+            else:
+                values.append(0)  # Optional: lower bound is 0
+        return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
+
+    @cached_property
+    def investment_size_maximum(self) -> xr.DataArray | None:
+        """(flow, period, scenario) - maximum size for flows with investment."""
+        if not self.with_investment:
+            return None
+        flow_ids = self.with_investment
+        values = [self.invest_params[fid].maximum_or_fixed_size for fid in flow_ids]
+        return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
+
+    @cached_property
+    def optional_investment_size_minimum(self) -> xr.DataArray | None:
+        """(flow, period, scenario) - minimum size for optional investment flows.
+
+        Used in constraints: size >= min * invested
+        """
+        if not self.with_optional_investment:
+            return None
+        flow_ids = self.with_optional_investment
+        values = [self.invest_params[fid].minimum_or_fixed_size for fid in flow_ids]
+        return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
+
+    @cached_property
+    def optional_investment_size_maximum(self) -> xr.DataArray | None:
+        """(flow, period, scenario) - maximum size for optional investment flows.
+
+        Used in constraints: size <= max * invested
+        """
+        if not self.with_optional_investment:
+            return None
+        flow_ids = self.with_optional_investment
+        values = [self.invest_params[fid].maximum_or_fixed_size for fid in flow_ids]
+        return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
+
     @cached_property
     def effects_per_flow_hour(self) -> xr.DataArray | None:
         """(flow, effect, ...) - effect factors per flow hour.

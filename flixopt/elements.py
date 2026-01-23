@@ -742,31 +742,102 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         self.model.variable_categories[var.name] = VariableCategory.STATUS
         return var
 
+    @cached_property
+    def size(self) -> linopy.Variable | None:
+        """(flow, period, scenario) - size variable for flows with investment."""
+        if not self.data.with_investment:
+            return None
+        var = self.model.add_variables(
+            lower=self.data.investment_size_minimum,
+            upper=self.data.investment_size_maximum,
+            coords=self._build_coords(dims=('period', 'scenario'), element_ids=self.data.with_investment),
+            name=f'{self.dim_name}|size',
+        )
+        self._variables['size'] = var
+        self.model.variable_categories[var.name] = VariableCategory.FLOW_SIZE
+        return var
+
+    @cached_property
+    def invested(self) -> linopy.Variable | None:
+        """(flow, period, scenario) - binary invested variable for optional investment flows."""
+        if not self.data.with_optional_investment:
+            return None
+        var = self.model.add_variables(
+            binary=True,
+            coords=self._build_coords(dims=('period', 'scenario'), element_ids=self.data.with_optional_investment),
+            name=f'{self.dim_name}|invested',
+        )
+        self._variables['invested'] = var
+        return var
+
     def create_variables(self) -> None:
         """Create all batched variables for flows.
 
         Triggers cached property creation for:
         - flow|rate: For ALL flows
         - flow|status: For flows with status_parameters
-
-        Note: Investment variables (size, invested) are created by create_investment_model().
+        - flow|size: For flows with investment
+        - flow|invested: For flows with optional investment
         """
         # Trigger variable creation via cached properties
         _ = self.rate
         _ = self.status
+        _ = self.size
+        _ = self.invested
 
         logger.debug(
-            f'FlowsModel created variables: {len(self.elements)} flows, {len(self.data.with_status)} with status'
+            f'FlowsModel created variables: {len(self.elements)} flows, '
+            f'{len(self.data.with_status)} with status, {len(self.data.with_investment)} with investment'
         )
 
     def create_constraints(self) -> None:
         """Create all batched constraints for flows."""
+        # Trigger investment variable creation first (cached properties)
+        # These must exist before rate bounds constraints that reference them
+        _ = self.size  # Creates size variable if with_investment
+        _ = self.invested  # Creates invested variable if with_optional_investment
+
         self.constraint_flow_hours()
         self.constraint_flow_hours_over_periods()
         self.constraint_load_factor()
         self.constraint_rate_bounds()
+        self.constraint_investment()
 
         logger.debug(f'FlowsModel created {len(self._constraints)} constraint types')
+
+    def constraint_investment(self) -> None:
+        """Investment constraints: optional size bounds, linked periods, piecewise effects."""
+        if self.size is None:
+            return
+
+        from .features import InvestmentHelpers
+
+        dim = self.dim_name
+
+        # Optional investment: size controlled by invested binary
+        if self.invested is not None:
+            InvestmentHelpers.add_optional_size_bounds(
+                model=self.model,
+                size_var=self.size,
+                invested_var=self.invested,
+                min_bounds=self.data.optional_investment_size_minimum,
+                max_bounds=self.data.optional_investment_size_maximum,
+                element_ids=self.data.with_optional_investment,
+                dim_name=dim,
+                name_prefix='flow',
+            )
+
+        # Linked periods constraints
+        InvestmentHelpers.add_linked_periods_constraints(
+            model=self.model,
+            size_var=self.size,
+            params=self.data.invest_params,
+            element_ids=self.data.with_investment,
+            dim_name=dim,
+        )
+
+        # Piecewise effects
+        self._create_piecewise_effects()
 
     # === Constraints (methods with constraint_* naming) ===
 
@@ -998,101 +1069,6 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         rhs = (status - 1) * big_m_lower + size * rel_min
         self.add_constraints(flow_rate >= rhs, name='flow|status+invest_lb')
 
-    def create_investment_model(self) -> None:
-        """Create investment variables and constraints for flows with investment.
-
-        Creates:
-        - flow|size: For all flows with investment
-        - flow|invested: For flows with optional (non-mandatory) investment
-
-        Must be called AFTER create_variables() and create_constraints().
-        """
-        if not self.data.with_investment:
-            return
-
-        from .features import InvestmentHelpers
-
-        dim = self.dim_name
-        element_ids = self.data.with_investment
-        non_mandatory_ids = self.data.with_optional_investment
-        mandatory_ids = self.data.with_mandatory_investment
-
-        # Get base coords
-        base_coords = self.model.get_coords(['period', 'scenario'])
-        base_coords_dict = dict(base_coords) if base_coords is not None else {}
-
-        # Use cached properties for bounds
-        size_min = self._size_lower
-        size_max = self._size_upper
-
-        # Handle linked_periods masking
-        linked_periods = self._linked_periods_mask
-        if linked_periods is not None:
-            linked = linked_periods.fillna(1.0)
-            size_min = size_min * linked
-            size_max = size_max * linked
-
-        # Use cached mandatory mask
-        mandatory_mask = self._mandatory_mask
-
-        # For non-mandatory, lower bound is 0 (invested variable controls actual minimum)
-        lower_bounds = xr.where(mandatory_mask, size_min, 0)
-        upper_bounds = size_max
-
-        # === flow|size variable ===
-        size_coords = xr.Coordinates({dim: pd.Index(element_ids, name=dim), **base_coords_dict})
-        size_var = self.model.add_variables(
-            lower=lower_bounds,
-            upper=upper_bounds,
-            coords=size_coords,
-            name=FlowVarName.SIZE,
-        )
-        self._variables['size'] = size_var
-
-        # Register category as FLOW_SIZE for statistics accessor
-        from .structure import VariableCategory
-
-        self.model.variable_categories[size_var.name] = VariableCategory.FLOW_SIZE
-
-        # === flow|invested variable (non-mandatory only) ===
-        if non_mandatory_ids:
-            invested_coords = xr.Coordinates({dim: pd.Index(non_mandatory_ids, name=dim), **base_coords_dict})
-            invested_var = self.model.add_variables(
-                binary=True,
-                coords=invested_coords,
-                name=FlowVarName.INVESTED,
-            )
-            self._variables['invested'] = invested_var
-
-            # State-controlled bounds constraints using cached properties
-            InvestmentHelpers.add_optional_size_bounds(
-                model=self.model,
-                size_var=size_var,
-                invested_var=invested_var,
-                min_bounds=self._optional_lower,
-                max_bounds=self._optional_upper,
-                element_ids=non_mandatory_ids,
-                dim_name=dim,
-                name_prefix='flow',
-            )
-
-        # Linked periods constraints
-        InvestmentHelpers.add_linked_periods_constraints(
-            model=self.model,
-            size_var=size_var,
-            params=self.data.invest_params,
-            element_ids=element_ids,
-            dim_name=dim,
-        )
-
-        # Piecewise effects (handled per-element, not batchable)
-        self._create_piecewise_effects()
-
-        logger.debug(
-            f'FlowsModel created investment variables: {len(element_ids)} flows '
-            f'({len(mandatory_ids)} mandatory, {len(non_mandatory_ids)} optional)'
-        )
-
     def _create_piecewise_effects(self) -> None:
         """Create batched piecewise effects for flows with piecewise_effects_of_investment.
 
@@ -1319,16 +1295,6 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         return self._variables.get('shutdown')
 
     @property
-    def size(self) -> linopy.Variable | None:
-        """Batched size variable with (flow,) dims, or None if no flows have investment."""
-        return self._variables.get('size')
-
-    @property
-    def invested(self) -> linopy.Variable | None:
-        """Batched invested binary variable with (flow,) dims, or None if no optional investments."""
-        return self._variables.get('invested')
-
-    @property
     def effects_per_flow_hour(self) -> xr.DataArray | None:
         """Combined effect factors with (flow, effect, ...) dims."""
         return self.data.effects_per_flow_hour
@@ -1358,68 +1324,6 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         Required by InvestmentEffectsMixin.
         """
         return self.data.with_optional_investment
-
-    # --- Investment Subset Properties (for create_investment_model) ---
-
-    @cached_property
-    def _size_lower(self) -> xr.DataArray:
-        """(flow,) - minimum size for investment flows."""
-        from .features import InvestmentHelpers
-
-        element_ids = self.data.with_investment
-        values = [self.data.invest_params[fid].minimum_or_fixed_size for fid in element_ids]
-        return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
-
-    @cached_property
-    def _size_upper(self) -> xr.DataArray:
-        """(flow,) - maximum size for investment flows."""
-        from .features import InvestmentHelpers
-
-        element_ids = self.data.with_investment
-        values = [self.data.invest_params[fid].maximum_or_fixed_size for fid in element_ids]
-        return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
-
-    @cached_property
-    def _linked_periods_mask(self) -> xr.DataArray | None:
-        """(flow, period) - linked periods for investment flows. None if no linking."""
-        from .features import InvestmentHelpers
-
-        element_ids = self.data.with_investment
-        linked_list = [self.data.invest_params[fid].linked_periods for fid in element_ids]
-        if not any(lp is not None for lp in linked_list):
-            return None
-
-        values = [lp if lp is not None else np.nan for lp in linked_list]
-        return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
-
-    @cached_property
-    def _mandatory_mask(self) -> xr.DataArray:
-        """(flow,) bool - True if mandatory, False if optional."""
-        element_ids = self.data.with_investment
-        values = [self.data.invest_params[fid].mandatory for fid in element_ids]
-        return xr.DataArray(values, dims=[self.dim_name], coords={self.dim_name: element_ids})
-
-    @cached_property
-    def _optional_lower(self) -> xr.DataArray | None:
-        """(flow,) - minimum size for optional investment flows."""
-        if not self.data.with_optional_investment:
-            return None
-        from .features import InvestmentHelpers
-
-        element_ids = self.data.with_optional_investment
-        values = [self.data.invest_params[fid].minimum_or_fixed_size for fid in element_ids]
-        return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
-
-    @cached_property
-    def _optional_upper(self) -> xr.DataArray | None:
-        """(flow,) - maximum size for optional investment flows."""
-        if not self.data.with_optional_investment:
-            return None
-        from .features import InvestmentHelpers
-
-        element_ids = self.data.with_optional_investment
-        values = [self.data.invest_params[fid].maximum_or_fixed_size for fid in element_ids]
-        return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
 
     # --- Previous Status ---
 

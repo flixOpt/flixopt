@@ -23,19 +23,10 @@ class TestFlowModel:
         # Get variables from type-level model
         flows_model = model._flows_model
         flow_label = 'Sink(Wärme)'
-        total_flow_hours = flows_model.get_variable('hours', flow_label)
         flow_rate = flows_model.get_variable('rate', flow_label)
 
-        # Constraints are batched at type-level, select specific flow
-        assert_conequal(
-            model.constraints['flow|hours_eq'].sel(flow=flow_label),
-            total_flow_hours == (flow_rate * model.timestep_duration).sum('time'),
-        )
+        # Rate variable should have correct bounds (no flow_hours constraints for minimal flow)
         assert_var_equal(flow_rate, model.add_variables(lower=0, upper=100, coords=model.get_coords()))
-        assert_var_equal(
-            total_flow_hours,
-            model.add_variables(lower=0, coords=model.get_coords(['period', 'scenario'])),
-        )
 
     def test_flow(self, basic_flow_system_linopy_coords, coords_config):
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
@@ -59,18 +50,19 @@ class TestFlowModel:
         # Get variables from type-level model
         flows_model = model._flows_model
         flow_label = 'Sink(Wärme)'
-        total_flow_hours = flows_model.get_variable('hours', flow_label)
         flow_rate = flows_model.get_variable('rate', flow_label)
 
-        # total_flow_hours - batched at type-level
-        assert_conequal(
-            model.constraints['flow|hours_eq'].sel(flow=flow_label),
-            total_flow_hours == (flow_rate * model.timestep_duration).sum('time'),
-        )
+        # Hours are computed inline - no hours variable, but constraints exist
+        hours_expr = (flow_rate * model.timestep_duration).sum('time')
 
-        assert_var_equal(
-            total_flow_hours,
-            model.add_variables(lower=10, upper=1000, coords=model.get_coords(['period', 'scenario'])),
+        # flow_hours constraints (hours computed inline in constraint)
+        assert_conequal(
+            model.constraints['flow|hours_min'].sel(flow=flow_label),
+            hours_expr >= 10,
+        )
+        assert_conequal(
+            model.constraints['flow|hours_max'].sel(flow=flow_label),
+            hours_expr <= 1000,
         )
 
         assert_dims_compatible(flow.relative_minimum, tuple(model.get_coords()))
@@ -85,15 +77,15 @@ class TestFlowModel:
             ),
         )
 
-        # load_factor constraints - batched at type-level
+        # load_factor constraints - hours computed inline
         assert_conequal(
             model.constraints['flow|load_factor_min'].sel(flow=flow_label),
-            total_flow_hours >= model.timestep_duration.sum('time') * 0.1 * 100,
+            hours_expr >= model.timestep_duration.sum('time') * 0.1 * 100,
         )
 
         assert_conequal(
             model.constraints['flow|load_factor_max'].sel(flow=flow_label),
-            total_flow_hours <= model.timestep_duration.sum('time') * 0.9 * 100,
+            hours_expr <= model.timestep_duration.sum('time') * 0.9 * 100,
         )
 
     def test_effects_per_flow_hour(self, basic_flow_system_linopy_coords, coords_config):

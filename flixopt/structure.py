@@ -1176,12 +1176,6 @@ class FlowSystemModel(linopy.Model):
 
         record('flows_variables')
 
-        # Create batched investment model for flows (creates size/invested variables)
-        # Must be before create_constraints() since bounds depend on size variable
-        self._flows_model.create_investment_model()
-
-        record('flows_investment_model')
-
         # Create batched status model for flows (creates active_hours, startup, shutdown, etc.)
         self._flows_model.create_status_model()
 
