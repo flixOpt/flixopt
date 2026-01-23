@@ -473,6 +473,9 @@ class EffectsModel:
         )
 
         # === Total over periods (for effects with min/max_over_periods) ===
+        # Only applicable when periods exist in the flow system
+        if self.model.flow_system.periods is None:
+            return
         effects_with_over_periods = [
             e for e in self.effects if e.minimum_over_periods is not None or e.maximum_over_periods is not None
         ]
