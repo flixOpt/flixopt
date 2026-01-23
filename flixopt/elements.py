@@ -2375,26 +2375,28 @@ class ConvertersModel:
         # Sum over flows: (converter, equation_idx, time, ...)
         flow_sum = weighted.sum('flow')
 
-        # Create constraints by equation index (to handle variable number of equations per converter)
-        # Group converters by their equation counts for efficient batching
-        for eq_idx in range(self._max_equations):
-            # Get converters that have this equation
-            converters_with_eq = [
-                cid
-                for cid, conv in zip(self.element_ids, self.converters_with_factors, strict=False)
-                if eq_idx < len(conv.conversion_factors)
-            ]
+        # Build validity mask: (converter, equation_idx)
+        # True where converter has that equation, False otherwise
+        n_equations_per_converter = xr.DataArray(
+            [len(c.conversion_factors) for c in self.converters_with_factors],
+            dims=['converter'],
+            coords={'converter': self.element_ids},
+        )
+        equation_indices = xr.DataArray(
+            list(range(self._max_equations)),
+            dims=['equation_idx'],
+            coords={'equation_idx': list(range(self._max_equations))},
+        )
+        valid_mask = equation_indices < n_equations_per_converter
 
-            if converters_with_eq:
-                # Select flow_sum for this equation and these converters
-                flow_sum_subset = flow_sum.sel(
-                    converter=converters_with_eq,
-                    equation_idx=eq_idx,
-                )
-                self.model.add_constraints(
-                    flow_sum_subset == 0,
-                    name=f'{ConverterVarName.Constraint.CONVERSION}_{eq_idx}',
-                )
+        # Apply mask - invalid entries become NaN and are skipped by linopy
+        masked_flow_sum = flow_sum.where(valid_mask)
+
+        # Add all constraints at once
+        self.model.add_constraints(
+            masked_flow_sum == 0,
+            name=ConverterVarName.Constraint.CONVERSION,
+        )
 
         self._logger.debug(
             f'ConvertersModel created linear constraints for {len(self.converters_with_factors)} converters'
