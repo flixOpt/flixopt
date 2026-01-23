@@ -915,22 +915,13 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         for flow in elements:
             flow.set_flows_model(self)
 
-    @cached_property
+    @property
     def _previous_status(self) -> dict[str, xr.DataArray]:
-        """Previous status for flows that have it, keyed by label_full."""
-        result = {}
-        for fid in self.data.with_status:
-            flow = self.data[fid]
-            if flow.previous_flow_rate is not None:
-                result[fid] = ModelingUtilitiesAbstract.to_binary(
-                    values=xr.DataArray(
-                        [flow.previous_flow_rate] if np.isscalar(flow.previous_flow_rate) else flow.previous_flow_rate,
-                        dims='time',
-                    ),
-                    epsilon=CONFIG.Modeling.epsilon,
-                    dims='time',
-                )
-        return result
+        """Previous status for flows that have it, keyed by label_full.
+
+        Delegates to FlowsData.previous_states.
+        """
+        return self.data.previous_states
 
     def _add_subset_variables(
         self,
@@ -1688,6 +1679,18 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
             previous_arrays.append(previous_status)
 
         return xr.concat(previous_arrays, dim=self.dim_name)
+
+    def get_previous_status(self, flow: Flow) -> xr.DataArray | None:
+        """Get previous status for a specific flow.
+
+        Args:
+            flow: The Flow element to get previous status for.
+
+        Returns:
+            DataArray of previous status (time dimension), or None if no previous status.
+        """
+        fid = flow.label_full
+        return self._previous_status.get(fid)
 
 
 class BusesModel(TypeModel):

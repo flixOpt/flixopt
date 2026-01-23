@@ -44,10 +44,7 @@ class TestComponentModel:
 
         # Check batched variables exist
         assert 'flow|rate' in model.variables, 'Batched flow rate variable should exist'
-        assert 'flow|hours' in model.variables, 'Batched flow hours variable should exist'
-
-        # Check that flow hours constraint exists
-        assert 'flow|hours_eq' in model.constraints, 'Batched hours equation should exist'
+        # Note: hours variable removed - computed inline in constraints now
 
     def test_on_with_multiple_flows(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
@@ -69,7 +66,7 @@ class TestComponentModel:
 
         # Check batched variables exist
         assert 'flow|rate' in model.variables, 'Batched flow rate variable should exist'
-        assert 'flow|hours' in model.variables, 'Batched flow hours variable should exist'
+        # Note: hours variable removed - computed inline in constraints now
         assert 'flow|status' in model.variables, 'Batched status variable should exist'
         assert 'flow|active_hours' in model.variables, 'Batched active_hours variable should exist'
         assert 'component|status' in model.variables, 'Batched component status variable should exist'
@@ -94,11 +91,11 @@ class TestComponentModel:
 
         # Check flow rate constraints exist and have correct bounds
         assert_conequal(
-            model.constraints['flow|rate_status_lb'].sel(flow='TestComponent(Out2)'),
+            model.constraints['flow|status_lb'].sel(flow='TestComponent(Out2)'),
             flow_rate_out2 >= flow_status_out2 * 0.3 * 300,
         )
         assert_conequal(
-            model.constraints['flow|rate_status_ub'].sel(flow='TestComponent(Out2)'),
+            model.constraints['flow|status_ub'].sel(flow='TestComponent(Out2)'),
             flow_rate_out2 <= flow_status_out2 * 300 * upper_bound_flow_rate,
         )
 
@@ -138,11 +135,11 @@ class TestComponentModel:
 
         # Check flow rate constraints exist and have correct bounds
         assert_conequal(
-            model.constraints['flow|rate_status_lb'].sel(flow=flow_label),
+            model.constraints['flow|status_lb'].sel(flow=flow_label),
             flow_rate >= flow_status * 0.1 * 100,
         )
         assert_conequal(
-            model.constraints['flow|rate_status_ub'].sel(flow=flow_label),
+            model.constraints['flow|status_ub'].sel(flow=flow_label),
             flow_rate <= flow_status * 100,
         )
 
@@ -205,11 +202,11 @@ class TestComponentModel:
 
         # Check flow rate constraints exist and have correct bounds
         assert_conequal(
-            model.constraints['flow|rate_status_lb'].sel(flow='TestComponent(Out2)'),
+            model.constraints['flow|status_lb'].sel(flow='TestComponent(Out2)'),
             flow_rate_out2 >= flow_status_out2 * 0.3 * 300,
         )
         assert_conequal(
-            model.constraints['flow|rate_status_ub'].sel(flow='TestComponent(Out2)'),
+            model.constraints['flow|status_ub'].sel(flow='TestComponent(Out2)'),
             flow_rate_out2 <= flow_status_out2 * 300 * upper_bound_flow_rate,
         )
 

@@ -508,6 +508,32 @@ class FlowsData:
         )
         return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, 'flow')
 
+    # --- Previous Status ---
+
+    @cached_property
+    def previous_states(self) -> dict[str, xr.DataArray]:
+        """Previous status for flows with previous_flow_rate, keyed by label_full.
+
+        Returns:
+            Dict mapping flow_id -> binary DataArray (time dimension).
+        """
+        from .config import CONFIG
+        from .modeling import ModelingUtilitiesAbstract
+
+        result = {}
+        for fid in self.with_previous_flow_rate:
+            flow = self[fid]
+            if flow.previous_flow_rate is not None:
+                result[fid] = ModelingUtilitiesAbstract.to_binary(
+                    values=xr.DataArray(
+                        [flow.previous_flow_rate] if np.isscalar(flow.previous_flow_rate) else flow.previous_flow_rate,
+                        dims='time',
+                    ),
+                    epsilon=CONFIG.Modeling.epsilon,
+                    dims='time',
+                )
+        return result
+
     # === Helper Methods ===
 
     def _stack_values_for_subset(
