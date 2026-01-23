@@ -802,19 +802,54 @@ class FlowsData:
 
         flow_ids = self.with_effects
 
-        # Use np.nan for missing effects (not 0!) to distinguish "not defined" from "zero"
-        # Use coords='minimal' to handle dimension mismatches (some effects may have 'time', some scalars)
-        flow_factors = [
-            xr.concat(
-                [xr.DataArray(self[fid].effects_per_flow_hour.get(eff, np.nan)) for eff in effect_ids],
-                dim='effect',
-                coords='minimal',
-            ).assign_coords(effect=effect_ids)
-            for fid in flow_ids
-        ]
+        # Check what extra dimensions are present (time, period, scenario)
+        extra_dims: set[str] = set()
+        for fid in flow_ids:
+            flow_effects = self[fid].effects_per_flow_hour
+            for val in flow_effects.values():
+                if isinstance(val, xr.DataArray) and val.ndim > 0:
+                    extra_dims.update(val.dims)
 
-        # Use coords='minimal' to handle dimension mismatches (some effects may have 'period', some don't)
-        return concat_with_coords(flow_factors, 'flow', flow_ids)
+        if extra_dims:
+            # Has multi-dimensional effects - use concat approach
+            # But optimize by only doing inner concat once per flow
+            flow_factors = []
+            for fid in flow_ids:
+                flow_effects = self[fid].effects_per_flow_hour
+                effect_arrays = []
+                for eff in effect_ids:
+                    val = flow_effects.get(eff)
+                    if val is None:
+                        effect_arrays.append(xr.DataArray(np.nan))
+                    elif isinstance(val, xr.DataArray):
+                        effect_arrays.append(val)
+                    else:
+                        effect_arrays.append(xr.DataArray(float(val)))
+
+                flow_factor = xr.concat(effect_arrays, dim='effect', coords='minimal')
+                flow_factor = flow_factor.assign_coords(effect=effect_ids)
+                flow_factors.append(flow_factor)
+
+            return concat_with_coords(flow_factors, 'flow', flow_ids)
+
+        # Fast path: all scalars - build numpy array directly
+        data = np.full((len(flow_ids), len(effect_ids)), np.nan)
+
+        for i, fid in enumerate(flow_ids):
+            flow_effects = self[fid].effects_per_flow_hour
+            for j, eff in enumerate(effect_ids):
+                val = flow_effects.get(eff)
+                if val is not None:
+                    if isinstance(val, xr.DataArray):
+                        data[i, j] = float(val.values)
+                    else:
+                        data[i, j] = float(val)
+
+        return xr.DataArray(
+            data,
+            coords={'flow': pd.Index(flow_ids), 'effect': pd.Index(effect_ids)},
+            dims=['flow', 'effect'],
+        )
 
     # --- Investment Parameters ---
 
