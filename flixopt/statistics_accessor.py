@@ -779,7 +779,7 @@ class StatisticsAccessor:
             if element not in self._fs.components:
                 raise ValueError(f'Only use Components when retrieving Effects including flows. Got {element}')
             comp = self._fs.components[element]
-            flows = [f.label_full.split('|')[0] for f in comp.inputs + comp.outputs]
+            flows = [f.label_full.split('|')[0] for f in (comp.inputs + comp.outputs).values()]
             return xr.merge(
                 [ds]
                 + [
@@ -1509,8 +1509,8 @@ class StatisticsPlotAccessor:
         else:
             raise KeyError(f"'{node}' not found in buses or components")
 
-        input_labels = [f.label_full for f in element.inputs]
-        output_labels = [f.label_full for f in element.outputs]
+        input_labels = [f.label_full for f in element.inputs.values()]
+        output_labels = [f.label_full for f in element.outputs.values()]
         all_labels = input_labels + output_labels
 
         filtered_labels = _filter_by_pattern(all_labels, include, exclude)
@@ -1617,9 +1617,9 @@ class StatisticsPlotAccessor:
         output_labels: list[str] = []  # Outputs from buses = consumption
 
         for bus in carrier_buses:
-            for flow in bus.inputs:
+            for flow in bus.inputs.values():
                 input_labels.append(flow.label_full)
-            for flow in bus.outputs:
+            for flow in bus.outputs.values():
                 output_labels.append(flow.label_full)
 
         all_labels = input_labels + output_labels
@@ -2230,8 +2230,8 @@ class StatisticsPlotAccessor:
             raise ValueError(f"'{storage}' is not a storage (no charge_state variable found)")
 
         # Get flow data
-        input_labels = [f.label_full for f in component.inputs]
-        output_labels = [f.label_full for f in component.outputs]
+        input_labels = [f.label_full for f in component.inputs.values()]
+        output_labels = [f.label_full for f in component.outputs.values()]
         all_labels = input_labels + output_labels
 
         if unit == 'flow_rate':

@@ -231,7 +231,7 @@ class TestComplex:
             [0, 0, 0, 45, 0, 0, 0, 0, 0],
             'Kessel doesnt match expected value',
         )
-        kwk_flows = {flow.label: flow for flow in comps['KWK'].inputs + comps['KWK'].outputs}
+        kwk_flows = {flow.label: flow for flow in (comps['KWK'].inputs + comps['KWK'].outputs).values()}
         assert_almost_equal_numeric(
             kwk_flows['Q_th'].submodel.flow_rate.solution.values,
             [45.0, 45.0, 64.5962087, 100.0, 61.3136, 45.0, 45.0, 12.86469565, 0.0],

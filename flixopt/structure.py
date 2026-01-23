@@ -1508,6 +1508,25 @@ class ContainerMixin(dict[str, T]):
         """Return a string representation using the instance's truncate_repr setting."""
         return self._get_repr()
 
+    def __add__(self, other: ContainerMixin[T]) -> ContainerMixin[T]:
+        """Concatenate two containers.
+
+        Returns a new container of the same type containing elements from both containers.
+        Does not modify the original containers.
+
+        Args:
+            other: Another container to concatenate
+
+        Returns:
+            New container with elements from both containers
+        """
+        result = self.__class__(element_type_name=self._element_type_name)
+        for element in self.values():
+            result.add(element)
+        for element in other.values():
+            result.add(element)
+        return result
+
 
 class ElementContainer(ContainerMixin[T]):
     """
@@ -1531,6 +1550,50 @@ class ResultsContainer(ContainerMixin[T]):
     def _get_label(self, element: T) -> str:
         """Extract label from Results object."""
         return element.label
+
+
+class FlowContainer(ContainerMixin[T]):
+    """Container for Flow objects with dual access: by index or by label_full.
+
+    Supports:
+        - container['Boiler(Q_th)']  # label_full-based access
+        - container[0]               # index-based access
+        - container.add(flow)
+        - for flow in container.values()
+        - container1 + container2    # concatenation
+
+    Examples:
+        >>> boiler = Boiler(label='Boiler', inputs=[Flow('Q_th', bus=heat_bus)])
+        >>> boiler.inputs[0]  # Index access
+        >>> boiler.inputs['Boiler(Q_th)']  # Label access
+        >>> for flow in boiler.inputs.values():
+        ...     print(flow.label_full)
+    """
+
+    def _get_label(self, flow: T) -> str:
+        """Extract label_full from Flow."""
+        return flow.label_full
+
+    def __getitem__(self, key: str | int) -> T:
+        """Get flow by label_full (string) or index (int).
+
+        Args:
+            key: Either the flow's label_full (string) or index (int)
+
+        Returns:
+            The Flow at the given key/index
+
+        Raises:
+            KeyError: If string key not found
+            IndexError: If integer index out of range
+        """
+        if isinstance(key, int):
+            # Index-based access: convert to list and index
+            try:
+                return list(self.values())[key]
+            except IndexError:
+                raise IndexError(f'Flow index {key} out of range (container has {len(self)} flows)') from None
+        return super().__getitem__(key)
 
 
 T_element = TypeVar('T_element')
