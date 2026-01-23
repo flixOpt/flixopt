@@ -791,17 +791,18 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         flow_ids = self.data.with_flow_hours_over_periods
         rate_subset = self.rate.sel({dim: flow_ids})
         hours_per_period = self.model.sum_temporal(rate_subset)
-        period_weights = self.model.flow_system.period_weights
-        if period_weights is None:
-            period_weights = 1.0
-        hours_over_periods = (hours_per_period * period_weights).sum('period')
+        if self.model.flow_system.periods is not None:
+            period_weights = self.model.flow_system.weights.get('period', 1)
+            hours_over_periods = (hours_per_period * period_weights).sum('period')
+        else:
+            hours_over_periods = hours_per_period
 
         # Add min/max constraints
         self.add_constraints(
-            hours_over_periods >= self.data.flow_hours_minimum_over_periods, name='flow_hours_over_periods_min'
+            hours_over_periods >= self.data.flow_hours_minimum_over_periods, name='flow|hours_over_periods'
         )
         self.add_constraints(
-            hours_over_periods <= self.data.flow_hours_maximum_over_periods, name='flow_hours_over_periods_max'
+            hours_over_periods <= self.data.flow_hours_maximum_over_periods, name='flow|hours_over_periods_max'
         )
 
     def constraint_load_factor(self) -> None:
