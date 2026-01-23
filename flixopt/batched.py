@@ -212,8 +212,13 @@ class FlowsData:
         return self._broadcast_to_coords(self._stack_values(values), dims=['period', 'scenario'])
 
     @cached_property
-    def size_minimum(self) -> xr.DataArray:
-        """(flow, period, scenario) - minimum size. NaN for flows without size."""
+    def effective_size_lower(self) -> xr.DataArray:
+        """(flow, period, scenario) - effective lower size for bounds.
+
+        - Fixed size flows: the size value
+        - Investment flows: minimum_or_fixed_size
+        - No size: NaN
+        """
         values = []
         for f in self.elements.values():
             if f.size is None:
@@ -225,8 +230,13 @@ class FlowsData:
         return self._broadcast_to_coords(self._stack_values(values), dims=['period', 'scenario'])
 
     @cached_property
-    def size_maximum(self) -> xr.DataArray:
-        """(flow, period, scenario) - maximum size. NaN for flows without size."""
+    def effective_size_upper(self) -> xr.DataArray:
+        """(flow, period, scenario) - effective upper size for bounds.
+
+        - Fixed size flows: the size value
+        - Investment flows: maximum_or_fixed_size
+        - No size: NaN
+        """
         values = []
         for f in self.elements.values():
             if f.size is None:
@@ -236,6 +246,44 @@ class FlowsData:
             else:
                 values.append(f.size)
         return self._broadcast_to_coords(self._stack_values(values), dims=['period', 'scenario'])
+
+    @cached_property
+    def absolute_lower_bounds(self) -> xr.DataArray:
+        """(flow, time, period, scenario) - absolute lower bounds for flow rate.
+
+        Logic:
+        - Status flows → 0 (status variable controls activation)
+        - Optional investment → 0 (invested variable controls)
+        - Mandatory investment → relative_min * effective_size_lower
+        - Fixed size → relative_min * effective_size_lower
+        - No size → 0
+        """
+        # Base: relative_min * size_lower
+        base = self.effective_relative_minimum * self.effective_size_lower
+
+        # Build mask for flows that should have lb=0
+        flow_ids = xr.DataArray(self.ids, dims=['flow'], coords={'flow': self.ids})
+        is_status = flow_ids.isin(self.with_status)
+        is_optional_invest = flow_ids.isin(self.with_optional_investment)
+        has_no_size = self.effective_size_lower.isnull()
+
+        is_zero = is_status | is_optional_invest | has_no_size
+        return xr.where(is_zero, 0.0, base).fillna(0.0)
+
+    @cached_property
+    def absolute_upper_bounds(self) -> xr.DataArray:
+        """(flow, time, period, scenario) - absolute upper bounds for flow rate.
+
+        Logic:
+        - Investment flows → relative_max * effective_size_upper
+        - Fixed size → relative_max * effective_size_upper
+        - No size → inf
+        """
+        # Base: relative_max * size_upper
+        base = self.effective_relative_maximum * self.effective_size_upper
+
+        # Inf for flows without size
+        return xr.where(self.effective_size_upper.isnull(), np.inf, base)
 
     @cached_property
     def effects_per_flow_hour(self) -> xr.DataArray | None:

@@ -748,11 +748,9 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
     @cached_property
     def rate(self) -> linopy.Variable:
         """(flow, time, ...) - flow rate variable for ALL flows."""
-        lower_bounds = self._collect_bounds('absolute_lower')
-        upper_bounds = self._collect_bounds('absolute_upper')
         var = self.model.add_variables(
-            lower=lower_bounds,
-            upper=upper_bounds,
+            lower=self.data.absolute_lower_bounds,
+            upper=self.data.absolute_upper_bounds,
             coords=self._build_coords(dims=None),
             name=f'{self.dim_name}|rate',
         )
@@ -882,7 +880,7 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
             if has
         ]
         total_time = self.model.timestep_duration.sum(self.model.temporal_dims)
-        size_min = self.data.size_minimum.sel({dim: flow_ids}).fillna(0)
+        size_min = self.data.effective_size_lower.sel({dim: flow_ids}).fillna(0)
         hours_subset = self.hours.sel({dim: flow_ids})
         lf_min_subset = lf_min.sel({dim: flow_ids}).fillna(0)
         rhs = total_time * lf_min_subset * size_min
@@ -906,7 +904,7 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
             if has
         ]
         total_time = self.model.timestep_duration.sum(self.model.temporal_dims)
-        size_max = self.data.size_maximum.sel({dim: flow_ids}).fillna(np.inf)
+        size_max = self.data.effective_size_upper.sel({dim: flow_ids}).fillna(np.inf)
         hours_subset = self.hours.sel({dim: flow_ids})
         lf_max_subset = lf_max.sel({dim: flow_ids}).fillna(1)
         rhs = total_time * lf_max_subset * size_max
@@ -952,67 +950,6 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
             self.model.variable_categories[variable.name] = expansion_category
 
         self._variables[name] = variable
-
-    def _collect_bounds(self, bound_type: str) -> xr.DataArray | float:
-        """Collect bounds from all flows and stack them.
-
-        Args:
-            bound_type: 'absolute_lower', 'absolute_upper', 'relative_lower', 'relative_upper'
-
-        Returns:
-            Stacked bounds with element dimension.
-        """
-        bounds_list = []
-        for flow in self.elements.values():
-            if bound_type == 'absolute_lower':
-                bounds_list.append(self._get_absolute_lower_bound(flow))
-            elif bound_type == 'absolute_upper':
-                bounds_list.append(self._get_absolute_upper_bound(flow))
-            elif bound_type == 'relative_lower':
-                bounds_list.append(self._get_relative_bounds(flow)[0])
-            elif bound_type == 'relative_upper':
-                bounds_list.append(self._get_relative_bounds(flow)[1])
-            else:
-                raise ValueError(f'Unknown bound type: {bound_type}')
-
-        return self._stack_bounds(bounds_list)
-
-    def _get_relative_bounds(self, flow: Flow) -> tuple[xr.DataArray, xr.DataArray]:
-        """Get relative flow rate bounds for a flow."""
-        if flow.fixed_relative_profile is not None:
-            return flow.fixed_relative_profile, flow.fixed_relative_profile
-        return xr.broadcast(flow.relative_minimum, flow.relative_maximum)
-
-    def _get_absolute_lower_bound(self, flow: Flow) -> xr.DataArray | float:
-        """Get absolute lower bound for a flow."""
-        lb_relative, _ = self._get_relative_bounds(flow)
-
-        # Flows with status have lb=0 (status controls activation)
-        if flow.status_parameters is not None:
-            return 0
-
-        if not isinstance(flow.size, InvestParameters):
-            # Basic case without investment
-            if flow.size is not None:
-                return lb_relative * flow.size
-            return 0
-        elif flow.size.mandatory:
-            # Mandatory investment
-            return lb_relative * flow.size.minimum_or_fixed_size
-        else:
-            # Optional investment - lower bound is 0
-            return 0
-
-    def _get_absolute_upper_bound(self, flow: Flow) -> xr.DataArray | float:
-        """Get absolute upper bound for a flow."""
-        _, ub_relative = self._get_relative_bounds(flow)
-
-        if isinstance(flow.size, InvestParameters):
-            return ub_relative * flow.size.maximum_or_fixed_size
-        elif flow.size is not None:
-            return ub_relative * flow.size
-        else:
-            return np.inf  # Unbounded
 
     def constraint_rate_bounds(self) -> None:
         """Create flow rate bounding constraints based on status/investment configuration."""
@@ -1085,10 +1022,10 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         size = self._variables['size'].sel({dim: flow_ids})
         status = self.status.sel({dim: flow_ids})
 
-        # Get effective relative bounds and size_maximum for the subset
+        # Get effective relative bounds and effective_size_upper for the subset
         rel_max = self.data.effective_relative_maximum.sel({dim: flow_ids})
         rel_min = self.data.effective_relative_minimum.sel({dim: flow_ids})
-        max_size = self.data.size_maximum.sel({dim: flow_ids})
+        max_size = self.data.effective_size_upper.sel({dim: flow_ids})
 
         # Upper bound 1: rate <= status * M where M = max_size * relative_max
         big_m_upper = max_size * rel_max

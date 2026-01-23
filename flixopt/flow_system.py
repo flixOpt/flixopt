@@ -1832,7 +1832,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             Access batched parameters:
 
             >>> flow_system.batched.flows.relative_minimum  # DataArray with flow dimension
-            >>> flow_system.batched.flows.size_maximum  # DataArray with flow dimension
+            >>> flow_system.batched.flows.effective_size_upper  # DataArray with flow dimension
 
             Access individual flows:
 
