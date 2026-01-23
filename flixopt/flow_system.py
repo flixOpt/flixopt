@@ -16,6 +16,7 @@ import pandas as pd
 import xarray as xr
 
 from . import io as fx_io
+from .batched import BatchedAccessor
 from .components import Storage
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 from .core import (
@@ -273,6 +274,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Topology accessor cache - lazily initialized, invalidated on structure change
         self._topology: TopologyAccessor | None = None
+
+        # Batched data accessor - provides indexed/batched access to element properties
+        self._batched: BatchedAccessor | None = None
 
         # Carrier container - local carriers override CONFIG.Carriers
         self._carriers: CarrierContainer = CarrierContainer()
@@ -1807,6 +1811,36 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if self._topology is None:
             self._topology = TopologyAccessor(self)
         return self._topology
+
+    @property
+    def batched(self) -> BatchedAccessor:
+        """
+        Access batched data containers for element properties.
+
+        This property returns a BatchedAccessor that provides indexed/batched
+        access to element properties as xarray DataArrays with element dimensions.
+
+        Returns:
+            A cached BatchedAccessor instance.
+
+        Examples:
+            Access flow categorizations:
+
+            >>> flow_system.batched.flows.with_status  # List of flow IDs with status
+            >>> flow_system.batched.flows.with_investment  # List of flow IDs with investment
+
+            Access batched parameters:
+
+            >>> flow_system.batched.flows.relative_minimum  # DataArray with flow dimension
+            >>> flow_system.batched.flows.size_maximum  # DataArray with flow dimension
+
+            Access individual flows:
+
+            >>> flow = flow_system.batched.flows['Boiler(gas_in)']
+        """
+        if self._batched is None:
+            self._batched = BatchedAccessor(self)
+        return self._batched
 
     def plot_network(
         self,

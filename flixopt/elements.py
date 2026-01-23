@@ -719,19 +719,27 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         for flow in elements:
             flow.set_flows_model(self)
 
+    @property
+    def data(self):
+        """Access FlowsData from the batched accessor."""
+        return self.model.flow_system.batched.flows
+
     def flow(self, label: str) -> Flow:
         """Get a flow by its label_full."""
-        return self.elements[label]
+        return self.data[label]
 
-    @cached_property
+    # === Delegate to FlowsData ===
+    # Categorizations and parameters are delegated to the data layer.
+
+    @property
     def _invest_params(self) -> dict[str, InvestParameters]:
-        """Investment parameters for flows with investment, keyed by label_full."""
-        return {fid: self.flow(fid).size for fid in self.with_investment}
+        """Investment parameters for flows with investment."""
+        return self.data.invest_params
 
-    @cached_property
+    @property
     def _status_params(self) -> dict[str, StatusParameters]:
-        """Status parameters for flows with status, keyed by label_full."""
-        return {fid: self.flow(fid).status_parameters for fid in self.with_status}
+        """Status parameters for flows with status."""
+        return self.data.status_params
 
     @cached_property
     def _previous_status(self) -> dict[str, xr.DataArray]:
@@ -743,37 +751,32 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
                 result[fid] = prev
         return result
 
-    # === Flow Categorization Properties ===
-    # All return list[str] of label_full IDs. Use self.flow(id) to get the Flow object.
+    # === Flow Categorization Properties (delegated to data) ===
 
-    @cached_property
+    @property
     def with_status(self) -> list[str]:
         """IDs of flows with status parameters."""
-        return [f.label_full for f in self.elements.values() if f.status_parameters is not None]
+        return self.data.with_status
 
-    @cached_property
+    @property
     def with_investment(self) -> list[str]:
         """IDs of flows with investment parameters."""
-        return [f.label_full for f in self.elements.values() if isinstance(f.size, InvestParameters)]
+        return self.data.with_investment
 
-    @cached_property
+    @property
     def with_optional_investment(self) -> list[str]:
         """IDs of flows with optional (non-mandatory) investment."""
-        return [fid for fid in self.with_investment if not self.flow(fid).size.mandatory]
+        return self.data.with_optional_investment
 
-    @cached_property
+    @property
     def with_mandatory_investment(self) -> list[str]:
         """IDs of flows with mandatory investment."""
-        return [fid for fid in self.with_investment if self.flow(fid).size.mandatory]
+        return self.data.with_mandatory_investment
 
-    @cached_property
+    @property
     def with_flow_hours_over_periods(self) -> list[str]:
         """IDs of flows with flow_hours_over_periods constraints."""
-        return [
-            f.label_full
-            for f in self.elements.values()
-            if f.flow_hours_min_over_periods is not None or f.flow_hours_max_over_periods is not None
-        ]
+        return self.data.with_flow_hours_over_periods
 
     def create_variables(self) -> None:
         """Create all batched variables for flows.
