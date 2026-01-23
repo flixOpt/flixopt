@@ -1602,6 +1602,11 @@ class FlowsModel(TypeModel):
         inv = self.data._investment_data
         return inv.effects_of_retirement_constant if inv else []
 
+    @property
+    def investment_ids(self) -> list[str]:
+        """IDs of flows with investment parameters (alias for data.with_investment)."""
+        return self.data.with_investment
+
     # --- Previous Status ---
 
     @cached_property

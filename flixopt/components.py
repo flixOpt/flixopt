@@ -797,9 +797,6 @@ class StoragesModel(TypeModel):
         super().__init__(model, elements)
         self._flows_model = flows_model
 
-        # Investment params dict (populated in create_investment_model)
-        self._invest_params: dict[str, InvestParameters] = {}
-
         # Set reference on each storage element
         for storage in elements:
             storage._storages_model = self
@@ -855,18 +852,21 @@ class StoragesModel(TypeModel):
     # --- Investment Data and Effect Properties ---
 
     @functools.cached_property
-    def _investment_data(self) -> InvestmentData | None:
-        """Batched investment data for storages with investment."""
-        if not self.with_investment:
-            return None
-        # Build params dict from capacity_in_flow_hours
-        params = {
+    def invest_params(self) -> dict[str, InvestParameters]:
+        """Investment parameters for storages with investment, keyed by label_full."""
+        return {
             s.label_full: s.capacity_in_flow_hours
             for s in self.elements.values()
             if s.label_full in self.with_investment
         }
+
+    @functools.cached_property
+    def _investment_data(self) -> InvestmentData | None:
+        """Batched investment data for storages with investment."""
+        if not self.with_investment:
+            return None
         return InvestmentData(
-            params=params,
+            params=self.invest_params,
             dim_name=self.dim_name,
             effect_ids=list(self.model.flow_system.effects.keys()),
         )
@@ -1291,9 +1291,6 @@ class StoragesModel(TypeModel):
         from .features import InvestmentHelpers
         from .structure import VARIABLE_TYPE_TO_EXPANSION, VariableType
 
-        # Build params dict for easy access
-        self._invest_params = {s.label_full: s.capacity_in_flow_hours for s in self.storages_with_investment}
-
         dim = self.dim_name
         element_ids = self.investment_ids
         non_mandatory_ids = self.optional_investment_ids
@@ -1362,7 +1359,7 @@ class StoragesModel(TypeModel):
         InvestmentHelpers.add_linked_periods_constraints(
             model=self.model,
             size_var=size_var,
-            params=self._invest_params,
+            params=self.invest_params,
             element_ids=element_ids,
             dim_name=dim,
         )
@@ -1527,7 +1524,7 @@ class StoragesModel(TypeModel):
 
         # Collect segment counts
         segment_counts = {
-            s.label_full: len(self._invest_params[s.label_full].piecewise_effects_of_investment.piecewise_origin)
+            s.label_full: len(self.invest_params[s.label_full].piecewise_effects_of_investment.piecewise_origin)
             for s in storages_with_piecewise
         }
 
@@ -1538,7 +1535,7 @@ class StoragesModel(TypeModel):
         origin_breakpoints = {}
         for s in storages_with_piecewise:
             sid = s.label_full
-            piecewise_origin = self._invest_params[sid].piecewise_effects_of_investment.piecewise_origin
+            piecewise_origin = self.invest_params[sid].piecewise_effects_of_investment.piecewise_origin
             starts = [p.start for p in piecewise_origin]
             ends = [p.end for p in piecewise_origin]
             origin_breakpoints[sid] = (starts, ends)
@@ -1551,7 +1548,7 @@ class StoragesModel(TypeModel):
         all_effect_names: set[str] = set()
         for s in storages_with_piecewise:
             sid = s.label_full
-            shares = self._invest_params[sid].piecewise_effects_of_investment.piecewise_shares
+            shares = self.invest_params[sid].piecewise_effects_of_investment.piecewise_shares
             all_effect_names.update(shares.keys())
 
         # Collect breakpoints for each effect
@@ -1560,7 +1557,7 @@ class StoragesModel(TypeModel):
             breakpoints = {}
             for s in storages_with_piecewise:
                 sid = s.label_full
-                shares = self._invest_params[sid].piecewise_effects_of_investment.piecewise_shares
+                shares = self.invest_params[sid].piecewise_effects_of_investment.piecewise_shares
                 if effect_name in shares:
                     piecewise = shares[effect_name]
                     starts = [p.start for p in piecewise]
@@ -1590,7 +1587,7 @@ class StoragesModel(TypeModel):
         # Build zero_point array if any storages are non-mandatory
         zero_point = None
         if invested_var is not None:
-            non_mandatory_ids = [sid for sid in element_ids if not self._invest_params[sid].mandatory]
+            non_mandatory_ids = [sid for sid in element_ids if not self.invest_params[sid].mandatory]
             if non_mandatory_ids:
                 available_ids = [sid for sid in non_mandatory_ids if sid in invested_var.coords.get(dim, [])]
                 if available_ids:
