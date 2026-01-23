@@ -2359,14 +2359,18 @@ class ConvertersModel:
         flow_rate = self._flows_model._variables['rate']
         sign = self._flow_sign
 
-        # Broadcast flow_rate to include converter and equation_idx dimensions
-        # flow_rate: (flow, time, ...)
-        # coefficients: (converter, equation_idx, flow)
+        # Pre-combine coefficients and sign (both are xr.DataArrays, not linopy)
+        # This avoids creating intermediate linopy expressions
+        # coefficients: (converter, equation_idx, flow, [time, ...])
         # sign: (converter, flow)
+        # Result: (converter, equation_idx, flow, [time, ...])
+        signed_coeffs = coefficients * sign
 
-        # Calculate: flow_rate * coefficient * sign
-        # This broadcasts to (converter, equation_idx, flow, time, ...)
-        weighted = flow_rate * coefficients * sign
+        # Now multiply flow_rate by the combined coefficients
+        # flow_rate: (flow, time, ...)
+        # signed_coeffs: (converter, equation_idx, flow, [time, ...])
+        # Result: (converter, equation_idx, flow, time, ...)
+        weighted = flow_rate * signed_coeffs
 
         # Sum over flows: (converter, equation_idx, time, ...)
         flow_sum = weighted.sum('flow')
