@@ -91,12 +91,28 @@ class FlowsData:
         return [fid for fid in self.with_investment if self[fid].size.mandatory]
 
     @cached_property
+    def with_flow_hours(self) -> list[str]:
+        """IDs of flows with flow_hours constraints (min or max)."""
+        return [
+            f.label_full for f in self.elements.values() if f.flow_hours_min is not None or f.flow_hours_max is not None
+        ]
+
+    @cached_property
     def with_flow_hours_over_periods(self) -> list[str]:
         """IDs of flows with flow_hours_over_periods constraints."""
         return [
             f.label_full
             for f in self.elements.values()
             if f.flow_hours_min_over_periods is not None or f.flow_hours_max_over_periods is not None
+        ]
+
+    @cached_property
+    def with_load_factor(self) -> list[str]:
+        """IDs of flows with load_factor constraints (min or max)."""
+        return [
+            f.label_full
+            for f in self.elements.values()
+            if f.load_factor_min is not None or f.load_factor_max is not None
         ]
 
     @cached_property
@@ -122,49 +138,85 @@ class FlowsData:
         return {fid: self[fid].status_parameters for fid in self.with_status}
 
     # === Batched Parameters ===
-    # All return xr.DataArray with 'flow' dimension.
+    # Properties return xr.DataArray only for relevant flows (based on categorizations).
 
     @cached_property
-    def flow_hours_minimum(self) -> xr.DataArray:
-        """(flow, period, scenario) - minimum total flow hours. NaN = no constraint."""
-        values = [f.flow_hours_min if f.flow_hours_min is not None else np.nan for f in self.elements.values()]
-        return self._broadcast_to_coords(self._stack_values(values), dims=['period', 'scenario'])
+    def flow_hours_minimum(self) -> xr.DataArray | None:
+        """(flow, period, scenario) - minimum total flow hours for flows in with_flow_hours.
+
+        Returns 0 for flows without explicit minimum. None if no flows have flow_hours constraints.
+        """
+        flow_ids = self.with_flow_hours
+        if not flow_ids:
+            return None
+        values = [self[fid].flow_hours_min if self[fid].flow_hours_min is not None else 0 for fid in flow_ids]
+        return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
 
     @cached_property
-    def flow_hours_maximum(self) -> xr.DataArray:
-        """(flow, period, scenario) - maximum total flow hours. NaN = no constraint."""
-        values = [f.flow_hours_max if f.flow_hours_max is not None else np.nan for f in self.elements.values()]
-        return self._broadcast_to_coords(self._stack_values(values), dims=['period', 'scenario'])
+    def flow_hours_maximum(self) -> xr.DataArray | None:
+        """(flow, period, scenario) - maximum total flow hours for flows in with_flow_hours.
+
+        Returns inf for flows without explicit maximum. None if no flows have flow_hours constraints.
+        """
+        flow_ids = self.with_flow_hours
+        if not flow_ids:
+            return None
+        values = [self[fid].flow_hours_max if self[fid].flow_hours_max is not None else np.inf for fid in flow_ids]
+        return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
 
     @cached_property
-    def flow_hours_minimum_over_periods(self) -> xr.DataArray:
-        """(flow, scenario) - minimum flow hours summed over all periods. NaN = no constraint."""
+    def flow_hours_minimum_over_periods(self) -> xr.DataArray | None:
+        """(flow, scenario) - minimum flow hours over all periods for flows in with_flow_hours_over_periods.
+
+        Returns 0 for flows without explicit minimum. None if no flows have this constraint.
+        """
+        flow_ids = self.with_flow_hours_over_periods
+        if not flow_ids:
+            return None
         values = [
-            f.flow_hours_min_over_periods if f.flow_hours_min_over_periods is not None else np.nan
-            for f in self.elements.values()
+            self[fid].flow_hours_min_over_periods if self[fid].flow_hours_min_over_periods is not None else 0
+            for fid in flow_ids
         ]
-        return self._broadcast_to_coords(self._stack_values(values), dims=['scenario'])
+        return self._stack_values_for_subset(flow_ids, values, dims=['scenario'])
 
     @cached_property
-    def flow_hours_maximum_over_periods(self) -> xr.DataArray:
-        """(flow, scenario) - maximum flow hours summed over all periods. NaN = no constraint."""
+    def flow_hours_maximum_over_periods(self) -> xr.DataArray | None:
+        """(flow, scenario) - maximum flow hours over all periods for flows in with_flow_hours_over_periods.
+
+        Returns inf for flows without explicit maximum. None if no flows have this constraint.
+        """
+        flow_ids = self.with_flow_hours_over_periods
+        if not flow_ids:
+            return None
         values = [
-            f.flow_hours_max_over_periods if f.flow_hours_max_over_periods is not None else np.nan
-            for f in self.elements.values()
+            self[fid].flow_hours_max_over_periods if self[fid].flow_hours_max_over_periods is not None else np.inf
+            for fid in flow_ids
         ]
-        return self._broadcast_to_coords(self._stack_values(values), dims=['scenario'])
+        return self._stack_values_for_subset(flow_ids, values, dims=['scenario'])
 
     @cached_property
-    def load_factor_minimum(self) -> xr.DataArray:
-        """(flow, period, scenario) - minimum load factor. NaN = no constraint."""
-        values = [f.load_factor_min if f.load_factor_min is not None else np.nan for f in self.elements.values()]
-        return self._broadcast_to_coords(self._stack_values(values), dims=['period', 'scenario'])
+    def load_factor_minimum(self) -> xr.DataArray | None:
+        """(flow, period, scenario) - minimum load factor for flows in with_load_factor.
+
+        Returns 0 for flows without explicit minimum. None if no flows have load_factor constraints.
+        """
+        flow_ids = self.with_load_factor
+        if not flow_ids:
+            return None
+        values = [self[fid].load_factor_min if self[fid].load_factor_min is not None else 0 for fid in flow_ids]
+        return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
 
     @cached_property
-    def load_factor_maximum(self) -> xr.DataArray:
-        """(flow, period, scenario) - maximum load factor. NaN = no constraint."""
-        values = [f.load_factor_max if f.load_factor_max is not None else np.nan for f in self.elements.values()]
-        return self._broadcast_to_coords(self._stack_values(values), dims=['period', 'scenario'])
+    def load_factor_maximum(self) -> xr.DataArray | None:
+        """(flow, period, scenario) - maximum load factor for flows in with_load_factor.
+
+        Returns 1 for flows without explicit maximum. None if no flows have load_factor constraints.
+        """
+        flow_ids = self.with_load_factor
+        if not flow_ids:
+            return None
+        values = [self[fid].load_factor_max if self[fid].load_factor_max is not None else 1 for fid in flow_ids]
+        return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
 
     @cached_property
     def relative_minimum(self) -> xr.DataArray:
@@ -375,6 +427,48 @@ class FlowsData:
         return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, 'flow')
 
     # === Helper Methods ===
+
+    def _stack_values_for_subset(
+        self, flow_ids: list[str], values: list, dims: list[str] | None = None
+    ) -> xr.DataArray | None:
+        """Stack values for a subset of flows and broadcast to coords.
+
+        Args:
+            flow_ids: List of flow IDs to include.
+            values: List of values corresponding to flow_ids.
+            dims: Model dimensions to broadcast to. None = all (time, period, scenario).
+
+        Returns:
+            DataArray with flow dimension, or None if flow_ids is empty.
+        """
+        if not flow_ids:
+            return None
+
+        dim = 'flow'
+
+        # Check for multi-dimensional values
+        has_multidim = any(isinstance(v, xr.DataArray) and v.ndim > 0 for v in values)
+
+        if not has_multidim:
+            # Fast path: all scalars
+            scalar_values = [float(v.values) if isinstance(v, xr.DataArray) else float(v) for v in values]
+            arr = xr.DataArray(
+                np.array(scalar_values),
+                coords={dim: flow_ids},
+                dims=[dim],
+            )
+        else:
+            # Slow path: concat multi-dimensional arrays
+            arrays_to_stack = []
+            for val, fid in zip(values, flow_ids, strict=True):
+                if isinstance(val, xr.DataArray):
+                    arr_item = val.expand_dims({dim: [fid]})
+                else:
+                    arr_item = xr.DataArray(val, coords={dim: [fid]}, dims=[dim])
+                arrays_to_stack.append(arr_item)
+            arr = xr.concat(arrays_to_stack, dim=dim)
+
+        return self._broadcast_to_coords(arr, dims=dims)
 
     def _stack_values(self, values: list) -> xr.DataArray | float:
         """Stack per-element values into array with flow dimension.

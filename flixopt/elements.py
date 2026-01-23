@@ -759,12 +759,14 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         return var
 
     @cached_property
-    def hours(self) -> linopy.Variable:
-        """(flow, period, scenario) - total flow hours variable."""
+    def hours(self) -> linopy.Variable | None:
+        """(flow, period, scenario) - total flow hours variable for flows in with_flow_hours."""
+        if not self.data.with_flow_hours:
+            return None
         var = self.model.add_variables(
-            lower=self.data.flow_hours_minimum.fillna(0),
-            upper=self.data.flow_hours_maximum.fillna(np.inf),
-            coords=self._build_coords(dims=('period', 'scenario')),
+            lower=self.data.flow_hours_minimum,
+            upper=self.data.flow_hours_maximum,
+            coords=self._build_coords(dims=('period', 'scenario'), element_ids=self.data.with_flow_hours),
             name=f'{self.dim_name}|hours',
         )
         self._variables['hours'] = var
@@ -790,15 +792,9 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         """(flow, scenario) - total hours over all periods, or None if not needed."""
         if not self.data.with_flow_hours_over_periods:
             return None
-        fhop_lower = self.data.flow_hours_minimum_over_periods.sel(
-            {self.dim_name: self.data.with_flow_hours_over_periods}
-        ).fillna(0)
-        fhop_upper = self.data.flow_hours_maximum_over_periods.sel(
-            {self.dim_name: self.data.with_flow_hours_over_periods}
-        ).fillna(np.inf)
         var = self.model.add_variables(
-            lower=fhop_lower,
-            upper=fhop_upper,
+            lower=self.data.flow_hours_minimum_over_periods,
+            upper=self.data.flow_hours_maximum_over_periods,
             coords=self._build_coords(dims=('scenario',), element_ids=self.data.with_flow_hours_over_periods),
             name=f'{self.dim_name}|hours_over_periods',
         )
@@ -839,19 +835,26 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
     # === Constraints (methods with constraint_* naming) ===
 
     def constraint_hours_tracking(self) -> None:
-        """hours = sum_temporal(rate) for ALL flows."""
-        rhs = self.model.sum_temporal(self.rate)
+        """hours = sum_temporal(rate) for flows with flow_hours constraints."""
+        if self.hours is None:
+            return
+        dim = self.dim_name
+        rate_subset = self.rate.sel({dim: self.data.with_flow_hours})
+        rhs = self.model.sum_temporal(rate_subset)
         self.add_constraints(self.hours == rhs, name='hours_eq')
 
     def constraint_hours_over_periods(self) -> None:
-        """hours_over_periods = weighted sum of hours across periods."""
-        if not self.data.with_flow_hours_over_periods:
+        """hours_over_periods = weighted sum of rate across all timesteps and periods."""
+        if self.hours_over_periods is None:
             return
-        hours_subset = self.hours.sel({self.dim_name: self.data.with_flow_hours_over_periods})
+        dim = self.dim_name
+        # Sum rate over time for each flow, then weight by period
+        rate_subset = self.rate.sel({dim: self.data.with_flow_hours_over_periods})
+        hours_per_period = self.model.sum_temporal(rate_subset)
         period_weights = self.model.flow_system.period_weights
         if period_weights is None:
             period_weights = 1.0
-        weighted = (hours_subset * period_weights).sum('period')
+        weighted = (hours_per_period * period_weights).sum('period')
         self.add_constraints(self.hours_over_periods == weighted, name='hours_over_periods_eq')
 
     def constraint_load_factor(self) -> None:
@@ -860,53 +863,30 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         self._constraint_load_factor_max()
 
     def _constraint_load_factor_min(self) -> None:
-        """hours >= total_time * load_factor_min * size."""
-        dim = self.dim_name
-        lf_min = self.data.load_factor_minimum
-
-        # Helper to get dims other than flow
-        def other_dims(arr: xr.DataArray) -> list[str]:
-            return [d for d in arr.dims if d != dim]
-
-        has_lf_min = lf_min.notnull().any(other_dims(lf_min)) if other_dims(lf_min) else lf_min.notnull()
-        if not has_lf_min.any():
+        """sum_temporal(rate) >= total_time * load_factor_min * size."""
+        if self.data.load_factor_minimum is None:
             return
-
-        flow_ids = [
-            eid
-            for eid, has in zip(self.element_ids, has_lf_min.sel({dim: self.element_ids}).values, strict=False)
-            if has
-        ]
+        dim = self.dim_name
+        flow_ids = self.data.with_load_factor
+        rate_subset = self.rate.sel({dim: flow_ids})
+        hours = self.model.sum_temporal(rate_subset)
         total_time = self.model.timestep_duration.sum(self.model.temporal_dims)
-        size_min = self.data.effective_size_lower.sel({dim: flow_ids}).fillna(0)
-        hours_subset = self.hours.sel({dim: flow_ids})
-        lf_min_subset = lf_min.sel({dim: flow_ids}).fillna(0)
-        rhs = total_time * lf_min_subset * size_min
-        self.add_constraints(hours_subset >= rhs, name='load_factor_min')
+        size = self.data.effective_size_lower.sel({dim: flow_ids}).fillna(0)
+        rhs = total_time * self.data.load_factor_minimum * size
+        self.add_constraints(hours >= rhs, name='load_factor_min')
 
     def _constraint_load_factor_max(self) -> None:
-        """hours <= total_time * load_factor_max * size."""
-        dim = self.dim_name
-        lf_max = self.data.load_factor_maximum
-
-        def other_dims(arr: xr.DataArray) -> list[str]:
-            return [d for d in arr.dims if d != dim]
-
-        has_lf_max = lf_max.notnull().any(other_dims(lf_max)) if other_dims(lf_max) else lf_max.notnull()
-        if not has_lf_max.any():
+        """sum_temporal(rate) <= total_time * load_factor_max * size."""
+        if self.data.load_factor_maximum is None:
             return
-
-        flow_ids = [
-            eid
-            for eid, has in zip(self.element_ids, has_lf_max.sel({dim: self.element_ids}).values, strict=False)
-            if has
-        ]
+        dim = self.dim_name
+        flow_ids = self.data.with_load_factor
+        rate_subset = self.rate.sel({dim: flow_ids})
+        hours = self.model.sum_temporal(rate_subset)
         total_time = self.model.timestep_duration.sum(self.model.temporal_dims)
-        size_max = self.data.effective_size_upper.sel({dim: flow_ids}).fillna(np.inf)
-        hours_subset = self.hours.sel({dim: flow_ids})
-        lf_max_subset = lf_max.sel({dim: flow_ids}).fillna(1)
-        rhs = total_time * lf_max_subset * size_max
-        self.add_constraints(hours_subset <= rhs, name='load_factor_max')
+        size = self.data.effective_size_upper.sel({dim: flow_ids}).fillna(np.inf)
+        rhs = total_time * self.data.load_factor_maximum * size
+        self.add_constraints(hours <= rhs, name='load_factor_max')
 
     def _add_subset_variables(
         self,
