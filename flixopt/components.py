@@ -796,15 +796,8 @@ class StoragesModel(InvestmentEffectsMixin, TypeModel):
         super().__init__(model, elements)
         self._flows_model = flows_model
 
-        # Categorize by features
-        self.storages_with_investment: list[Storage] = [
-            s for s in elements if isinstance(s.capacity_in_flow_hours, InvestParameters)
-        ]
-        self.storages_with_optional_investment: list[Storage] = [
-            s for s in self.storages_with_investment if not s.capacity_in_flow_hours.mandatory
-        ]
-        self.investment_ids: list[str] = [s.label_full for s in self.storages_with_investment]
-        self.optional_investment_ids: list[str] = [s.label_full for s in self.storages_with_optional_investment]
+        # Fast lookup: label_full -> Storage
+        self._storages_by_id: dict[str, Storage] = {s.label_full: s for s in elements}
 
         # Investment params dict (populated in create_investment_model)
         self._invest_params: dict[str, InvestParameters] = {}
@@ -813,20 +806,63 @@ class StoragesModel(InvestmentEffectsMixin, TypeModel):
         for storage in elements:
             storage._storages_model = self
 
-    # --- Investment Cached Properties ---
+    def storage(self, label: str) -> Storage:
+        """Get a storage by its label_full."""
+        return self._storages_by_id[label]
+
+    # === Storage Categorization Properties ===
+    # All return list[str] of label_full IDs. Use self.storage(id) to get the Storage object.
 
     @functools.cached_property
+    def with_investment(self) -> list[str]:
+        """IDs of storages with investment parameters."""
+        return [s.label_full for s in self.elements if isinstance(s.capacity_in_flow_hours, InvestParameters)]
+
+    @functools.cached_property
+    def with_optional_investment(self) -> list[str]:
+        """IDs of storages with optional (non-mandatory) investment."""
+        return [sid for sid in self.with_investment if not self.storage(sid).capacity_in_flow_hours.mandatory]
+
+    @functools.cached_property
+    def with_mandatory_investment(self) -> list[str]:
+        """IDs of storages with mandatory investment."""
+        return [sid for sid in self.with_investment if self.storage(sid).capacity_in_flow_hours.mandatory]
+
+    # Compatibility properties (return Storage objects for legacy code)
+    @property
+    def storages_with_investment(self) -> list[Storage]:
+        """Storages with investment parameters (legacy, prefer with_investment)."""
+        return [self.storage(sid) for sid in self.with_investment]
+
+    @property
+    def storages_with_optional_investment(self) -> list[Storage]:
+        """Storages with optional investment (legacy, prefer with_optional_investment)."""
+        return [self.storage(sid) for sid in self.with_optional_investment]
+
+    @property
+    def investment_ids(self) -> list[str]:
+        """Alias for with_investment (legacy)."""
+        return self.with_investment
+
+    @property
+    def optional_investment_ids(self) -> list[str]:
+        """Alias for with_optional_investment (legacy)."""
+        return self.with_optional_investment
+
+    @property
     def mandatory_investment_ids(self) -> list[str]:
-        """List of storage IDs with mandatory investment."""
-        return [s.label_full for s in self.storages_with_investment if s.capacity_in_flow_hours.mandatory]
+        """Alias for with_mandatory_investment (legacy)."""
+        return self.with_mandatory_investment
+
+    # --- Investment Cached Properties ---
 
     @functools.cached_property
     def _size_lower(self) -> xr.DataArray:
         """(storage,) - minimum size for investment storages."""
         from .features import InvestmentHelpers
 
-        element_ids = self.investment_ids
-        values = [s.capacity_in_flow_hours.minimum_or_fixed_size for s in self.storages_with_investment]
+        element_ids = self.with_investment
+        values = [self.storage(sid).capacity_in_flow_hours.minimum_or_fixed_size for sid in element_ids]
         return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
 
     @functools.cached_property
@@ -834,8 +870,8 @@ class StoragesModel(InvestmentEffectsMixin, TypeModel):
         """(storage,) - maximum size for investment storages."""
         from .features import InvestmentHelpers
 
-        element_ids = self.investment_ids
-        values = [s.capacity_in_flow_hours.maximum_or_fixed_size for s in self.storages_with_investment]
+        element_ids = self.with_investment
+        values = [self.storage(sid).capacity_in_flow_hours.maximum_or_fixed_size for sid in element_ids]
         return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
 
     @functools.cached_property
@@ -843,41 +879,41 @@ class StoragesModel(InvestmentEffectsMixin, TypeModel):
         """(storage, period) - linked periods for investment storages. None if no linking."""
         from .features import InvestmentHelpers
 
-        linked_list = [s.capacity_in_flow_hours.linked_periods for s in self.storages_with_investment]
+        element_ids = self.with_investment
+        linked_list = [self.storage(sid).capacity_in_flow_hours.linked_periods for sid in element_ids]
         if not any(lp is not None for lp in linked_list):
             return None
 
-        element_ids = self.investment_ids
         values = [lp if lp is not None else np.nan for lp in linked_list]
         return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
 
     @functools.cached_property
     def _mandatory_mask(self) -> xr.DataArray:
         """(storage,) bool - True if mandatory, False if optional."""
-        element_ids = self.investment_ids
-        values = [s.capacity_in_flow_hours.mandatory for s in self.storages_with_investment]
+        element_ids = self.with_investment
+        values = [self.storage(sid).capacity_in_flow_hours.mandatory for sid in element_ids]
         return xr.DataArray(values, dims=[self.dim_name], coords={self.dim_name: element_ids})
 
     @functools.cached_property
     def _optional_lower(self) -> xr.DataArray | None:
         """(storage,) - minimum size for optional investment storages."""
-        if not self.optional_investment_ids:
+        if not self.with_optional_investment:
             return None
         from .features import InvestmentHelpers
 
-        element_ids = self.optional_investment_ids
-        values = [s.capacity_in_flow_hours.minimum_or_fixed_size for s in self.storages_with_optional_investment]
+        element_ids = self.with_optional_investment
+        values = [self.storage(sid).capacity_in_flow_hours.minimum_or_fixed_size for sid in element_ids]
         return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
 
     @functools.cached_property
     def _optional_upper(self) -> xr.DataArray | None:
         """(storage,) - maximum size for optional investment storages."""
-        if not self.optional_investment_ids:
+        if not self.with_optional_investment:
             return None
         from .features import InvestmentHelpers
 
-        element_ids = self.optional_investment_ids
-        values = [s.capacity_in_flow_hours.maximum_or_fixed_size for s in self.storages_with_optional_investment]
+        element_ids = self.with_optional_investment
+        values = [self.storage(sid).capacity_in_flow_hours.maximum_or_fixed_size for sid in element_ids]
         return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
 
     @functools.cached_property

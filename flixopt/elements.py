@@ -715,26 +715,38 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         """
         super().__init__(model, elements)
 
-        # Fast lookup: label_full -> Flow
-        self._flows_by_id: dict[str, Flow] = {f.label_full: f for f in elements}
-
-        # Investment params dict (populated in create_investment_model)
-        self._invest_params: dict[str, InvestParameters] = {}
-
-        # Status params and previous status (populated in create_status_model)
-        self._status_params: dict[str, StatusParameters] = {}
-        self._previous_status: dict[str, xr.DataArray] = {}
-
         # Set reference on each flow element for element access pattern
         for flow in elements:
             flow.set_flows_model(self)
 
-        # Cache for bounds computation
-        self._bounds_cache: dict[str, xr.DataArray] = {}
+    @cached_property
+    def _flows_by_id(self) -> dict[str, Flow]:
+        """Fast lookup: label_full -> Flow."""
+        return {f.label_full: f for f in self.elements}
 
     def flow(self, label: str) -> Flow:
         """Get a flow by its label_full."""
         return self._flows_by_id[label]
+
+    @cached_property
+    def _invest_params(self) -> dict[str, InvestParameters]:
+        """Investment parameters for flows with investment, keyed by label_full."""
+        return {fid: self.flow(fid).size for fid in self.with_investment}
+
+    @cached_property
+    def _status_params(self) -> dict[str, StatusParameters]:
+        """Status parameters for flows with status, keyed by label_full."""
+        return {fid: self.flow(fid).status_parameters for fid in self.with_status}
+
+    @cached_property
+    def _previous_status(self) -> dict[str, xr.DataArray]:
+        """Previous status for flows that have it, keyed by label_full."""
+        result = {}
+        for fid in self.with_status:
+            prev = self.get_previous_status(self.flow(fid))
+            if prev is not None:
+                result[fid] = prev
+        return result
 
     # === Flow Categorization Properties ===
     # All return list[str] of label_full IDs. Use self.flow(id) to get the Flow object.
@@ -1134,9 +1146,6 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
 
         from .features import InvestmentHelpers
 
-        # Build params dict for easy access
-        self._invest_params = {fid: self.flow(fid).size for fid in self.with_investment}
-
         dim = self.dim_name
         element_ids = self.with_investment
         non_mandatory_ids = self.with_optional_investment
@@ -1424,13 +1433,6 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
             return
 
         from .features import StatusHelpers
-
-        # Build params and previous_status dicts
-        self._status_params = {fid: self.flow(fid).status_parameters for fid in self.with_status}
-        for fid in self.with_status:
-            prev = self.get_previous_status(self.flow(fid))
-            if prev is not None:
-                self._previous_status[fid] = prev
 
         status = self._variables.get('status')
 

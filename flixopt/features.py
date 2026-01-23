@@ -268,15 +268,15 @@ class InvestmentEffectsMixin:
     Used by FlowsModel and StoragesModel to avoid code duplication.
     Requires the class to have:
         - _invest_params: dict[str, InvestParameters]
-        - investment_ids: list[str]
-        - optional_investment_ids: list[str]
+        - with_investment: list[str]
+        - with_optional_investment: list[str]
         - dim_name: str
     """
 
     # These will be set by the concrete class
     _invest_params: dict
-    investment_ids: list
-    optional_investment_ids: list
+    with_investment: list
+    with_optional_investment: list
     dim_name: str
 
     @property
@@ -285,7 +285,7 @@ class InvestmentEffectsMixin:
         if not hasattr(self, '_invest_params') or not self._invest_params:
             return None
 
-        element_ids = [eid for eid in self.investment_ids if self._invest_params[eid].effects_of_investment_per_size]
+        element_ids = [eid for eid in self.with_investment if self._invest_params[eid].effects_of_investment_per_size]
         if not element_ids:
             return None
         effects_dict = InvestmentHelpers.collect_effects(
@@ -299,7 +299,7 @@ class InvestmentEffectsMixin:
         if not hasattr(self, '_invest_params') or not self._invest_params:
             return None
 
-        element_ids = [eid for eid in self.optional_investment_ids if self._invest_params[eid].effects_of_investment]
+        element_ids = [eid for eid in self.with_optional_investment if self._invest_params[eid].effects_of_investment]
         if not element_ids:
             return None
         effects_dict = InvestmentHelpers.collect_effects(
@@ -313,7 +313,7 @@ class InvestmentEffectsMixin:
         if not hasattr(self, '_invest_params') or not self._invest_params:
             return None
 
-        element_ids = [eid for eid in self.optional_investment_ids if self._invest_params[eid].effects_of_retirement]
+        element_ids = [eid for eid in self.with_optional_investment if self._invest_params[eid].effects_of_retirement]
         if not element_ids:
             return None
         effects_dict = InvestmentHelpers.collect_effects(
@@ -334,7 +334,7 @@ class InvestmentEffectsMixin:
         import numpy as np
 
         result = []
-        for eid in self.investment_ids:
+        for eid in self.with_investment:
             params = self._invest_params[eid]
             if params.mandatory and params.effects_of_investment:
                 effects_dict = {
@@ -355,7 +355,7 @@ class InvestmentEffectsMixin:
         import numpy as np
 
         result = []
-        for eid in self.optional_investment_ids:
+        for eid in self.with_optional_investment:
             params = self._invest_params[eid]
             if params.effects_of_retirement:
                 effects_dict = {
