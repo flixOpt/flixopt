@@ -1237,6 +1237,35 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         """Combined effects_per_startup with (flow, effect) dims."""
         return self.data.status_effects_per_startup
 
+    def add_effect_contributions(self, effects_model) -> None:
+        """Register effect contributions with EffectsModel.
+
+        Called by EffectsModel.finalize_shares() to collect contributions from FlowsModel.
+        Adds temporal contributions (status effects) to effect|per_timestep constraint.
+
+        Args:
+            effects_model: The EffectsModel to register contributions with.
+        """
+        if self.status is None:
+            return
+
+        dim = self.dim_name
+        dt = self.model.timestep_duration
+
+        # Effects per active hour: status * factor * dt
+        if (factors := self.status_effects_per_active_hour) is not None:
+            flow_ids = factors.coords[dim].values
+            status_subset = self.status.sel({dim: flow_ids})
+            expr = (status_subset * factors.fillna(0) * dt).sum(dim)
+            effects_model.add_temporal_contribution(expr)
+
+        # Effects per startup: startup * factor
+        if (factors := self.status_effects_per_startup) is not None and self.startup is not None:
+            flow_ids = factors.coords[dim].values
+            startup_subset = self.startup.sel({dim: flow_ids})
+            expr = (startup_subset * factors.fillna(0)).sum(dim)
+            effects_model.add_temporal_contribution(expr)
+
     def create_status_model(self) -> None:
         """Create status variables and constraints for flows with status.
 

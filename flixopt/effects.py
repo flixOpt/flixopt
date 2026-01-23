@@ -348,6 +348,26 @@ class EffectsModel:
         self.share_temporal: linopy.Variable | None = None
         self.share_periodic: linopy.Variable | None = None
 
+        # Registered contributions from type models (FlowsModel, StoragesModel, etc.)
+        self._temporal_contributions: list = []
+        self._periodic_contributions: list = []
+
+    def add_temporal_contribution(self, expr) -> None:
+        """Register a temporal effect contribution expression.
+
+        Called by FlowsModel.add_effect_contributions() to register status effects, etc.
+        Expressions are summed and subtracted from effect|per_timestep constraint.
+        """
+        self._temporal_contributions.append(expr)
+
+    def add_periodic_contribution(self, expr) -> None:
+        """Register a periodic effect contribution expression.
+
+        Called by type models to register investment effects, etc.
+        Expressions are summed and subtracted from effect|periodic constraint.
+        """
+        self._periodic_contributions.append(expr)
+
     def _stack_bounds(self, attr_name: str, default: float = np.inf) -> xr.DataArray:
         """Stack per-effect bounds into a single DataArray with effect dimension."""
 
@@ -573,6 +593,10 @@ class EffectsModel:
         """Create share|temporal and add all temporal contributions to effect|per_timestep."""
         factors = flows_model.effects_per_flow_hour
         if factors is None:
+            # Still need to collect status effects even without flow hour effects
+            flows_model.add_effect_contributions(self)
+            if self._temporal_contributions:
+                self._eq_per_timestep.lhs -= sum(self._temporal_contributions)
             return
 
         dim = flows_model.dim_name
@@ -590,15 +614,12 @@ class EffectsModel:
             name='share|temporal',
         )
 
-        # Collect all temporal contributions
+        # Collect contributions: share|temporal + registered contributions
         exprs = [self.share_temporal.sum(dim)]
 
-        # Status effects (using FlowsModel properties)
-        if flows_model.status is not None:
-            if (f := flows_model.status_effects_per_active_hour) is not None:
-                exprs.append((flows_model.status.sel({dim: f.coords[dim].values}) * f.fillna(0) * dt).sum(dim))
-            if (f := flows_model.status_effects_per_startup) is not None and flows_model.startup is not None:
-                exprs.append((flows_model.startup.sel({dim: f.coords[dim].values}) * f.fillna(0)).sum(dim))
+        # Let FlowsModel register its status effect contributions
+        flows_model.add_effect_contributions(self)
+        exprs.extend(self._temporal_contributions)
 
         self._eq_per_timestep.lhs -= sum(exprs)
 
