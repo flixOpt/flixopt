@@ -26,6 +26,204 @@ if TYPE_CHECKING:
     from .flow_system import FlowSystem
 
 
+class StatusData:
+    """Batched access to StatusParameters for a group of elements.
+
+    Provides efficient batched access to status-related data as xr.DataArrays.
+    Used internally by FlowsData and can be reused by ComponentsModel.
+
+    Args:
+        params: Dict mapping element_id -> StatusParameters.
+        dim_name: Dimension name for arrays (e.g., 'flow', 'component').
+        effect_ids: List of effect IDs for building effect arrays.
+        timestep_duration: Duration per timestep (for previous duration computation).
+        previous_states: Optional dict of previous status arrays for duration computation.
+    """
+
+    def __init__(
+        self,
+        params: dict[str, StatusParameters],
+        dim_name: str,
+        effect_ids: list[str] | None = None,
+        timestep_duration: xr.DataArray | float | None = None,
+        previous_states: dict[str, xr.DataArray] | None = None,
+    ):
+        self._params = params
+        self._dim = dim_name
+        self._ids = list(params.keys())
+        self._effect_ids = effect_ids or []
+        self._timestep_duration = timestep_duration
+        self._previous_states = previous_states or {}
+
+    @property
+    def ids(self) -> list[str]:
+        """All element IDs with status."""
+        return self._ids
+
+    # === Categorizations ===
+
+    @cached_property
+    def with_startup_tracking(self) -> list[str]:
+        """IDs needing startup/shutdown tracking."""
+        return [
+            eid
+            for eid in self._ids
+            if (
+                self._params[eid].effects_per_startup
+                or self._params[eid].min_uptime is not None
+                or self._params[eid].max_uptime is not None
+                or self._params[eid].startup_limit is not None
+                or self._params[eid].force_startup_tracking
+            )
+        ]
+
+    @cached_property
+    def with_downtime_tracking(self) -> list[str]:
+        """IDs needing downtime (inactive) tracking."""
+        return [
+            eid
+            for eid in self._ids
+            if self._params[eid].min_downtime is not None or self._params[eid].max_downtime is not None
+        ]
+
+    @cached_property
+    def with_uptime_tracking(self) -> list[str]:
+        """IDs needing uptime duration tracking."""
+        return [
+            eid
+            for eid in self._ids
+            if self._params[eid].min_uptime is not None or self._params[eid].max_uptime is not None
+        ]
+
+    @cached_property
+    def with_startup_limit(self) -> list[str]:
+        """IDs with startup limit."""
+        return [eid for eid in self._ids if self._params[eid].startup_limit is not None]
+
+    @cached_property
+    def with_effects_per_active_hour(self) -> list[str]:
+        """IDs with effects_per_active_hour defined."""
+        return [eid for eid in self._ids if self._params[eid].effects_per_active_hour]
+
+    @cached_property
+    def with_effects_per_startup(self) -> list[str]:
+        """IDs with effects_per_startup defined."""
+        return [eid for eid in self._ids if self._params[eid].effects_per_startup]
+
+    # === Bounds (combined min/max in single pass) ===
+
+    def _build_bounds(self, ids: list[str], min_attr: str, max_attr: str) -> tuple[xr.DataArray, xr.DataArray] | None:
+        """Build min/max bound arrays in a single pass."""
+        if not ids:
+            return None
+        min_vals = np.empty(len(ids), dtype=float)
+        max_vals = np.empty(len(ids), dtype=float)
+        for i, eid in enumerate(ids):
+            p = self._params[eid]
+            min_vals[i] = getattr(p, min_attr) or np.nan
+            max_vals[i] = getattr(p, max_attr) or np.nan
+        return (
+            xr.DataArray(min_vals, dims=[self._dim], coords={self._dim: ids}),
+            xr.DataArray(max_vals, dims=[self._dim], coords={self._dim: ids}),
+        )
+
+    @cached_property
+    def _uptime_bounds(self) -> tuple[xr.DataArray, xr.DataArray] | None:
+        """Cached (min_uptime, max_uptime) tuple."""
+        return self._build_bounds(self.with_uptime_tracking, 'min_uptime', 'max_uptime')
+
+    @cached_property
+    def _downtime_bounds(self) -> tuple[xr.DataArray, xr.DataArray] | None:
+        """Cached (min_downtime, max_downtime) tuple."""
+        return self._build_bounds(self.with_downtime_tracking, 'min_downtime', 'max_downtime')
+
+    @property
+    def min_uptime(self) -> xr.DataArray | None:
+        """(element,) - minimum uptime. NaN = no constraint."""
+        return self._uptime_bounds[0] if self._uptime_bounds else None
+
+    @property
+    def max_uptime(self) -> xr.DataArray | None:
+        """(element,) - maximum uptime. NaN = no constraint."""
+        return self._uptime_bounds[1] if self._uptime_bounds else None
+
+    @property
+    def min_downtime(self) -> xr.DataArray | None:
+        """(element,) - minimum downtime. NaN = no constraint."""
+        return self._downtime_bounds[0] if self._downtime_bounds else None
+
+    @property
+    def max_downtime(self) -> xr.DataArray | None:
+        """(element,) - maximum downtime. NaN = no constraint."""
+        return self._downtime_bounds[1] if self._downtime_bounds else None
+
+    @cached_property
+    def startup_limit(self) -> xr.DataArray | None:
+        """(element,) - startup limit for elements with startup limit."""
+        ids = self.with_startup_limit
+        if not ids:
+            return None
+        values = np.array([self._params[eid].startup_limit for eid in ids], dtype=float)
+        return xr.DataArray(values, dims=[self._dim], coords={self._dim: ids})
+
+    # === Previous Durations ===
+
+    def _build_previous_durations(self, ids: list[str], target_state: int, min_attr: str) -> xr.DataArray | None:
+        """Build previous duration array for elements with previous state."""
+        if not ids or self._timestep_duration is None:
+            return None
+
+        from .features import StatusHelpers
+
+        values = np.full(len(ids), np.nan, dtype=float)
+        for i, eid in enumerate(ids):
+            if eid in self._previous_states and getattr(self._params[eid], min_attr) is not None:
+                values[i] = StatusHelpers.compute_previous_duration(
+                    self._previous_states[eid], target_state=target_state, timestep_duration=self._timestep_duration
+                )
+
+        return xr.DataArray(values, dims=[self._dim], coords={self._dim: ids})
+
+    @cached_property
+    def previous_uptime(self) -> xr.DataArray | None:
+        """(element,) - previous uptime duration. NaN where not applicable."""
+        return self._build_previous_durations(self.with_uptime_tracking, target_state=1, min_attr='min_uptime')
+
+    @cached_property
+    def previous_downtime(self) -> xr.DataArray | None:
+        """(element,) - previous downtime duration. NaN where not applicable."""
+        return self._build_previous_durations(self.with_downtime_tracking, target_state=0, min_attr='min_downtime')
+
+    # === Effects ===
+
+    def _build_effects(self, attr: str) -> xr.DataArray | None:
+        """Build effect factors array for a status effect attribute."""
+        ids = [eid for eid in self._ids if getattr(self._params[eid], attr)]
+        if not ids or not self._effect_ids:
+            return None
+
+        flow_factors = [
+            xr.concat(
+                [xr.DataArray(getattr(self._params[eid], attr).get(eff, np.nan)) for eff in self._effect_ids],
+                dim='effect',
+                coords='minimal',
+            ).assign_coords(effect=self._effect_ids)
+            for eid in ids
+        ]
+
+        return concat_with_coords(flow_factors, self._dim, ids)
+
+    @cached_property
+    def effects_per_active_hour(self) -> xr.DataArray | None:
+        """(element, effect, ...) - effect factors per active hour."""
+        return self._build_effects('effects_per_active_hour')
+
+    @cached_property
+    def effects_per_startup(self) -> xr.DataArray | None:
+        """(element, effect, ...) - effect factors per startup."""
+        return self._build_effects('effects_per_startup')
+
+
 class FlowsData:
     """Batched data container for all flows with indexed access.
 
@@ -75,47 +273,25 @@ class FlowsData:
         """IDs of flows with status parameters."""
         return [f.label_full for f in self.elements.values() if f.status_parameters is not None]
 
-    @cached_property
+    @property
     def with_startup_tracking(self) -> list[str]:
-        """IDs of flows that need startup/shutdown tracking.
+        """IDs of flows that need startup/shutdown tracking."""
+        return self._status_data.with_startup_tracking if self._status_data else []
 
-        Includes flows with: effects_per_startup, min/max_uptime, startup_limit, or force_startup_tracking.
-        """
-        result = []
-        for fid in self.with_status:
-            p = self.status_params[fid]
-            if (
-                p.effects_per_startup
-                or p.min_uptime is not None
-                or p.max_uptime is not None
-                or p.startup_limit is not None
-                or p.force_startup_tracking
-            ):
-                result.append(fid)
-        return result
-
-    @cached_property
+    @property
     def with_downtime_tracking(self) -> list[str]:
         """IDs of flows that need downtime (inactive) tracking."""
-        return [
-            fid
-            for fid in self.with_status
-            if self.status_params[fid].min_downtime is not None or self.status_params[fid].max_downtime is not None
-        ]
+        return self._status_data.with_downtime_tracking if self._status_data else []
 
-    @cached_property
+    @property
     def with_uptime_tracking(self) -> list[str]:
         """IDs of flows that need uptime duration tracking."""
-        return [
-            fid
-            for fid in self.with_status
-            if self.status_params[fid].min_uptime is not None or self.status_params[fid].max_uptime is not None
-        ]
+        return self._status_data.with_uptime_tracking if self._status_data else []
 
-    @cached_property
+    @property
     def with_startup_limit(self) -> list[str]:
         """IDs of flows with startup limit."""
-        return [fid for fid in self.with_status if self.status_params[fid].startup_limit is not None]
+        return self._status_data.with_startup_limit if self._status_data else []
 
     @cached_property
     def without_size(self) -> list[str]:
@@ -188,6 +364,19 @@ class FlowsData:
     def status_params(self) -> dict[str, StatusParameters]:
         """Status parameters for flows with status, keyed by label_full."""
         return {fid: self[fid].status_parameters for fid in self.with_status}
+
+    @cached_property
+    def _status_data(self) -> StatusData | None:
+        """Batched status data for flows with status."""
+        if not self.with_status:
+            return None
+        return StatusData(
+            params=self.status_params,
+            dim_name='flow',
+            effect_ids=list(self._fs.effects.keys()),
+            timestep_duration=self._fs.timestep_duration,
+            previous_states=self.previous_states,
+        )
 
     # === Batched Parameters ===
     # Properties return xr.DataArray only for relevant flows (based on categorizations).
@@ -470,47 +659,17 @@ class FlowsData:
                 values.append(f.size.linked_periods)
         return self._broadcast_to_coords(self._stack_values(values), dims=['period'])
 
-    # --- Status Effects ---
+    # --- Status Effects (delegated to StatusData) ---
 
-    def _build_status_effects(self, attr: str) -> xr.DataArray | None:
-        """Build effect factors array for a status effect attribute.
-
-        Args:
-            attr: Attribute name on StatusParameters (e.g., 'effects_per_active_hour').
-
-        Returns:
-            DataArray with (flow, effect, ...) dims, or None if no flows have the effect.
-        """
-        params = self.status_params
-        flow_ids = [fid for fid in self.with_status if getattr(params[fid], attr)]
-        if not flow_ids:
-            return None
-
-        effect_ids = list(self._fs.effects.keys())
-        if not effect_ids:
-            return None
-
-        # Build per-flow arrays, same pattern as effects_per_flow_hour
-        flow_factors = [
-            xr.concat(
-                [xr.DataArray(getattr(params[fid], attr).get(eff, np.nan)) for eff in effect_ids],
-                dim='effect',
-                coords='minimal',
-            ).assign_coords(effect=effect_ids)
-            for fid in flow_ids
-        ]
-
-        return concat_with_coords(flow_factors, 'flow', flow_ids)
-
-    @cached_property
+    @property
     def effects_per_active_hour(self) -> xr.DataArray | None:
         """(flow, effect, ...) - effect factors per active hour for flows with status."""
-        return self._build_status_effects('effects_per_active_hour')
+        return self._status_data.effects_per_active_hour if self._status_data else None
 
-    @cached_property
+    @property
     def effects_per_startup(self) -> xr.DataArray | None:
         """(flow, effect, ...) - effect factors per startup for flows with status."""
-        return self._build_status_effects('effects_per_startup')
+        return self._status_data.effects_per_startup if self._status_data else None
 
     # --- Previous Status ---
 
@@ -538,117 +697,42 @@ class FlowsData:
                 )
         return result
 
-    # --- Status Bounds (for duration tracking) ---
-
-    def _build_status_bounds(
-        self, flow_ids: list[str], min_attr: str, max_attr: str
-    ) -> tuple[xr.DataArray, xr.DataArray] | None:
-        """Build min/max bound arrays for a subset of flows in a single pass.
-
-        Args:
-            flow_ids: List of flow IDs to include.
-            min_attr: Attribute name for minimum bound on StatusParameters.
-            max_attr: Attribute name for maximum bound on StatusParameters.
-
-        Returns:
-            Tuple of (min_array, max_array) or None if flow_ids is empty.
-        """
-        if not flow_ids:
-            return None
-        params = self.status_params
-        min_vals = np.empty(len(flow_ids), dtype=float)
-        max_vals = np.empty(len(flow_ids), dtype=float)
-        for i, fid in enumerate(flow_ids):
-            p = params[fid]
-            min_vals[i] = getattr(p, min_attr) or np.nan
-            max_vals[i] = getattr(p, max_attr) or np.nan
-        return (
-            xr.DataArray(min_vals, dims=['flow'], coords={'flow': flow_ids}),
-            xr.DataArray(max_vals, dims=['flow'], coords={'flow': flow_ids}),
-        )
-
-    @cached_property
-    def _uptime_bounds(self) -> tuple[xr.DataArray, xr.DataArray] | None:
-        """Cached (min_uptime, max_uptime) tuple computed in single pass."""
-        return self._build_status_bounds(self.with_uptime_tracking, 'min_uptime', 'max_uptime')
-
-    @cached_property
-    def _downtime_bounds(self) -> tuple[xr.DataArray, xr.DataArray] | None:
-        """Cached (min_downtime, max_downtime) tuple computed in single pass."""
-        return self._build_status_bounds(self.with_downtime_tracking, 'min_downtime', 'max_downtime')
+    # --- Status Bounds (delegated to StatusData) ---
 
     @property
     def min_uptime(self) -> xr.DataArray | None:
         """(flow,) - minimum uptime for flows with uptime tracking. NaN = no constraint."""
-        bounds = self._uptime_bounds
-        return bounds[0] if bounds else None
+        return self._status_data.min_uptime if self._status_data else None
 
     @property
     def max_uptime(self) -> xr.DataArray | None:
         """(flow,) - maximum uptime for flows with uptime tracking. NaN = no constraint."""
-        bounds = self._uptime_bounds
-        return bounds[1] if bounds else None
+        return self._status_data.max_uptime if self._status_data else None
 
     @property
     def min_downtime(self) -> xr.DataArray | None:
         """(flow,) - minimum downtime for flows with downtime tracking. NaN = no constraint."""
-        bounds = self._downtime_bounds
-        return bounds[0] if bounds else None
+        return self._status_data.min_downtime if self._status_data else None
 
     @property
     def max_downtime(self) -> xr.DataArray | None:
         """(flow,) - maximum downtime for flows with downtime tracking. NaN = no constraint."""
-        bounds = self._downtime_bounds
-        return bounds[1] if bounds else None
+        return self._status_data.max_downtime if self._status_data else None
 
-    @cached_property
+    @property
     def startup_limit_values(self) -> xr.DataArray | None:
         """(flow,) - startup limit for flows with startup limit."""
-        flow_ids = self.with_startup_limit
-        if not flow_ids:
-            return None
-        params = self.status_params
-        values = np.array([params[fid].startup_limit for fid in flow_ids], dtype=float)
-        return xr.DataArray(values, dims=['flow'], coords={'flow': flow_ids})
+        return self._status_data.startup_limit if self._status_data else None
 
-    def _build_previous_durations(self, flow_ids: list[str], target_state: int, min_attr: str) -> xr.DataArray | None:
-        """Build previous duration array for flows with previous state.
-
-        Args:
-            flow_ids: List of flow IDs to include.
-            target_state: 1 for uptime, 0 for downtime.
-            min_attr: Attribute name for minimum bound (determines if duration is needed).
-
-        Returns:
-            DataArray with previous durations (NaN where not applicable).
-        """
-        if not flow_ids:
-            return None
-
-        from .features import StatusHelpers
-
-        params = self.status_params
-        previous = self.previous_states
-        timestep_duration = self._fs.timestep_duration
-
-        values = np.full(len(flow_ids), np.nan, dtype=float)
-        for i, fid in enumerate(flow_ids):
-            if fid in previous and getattr(params[fid], min_attr) is not None:
-                values[i] = StatusHelpers.compute_previous_duration(
-                    previous[fid], target_state=target_state, timestep_duration=timestep_duration
-                )
-
-        return xr.DataArray(values, dims=['flow'], coords={'flow': flow_ids})
-
-    @cached_property
+    @property
     def previous_uptime(self) -> xr.DataArray | None:
-        """(flow,) - previous uptime duration for flows with uptime tracking and previous state."""
-        return self._build_previous_durations(self.with_uptime_tracking, target_state=1, min_attr='min_uptime')
+        """(flow,) - previous uptime duration for flows with uptime tracking."""
+        return self._status_data.previous_uptime if self._status_data else None
 
-    @cached_property
+    @property
     def previous_downtime(self) -> xr.DataArray | None:
-        """(flow,) - previous downtime duration for flows with downtime tracking and previous state."""
-        return self._build_previous_durations(self.with_downtime_tracking, target_state=0, min_attr='min_downtime')
+        """(flow,) - previous downtime duration for flows with downtime tracking."""
+        return self._status_data.previous_downtime if self._status_data else None
 
     # === Helper Methods ===
 
