@@ -761,11 +761,9 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
     @cached_property
     def hours(self) -> linopy.Variable:
         """(flow, period, scenario) - total flow hours variable."""
-        total_lower = self.data.flow_hours_minimum.fillna(0)
-        total_upper = self.data.flow_hours_maximum.fillna(np.inf)
         var = self.model.add_variables(
-            lower=total_lower,
-            upper=total_upper,
+            lower=self.data.flow_hours_minimum.fillna(0),
+            upper=self.data.flow_hours_maximum.fillna(np.inf),
             coords=self._build_coords(dims=('period', 'scenario')),
             name=f'{self.dim_name}|hours',
         )
