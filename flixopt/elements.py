@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import functools
 import logging
-from itertools import chain
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -28,8 +27,6 @@ from .structure import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
     import linopy
 
     from .types import (
@@ -122,11 +119,6 @@ class Component(Element):
         self.inputs: FlowContainer = FlowContainer(_inputs, element_type_name='inputs')
         self.outputs: FlowContainer = FlowContainer(_outputs, element_type_name='outputs')
 
-    @property
-    def all_flows(self) -> Iterator[Flow]:
-        """Iterate over all flows (inputs and outputs) without creating intermediate containers."""
-        return chain(self.inputs.values(), self.outputs.values())
-
     @functools.cached_property
     def flows(self) -> FlowContainer:
         """All flows (inputs and outputs) as a FlowContainer.
@@ -150,14 +142,14 @@ class Component(Element):
         super().link_to_flow_system(flow_system, self.label_full)
         if self.status_parameters is not None:
             self.status_parameters.link_to_flow_system(flow_system, self._sub_prefix('status_parameters'))
-        for flow in self.all_flows:
+        for flow in self.flows.values():
             flow.link_to_flow_system(flow_system)
 
     def transform_data(self) -> None:
         if self.status_parameters is not None:
             self.status_parameters.transform_data()
 
-        for flow in self.all_flows:
+        for flow in self.flows.values():
             flow.transform_data()
 
     def _check_unique_flow_labels(self, inputs: list[Flow] = None, outputs: list[Flow] = None):
@@ -184,7 +176,7 @@ class Component(Element):
         # Component with status_parameters requires all flows to have sizes set
         # (status_parameters are propagated to flows in _do_modeling, which need sizes for big-M constraints)
         if self.status_parameters is not None:
-            flows_without_size = [flow.label for flow in self.all_flows if flow.size is None]
+            flows_without_size = [flow.label for flow in self.flows.values() if flow.size is None]
             if flows_without_size:
                 raise PlausibilityError(
                     f'Component "{self.label_full}" has status_parameters, but the following flows have no size: '
@@ -331,9 +323,9 @@ class Bus(Element):
         self.outputs: FlowContainer = FlowContainer(element_type_name='outputs')
 
     @property
-    def all_flows(self) -> Iterator[Flow]:
-        """Iterate over all flows (inputs and outputs) without creating intermediate containers."""
-        return chain(self.inputs.values(), self.outputs.values())
+    def flows(self) -> FlowContainer:
+        """All flows (inputs and outputs) as a FlowContainer."""
+        return self.inputs + self.outputs
 
     def create_model(self, model: FlowSystemModel) -> BusModel:
         self._plausibility_checks()
@@ -346,7 +338,7 @@ class Bus(Element):
         Elements use their label_full as prefix by default, ignoring the passed prefix.
         """
         super().link_to_flow_system(flow_system, self.label_full)
-        for flow in self.all_flows:
+        for flow in self.flows.values():
             flow.link_to_flow_system(flow_system)
 
     def transform_data(self) -> None:
@@ -1016,7 +1008,7 @@ class BusModel(ElementModel):
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
         # inputs == outputs
-        for flow in self.element.all_flows:
+        for flow in self.element.flows.values():
             self.register_variable(flow.submodel.flow_rate, flow.label_full)
         inputs = sum([flow.submodel.flow_rate for flow in self.element.inputs.values()])
         outputs = sum([flow.submodel.flow_rate for flow in self.element.outputs.values()])
@@ -1064,7 +1056,7 @@ class BusModel(ElementModel):
             **super().results_structure(),
             'inputs': inputs,
             'outputs': outputs,
-            'flows': [flow.label_full for flow in self.element.all_flows],
+            'flows': [flow.label_full for flow in self.element.flows.values()],
         }
 
 
@@ -1079,7 +1071,7 @@ class ComponentModel(ElementModel):
         """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
 
-        all_flows = list(self.element.all_flows)
+        all_flows = list(self.element.flows.values())
 
         # Set status_parameters on flows if needed
         if self.element.status_parameters:
@@ -1146,7 +1138,7 @@ class ComponentModel(ElementModel):
             **super().results_structure(),
             'inputs': [flow.submodel.flow_rate.name for flow in self.element.inputs.values()],
             'outputs': [flow.submodel.flow_rate.name for flow in self.element.outputs.values()],
-            'flows': [flow.label_full for flow in self.element.all_flows],
+            'flows': [flow.label_full for flow in self.element.flows.values()],
         }
 
     @property
@@ -1155,7 +1147,7 @@ class ComponentModel(ElementModel):
         if self.element.status_parameters is None:
             raise ValueError(f'StatusModel not present in \n{self}\nCant access previous_status')
 
-        previous_status = [flow.submodel.status._previous_status for flow in self.element.all_flows]
+        previous_status = [flow.submodel.status._previous_status for flow in self.element.flows.values()]
         previous_status = [da for da in previous_status if da is not None]
 
         if not previous_status:  # Empty list

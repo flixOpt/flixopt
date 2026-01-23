@@ -811,7 +811,7 @@ class TransmissionModel(ComponentModel):
 
     def __init__(self, model: FlowSystemModel, element: Transmission):
         if (element.absolute_losses is not None) and np.any(element.absolute_losses != 0):
-            for flow in element.all_flows:
+            for flow in element.flows.values():
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
                     flow.status_parameters.link_to_flow_system(

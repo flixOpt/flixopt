@@ -258,6 +258,33 @@ flow_system.topology.set_component_colors({'Oranges': ['Solar1', 'Solar2']})  # 
 flow_system.topology.set_component_colors('turbo', overwrite=False)  # Only unset colors
 ```
 
+#### FlowContainer for Component Flows (#587)
+
+`Component.inputs`, `Component.outputs`, and `Component.flows` now use `FlowContainer` instead of `list[Flow]` or `dict[str, Flow]`, providing flexible access patterns:
+
+```python
+# Index access (unchanged)
+component.inputs[0]
+
+# Label access (new)
+component.inputs['Boiler(Q_th)']  # Full label
+component.inputs['Q_th']          # Short label (when all flows share same component)
+
+# Membership check with short labels
+if 'Q_th' in component.flows:
+    flow = component.flows['Q_th']
+
+# Iteration
+for flow in component.flows.values():
+    ...
+```
+
+**Key features:**
+
+- **Dual access**: Access flows by index (`inputs[0]`) or label (`inputs['Q_th']`)
+- **Short-label support**: Use short labels (e.g., `'Q_th'`) when all flows in the container belong to the same component
+- **Container operations**: Supports `len()`, `in`, iteration via `.values()`, and concatenation (`inputs + outputs`)
+
 ### 💥 Breaking Changes
 
 #### tsam v3 Migration
@@ -296,6 +323,7 @@ fs.transform.cluster(
 #### Other Breaking Changes
 
 - `FlowSystem.scenario_weights` are now always normalized to sum to 1 when set (including after `.sel()` subsetting)
+- `Component.inputs`/`outputs` and `Bus.inputs`/`outputs` are now `FlowContainer` (dict-like). Use `.values()` to iterate flows.
 
 ### ♻️ Changed
 

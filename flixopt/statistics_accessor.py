@@ -779,7 +779,7 @@ class StatisticsAccessor:
             if element not in self._fs.components:
                 raise ValueError(f'Only use Components when retrieving Effects including flows. Got {element}')
             comp = self._fs.components[element]
-            flows = [f.label_full.split('|')[0] for f in comp.all_flows]
+            flows = [flow.split('|')[0] for flow in comp.flows]
             return xr.merge(
                 [ds]
                 + [
