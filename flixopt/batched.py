@@ -472,41 +472,45 @@ class FlowsData:
 
     # --- Status Effects ---
 
+    def _build_status_effects(self, attr: str) -> xr.DataArray | None:
+        """Build effect factors array for a status effect attribute.
+
+        Args:
+            attr: Attribute name on StatusParameters (e.g., 'effects_per_active_hour').
+
+        Returns:
+            DataArray with (flow, effect, ...) dims, or None if no flows have the effect.
+        """
+        params = self.status_params
+        flow_ids = [fid for fid in self.with_status if getattr(params[fid], attr)]
+        if not flow_ids:
+            return None
+
+        effect_ids = list(self._fs.effects.keys())
+        if not effect_ids:
+            return None
+
+        # Build per-flow arrays, same pattern as effects_per_flow_hour
+        flow_factors = [
+            xr.concat(
+                [xr.DataArray(getattr(params[fid], attr).get(eff, np.nan)) for eff in effect_ids],
+                dim='effect',
+                coords='minimal',
+            ).assign_coords(effect=effect_ids)
+            for fid in flow_ids
+        ]
+
+        return concat_with_coords(flow_factors, 'flow', flow_ids)
+
     @cached_property
     def effects_per_active_hour(self) -> xr.DataArray | None:
         """(flow, effect, ...) - effect factors per active hour for flows with status."""
-        if not self.with_status:
-            return None
-
-        from .features import InvestmentHelpers, StatusHelpers
-
-        element_ids = [fid for fid in self.with_status if self.status_params[fid].effects_per_active_hour]
-        if not element_ids:
-            return None
-
-        time_coords = self._fs.timesteps
-        effects_dict = StatusHelpers.collect_status_effects(
-            self.status_params, element_ids, 'effects_per_active_hour', 'flow', time_coords
-        )
-        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, 'flow')
+        return self._build_status_effects('effects_per_active_hour')
 
     @cached_property
     def effects_per_startup(self) -> xr.DataArray | None:
         """(flow, effect, ...) - effect factors per startup for flows with status."""
-        if not self.with_status:
-            return None
-
-        from .features import InvestmentHelpers, StatusHelpers
-
-        element_ids = [fid for fid in self.with_status if self.status_params[fid].effects_per_startup]
-        if not element_ids:
-            return None
-
-        time_coords = self._fs.timesteps
-        effects_dict = StatusHelpers.collect_status_effects(
-            self.status_params, element_ids, 'effects_per_startup', 'flow', time_coords
-        )
-        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, 'flow')
+        return self._build_status_effects('effects_per_startup')
 
     # --- Previous Status ---
 
