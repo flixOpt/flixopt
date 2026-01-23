@@ -224,6 +224,184 @@ class StatusData:
         return self._build_effects('effects_per_startup')
 
 
+class InvestmentData:
+    """Batched access to InvestParameters for a group of elements.
+
+    Provides efficient batched access to investment-related data as xr.DataArrays.
+    Used internally by FlowsData and can be reused by StoragesModel.
+
+    Args:
+        params: Dict mapping element_id -> InvestParameters.
+        dim_name: Dimension name for arrays (e.g., 'flow', 'storage').
+        effect_ids: List of effect IDs for building effect arrays.
+    """
+
+    def __init__(
+        self,
+        params: dict[str, InvestParameters],
+        dim_name: str,
+        effect_ids: list[str] | None = None,
+    ):
+        self._params = params
+        self._dim = dim_name
+        self._ids = list(params.keys())
+        self._effect_ids = effect_ids or []
+
+    @property
+    def ids(self) -> list[str]:
+        """All element IDs with investment."""
+        return self._ids
+
+    # === Categorizations ===
+
+    @cached_property
+    def with_optional(self) -> list[str]:
+        """IDs with optional (non-mandatory) investment."""
+        return [eid for eid in self._ids if not self._params[eid].mandatory]
+
+    @cached_property
+    def with_mandatory(self) -> list[str]:
+        """IDs with mandatory investment."""
+        return [eid for eid in self._ids if self._params[eid].mandatory]
+
+    @cached_property
+    def with_effects_per_size(self) -> list[str]:
+        """IDs with effects_of_investment_per_size defined."""
+        return [eid for eid in self._ids if self._params[eid].effects_of_investment_per_size]
+
+    @cached_property
+    def with_effects_of_investment(self) -> list[str]:
+        """IDs with effects_of_investment defined (optional only)."""
+        return [eid for eid in self.with_optional if self._params[eid].effects_of_investment]
+
+    @cached_property
+    def with_effects_of_retirement(self) -> list[str]:
+        """IDs with effects_of_retirement defined (optional only)."""
+        return [eid for eid in self.with_optional if self._params[eid].effects_of_retirement]
+
+    @cached_property
+    def with_linked_periods(self) -> list[str]:
+        """IDs with linked_periods defined."""
+        return [eid for eid in self._ids if self._params[eid].linked_periods is not None]
+
+    @cached_property
+    def with_piecewise_effects(self) -> list[str]:
+        """IDs with piecewise_effects_of_investment defined."""
+        return [eid for eid in self._ids if self._params[eid].piecewise_effects_of_investment is not None]
+
+    # === Size Bounds ===
+
+    @cached_property
+    def size_minimum(self) -> xr.DataArray:
+        """(element,) - minimum size for all investment elements.
+
+        For mandatory: minimum_or_fixed_size
+        For optional: 0 (invested variable controls actual minimum)
+        """
+        values = np.array(
+            [0 if not self._params[eid].mandatory else self._params[eid].minimum_or_fixed_size for eid in self._ids],
+            dtype=float,
+        )
+        return xr.DataArray(values, dims=[self._dim], coords={self._dim: self._ids})
+
+    @cached_property
+    def size_maximum(self) -> xr.DataArray:
+        """(element,) - maximum size for all investment elements."""
+        values = np.array([self._params[eid].maximum_or_fixed_size for eid in self._ids], dtype=float)
+        return xr.DataArray(values, dims=[self._dim], coords={self._dim: self._ids})
+
+    @cached_property
+    def optional_size_minimum(self) -> xr.DataArray | None:
+        """(element,) - minimum size for optional investment (used in: size >= min * invested)."""
+        ids = self.with_optional
+        if not ids:
+            return None
+        values = np.array([self._params[eid].minimum_or_fixed_size for eid in ids], dtype=float)
+        return xr.DataArray(values, dims=[self._dim], coords={self._dim: ids})
+
+    @cached_property
+    def optional_size_maximum(self) -> xr.DataArray | None:
+        """(element,) - maximum size for optional investment (used in: size <= max * invested)."""
+        ids = self.with_optional
+        if not ids:
+            return None
+        values = np.array([self._params[eid].maximum_or_fixed_size for eid in ids], dtype=float)
+        return xr.DataArray(values, dims=[self._dim], coords={self._dim: ids})
+
+    @cached_property
+    def linked_periods(self) -> xr.DataArray | None:
+        """(element, period) - period linking mask. 1=linked, NaN=not linked."""
+        ids = self.with_linked_periods
+        if not ids:
+            return None
+        # This needs period coords - return raw values, FlowsData will broadcast
+        values = [self._params[eid].linked_periods for eid in ids]
+        return xr.DataArray(values, dims=[self._dim], coords={self._dim: ids})
+
+    # === Effects ===
+
+    def _build_effects(self, attr: str, ids: list[str] | None = None) -> xr.DataArray | None:
+        """Build effect factors array for an investment effect attribute."""
+        if ids is None:
+            ids = [eid for eid in self._ids if getattr(self._params[eid], attr)]
+        if not ids or not self._effect_ids:
+            return None
+
+        factors = [
+            xr.concat(
+                [xr.DataArray(getattr(self._params[eid], attr).get(eff, np.nan)) for eff in self._effect_ids],
+                dim='effect',
+                coords='minimal',
+            ).assign_coords(effect=self._effect_ids)
+            for eid in ids
+        ]
+
+        return concat_with_coords(factors, self._dim, ids)
+
+    @cached_property
+    def effects_per_size(self) -> xr.DataArray | None:
+        """(element, effect) - effects per unit size."""
+        return self._build_effects('effects_of_investment_per_size', self.with_effects_per_size)
+
+    @cached_property
+    def effects_of_investment(self) -> xr.DataArray | None:
+        """(element, effect) - fixed effects of investment (optional only)."""
+        return self._build_effects('effects_of_investment', self.with_effects_of_investment)
+
+    @cached_property
+    def effects_of_retirement(self) -> xr.DataArray | None:
+        """(element, effect) - effects of retirement (optional only)."""
+        return self._build_effects('effects_of_retirement', self.with_effects_of_retirement)
+
+    @cached_property
+    def effects_of_investment_mandatory(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
+        """List of (element_id, effects_dict) for mandatory investments with fixed effects."""
+        result = []
+        for eid in self.with_mandatory:
+            effects = self._params[eid].effects_of_investment
+            if effects:
+                effects_dict = {
+                    k: v for k, v in effects.items() if v is not None and not (np.isscalar(v) and np.isnan(v))
+                }
+                if effects_dict:
+                    result.append((eid, effects_dict))
+        return result
+
+    @cached_property
+    def effects_of_retirement_constant(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
+        """List of (element_id, effects_dict) for retirement constant parts."""
+        result = []
+        for eid in self.with_optional:
+            effects = self._params[eid].effects_of_retirement
+            if effects:
+                effects_dict = {
+                    k: v for k, v in effects.items() if v is not None and not (np.isscalar(v) and np.isnan(v))
+                }
+                if effects_dict:
+                    result.append((eid, effects_dict))
+        return result
+
+
 class FlowsData:
     """Batched data container for all flows with indexed access.
 
@@ -303,15 +481,15 @@ class FlowsData:
         """IDs of flows with investment parameters."""
         return [f.label_full for f in self.elements.values() if isinstance(f.size, InvestParameters)]
 
-    @cached_property
+    @property
     def with_optional_investment(self) -> list[str]:
         """IDs of flows with optional (non-mandatory) investment."""
-        return [fid for fid in self.with_investment if not self[fid].size.mandatory]
+        return self._investment_data.with_optional if self._investment_data else []
 
-    @cached_property
+    @property
     def with_mandatory_investment(self) -> list[str]:
         """IDs of flows with mandatory investment."""
-        return [fid for fid in self.with_investment if self[fid].size.mandatory]
+        return self._investment_data.with_mandatory if self._investment_data else []
 
     @cached_property
     def with_flow_hours_min(self) -> list[str]:
@@ -376,6 +554,17 @@ class FlowsData:
             effect_ids=list(self._fs.effects.keys()),
             timestep_duration=self._fs.timestep_duration,
             previous_states=self.previous_states,
+        )
+
+    @cached_property
+    def _investment_data(self) -> InvestmentData | None:
+        """Batched investment data for flows with investment."""
+        if not self.with_investment:
+            return None
+        return InvestmentData(
+            params=self.invest_params,
+            dim_name='flow',
+            effect_ids=list(self._fs.effects.keys()),
         )
 
     # === Batched Parameters ===
@@ -554,59 +743,41 @@ class FlowsData:
         # Inf for flows without size
         return xr.where(self.effective_size_upper.isnull(), np.inf, base)
 
-    # --- Investment Bounds (for size variable) ---
+    # --- Investment Bounds (delegated to InvestmentData) ---
 
-    @cached_property
+    @property
     def investment_size_minimum(self) -> xr.DataArray | None:
-        """(flow, period, scenario) - minimum size for flows with investment.
-
-        For mandatory: minimum_or_fixed_size
-        For optional: 0 (invested variable controls actual minimum)
-        """
-        if not self.with_investment:
+        """(flow, period, scenario) - minimum size for flows with investment."""
+        if not self._investment_data:
             return None
-        flow_ids = self.with_investment
-        values = []
-        for fid in flow_ids:
-            params = self.invest_params[fid]
-            if params.mandatory:
-                values.append(params.minimum_or_fixed_size)
-            else:
-                values.append(0)  # Optional: lower bound is 0
-        return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
+        return self._broadcast_to_coords(self._investment_data.size_minimum, dims=['period', 'scenario'])
 
-    @cached_property
+    @property
     def investment_size_maximum(self) -> xr.DataArray | None:
         """(flow, period, scenario) - maximum size for flows with investment."""
-        if not self.with_investment:
+        if not self._investment_data:
             return None
-        flow_ids = self.with_investment
-        values = [self.invest_params[fid].maximum_or_fixed_size for fid in flow_ids]
-        return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
+        return self._broadcast_to_coords(self._investment_data.size_maximum, dims=['period', 'scenario'])
 
-    @cached_property
+    @property
     def optional_investment_size_minimum(self) -> xr.DataArray | None:
-        """(flow, period, scenario) - minimum size for optional investment flows.
-
-        Used in constraints: size >= min * invested
-        """
-        if not self.with_optional_investment:
+        """(flow, period, scenario) - minimum size for optional investment flows."""
+        if not self._investment_data or not self._investment_data.optional_size_minimum is not None:
             return None
-        flow_ids = self.with_optional_investment
-        values = [self.invest_params[fid].minimum_or_fixed_size for fid in flow_ids]
-        return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
+        raw = self._investment_data.optional_size_minimum
+        if raw is None:
+            return None
+        return self._broadcast_to_coords(raw, dims=['period', 'scenario'])
 
-    @cached_property
+    @property
     def optional_investment_size_maximum(self) -> xr.DataArray | None:
-        """(flow, period, scenario) - maximum size for optional investment flows.
-
-        Used in constraints: size <= max * invested
-        """
-        if not self.with_optional_investment:
+        """(flow, period, scenario) - maximum size for optional investment flows."""
+        if not self._investment_data:
             return None
-        flow_ids = self.with_optional_investment
-        values = [self.invest_params[fid].maximum_or_fixed_size for fid in flow_ids]
-        return self._stack_values_for_subset(flow_ids, values, dims=['period', 'scenario'])
+        raw = self._investment_data.optional_size_maximum
+        if raw is None:
+            return None
+        return self._broadcast_to_coords(raw, dims=['period', 'scenario'])
 
     @cached_property
     def effects_per_flow_hour(self) -> xr.DataArray | None:

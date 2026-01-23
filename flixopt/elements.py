@@ -15,7 +15,7 @@ import xarray as xr
 from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError
-from .features import InvestmentEffectsMixin, MaskHelpers
+from .features import MaskHelpers
 from .interface import InvestParameters, StatusParameters
 from .modeling import ModelingUtilitiesAbstract
 from .structure import (
@@ -682,7 +682,7 @@ class Flow(Element):
 # =============================================================================
 
 
-class FlowsModel(InvestmentEffectsMixin, TypeModel):
+class FlowsModel(TypeModel):
     """Type-level model for ALL flows in a FlowSystem.
 
     Unlike FlowModel (one per Flow instance), FlowsModel handles ALL flows
@@ -1215,8 +1215,8 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
 
         logger.debug(f'Created batched piecewise effects for {len(element_ids)} flows')
 
-    # === Status effect properties (used by EffectsModel) ===
-    # Investment effect properties are provided by InvestmentEffectsMixin
+    # === Effect properties (used by EffectsModel) ===
+    # Investment effect properties are defined below, delegating to data._investment_data
 
     @property
     def effects_per_active_hour(self) -> xr.DataArray | None:
@@ -1570,31 +1570,37 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         """Combined effect factors with (flow, effect, ...) dims."""
         return self.data.effects_per_flow_hour
 
-    # --- Mixin Interface Properties (for InvestmentEffectsMixin) ---
+    # --- Investment Effect Properties (delegating to _investment_data) ---
 
     @property
-    def _invest_params(self) -> dict[str, InvestParameters]:
-        """Investment parameters for flows with investment, keyed by label_full.
-
-        Required by InvestmentEffectsMixin.
-        """
-        return self.data.invest_params
+    def effects_per_size(self) -> xr.DataArray | None:
+        """(flow, effect) - effects per unit size."""
+        inv = self.data._investment_data
+        return inv.effects_per_size if inv else None
 
     @property
-    def with_investment(self) -> list[str]:
-        """IDs of flows with investment parameters.
-
-        Required by InvestmentEffectsMixin.
-        """
-        return self.data.with_investment
+    def effects_of_investment(self) -> xr.DataArray | None:
+        """(flow, effect) - fixed effects of investment (optional only)."""
+        inv = self.data._investment_data
+        return inv.effects_of_investment if inv else None
 
     @property
-    def with_optional_investment(self) -> list[str]:
-        """IDs of flows with optional (non-mandatory) investment.
+    def effects_of_retirement(self) -> xr.DataArray | None:
+        """(flow, effect) - effects of retirement (optional only)."""
+        inv = self.data._investment_data
+        return inv.effects_of_retirement if inv else None
 
-        Required by InvestmentEffectsMixin.
-        """
-        return self.data.with_optional_investment
+    @property
+    def effects_of_investment_mandatory(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
+        """List of (element_id, effects_dict) for mandatory investments with fixed effects."""
+        inv = self.data._investment_data
+        return inv.effects_of_investment_mandatory if inv else []
+
+    @property
+    def effects_of_retirement_constant(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
+        """List of (element_id, effects_dict) for retirement constant parts."""
+        inv = self.data._investment_data
+        return inv.effects_of_retirement_constant if inv else []
 
     # --- Previous Status ---
 
