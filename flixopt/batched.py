@@ -76,6 +76,48 @@ class FlowsData:
         return [f.label_full for f in self.elements.values() if f.status_parameters is not None]
 
     @cached_property
+    def with_startup_tracking(self) -> list[str]:
+        """IDs of flows that need startup/shutdown tracking.
+
+        Includes flows with: effects_per_startup, min/max_uptime, startup_limit, or force_startup_tracking.
+        """
+        result = []
+        for fid in self.with_status:
+            p = self.status_params[fid]
+            if (
+                p.effects_per_startup
+                or p.min_uptime is not None
+                or p.max_uptime is not None
+                or p.startup_limit is not None
+                or p.force_startup_tracking
+            ):
+                result.append(fid)
+        return result
+
+    @cached_property
+    def with_downtime_tracking(self) -> list[str]:
+        """IDs of flows that need downtime (inactive) tracking."""
+        return [
+            fid
+            for fid in self.with_status
+            if self.status_params[fid].min_downtime is not None or self.status_params[fid].max_downtime is not None
+        ]
+
+    @cached_property
+    def with_uptime_tracking(self) -> list[str]:
+        """IDs of flows that need uptime duration tracking."""
+        return [
+            fid
+            for fid in self.with_status
+            if self.status_params[fid].min_uptime is not None or self.status_params[fid].max_uptime is not None
+        ]
+
+    @cached_property
+    def with_startup_limit(self) -> list[str]:
+        """IDs of flows with startup limit."""
+        return [fid for fid in self.with_status if self.status_params[fid].startup_limit is not None]
+
+    @cached_property
     def without_size(self) -> list[str]:
         """IDs of flows with status parameters."""
         return [f.label_full for f in self.elements.values() if f.size is None]
