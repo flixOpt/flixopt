@@ -849,13 +849,13 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         if self.data.flow_hours_minimum is not None:
             flow_ids = self.data.with_flow_hours_min
             hours = self.model.sum_temporal(self.rate.sel({dim: flow_ids}))
-            self.add_constraints(hours >= self.data.flow_hours_minimum, name='flow|hours_min')
+            self.add_constraints(hours >= self.data.flow_hours_minimum, name='hours_min')
 
         # Max constraint
         if self.data.flow_hours_maximum is not None:
             flow_ids = self.data.with_flow_hours_max
             hours = self.model.sum_temporal(self.rate.sel({dim: flow_ids}))
-            self.add_constraints(hours <= self.data.flow_hours_maximum, name='flow|hours_max')
+            self.add_constraints(hours <= self.data.flow_hours_maximum, name='hours_max')
 
     def constraint_flow_hours_over_periods(self) -> None:
         """Constrain weighted sum of hours across periods."""
@@ -873,13 +873,13 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         if self.data.flow_hours_minimum_over_periods is not None:
             flow_ids = self.data.with_flow_hours_over_periods_min
             hours = compute_hours_over_periods(flow_ids)
-            self.add_constraints(hours >= self.data.flow_hours_minimum_over_periods, name='flow|hours_over_periods_min')
+            self.add_constraints(hours >= self.data.flow_hours_minimum_over_periods, name='hours_over_periods_min')
 
         # Max constraint
         if self.data.flow_hours_maximum_over_periods is not None:
             flow_ids = self.data.with_flow_hours_over_periods_max
             hours = compute_hours_over_periods(flow_ids)
-            self.add_constraints(hours <= self.data.flow_hours_maximum_over_periods, name='flow|hours_over_periods_max')
+            self.add_constraints(hours <= self.data.flow_hours_maximum_over_periods, name='hours_over_periods_max')
 
     def constraint_load_factor(self) -> None:
         """Load factor min/max constraints for flows that have them."""
@@ -892,7 +892,7 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
             hours = self.model.sum_temporal(self.rate.sel({dim: flow_ids}))
             size = self.data.effective_size_lower.sel({dim: flow_ids}).fillna(0)
             rhs = total_time * self.data.load_factor_minimum * size
-            self.add_constraints(hours >= rhs, name='flow|load_factor_min')
+            self.add_constraints(hours >= rhs, name='load_factor_min')
 
         # Max constraint: hours <= total_time * load_factor_max * size
         if self.data.load_factor_maximum is not None:
@@ -900,7 +900,7 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
             hours = self.model.sum_temporal(self.rate.sel({dim: flow_ids}))
             size = self.data.effective_size_upper.sel({dim: flow_ids}).fillna(np.inf)
             rhs = total_time * self.data.load_factor_maximum * size
-            self.add_constraints(hours <= rhs, name='flow|load_factor_max')
+            self.add_constraints(hours <= rhs, name='load_factor_max')
 
     def __init__(self, model: FlowSystemModel, elements: list[Flow]):
         """Initialize the type-level model for all flows.
@@ -981,19 +981,19 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         without_size_set = set(self.data.without_size)
 
         # 1. Status only (no investment) - exclude flows with size=None (bounds come from converter)
-        status_only_ids = [fid for fid in status_set - investment_set - without_size_set]
+        status_only_ids = list(status_set - investment_set - without_size_set)
         if status_only_ids:
-            self._constraint_status_bounds(status_only_ids)
+            self._constraint_status_bounds()
 
         # 2. Investment only (no status)
         invest_only_ids = [fid for fid in self.data.with_investment if fid not in status_set]
         if invest_only_ids:
-            self._constraint_investment_bounds(invest_only_ids)
+            self._constraint_investment_bounds()
 
         # 3. Both status and investment
         both_ids = [fid for fid in self.data.with_status if fid in investment_set]
         if both_ids:
-            self._constraint_status_investment_bounds(both_ids)
+            self._constraint_status_investment_bounds()
 
     def _constraint_investment_bounds(self) -> None:
         """
@@ -1009,10 +1009,10 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
         rel_min = self.data.effective_relative_minimum.sel({dim: flow_ids})
 
         # Upper bound: rate <= size * relative_max
-        self.add_constraints(flow_rate <= size * rel_max, name='rate|invest_ub')
+        self.add_constraints(flow_rate <= size * rel_max, name='invest_ub')
 
         # Lower bound: rate >= size * relative_min
-        self.add_constraints(flow_rate >= size * rel_min, name='rate|invest_lb')
+        self.add_constraints(flow_rate >= size * rel_min, name='invest_lb')
 
     def _constraint_status_bounds(self) -> None:
         """
@@ -1032,13 +1032,13 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
 
         # Upper bound: rate <= status * size * relative_max
         upper_bounds = rel_max * size
-        self.add_constraints(flow_rate <= status * upper_bounds, name='rate|status_ub')
+        self.add_constraints(flow_rate <= status * upper_bounds, name='status_ub')
 
         # Lower bound: rate >= status * max(epsilon, size * relative_min)
         lower_bounds = np.maximum(CONFIG.Modeling.epsilon, rel_min * size)
-        self.add_constraints(flow_rate >= status * lower_bounds, name='rate|status_lb')
+        self.add_constraints(flow_rate >= status * lower_bounds, name='status_lb')
 
-    def _constraint_status_investment_bounds(self, flow_ids: list[str]) -> None:
+    def _constraint_status_investment_bounds(self) -> None:
         """Bounds for flows with both status and investment.
 
         Three constraints:
@@ -1059,15 +1059,15 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
 
         # Upper bound 1: rate <= status * M where M = max_size * relative_max
         big_m_upper = max_size * rel_max
-        self.add_constraints(flow_rate <= status * big_m_upper, name='flow|status+invest_ub1')
+        self.add_constraints(flow_rate <= status * big_m_upper, name='status+invest_ub1')
 
         # Upper bound 2: rate <= size * relative_max
-        self.add_constraints(flow_rate <= size * rel_max, name='flow|status+invest_ub2')
+        self.add_constraints(flow_rate <= size * rel_max, name='status+invest_ub2')
 
         # Lower bound: rate >= (status - 1) * M + size * relative_min
         big_m_lower = max_size * rel_min
         rhs = (status - 1) * big_m_lower + size * rel_min
-        self.add_constraints(flow_rate >= rhs, name='flow|status+invest_lb')
+        self.add_constraints(flow_rate >= rhs, name='status+invest_lb')
 
     def _create_piecewise_effects(self) -> None:
         """Create batched piecewise effects for flows with piecewise_effects_of_investment.
