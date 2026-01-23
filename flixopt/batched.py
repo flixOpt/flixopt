@@ -104,6 +104,11 @@ class FlowsData:
         """IDs of flows with effects_per_flow_hour defined."""
         return [f.label_full for f in self.elements.values() if f.effects_per_flow_hour]
 
+    @cached_property
+    def with_previous_flow_rate(self) -> list[str]:
+        """IDs of flows with previous_flow_rate defined (for startup/shutdown tracking)."""
+        return [f.label_full for f in self.elements.values() if f.previous_flow_rate is not None]
+
     # === Parameter Dicts ===
 
     @cached_property
@@ -263,6 +268,63 @@ class FlowsData:
 
         # Use coords='minimal' to handle dimension mismatches (some effects may have 'period', some don't)
         return concat_with_coords(flow_factors, 'flow', flow_ids)
+
+    # --- Investment Parameters ---
+
+    @cached_property
+    def linked_periods(self) -> xr.DataArray | None:
+        """(flow, period) - period linking mask. 1=linked, 0=not linked, NaN=no linking."""
+        has_linking = any(
+            isinstance(f.size, InvestParameters) and f.size.linked_periods is not None for f in self.elements.values()
+        )
+        if not has_linking:
+            return None
+
+        values = []
+        for f in self.elements.values():
+            if not isinstance(f.size, InvestParameters) or f.size.linked_periods is None:
+                values.append(np.nan)
+            else:
+                values.append(f.size.linked_periods)
+        return self._broadcast_to_coords(self._stack_values(values), dims=['period'])
+
+    # --- Status Effects ---
+
+    @cached_property
+    def status_effects_per_active_hour(self) -> xr.DataArray | None:
+        """(flow, effect, ...) - effect factors per active hour for flows with status."""
+        if not self.with_status:
+            return None
+
+        from .features import InvestmentHelpers, StatusHelpers
+
+        element_ids = [fid for fid in self.with_status if self.status_params[fid].effects_per_active_hour]
+        if not element_ids:
+            return None
+
+        time_coords = self._fs.timesteps
+        effects_dict = StatusHelpers.collect_status_effects(
+            self.status_params, element_ids, 'effects_per_active_hour', 'flow', time_coords
+        )
+        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, 'flow')
+
+    @cached_property
+    def status_effects_per_startup(self) -> xr.DataArray | None:
+        """(flow, effect, ...) - effect factors per startup for flows with status."""
+        if not self.with_status:
+            return None
+
+        from .features import InvestmentHelpers, StatusHelpers
+
+        element_ids = [fid for fid in self.with_status if self.status_params[fid].effects_per_startup]
+        if not element_ids:
+            return None
+
+        time_coords = self._fs.timesteps
+        effects_dict = StatusHelpers.collect_status_effects(
+            self.status_params, element_ids, 'effects_per_startup', 'flow', time_coords
+        )
+        return InvestmentHelpers.build_effect_factors(effects_dict, element_ids, 'flow')
 
     # === Helper Methods ===
 
