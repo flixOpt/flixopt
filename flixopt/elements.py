@@ -1761,67 +1761,56 @@ class BusesModel(TypeModel):
         """Create all batched constraints for buses.
 
         Creates:
-        - bus_balance: Sum(inputs) == Sum(outputs) for all buses
+        - bus|balance: Sum(inputs) == Sum(outputs) for all buses (single batched constraint)
         - With virtual_supply/demand adjustment for buses with imbalance
         """
         flow_rate = self._flows_model._variables['rate']
         flow_dim = self._flows_model.dim_name  # 'flow'
         bus_dim = self.dim_name  # 'bus'
 
-        # Build the balance constraint for each bus
-        # We need to do this per-bus because each bus has different inputs/outputs
-        # However, we can batch create using xr.concat
-        lhs_list = []
-        rhs_list = []
+        # Build coefficient matrix: (bus, flow)
+        # +1 for inputs (supply to bus), -1 for outputs (demand from bus)
+        bus_ids = list(self.elements.keys())
+        flow_ids = list(flow_rate.coords[flow_dim].values)
 
-        for bus in self.elements.values():
-            bus_label = bus.label_full
-
-            # Get input flow IDs and output flow IDs for this bus
-            input_ids = [f.label_full for f in bus.inputs]
-            output_ids = [f.label_full for f in bus.outputs]
-
-            # Sum of input flow rates
-            if input_ids:
-                inputs_sum = flow_rate.sel({flow_dim: input_ids}).sum(flow_dim)
-            else:
-                inputs_sum = 0
-
-            # Sum of output flow rates
-            if output_ids:
-                outputs_sum = flow_rate.sel({flow_dim: output_ids}).sum(flow_dim)
-            else:
-                outputs_sum = 0
-
-            # Add virtual supply/demand if this bus allows imbalance
-            if bus.allows_imbalance:
-                virtual_supply = self._variables['virtual_supply'].sel({bus_dim: bus_label})
-                virtual_demand = self._variables['virtual_demand'].sel({bus_dim: bus_label})
-                # inputs + virtual_supply == outputs + virtual_demand
-                lhs = inputs_sum + virtual_supply
-                rhs = outputs_sum + virtual_demand
-            else:
-                # inputs == outputs (strict balance)
-                lhs = inputs_sum
-                rhs = outputs_sum
-
-            lhs_list.append(lhs)
-            rhs_list.append(rhs)
-
-        # Stack into a single constraint with bus dimension
-        # Note: For efficiency, we create one constraint per bus but they share a name prefix
+        # Create coefficient array
+        coeffs = np.zeros((len(bus_ids), len(flow_ids)), dtype=np.float64)
         for i, bus in enumerate(self.elements.values()):
-            lhs, rhs = lhs_list[i], rhs_list[i]
-            # Skip if both sides are scalar zeros (no flows connected)
-            if isinstance(lhs, (int, float)) and isinstance(rhs, (int, float)):
-                continue
-            constraint_name = f'{bus.label_full}|balance'
-            self.model.add_constraints(
-                lhs == rhs,
-                name=constraint_name,
-            )
+            for flow in bus.inputs:
+                j = flow_ids.index(flow.label_full)
+                coeffs[i, j] = 1.0  # inputs add to balance
+            for flow in bus.outputs:
+                j = flow_ids.index(flow.label_full)
+                coeffs[i, j] = -1.0  # outputs subtract from balance
 
-        logger.debug(f'BusesModel created {len(self.elements)} balance constraints')
+        # Convert to DataArray for broadcasting
+        coeffs_da = xr.DataArray(
+            coeffs,
+            coords={bus_dim: bus_ids, flow_dim: flow_ids},
+            dims=[bus_dim, flow_dim],
+        )
+
+        # Compute balance: sum over flows of (coeff * flow_rate)
+        # Result shape: (bus, time, ...)
+        balance = (coeffs_da * flow_rate).sum(flow_dim)
+
+        # Add virtual flows for buses with imbalance
+        # balance + virtual_supply - virtual_demand == 0
+        if self.buses_with_imbalance:
+            virtual_supply = self._variables['virtual_supply']
+            virtual_demand = self._variables['virtual_demand']
+            # Reindex to all buses (0 for buses without imbalance)
+            virtual_supply_all = virtual_supply.reindex({bus_dim: bus_ids}, fill_value=0)
+            virtual_demand_all = virtual_demand.reindex({bus_dim: bus_ids}, fill_value=0)
+            balance = balance + virtual_supply_all - virtual_demand_all
+
+        # Create single batched constraint
+        self.model.add_constraints(
+            balance == 0,
+            name=f'{bus_dim}|balance',
+        )
+
+        logger.debug(f'BusesModel created 1 batched balance constraint for {len(self.elements)} buses')
 
     def collect_penalty_share_specs(self) -> list[tuple[str, xr.DataArray]]:
         """Collect penalty effect share specifications for buses with imbalance.
