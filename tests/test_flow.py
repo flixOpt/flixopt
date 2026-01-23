@@ -132,8 +132,8 @@ class TestFlowInvestModel:
         assert 'flow|rate' in model.variables, 'Batched rate variable should exist'
 
         # Check batched constraints exist
-        assert 'flow|rate_invest_lb' in model.constraints, 'Batched rate lower bound constraint should exist'
-        assert 'flow|rate_invest_ub' in model.constraints, 'Batched rate upper bound constraint should exist'
+        assert 'flow|invest_lb' in model.constraints, 'Batched rate lower bound constraint should exist'
+        assert 'flow|invest_ub' in model.constraints, 'Batched rate upper bound constraint should exist'
 
         assert_dims_compatible(flow.relative_minimum, tuple(model.get_coords()))
         assert_dims_compatible(flow.relative_maximum, tuple(model.get_coords()))
@@ -159,8 +159,8 @@ class TestFlowInvestModel:
         assert 'flow|rate' in model.variables, 'Batched rate variable should exist'
 
         # Check batched constraints exist
-        assert 'flow|rate_invest_lb' in model.constraints, 'Batched rate lower bound constraint should exist'
-        assert 'flow|rate_invest_ub' in model.constraints, 'Batched rate upper bound constraint should exist'
+        assert 'flow|invest_lb' in model.constraints, 'Batched rate lower bound constraint should exist'
+        assert 'flow|invest_ub' in model.constraints, 'Batched rate upper bound constraint should exist'
         assert 'flow|size|lb' in model.constraints, 'Batched size lower bound constraint should exist'
         assert 'flow|size|ub' in model.constraints, 'Batched size upper bound constraint should exist'
 
@@ -187,7 +187,7 @@ class TestFlowInvestModel:
         assert 'flow|size' in model.variables
         assert 'flow|invested' in model.variables
         assert 'flow|rate' in model.variables
-        assert 'flow|hours' in model.variables
+        # Note: hours variable removed - computed inline in constraints now
 
         # Access individual flow variables using batched approach
         flow_size = model.variables['flow|size'].sel(flow=flow_label, drop=True)
@@ -207,8 +207,8 @@ class TestFlowInvestModel:
         assert_dims_compatible(flow.relative_maximum, tuple(model.get_coords()))
 
         # Check batched constraints exist
-        assert 'flow|rate_invest_lb' in model.constraints
-        assert 'flow|rate_invest_ub' in model.constraints
+        assert 'flow|invest_lb' in model.constraints
+        assert 'flow|invest_ub' in model.constraints
         assert 'flow|size|lb' in model.constraints
         assert 'flow|size|ub' in model.constraints
 
@@ -244,8 +244,8 @@ class TestFlowInvestModel:
         assert_dims_compatible(flow.relative_maximum, tuple(model.get_coords()))
 
         # Check batched constraints exist
-        assert 'flow|rate_invest_lb' in model.constraints
-        assert 'flow|rate_invest_ub' in model.constraints
+        assert 'flow|invest_lb' in model.constraints
+        assert 'flow|invest_ub' in model.constraints
 
     def test_flow_invest_fixed_size(self, basic_flow_system_linopy_coords, coords_config):
         """Test flow with fixed size investment."""
@@ -380,13 +380,13 @@ class TestFlowOnModel:
         assert 'flow|rate' in model.variables
         assert 'flow|status' in model.variables
         assert 'flow|active_hours' in model.variables
-        assert 'flow|hours' in model.variables
+        # Note: hours variable removed - computed inline in constraints now
 
         # Verify batched constraints exist
-        assert 'flow|rate_status_lb' in model.constraints
-        assert 'flow|rate_status_ub' in model.constraints
+        assert 'flow|status_lb' in model.constraints
+        assert 'flow|status_ub' in model.constraints
         assert 'flow|active_hours' in model.constraints
-        assert 'flow|hours_eq' in model.constraints
+        # Note: hours_eq constraint removed - hours computed inline now
 
         # Get individual flow variables
         flow_rate = model.variables['flow|rate'].sel(flow=flow_label, drop=True)
@@ -415,11 +415,11 @@ class TestFlowOnModel:
 
         # Check batched constraints (select flow for comparison)
         assert_conequal(
-            model.constraints['flow|rate_status_lb'].sel(flow=flow_label, drop=True),
+            model.constraints['flow|status_lb'].sel(flow=flow_label, drop=True),
             flow_rate >= status * 0.2 * 100,
         )
         assert_conequal(
-            model.constraints['flow|rate_status_ub'].sel(flow=flow_label, drop=True),
+            model.constraints['flow|status_ub'].sel(flow=flow_label, drop=True),
             flow_rate <= status * 0.8 * 100,
         )
 
@@ -451,11 +451,11 @@ class TestFlowOnModel:
         assert 'flow|rate' in model.variables
         assert 'flow|status' in model.variables
         assert 'flow|active_hours' in model.variables
-        assert 'flow|hours' in model.variables
+        # Note: hours variable removed - computed inline in constraints now
 
         # Verify batched constraints exist
-        assert 'flow|rate_status_lb' in model.constraints
-        assert 'flow|rate_status_ub' in model.constraints
+        assert 'flow|status_lb' in model.constraints
+        assert 'flow|status_ub' in model.constraints
         assert 'flow|active_hours' in model.constraints
 
         # Verify effect temporal constraint exists
@@ -832,19 +832,19 @@ class TestFlowOnInvestModel:
 
         # Verify batched variables exist
         assert 'flow|rate' in model.variables
-        assert 'flow|hours' in model.variables
+        # Note: hours variable removed - computed inline in constraints now
         assert 'flow|invested' in model.variables
         assert 'flow|size' in model.variables
         assert 'flow|status' in model.variables
         assert 'flow|active_hours' in model.variables
 
         # Verify batched constraints exist
-        assert 'flow|hours_eq' in model.constraints
+        # Note: hours_eq constraint removed - hours computed inline now
         assert 'flow|active_hours' in model.constraints
         assert 'flow|size|lb' in model.constraints
         assert 'flow|size|ub' in model.constraints
-        assert 'flow|rate_status_invest_ub' in model.constraints
-        assert 'flow|rate_invest_ub' in model.constraints
+        assert 'flow|status+invest_ub1' in model.constraints
+        assert 'flow|invest_ub' in model.constraints
 
         # Get individual flow variables
         flow_rate = model.variables['flow|rate'].sel(flow=flow_label, drop=True)
@@ -882,7 +882,7 @@ class TestFlowOnInvestModel:
         )
         # Verify constraint for status * max_rate upper bound
         assert_conequal(
-            model.constraints['flow|rate_status_invest_ub'].sel(flow=flow_label, drop=True),
+            model.constraints['flow|status+invest_ub1'].sel(flow=flow_label, drop=True),
             flow_rate <= status * 0.8 * 200,
         )
         assert_conequal(
@@ -894,8 +894,8 @@ class TestFlowOnInvestModel:
         assert_var_equal(size, model.add_variables(lower=0, upper=200, coords=model.get_coords(['period', 'scenario'])))
 
         # Check rate/invest constraints exist
-        assert 'flow|rate_invest_ub' in model.constraints
-        assert 'flow|rate_status_invest_lb' in model.constraints
+        assert 'flow|invest_ub' in model.constraints
+        assert 'flow|status+invest_lb' in model.constraints
 
     def test_flow_on_invest_non_optional(self, basic_flow_system_linopy_coords, coords_config):
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
@@ -913,7 +913,7 @@ class TestFlowOnInvestModel:
 
         # Verify batched variables exist
         assert 'flow|rate' in model.variables
-        assert 'flow|hours' in model.variables
+        # Note: hours variable removed - computed inline in constraints now
         assert 'flow|size' in model.variables
         assert 'flow|status' in model.variables
         assert 'flow|active_hours' in model.variables
@@ -924,10 +924,10 @@ class TestFlowOnInvestModel:
         )
 
         # Verify batched constraints exist
-        assert 'flow|hours_eq' in model.constraints
+        # Note: hours_eq constraint removed - hours computed inline now
         assert 'flow|active_hours' in model.constraints
-        assert 'flow|rate_status_invest_ub' in model.constraints
-        assert 'flow|rate_invest_ub' in model.constraints
+        assert 'flow|status+invest_ub1' in model.constraints
+        assert 'flow|invest_ub' in model.constraints
 
         # Get individual flow variables
         flow_rate = model.variables['flow|rate'].sel(flow=flow_label, drop=True)
@@ -965,8 +965,8 @@ class TestFlowOnInvestModel:
         )
 
         # Check rate/invest constraints exist
-        assert 'flow|rate_invest_ub' in model.constraints
-        assert 'flow|rate_status_invest_lb' in model.constraints
+        assert 'flow|invest_ub' in model.constraints
+        assert 'flow|status+invest_lb' in model.constraints
 
 
 class TestFlowWithFixedProfile:
@@ -1031,17 +1031,17 @@ class TestFlowWithFixedProfile:
         )
 
         # Check that investment constraints exist
-        assert 'flow|rate_invest_lb' in model.constraints
-        assert 'flow|rate_invest_ub' in model.constraints
+        assert 'flow|invest_lb' in model.constraints
+        assert 'flow|invest_ub' in model.constraints
 
         # With fixed profile, the lb and ub constraints both reference size * profile
         # (equal bounds effectively fixing the rate)
         assert_conequal(
-            model.constraints['flow|rate_invest_lb'].sel(flow=flow_label, drop=True),
+            model.constraints['flow|invest_lb'].sel(flow=flow_label, drop=True),
             flow_rate >= size * flow.fixed_relative_profile,
         )
         assert_conequal(
-            model.constraints['flow|rate_invest_ub'].sel(flow=flow_label, drop=True),
+            model.constraints['flow|invest_ub'].sel(flow=flow_label, drop=True),
             flow_rate <= size * flow.fixed_relative_profile,
         )
 
