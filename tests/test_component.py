@@ -66,7 +66,6 @@ class TestComponentModel:
 
         # Check batched variables exist
         assert 'flow|rate' in model.variables, 'Batched flow rate variable should exist'
-        # Note: hours variable removed - computed inline in constraints now
         assert 'flow|status' in model.variables, 'Batched status variable should exist'
         assert 'flow|active_hours' in model.variables, 'Batched active_hours variable should exist'
         assert 'component|status' in model.variables, 'Batched component status variable should exist'

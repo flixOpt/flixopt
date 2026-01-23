@@ -1355,16 +1355,14 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
 
         dim = self.dim_name
         element_ids = self.data.with_startup_limit
-        params = self.data.status_params
-
-        startup_limit_vals = [params[eid].startup_limit for eid in element_ids]
-        startup_limit = xr.DataArray(startup_limit_vals, dims=[dim], coords={dim: element_ids})
 
         base_coords = self.model.get_coords(['period', 'scenario'])
         base_coords_dict = dict(base_coords) if base_coords is not None else {}
         coords = xr.Coordinates({dim: pd.Index(element_ids, name=dim), **base_coords_dict})
 
-        var = self.model.add_variables(lower=0, upper=startup_limit, coords=coords, name=FlowVarName.STARTUP_COUNT)
+        var = self.model.add_variables(
+            lower=0, upper=self.data.startup_limit_values, coords=coords, name=FlowVarName.STARTUP_COUNT
+        )
         self._variables['startup_count'] = var
         return var
 
@@ -1376,45 +1374,18 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
 
         from .features import StatusHelpers
 
-        dim = self.dim_name
-        element_ids = self.data.with_uptime_tracking
-        params = self.data.status_params
-        timestep_duration = self.model.timestep_duration
-
-        # Build min/max uptime DataArrays
-        min_uptime = xr.DataArray(
-            [params[eid].min_uptime or np.nan for eid in element_ids],
-            dims=[dim],
-            coords={dim: element_ids},
-        )
-        max_uptime = xr.DataArray(
-            [params[eid].max_uptime or np.nan for eid in element_ids],
-            dims=[dim],
-            coords={dim: element_ids},
-        )
-
-        # Build previous uptime DataArray
-        previous_uptime_values = []
-        for eid in element_ids:
-            if eid in self._previous_status and params[eid].min_uptime is not None:
-                prev = StatusHelpers.compute_previous_duration(
-                    self._previous_status[eid], target_state=1, timestep_duration=timestep_duration
-                )
-                previous_uptime_values.append(prev)
-            else:
-                previous_uptime_values.append(np.nan)
-        previous_uptime = xr.DataArray(previous_uptime_values, dims=[dim], coords={dim: element_ids})
-
-        # Use StatusHelpers for the math
+        previous_uptime = self.data.previous_uptime
         var = StatusHelpers.add_batched_duration_tracking(
             model=self.model,
-            state=self.status.sel({dim: element_ids}),
+            state=self.status.sel({self.dim_name: self.data.with_uptime_tracking}),
             name=FlowVarName.UPTIME,
-            dim_name=dim,
-            timestep_duration=timestep_duration,
-            minimum_duration=min_uptime,
-            maximum_duration=max_uptime,
-            previous_duration=previous_uptime if previous_uptime.notnull().any() else None,
+            dim_name=self.dim_name,
+            timestep_duration=self.model.timestep_duration,
+            minimum_duration=self.data.min_uptime,
+            maximum_duration=self.data.max_uptime,
+            previous_duration=previous_uptime
+            if previous_uptime is not None and previous_uptime.notnull().any()
+            else None,
         )
         self._variables['uptime'] = var
         return var
@@ -1427,48 +1398,21 @@ class FlowsModel(InvestmentEffectsMixin, TypeModel):
 
         from .features import StatusHelpers
 
-        dim = self.dim_name
-        element_ids = self.data.with_downtime_tracking
-        params = self.data.status_params
-        timestep_duration = self.model.timestep_duration
-
-        # Build min/max downtime DataArrays
-        min_downtime = xr.DataArray(
-            [params[eid].min_downtime or np.nan for eid in element_ids],
-            dims=[dim],
-            coords={dim: element_ids},
-        )
-        max_downtime = xr.DataArray(
-            [params[eid].max_downtime or np.nan for eid in element_ids],
-            dims=[dim],
-            coords={dim: element_ids},
-        )
-
-        # Build previous downtime DataArray
-        previous_downtime_values = []
-        for eid in element_ids:
-            if eid in self._previous_status and params[eid].min_downtime is not None:
-                prev = StatusHelpers.compute_previous_duration(
-                    self._previous_status[eid], target_state=0, timestep_duration=timestep_duration
-                )
-                previous_downtime_values.append(prev)
-            else:
-                previous_downtime_values.append(np.nan)
-        previous_downtime = xr.DataArray(previous_downtime_values, dims=[dim], coords={dim: element_ids})
-
         # inactive variable is required for downtime tracking
         inactive = self.inactive
 
-        # Use StatusHelpers for the math
+        previous_downtime = self.data.previous_downtime
         var = StatusHelpers.add_batched_duration_tracking(
             model=self.model,
             state=inactive,
             name=FlowVarName.DOWNTIME,
-            dim_name=dim,
-            timestep_duration=timestep_duration,
-            minimum_duration=min_downtime,
-            maximum_duration=max_downtime,
-            previous_duration=previous_downtime if previous_downtime.notnull().any() else None,
+            dim_name=self.dim_name,
+            timestep_duration=self.model.timestep_duration,
+            minimum_duration=self.data.min_downtime,
+            maximum_duration=self.data.max_downtime,
+            previous_duration=previous_downtime
+            if previous_downtime is not None and previous_downtime.notnull().any()
+            else None,
         )
         self._variables['downtime'] = var
         return var

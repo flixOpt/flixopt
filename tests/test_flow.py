@@ -380,13 +380,11 @@ class TestFlowOnModel:
         assert 'flow|rate' in model.variables
         assert 'flow|status' in model.variables
         assert 'flow|active_hours' in model.variables
-        # Note: hours variable removed - computed inline in constraints now
 
         # Verify batched constraints exist
         assert 'flow|status_lb' in model.constraints
         assert 'flow|status_ub' in model.constraints
         assert 'flow|active_hours' in model.constraints
-        # Note: hours_eq constraint removed - hours computed inline now
 
         # Get individual flow variables
         flow_rate = model.variables['flow|rate'].sel(flow=flow_label, drop=True)
@@ -451,7 +449,6 @@ class TestFlowOnModel:
         assert 'flow|rate' in model.variables
         assert 'flow|status' in model.variables
         assert 'flow|active_hours' in model.variables
-        # Note: hours variable removed - computed inline in constraints now
 
         # Verify batched constraints exist
         assert 'flow|status_lb' in model.constraints
@@ -832,14 +829,12 @@ class TestFlowOnInvestModel:
 
         # Verify batched variables exist
         assert 'flow|rate' in model.variables
-        # Note: hours variable removed - computed inline in constraints now
         assert 'flow|invested' in model.variables
         assert 'flow|size' in model.variables
         assert 'flow|status' in model.variables
         assert 'flow|active_hours' in model.variables
 
         # Verify batched constraints exist
-        # Note: hours_eq constraint removed - hours computed inline now
         assert 'flow|active_hours' in model.constraints
         assert 'flow|size|lb' in model.constraints
         assert 'flow|size|ub' in model.constraints
@@ -915,7 +910,6 @@ class TestFlowOnInvestModel:
 
         # Verify batched variables exist
         assert 'flow|rate' in model.variables
-        # Note: hours variable removed - computed inline in constraints now
         assert 'flow|size' in model.variables
         assert 'flow|status' in model.variables
         assert 'flow|active_hours' in model.variables
@@ -926,7 +920,6 @@ class TestFlowOnInvestModel:
         )
 
         # Verify batched constraints exist
-        # Note: hours_eq constraint removed - hours computed inline now
         assert 'flow|active_hours' in model.constraints
         # When flow has both status AND investment, uses status+invest bounds
         assert 'flow|status+invest_ub1' in model.constraints
