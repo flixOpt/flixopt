@@ -12,7 +12,7 @@ Usage:
 from __future__ import annotations
 
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -987,25 +987,30 @@ class FlowsData:
         """Stack per-element values into array with flow dimension.
 
         Returns scalar if all values are identical scalars.
+        Uses broadcast_like pattern to handle heterogeneous shapes.
         """
         dim = 'flow'
 
-        # Determine value types and dimensions
+        # Classify values and collect target coords
         scalar_values = []
-        first_array = None
+        target_coords: dict[str, Any] = {}
+        has_multidim = False
 
         for v in values:
             if isinstance(v, xr.DataArray):
                 if v.ndim == 0:
                     scalar_values.append(float(v.values))
                 else:
-                    first_array = v
-                    break
+                    has_multidim = True
+                    # Collect coords from all arrays
+                    for d in v.dims:
+                        if d not in target_coords:
+                            target_coords[d] = v.coords[d].values
             else:
                 scalar_values.append(float(v) if not (isinstance(v, float) and np.isnan(v)) else np.nan)
 
         # Fast path: all scalars
-        if first_array is None:
+        if not has_multidim:
             unique_values = set(v for v in scalar_values if not (isinstance(v, float) and np.isnan(v)))
             nan_count = sum(1 for v in scalar_values if isinstance(v, float) and np.isnan(v))
             if len(unique_values) == 1 and nan_count == 0:
@@ -1017,34 +1022,35 @@ class FlowsData:
                 dims=[dim],
             )
 
-        # Fast path for multi-dimensional: pre-allocate numpy array
-        # All arrays should have same shape (time, ...) - use first array as template
-        extra_dims = list(first_array.dims)
-        extra_shape = list(first_array.shape)
-        extra_coords = {d: first_array.coords[d].values for d in extra_dims}
+        # Create template for broadcasting (without flow dim - that's added by stacking)
+        template = xr.DataArray(coords=target_coords, dims=list(target_coords.keys()))
 
         # Build full shape: (n_flows, *extra_dims)
         n_flows = len(values)
+        extra_dims = list(target_coords.keys())
+        extra_shape = [len(c) for c in target_coords.values()]
         full_shape = [n_flows] + extra_shape
         full_dims = [dim] + extra_dims
 
-        # Pre-allocate with NaN (for missing values)
+        # Pre-allocate with NaN
         data = np.full(full_shape, np.nan)
 
-        # Fill in values
+        # Fill in values, broadcasting each to template shape
         for i, v in enumerate(values):
             if isinstance(v, xr.DataArray):
                 if v.ndim == 0:
                     data[i, ...] = float(v.values)
                 else:
-                    data[i, ...] = v.values
+                    # Broadcast to template shape
+                    broadcasted = v.broadcast_like(template)
+                    data[i, ...] = broadcasted.values
             elif not (isinstance(v, float) and np.isnan(v)):
                 data[i, ...] = float(v)
             # else: leave as NaN
 
-        # Build coords
+        # Build coords with flow first
         full_coords = {dim: self._ids_index}
-        full_coords.update(extra_coords)
+        full_coords.update(target_coords)
 
         return xr.DataArray(data, coords=full_coords, dims=full_dims)
 
