@@ -1,6 +1,6 @@
-"""Benchmark script for model build performance.
+"""Benchmark script for FlixOpt performance.
 
-Tests build_model() with various FlowSystem configurations to measure performance.
+Tests various operations: build_model(), LP file write, connect(), transform.
 
 Usage:
     python benchmarks/benchmark_model_build.py              # Run default benchmarks
@@ -8,9 +8,11 @@ Usage:
     python benchmarks/benchmark_model_build.py --system complex  # Run specific system
 """
 
+import os
+import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
-from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -18,44 +20,110 @@ import pandas as pd
 import flixopt as fx
 
 
-class BenchmarkResult(NamedTuple):
+@dataclass
+class BenchmarkResult:
     """Results from a benchmark run."""
 
     name: str
-    mean_ms: float
-    std_ms: float
-    iterations: int
+    n_timesteps: int = 0
+    n_periods: int = 0
+    n_scenarios: int = 0
+    n_components: int = 0
+    n_flows: int = 0
     n_vars: int = 0
     n_cons: int = 0
+    # Timings (ms)
+    connect_ms: float = 0.0
+    build_ms: float = 0.0
+    write_lp_ms: float = 0.0
+    transform_ms: float = 0.0
+    # File size
+    lp_size_mb: float = 0.0
 
 
-def benchmark_build(create_func, iterations: int = 3, warmup: int = 1) -> BenchmarkResult:
-    """Benchmark build_model() for a FlowSystem creator function."""
-    # Warmup
+def _time_it(func, iterations: int = 3, warmup: int = 1) -> tuple[float, float]:
+    """Time a function, return (mean_ms, std_ms)."""
     for _ in range(warmup):
-        fs = create_func()
-        fs.build_model()
+        func()
 
-    # Timed runs
     times = []
-    n_vars = n_cons = 0
     for _ in range(iterations):
-        fs = create_func()
         start = time.perf_counter()
-        fs.build_model()
-        elapsed = time.perf_counter() - start
-        times.append(elapsed)
-        n_vars = len(fs.model.variables)
-        n_cons = len(fs.model.constraints)
+        func()
+        times.append(time.perf_counter() - start)
 
-    return BenchmarkResult(
-        name=create_func.__name__,
-        mean_ms=np.mean(times) * 1000,
-        std_ms=np.std(times) * 1000,
-        iterations=iterations,
-        n_vars=n_vars,
-        n_cons=n_cons,
-    )
+    return np.mean(times) * 1000, np.std(times) * 1000
+
+
+def benchmark_system(create_func, iterations: int = 3) -> BenchmarkResult:
+    """Run full benchmark suite for a FlowSystem creator function."""
+    result = BenchmarkResult(name=create_func.__name__)
+
+    # Create system and get basic info
+    fs = create_func()
+    result.n_timesteps = len(fs.timesteps)
+    result.n_periods = len(fs.periods) if fs.periods is not None else 0
+    result.n_scenarios = len(fs.scenarios) if fs.scenarios is not None else 0
+    result.n_components = len(fs.components)
+    result.n_flows = len(fs.flows)
+
+    # Benchmark connect (if not already connected)
+    def do_connect():
+        fs_fresh = create_func()
+        fs_fresh.connect_and_transform()
+
+    result.connect_ms, _ = _time_it(do_connect, iterations=iterations)
+
+    # Benchmark build_model
+    def do_build():
+        fs_fresh = create_func()
+        fs_fresh.build_model()
+        return fs_fresh
+
+    build_times = []
+    for _ in range(iterations):
+        fs_fresh = create_func()
+        start = time.perf_counter()
+        fs_fresh.build_model()
+        build_times.append(time.perf_counter() - start)
+        result.n_vars = len(fs_fresh.model.variables)
+        result.n_cons = len(fs_fresh.model.constraints)
+
+    result.build_ms = np.mean(build_times) * 1000
+
+    # Benchmark LP file write (suppress progress bars)
+    import io
+    import sys
+
+    fs.build_model()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        lp_path = os.path.join(tmpdir, 'model.lp')
+
+        def do_write_lp():
+            # Suppress linopy progress bars during timing
+            old_stderr = sys.stderr
+            sys.stderr = io.StringIO()
+            try:
+                fs.model.to_file(lp_path)
+            finally:
+                sys.stderr = old_stderr
+
+        result.write_lp_ms, _ = _time_it(do_write_lp, iterations=iterations)
+        result.lp_size_mb = os.path.getsize(lp_path) / 1e6
+
+    # Benchmark transform operations (if applicable)
+    if result.n_timesteps >= 168:  # Only if enough timesteps for meaningful transform
+
+        def do_transform():
+            fs_fresh = create_func()
+            # Chain some common transforms
+            fs_fresh.transform.sel(
+                time=slice(fs_fresh.timesteps[0], fs_fresh.timesteps[min(167, len(fs_fresh.timesteps) - 1)])
+            )
+
+        result.transform_ms, _ = _time_it(do_transform, iterations=iterations)
+
+    return result
 
 
 # =============================================================================
@@ -301,54 +369,72 @@ def create_large_system(
 # =============================================================================
 
 
-def run_single_benchmark(name: str, create_func, iterations: int = 3) -> BenchmarkResult:
-    """Run benchmark for a single system."""
-    print(f'\n{name}:')
+def run_single_benchmark(name: str, create_func, iterations: int = 3, verbose: bool = True) -> BenchmarkResult:
+    """Run full benchmark for a single system."""
+    if verbose:
+        print(f'  {name}...', end=' ', flush=True)
 
-    # Get system info
-    fs = create_func()
-    print(
-        f'  Timesteps: {len(fs.timesteps)}, Periods: {len(fs.periods) if fs.periods is not None else 0}, '
-        f'Scenarios: {len(fs.scenarios) if fs.scenarios is not None else 0}'
-    )
-    print(f'  Components: {len(fs.components)}, Flows: {len(fs.flows)}')
+    result = benchmark_system(create_func, iterations=iterations)
+    result.name = name
 
-    # Benchmark
-    result = benchmark_build(create_func, iterations=iterations)
-    print(f'  Build: {result.mean_ms:.1f}ms (±{result.std_ms:.1f}ms)')
-    print(f'  Variables: {result.n_vars}, Constraints: {result.n_cons}')
+    if verbose:
+        print(f'{result.build_ms:.0f}ms')
 
     return result
 
 
-def run_all_benchmarks(iterations: int = 3):
-    """Run benchmarks on all available systems."""
+def results_to_dataframe(results: list[BenchmarkResult]) -> pd.DataFrame:
+    """Convert benchmark results to a formatted DataFrame."""
+    data = []
+    for r in results:
+        data.append(
+            {
+                'System': r.name,
+                'Timesteps': r.n_timesteps,
+                'Periods': r.n_periods,
+                'Scenarios': r.n_scenarios,
+                'Components': r.n_components,
+                'Flows': r.n_flows,
+                'Variables': r.n_vars,
+                'Constraints': r.n_cons,
+                'Connect (ms)': round(r.connect_ms, 1),
+                'Build (ms)': round(r.build_ms, 1),
+                'Write LP (ms)': round(r.write_lp_ms, 1),
+                'Transform (ms)': round(r.transform_ms, 1),
+                'LP Size (MB)': round(r.lp_size_mb, 2),
+            }
+        )
+    return pd.DataFrame(data)
+
+
+def run_all_benchmarks(iterations: int = 3) -> pd.DataFrame:
+    """Run benchmarks on all available systems and return DataFrame."""
     print('=' * 70)
-    print('FlixOpt Model Build Benchmarks')
+    print('FlixOpt Performance Benchmarks')
     print('=' * 70)
 
-    results = {}
+    results = []
 
     # Notebook systems (if available)
     notebook_systems = [
-        ('Complex System (72h)', load_complex_system),
+        ('Complex (72h, piecewise)', load_complex_system),
         ('District Heating (744h)', load_district_heating),
-        ('Multiperiod (336h x 3 periods x 2 scenarios)', load_multiperiod_system),
+        ('Multiperiod (336h×3p×2s)', load_multiperiod_system),
     ]
 
-    print('\n--- Notebook Example Systems ---')
+    print('\nNotebook Example Systems:')
     for name, loader in notebook_systems:
         try:
-            results[name] = run_single_benchmark(name, loader, iterations)
-        except FileNotFoundError as e:
-            print(f'\n{name}: SKIPPED ({e})')
+            results.append(run_single_benchmark(name, loader, iterations))
+        except FileNotFoundError:
+            print(f'  {name}... SKIPPED (run generate_example_systems.py first)')
 
     # Synthetic stress-test systems
-    print('\n--- Synthetic Stress-Test Systems ---')
+    print('\nSynthetic Stress-Test Systems:')
 
     synthetic_systems = [
         (
-            'Small (168h, 10 conv, no features)',
+            'Small (168h, basic)',
             lambda: create_large_system(
                 n_timesteps=168,
                 n_periods=None,
@@ -360,7 +446,7 @@ def run_all_benchmarks(iterations: int = 3):
             ),
         ),
         (
-            'Medium (720h, 20 conv, all features)',
+            'Medium (720h, all features)',
             lambda: create_large_system(
                 n_timesteps=720,
                 n_periods=None,
@@ -372,7 +458,7 @@ def run_all_benchmarks(iterations: int = 3):
             ),
         ),
         (
-            'Large (720h, 50 conv, all features)',
+            'Large (720h, 50 conv)',
             lambda: create_large_system(
                 n_timesteps=720,
                 n_periods=None,
@@ -384,7 +470,7 @@ def run_all_benchmarks(iterations: int = 3):
             ),
         ),
         (
-            'Multiperiod (720h x 3 periods, 20 conv)',
+            'Multiperiod (720h×3p)',
             lambda: create_large_system(
                 n_timesteps=720,
                 n_periods=3,
@@ -396,7 +482,7 @@ def run_all_benchmarks(iterations: int = 3):
             ),
         ),
         (
-            'Full Year (8760h, 10 conv, basic)',
+            'Full Year (8760h)',
             lambda: create_large_system(
                 n_timesteps=8760,
                 n_periods=None,
@@ -411,28 +497,35 @@ def run_all_benchmarks(iterations: int = 3):
 
     for name, creator in synthetic_systems:
         try:
-            results[name] = run_single_benchmark(name, creator, iterations)
+            results.append(run_single_benchmark(name, creator, iterations))
         except Exception as e:
-            print(f'\n{name}: ERROR ({e})')
+            print(f'  {name}... ERROR ({e})')
 
-    # Summary table
+    # Convert to DataFrame and display
+    df = results_to_dataframe(results)
+
     print('\n' + '=' * 70)
-    print('Summary')
+    print('Results')
     print('=' * 70)
-    print(f'\n  {"System":<45} {"Build (ms)":>12} {"Vars":>8} {"Cons":>8}')
-    print(f'  {"-" * 45} {"-" * 12} {"-" * 8} {"-" * 8}')
 
-    for name, res in results.items():
-        print(f'  {name:<45} {res.mean_ms:>9.1f}ms {res.n_vars:>8} {res.n_cons:>8}')
+    # Display timing columns
+    timing_cols = ['System', 'Connect (ms)', 'Build (ms)', 'Write LP (ms)', 'LP Size (MB)']
+    print('\nTiming Results:')
+    print(df[timing_cols].to_string(index=False))
 
-    return results
+    # Display size columns
+    size_cols = ['System', 'Timesteps', 'Components', 'Flows', 'Variables', 'Constraints']
+    print('\nModel Size:')
+    print(df[size_cols].to_string(index=False))
+
+    return df
 
 
 def main():
     """Main entry point."""
     import argparse
 
-    parser = argparse.ArgumentParser(description='Benchmark FlixOpt model build performance')
+    parser = argparse.ArgumentParser(description='Benchmark FlixOpt performance')
     parser.add_argument('--all', '-a', action='store_true', help='Run all benchmarks')
     parser.add_argument(
         '--system',
@@ -447,7 +540,8 @@ def main():
     args = parser.parse_args()
 
     if args.all:
-        run_all_benchmarks(args.iterations)
+        df = run_all_benchmarks(args.iterations)
+        return df
     elif args.system:
         loaders = {
             'complex': ('Complex System', load_complex_system),
@@ -462,15 +556,14 @@ def main():
             ),
         }
         name, loader = loaders[args.system]
-        run_single_benchmark(name, loader, args.iterations)
+        result = run_single_benchmark(name, loader, args.iterations, verbose=False)
+        df = results_to_dataframe([result])
+        print(df.to_string(index=False))
+        return df
     else:
-        # Default: run a quick benchmark with synthetic system
-        print('Running default benchmark (use --all for comprehensive benchmarks)')
-        run_single_benchmark(
-            'Default (720h, 20 converters)',
-            lambda: create_large_system(n_timesteps=720, n_converters=20),
-            iterations=args.iterations,
-        )
+        # Default: run all benchmarks
+        df = run_all_benchmarks(args.iterations)
+        return df
 
 
 if __name__ == '__main__':
