@@ -493,6 +493,18 @@ def run_all_benchmarks(iterations: int = 3) -> pd.DataFrame:
                 with_piecewise=False,
             ),
         ),
+        (
+            'XL (2000h, 300 conv)',
+            lambda: create_large_system(
+                n_timesteps=2000,
+                n_periods=None,
+                n_converters=300,
+                n_storages=50,
+                with_status=True,
+                with_investment=True,
+                with_piecewise=True,
+            ),
+        ),
     ]
 
     for name, creator in synthetic_systems:
