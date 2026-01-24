@@ -1,14 +1,15 @@
-"""Benchmark script for model build and LP file I/O performance.
+"""Benchmark script for model build performance.
 
-Tests build_model() and LP file writing with large FlowSystems.
+Tests build_model() with various FlowSystem configurations to measure performance.
 
 Usage:
-    python benchmarks/benchmark_model_build.py
+    python benchmarks/benchmark_model_build.py              # Run default benchmarks
+    python benchmarks/benchmark_model_build.py --all        # Run all system types
+    python benchmarks/benchmark_model_build.py --system complex  # Run specific system
 """
 
-import os
-import tempfile
 import time
+from pathlib import Path
 from typing import NamedTuple
 
 import numpy as np
@@ -24,204 +25,453 @@ class BenchmarkResult(NamedTuple):
     mean_ms: float
     std_ms: float
     iterations: int
-    file_size_mb: float | None = None
+    n_vars: int = 0
+    n_cons: int = 0
 
 
-def create_flow_system(
-    n_timesteps: int = 168,
-    n_periods: int | None = None,
-    n_components: int = 50,
+def benchmark_build(create_func, iterations: int = 3, warmup: int = 1) -> BenchmarkResult:
+    """Benchmark build_model() for a FlowSystem creator function."""
+    # Warmup
+    for _ in range(warmup):
+        fs = create_func()
+        fs.build_model()
+
+    # Timed runs
+    times = []
+    n_vars = n_cons = 0
+    for _ in range(iterations):
+        fs = create_func()
+        start = time.perf_counter()
+        fs.build_model()
+        elapsed = time.perf_counter() - start
+        times.append(elapsed)
+        n_vars = len(fs.model.variables)
+        n_cons = len(fs.model.constraints)
+
+    return BenchmarkResult(
+        name=create_func.__name__,
+        mean_ms=np.mean(times) * 1000,
+        std_ms=np.std(times) * 1000,
+        iterations=iterations,
+        n_vars=n_vars,
+        n_cons=n_cons,
+    )
+
+
+# =============================================================================
+# Example Systems from Notebooks
+# =============================================================================
+
+
+def _get_notebook_data_dir() -> Path:
+    """Get the notebook data directory."""
+    return Path(__file__).parent.parent / 'docs' / 'notebooks' / 'data'
+
+
+def load_district_heating() -> fx.FlowSystem:
+    """Load district heating system from notebook data."""
+    path = _get_notebook_data_dir() / 'district_heating_system.nc4'
+    if not path.exists():
+        raise FileNotFoundError(f'Run docs/notebooks/data/generate_example_systems.py first: {path}')
+    return fx.FlowSystem.from_netcdf(path)
+
+
+def load_complex_system() -> fx.FlowSystem:
+    """Load complex multi-carrier system from notebook data."""
+    path = _get_notebook_data_dir() / 'complex_system.nc4'
+    if not path.exists():
+        raise FileNotFoundError(f'Run docs/notebooks/data/generate_example_systems.py first: {path}')
+    return fx.FlowSystem.from_netcdf(path)
+
+
+def load_multiperiod_system() -> fx.FlowSystem:
+    """Load multiperiod system from notebook data."""
+    path = _get_notebook_data_dir() / 'multiperiod_system.nc4'
+    if not path.exists():
+        raise FileNotFoundError(f'Run docs/notebooks/data/generate_example_systems.py first: {path}')
+    return fx.FlowSystem.from_netcdf(path)
+
+
+def load_seasonal_storage() -> fx.FlowSystem:
+    """Load seasonal storage system (8760h) from notebook data."""
+    path = _get_notebook_data_dir() / 'seasonal_storage_system.nc4'
+    if not path.exists():
+        raise FileNotFoundError(f'Run docs/notebooks/data/generate_example_systems.py first: {path}')
+    return fx.FlowSystem.from_netcdf(path)
+
+
+# =============================================================================
+# Synthetic Systems for Stress Testing
+# =============================================================================
+
+
+def create_large_system(
+    n_timesteps: int = 720,
+    n_periods: int | None = 2,
+    n_scenarios: int | None = None,
+    n_converters: int = 20,
+    n_storages: int = 5,
+    with_status: bool = True,
+    with_investment: bool = True,
+    with_piecewise: bool = True,
 ) -> fx.FlowSystem:
-    """Create a FlowSystem for benchmarking.
+    """Create a large synthetic FlowSystem for stress testing.
+
+    Features:
+    - Multiple buses (electricity, heat, gas)
+    - Multiple effects (costs, CO2)
+    - Converters with optional status, investment, piecewise
+    - Storages with optional investment
+    - Demands and supplies
 
     Args:
-        n_timesteps: Number of timesteps.
-        n_periods: Number of periods (None for no periods).
-        n_components: Number of sink/source pairs.
+        n_timesteps: Number of timesteps per period.
+        n_periods: Number of periods (None for single period).
+        n_scenarios: Number of scenarios (None for no scenarios).
+        n_converters: Number of converter components.
+        n_storages: Number of storage components.
+        with_status: Include status variables/constraints.
+        with_investment: Include investment variables/constraints.
+        with_piecewise: Include piecewise conversion (on some converters).
 
     Returns:
         Configured FlowSystem.
     """
     timesteps = pd.date_range('2024-01-01', periods=n_timesteps, freq='h')
-    periods = pd.Index([2028 + i * 2 for i in range(n_periods)], name='period') if n_periods else None
+    periods = pd.Index([2030 + i * 5 for i in range(n_periods)], name='period') if n_periods else None
+    scenarios = pd.Index([f'S{i}' for i in range(n_scenarios)], name='scenario') if n_scenarios else None
+    scenario_weights = np.ones(n_scenarios) / n_scenarios if n_scenarios else None
 
-    fs = fx.FlowSystem(timesteps=timesteps, periods=periods)
-    fs.add_elements(fx.Effect('Cost', '€', is_objective=True))
+    fs = fx.FlowSystem(
+        timesteps=timesteps,
+        periods=periods,
+        scenarios=scenarios,
+        scenario_weights=scenario_weights,
+    )
 
-    n_buses = 5
-    buses = [fx.Bus(f'Bus_{i}') for i in range(n_buses)]
-    fs.add_elements(*buses)
+    # Effects
+    fs.add_elements(
+        fx.Effect('costs', '€', 'Total Costs', is_standard=True, is_objective=True),
+        fx.Effect('CO2', 'kg', 'CO2 Emissions'),
+    )
 
-    # Create demand profile
-    base_demand = 100 + 50 * np.sin(2 * np.pi * np.arange(n_timesteps) / 24)
+    # Buses
+    fs.add_elements(
+        fx.Bus('Electricity'),
+        fx.Bus('Heat'),
+        fx.Bus('Gas'),
+    )
 
-    for i in range(n_components):
-        bus = buses[i % n_buses]
-        profile = base_demand + np.random.normal(0, 10, n_timesteps)
-        profile = np.clip(profile / profile.max(), 0.1, 1.0)
+    # Demand profiles (sinusoidal + noise)
+    base_profile = 50 + 30 * np.sin(2 * np.pi * np.arange(n_timesteps) / 24)
+    heat_profile = base_profile + np.random.normal(0, 5, n_timesteps)
+    heat_profile = np.clip(heat_profile / heat_profile.max(), 0.2, 1.0)
 
-        fs.add_elements(
-            fx.Sink(
-                f'D_{i}',
-                inputs=[fx.Flow(f'Q_{i}', bus=bus.label, size=100, fixed_relative_profile=profile)],
-            )
+    elec_profile = base_profile * 0.5 + np.random.normal(0, 3, n_timesteps)
+    elec_profile = np.clip(elec_profile / elec_profile.max(), 0.1, 1.0)
+
+    # Price profiles
+    gas_price = 30 + 5 * np.sin(2 * np.pi * np.arange(n_timesteps) / (24 * 7))  # Weekly variation
+    elec_price = 50 + 20 * np.sin(2 * np.pi * np.arange(n_timesteps) / 24)  # Daily variation
+
+    # Gas supply
+    fs.add_elements(
+        fx.Source(
+            'GasGrid',
+            outputs=[fx.Flow('Gas', bus='Gas', size=5000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.2})],
         )
+    )
+
+    # Electricity grid (buy/sell)
+    fs.add_elements(
+        fx.Source(
+            'ElecBuy',
+            outputs=[
+                fx.Flow('El', bus='Electricity', size=2000, effects_per_flow_hour={'costs': elec_price, 'CO2': 0.4})
+            ],
+        ),
+        fx.Sink(
+            'ElecSell',
+            inputs=[fx.Flow('El', bus='Electricity', size=1000, effects_per_flow_hour={'costs': -elec_price * 0.8})],
+        ),
+    )
+
+    # Demands
+    fs.add_elements(
+        fx.Sink('HeatDemand', inputs=[fx.Flow('Heat', bus='Heat', size=1, fixed_relative_profile=heat_profile)]),
+        fx.Sink('ElecDemand', inputs=[fx.Flow('El', bus='Electricity', size=1, fixed_relative_profile=elec_profile)]),
+    )
+
+    # Converters (CHPs and Boilers)
+    for i in range(n_converters):
+        is_chp = i % 3 != 0  # 2/3 are CHPs, 1/3 are boilers
+        use_piecewise = with_piecewise and i % 5 == 0  # Every 5th gets piecewise
+
+        size_param = (
+            fx.InvestParameters(
+                minimum_size=50,
+                maximum_size=200,
+                effects_of_investment_per_size={'costs': 100},
+                linked_periods=True if n_periods else None,
+            )
+            if with_investment
+            else 150
+        )
+
+        status_param = fx.StatusParameters(effects_per_startup={'costs': 500}) if with_status else None
+
+        if is_chp:
+            # CHP unit
+            if use_piecewise:
+                fs.add_elements(
+                    fx.LinearConverter(
+                        f'CHP_{i}',
+                        inputs=[fx.Flow('Gas', bus='Gas', size=300)],
+                        outputs=[
+                            fx.Flow('El', bus='Electricity', size=100),
+                            fx.Flow('Heat', bus='Heat', size=size_param, status_parameters=status_param),
+                        ],
+                        piecewise_conversion=fx.PiecewiseConversion(
+                            {
+                                'Gas': fx.Piecewise([fx.Piece(start=100, end=200), fx.Piece(start=200, end=300)]),
+                                'El': fx.Piecewise([fx.Piece(start=30, end=70), fx.Piece(start=70, end=100)]),
+                                'Heat': fx.Piecewise([fx.Piece(start=50, end=100), fx.Piece(start=100, end=150)]),
+                            }
+                        ),
+                    )
+                )
+            else:
+                fs.add_elements(
+                    fx.linear_converters.CHP(
+                        f'CHP_{i}',
+                        thermal_efficiency=0.50,
+                        electrical_efficiency=0.35,
+                        thermal_flow=fx.Flow('Heat', bus='Heat', size=size_param, status_parameters=status_param),
+                        electrical_flow=fx.Flow('El', bus='Electricity', size=100),
+                        fuel_flow=fx.Flow('Gas', bus='Gas'),
+                    )
+                )
+        else:
+            # Boiler
+            fs.add_elements(
+                fx.linear_converters.Boiler(
+                    f'Boiler_{i}',
+                    thermal_efficiency=0.90,
+                    thermal_flow=fx.Flow(
+                        'Heat',
+                        bus='Heat',
+                        size=size_param,
+                        relative_minimum=0.2,
+                        status_parameters=status_param,
+                    ),
+                    fuel_flow=fx.Flow('Gas', bus='Gas'),
+                )
+            )
+
+    # Storages
+    for i in range(n_storages):
+        capacity_param = (
+            fx.InvestParameters(
+                minimum_size=0,
+                maximum_size=1000,
+                effects_of_investment_per_size={'costs': 10},
+            )
+            if with_investment
+            else 500
+        )
+
         fs.add_elements(
-            fx.Source(
-                f'S_{i}',
-                outputs=[fx.Flow(f'P_{i}', bus=bus.label, size=500, effects_per_flow_hour={'Cost': 20 + i})],
+            fx.Storage(
+                f'Storage_{i}',
+                capacity_in_flow_hours=capacity_param,
+                initial_charge_state=0,
+                eta_charge=0.95,
+                eta_discharge=0.95,
+                relative_loss_per_hour=0.001,
+                charging=fx.Flow('Charge', bus='Heat', size=100),
+                discharging=fx.Flow('Discharge', bus='Heat', size=100),
             )
         )
 
     return fs
 
 
-def benchmark_function(func, iterations: int = 5, warmup: int = 1) -> BenchmarkResult:
-    """Benchmark a function with multiple iterations."""
-    # Warmup
-    for _ in range(warmup):
-        func()
+# =============================================================================
+# Benchmark Runners
+# =============================================================================
 
-    # Timed runs
-    times = []
-    for _ in range(iterations):
-        start = time.perf_counter()
-        func()
-        elapsed = time.perf_counter() - start
-        times.append(elapsed)
 
-    return BenchmarkResult(
-        name=func.__name__ if hasattr(func, '__name__') else str(func),
-        mean_ms=np.mean(times) * 1000,
-        std_ms=np.std(times) * 1000,
-        iterations=iterations,
+def run_single_benchmark(name: str, create_func, iterations: int = 3) -> BenchmarkResult:
+    """Run benchmark for a single system."""
+    print(f'\n{name}:')
+
+    # Get system info
+    fs = create_func()
+    print(
+        f'  Timesteps: {len(fs.timesteps)}, Periods: {len(fs.periods) if fs.periods is not None else 0}, '
+        f'Scenarios: {len(fs.scenarios) if fs.scenarios is not None else 0}'
     )
+    print(f'  Components: {len(fs.components)}, Flows: {len(fs.flows)}')
+
+    # Benchmark
+    result = benchmark_build(create_func, iterations=iterations)
+    print(f'  Build: {result.mean_ms:.1f}ms (±{result.std_ms:.1f}ms)')
+    print(f'  Variables: {result.n_vars}, Constraints: {result.n_cons}')
+
+    return result
 
 
-def run_model_benchmarks(
-    n_timesteps: int = 168,
-    n_periods: int | None = None,
-    n_components: int = 50,
-    iterations: int = 3,
-) -> dict[str, BenchmarkResult]:
-    """Run model build and LP file benchmarks."""
+def run_all_benchmarks(iterations: int = 3):
+    """Run benchmarks on all available systems."""
     print('=' * 70)
-    print('Model Build & LP File Benchmark')
+    print('FlixOpt Model Build Benchmarks')
     print('=' * 70)
-    print('\nConfiguration:')
-    print(f'  Timesteps: {n_timesteps}')
-    print(f'  Periods: {n_periods or "None"}')
-    print(f'  Components: {n_components}')
-    print(f'  Iterations: {iterations}')
 
     results = {}
 
-    # Create FlowSystem
-    print('\n1. Creating FlowSystem...')
-    fs = create_flow_system(n_timesteps, n_periods, n_components)
-    print(f'   Components: {len(fs.components)}')
-    print(f'   Flows: {len(fs.flows)}')
+    # Notebook systems (if available)
+    notebook_systems = [
+        ('Complex System (72h)', load_complex_system),
+        ('District Heating (744h)', load_district_heating),
+        ('Multiperiod (336h x 3 periods x 2 scenarios)', load_multiperiod_system),
+    ]
 
-    # Benchmark build_model
-    print('\n2. Benchmarking build_model()...')
+    print('\n--- Notebook Example Systems ---')
+    for name, loader in notebook_systems:
+        try:
+            results[name] = run_single_benchmark(name, loader, iterations)
+        except FileNotFoundError as e:
+            print(f'\n{name}: SKIPPED ({e})')
 
-    def build_model():
-        # Need fresh FlowSystem each time since build_model modifies it
-        fs_fresh = create_flow_system(n_timesteps, n_periods, n_components)
-        fs_fresh.build_model()
-        return fs_fresh
+    # Synthetic stress-test systems
+    print('\n--- Synthetic Stress-Test Systems ---')
 
-    result = benchmark_function(build_model, iterations=iterations, warmup=1)
-    results['build_model'] = result
-    print(f'   Mean: {result.mean_ms:.1f}ms (std: {result.std_ms:.1f}ms)')
+    synthetic_systems = [
+        (
+            'Small (168h, 10 conv, no features)',
+            lambda: create_large_system(
+                n_timesteps=168,
+                n_periods=None,
+                n_converters=10,
+                n_storages=2,
+                with_status=False,
+                with_investment=False,
+                with_piecewise=False,
+            ),
+        ),
+        (
+            'Medium (720h, 20 conv, all features)',
+            lambda: create_large_system(
+                n_timesteps=720,
+                n_periods=None,
+                n_converters=20,
+                n_storages=5,
+                with_status=True,
+                with_investment=True,
+                with_piecewise=True,
+            ),
+        ),
+        (
+            'Large (720h, 50 conv, all features)',
+            lambda: create_large_system(
+                n_timesteps=720,
+                n_periods=None,
+                n_converters=50,
+                n_storages=10,
+                with_status=True,
+                with_investment=True,
+                with_piecewise=True,
+            ),
+        ),
+        (
+            'Multiperiod (720h x 3 periods, 20 conv)',
+            lambda: create_large_system(
+                n_timesteps=720,
+                n_periods=3,
+                n_converters=20,
+                n_storages=5,
+                with_status=True,
+                with_investment=True,
+                with_piecewise=True,
+            ),
+        ),
+        (
+            'Full Year (8760h, 10 conv, basic)',
+            lambda: create_large_system(
+                n_timesteps=8760,
+                n_periods=None,
+                n_converters=10,
+                n_storages=3,
+                with_status=False,
+                with_investment=True,
+                with_piecewise=False,
+            ),
+        ),
+    ]
 
-    # Build model once for LP file benchmarks
-    print('\n3. Building model for LP benchmarks...')
-    fs.build_model()
-    model = fs.model
+    for name, creator in synthetic_systems:
+        try:
+            results[name] = run_single_benchmark(name, creator, iterations)
+        except Exception as e:
+            print(f'\n{name}: ERROR ({e})')
 
-    print(f'   Variables: {len(model.variables)}')
-    print(f'   Constraints: {len(model.constraints)}')
-
-    # Benchmark LP file write
-    print('\n4. Benchmarking LP file write...')
-    with tempfile.TemporaryDirectory() as tmpdir:
-        lp_path = os.path.join(tmpdir, 'model.lp')
-
-        def write_lp():
-            model.to_file(lp_path)
-
-        result = benchmark_function(write_lp, iterations=iterations, warmup=1)
-        file_size_mb = os.path.getsize(lp_path) / 1e6
-
-        results['write_lp'] = BenchmarkResult(
-            name='write_lp',
-            mean_ms=result.mean_ms,
-            std_ms=result.std_ms,
-            iterations=result.iterations,
-            file_size_mb=file_size_mb,
-        )
-        print(f'   Mean: {result.mean_ms:.1f}ms (std: {result.std_ms:.1f}ms)')
-        print(f'   File size: {file_size_mb:.2f} MB')
-
-    # Summary
+    # Summary table
     print('\n' + '=' * 70)
     print('Summary')
     print('=' * 70)
-    print(f'\n  {"Operation":<20} {"Mean":>12} {"Std":>12} {"File Size":>12}')
-    print(f'  {"-" * 20} {"-" * 12} {"-" * 12} {"-" * 12}')
+    print(f'\n  {"System":<45} {"Build (ms)":>12} {"Vars":>8} {"Cons":>8}')
+    print(f'  {"-" * 45} {"-" * 12} {"-" * 8} {"-" * 8}')
 
-    for key, res in results.items():
-        size_str = f'{res.file_size_mb:.2f} MB' if res.file_size_mb else '-'
-        print(f'  {key:<20} {res.mean_ms:>9.1f}ms {res.std_ms:>9.1f}ms {size_str:>12}')
+    for name, res in results.items():
+        print(f'  {name:<45} {res.mean_ms:>9.1f}ms {res.n_vars:>8} {res.n_cons:>8}')
 
     return results
 
 
-def run_scaling_benchmark():
-    """Run benchmarks with different system sizes."""
-    print('\n' + '=' * 70)
-    print('Scaling Benchmark')
-    print('=' * 70)
+def main():
+    """Main entry point."""
+    import argparse
 
-    configs = [
-        # (n_timesteps, n_periods, n_components)
-        (24, None, 10),
-        (168, None, 10),
-        (168, None, 50),
-        (168, None, 100),
-        (168, 3, 50),
-        (720, None, 50),
-    ]
+    parser = argparse.ArgumentParser(description='Benchmark FlixOpt model build performance')
+    parser.add_argument('--all', '-a', action='store_true', help='Run all benchmarks')
+    parser.add_argument(
+        '--system',
+        '-s',
+        choices=['complex', 'district', 'multiperiod', 'seasonal', 'synthetic'],
+        help='Run specific system benchmark',
+    )
+    parser.add_argument('--iterations', '-i', type=int, default=3, help='Number of iterations')
+    parser.add_argument('--converters', '-c', type=int, default=20, help='Number of converters (synthetic)')
+    parser.add_argument('--timesteps', '-t', type=int, default=720, help='Number of timesteps (synthetic)')
+    parser.add_argument('--periods', '-p', type=int, default=None, help='Number of periods (synthetic)')
+    args = parser.parse_args()
 
-    print(f'\n  {"Config":<30} {"build_model":>15} {"write_lp":>15} {"LP Size":>12}')
-    print(f'  {"-" * 30} {"-" * 15} {"-" * 15} {"-" * 12}')
-
-    for n_ts, n_per, n_comp in configs:
-        results = run_model_benchmarks(n_ts, n_per, n_comp, iterations=3)
-
-        per_str = f', {n_per}p' if n_per else ''
-        config = f'{n_ts}ts, {n_comp}c{per_str}'
-
-        build_ms = results['build_model'].mean_ms
-        lp_ms = results['write_lp'].mean_ms
-        lp_size = results['write_lp'].file_size_mb
-
-        print(f'  {config:<30} {build_ms:>12.1f}ms {lp_ms:>12.1f}ms {lp_size:>9.2f} MB')
+    if args.all:
+        run_all_benchmarks(args.iterations)
+    elif args.system:
+        loaders = {
+            'complex': ('Complex System', load_complex_system),
+            'district': ('District Heating', load_district_heating),
+            'multiperiod': ('Multiperiod', load_multiperiod_system),
+            'seasonal': ('Seasonal Storage (8760h)', load_seasonal_storage),
+            'synthetic': (
+                'Synthetic',
+                lambda: create_large_system(
+                    n_timesteps=args.timesteps, n_periods=args.periods, n_converters=args.converters
+                ),
+            ),
+        }
+        name, loader = loaders[args.system]
+        run_single_benchmark(name, loader, args.iterations)
+    else:
+        # Default: run a quick benchmark with synthetic system
+        print('Running default benchmark (use --all for comprehensive benchmarks)')
+        run_single_benchmark(
+            'Default (720h, 20 converters)',
+            lambda: create_large_system(n_timesteps=720, n_converters=20),
+            iterations=args.iterations,
+        )
 
 
 if __name__ == '__main__':
-    import argparse
-
-    parser = argparse.ArgumentParser(description='Benchmark model build and LP file I/O')
-    parser.add_argument('--timesteps', '-t', type=int, default=168, help='Number of timesteps')
-    parser.add_argument('--periods', '-p', type=int, default=None, help='Number of periods')
-    parser.add_argument('--components', '-c', type=int, default=50, help='Number of components')
-    parser.add_argument('--iterations', '-i', type=int, default=3, help='Benchmark iterations')
-    parser.add_argument('--scaling', '-s', action='store_true', help='Run scaling benchmark')
-    args = parser.parse_args()
-
-    if args.scaling:
-        run_scaling_benchmark()
-    else:
-        run_model_benchmarks(args.timesteps, args.periods, args.components, args.iterations)
+    main()
