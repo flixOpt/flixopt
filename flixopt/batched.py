@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .features import InvestmentHelpers, concat_with_coords
+from .features import InvestmentHelpers, concat_with_coords, fast_isnull, fast_notnull
 from .interface import InvestParameters, StatusParameters
 from .structure import ElementContainer
 
@@ -874,16 +874,16 @@ class FlowsData:
         """(flow, time, period, scenario) - effective lower bound (uses fixed_profile if set)."""
         fixed = self.fixed_relative_profile
         rel_min = self.relative_minimum
-        # Use DataArray.where (faster than xr.where)
-        return rel_min.where(fixed.isnull(), fixed)
+        # Use DataArray.where with fast_isnull (faster than xr.where)
+        return rel_min.where(fast_isnull(fixed), fixed)
 
     @cached_property
     def effective_relative_maximum(self) -> xr.DataArray:
         """(flow, time, period, scenario) - effective upper bound (uses fixed_profile if set)."""
         fixed = self.fixed_relative_profile
         rel_max = self.relative_maximum
-        # Use DataArray.where (faster than xr.where)
-        return rel_max.where(fixed.isnull(), fixed)
+        # Use DataArray.where with fast_isnull (faster than xr.where)
+        return rel_max.where(fast_isnull(fixed), fixed)
 
     @cached_property
     def fixed_size(self) -> xr.DataArray:
@@ -949,13 +949,8 @@ class FlowsData:
         # Base: relative_min * size_lower
         base = self.effective_relative_minimum * self.effective_size_lower
 
-        # Build mask for flows that should have lb=0
-        flow_ids = xr.DataArray(self._ids_index, dims=['flow'], coords={'flow': self._ids_index})
-        is_status = flow_ids.isin(self.with_status)
-        is_optional_invest = flow_ids.isin(self.with_optional_investment)
-        has_no_size = self.effective_size_lower.isnull()
-
-        is_zero = is_status | is_optional_invest | has_no_size
+        # Build mask for flows that should have lb=0 (use pre-computed boolean masks)
+        is_zero = self.has_status | self.has_optional_investment | fast_isnull(self.effective_size_lower)
         # Use DataArray.where (faster than xr.where)
         return base.where(~is_zero, 0.0).fillna(0.0)
 
@@ -972,7 +967,7 @@ class FlowsData:
         base = self.effective_relative_maximum * self.effective_size_upper
 
         # Inf for flows without size (use DataArray.where, faster than xr.where)
-        return base.where(self.effective_size_upper.notnull(), np.inf)
+        return base.where(fast_notnull(self.effective_size_upper), np.inf)
 
     # --- Investment Bounds (delegated to InvestmentData) ---
 

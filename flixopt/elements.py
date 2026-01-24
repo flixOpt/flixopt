@@ -15,7 +15,7 @@ import xarray as xr
 from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError
-from .features import MaskHelpers
+from .features import MaskHelpers, fast_notnull
 from .interface import InvestParameters, StatusParameters
 from .modeling import ModelingUtilitiesAbstract
 from .structure import (
@@ -1428,7 +1428,7 @@ class FlowsModel(TypeModel):
             minimum_duration=self.data.min_uptime,
             maximum_duration=self.data.max_uptime,
             previous_duration=previous_uptime
-            if previous_uptime is not None and previous_uptime.notnull().any()
+            if previous_uptime is not None and fast_notnull(previous_uptime).any()
             else None,
         )
         self._variables['uptime'] = var
@@ -1455,7 +1455,7 @@ class FlowsModel(TypeModel):
             minimum_duration=self.data.min_downtime,
             maximum_duration=self.data.max_downtime,
             previous_duration=previous_downtime
-            if previous_downtime is not None and previous_downtime.notnull().any()
+            if previous_downtime is not None and fast_notnull(previous_downtime).any()
             else None,
         )
         self._variables['downtime'] = var
@@ -2631,7 +2631,7 @@ class ConvertersModel:
         all_reconstructed = (lambda0 * bp['starts'] + lambda1 * bp['ends']).sum('segment')
 
         # Mask: valid where breakpoints exist (not NaN)
-        valid_mask = bp['starts'].notnull().any('segment')
+        valid_mask = fast_notnull(bp['starts']).any('segment')
 
         # Apply mask and sum over converter (each flow has exactly one valid converter)
         reconstructed_per_flow = all_reconstructed.where(valid_mask).sum('converter')

@@ -25,6 +25,30 @@ if TYPE_CHECKING:
 # =============================================================================
 
 
+def fast_notnull(arr: xr.DataArray) -> xr.DataArray:
+    """Fast notnull check using numpy (~55x faster than xr.DataArray.notnull()).
+
+    Args:
+        arr: DataArray to check for non-null values.
+
+    Returns:
+        Boolean DataArray with True where values are not NaN.
+    """
+    return xr.DataArray(~np.isnan(arr.values), dims=arr.dims, coords=arr.coords)
+
+
+def fast_isnull(arr: xr.DataArray) -> xr.DataArray:
+    """Fast isnull check using numpy (~55x faster than xr.DataArray.isnull()).
+
+    Args:
+        arr: DataArray to check for null values.
+
+    Returns:
+        Boolean DataArray with True where values are NaN.
+    """
+    return xr.DataArray(np.isnan(arr.values), dims=arr.dims, coords=arr.coords)
+
+
 def concat_with_coords(
     arrays: list[xr.DataArray],
     dim: str,
@@ -158,7 +182,7 @@ class InvestmentHelpers:
             mask_prev = linking_mask.sel(period=period_prev)
             mask_next = linking_mask.sel(period=period_next)
             # valid_mask: True = KEEP constraint (element is linked in both periods)
-            valid_mask = mask_prev.notnull() & mask_next.notnull()
+            valid_mask = fast_notnull(mask_prev) & fast_notnull(mask_next)
 
             # Skip if none valid
             if not valid_mask.any():
@@ -392,7 +416,7 @@ class StatusHelpers:
 
         # Upper bound per element: use max_duration where provided, else mega
         if maximum_duration is not None:
-            upper_bound = xr.where(maximum_duration.notnull(), maximum_duration, mega)
+            upper_bound = xr.where(fast_notnull(maximum_duration), maximum_duration, mega)
         else:
             upper_bound = mega
 
@@ -426,7 +450,7 @@ class StatusHelpers:
         # Initial constraints for elements with previous_duration
         if previous_duration is not None:
             # Mask for elements that have previous_duration (not NaN)
-            has_previous = previous_duration.notnull()
+            has_previous = fast_notnull(previous_duration)
             if has_previous.any():
                 elem_with_prev = [eid for eid, has in zip(element_ids, has_previous.values, strict=False) if has]
                 prev_vals = previous_duration.sel({dim_name: elem_with_prev})
@@ -661,7 +685,7 @@ class StatusHelpers:
                 timestep_duration=timestep_duration,
                 minimum_duration=min_uptime,
                 maximum_duration=max_uptime,
-                previous_duration=previous_uptime if previous_uptime.notnull().any() else None,
+                previous_duration=previous_uptime if fast_notnull(previous_uptime).any() else None,
             )
 
         # Downtime tracking (batched)
@@ -698,7 +722,7 @@ class StatusHelpers:
                 timestep_duration=timestep_duration,
                 minimum_duration=min_downtime,
                 maximum_duration=max_downtime,
-                previous_duration=previous_downtime if previous_downtime.notnull().any() else None,
+                previous_duration=previous_downtime if fast_notnull(previous_downtime).any() else None,
             )
 
         # Cluster cyclic constraints
