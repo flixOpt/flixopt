@@ -718,10 +718,14 @@ class FlowsModel(TypeModel):
     @cached_property
     def rate(self) -> linopy.Variable:
         """(flow, time, ...) - flow rate variable for ALL flows."""
+        coords = self._build_coords(dims=None)
+        # Reindex bounds to match coords flow order (FlowsData uses sorted order, TypeModel uses insertion order)
+        lower = self.data.absolute_lower_bounds.reindex({self.dim_name: coords[self.dim_name]})
+        upper = self.data.absolute_upper_bounds.reindex({self.dim_name: coords[self.dim_name]})
         var = self.model.add_variables(
-            lower=self.data.absolute_lower_bounds,
-            upper=self.data.absolute_upper_bounds,
-            coords=self._build_coords(dims=None),
+            lower=lower,
+            upper=upper,
+            coords=coords,
             name=f'{self.dim_name}|rate',
         )
         self._variables['rate'] = var
@@ -1008,6 +1012,32 @@ class FlowsModel(TypeModel):
 
         self._variables[name] = variable
 
+    def _build_constraint_mask(self, selected_ids: set[str], reference_var: linopy.Variable) -> xr.DataArray:
+        """Build a mask for constraint creation from selected flow IDs.
+
+        Args:
+            selected_ids: Set of flow IDs to include (mask=True).
+            reference_var: Variable whose dimensions the mask should match.
+
+        Returns:
+            Boolean DataArray matching reference_var dimensions, True where flow ID is in selected_ids.
+        """
+        dim = self.dim_name
+        flow_ids = self.element_ids
+
+        # Build 1D mask
+        mask = xr.DataArray(
+            [fid in selected_ids for fid in flow_ids],
+            dims=[dim],
+            coords={dim: flow_ids},
+        )
+
+        # Broadcast to match reference variable dimensions
+        for d in reference_var.dims:
+            if d != dim and d not in mask.dims:
+                mask = mask.expand_dims({d: reference_var.coords[d]})
+        return mask.transpose(*reference_var.dims)
+
     def constraint_rate_bounds(self) -> None:
         """Create flow rate bounding constraints based on status/investment configuration."""
         # Group flow IDs by their constraint type
@@ -1033,21 +1063,38 @@ class FlowsModel(TypeModel):
     def _constraint_investment_bounds(self) -> None:
         """
         Case: With investment, without status.
-        rate <= size * relative_max, rate >= size * relative_min."""
-        flow_ids = sorted([fid for fid in set(self.data.with_investment) - set(self.data.with_status)])
-        dim = self.dim_name
-        flow_rate = self.rate.sel({dim: flow_ids})
-        size = self._variables['size'].sel({dim: flow_ids})
+        rate <= size * relative_max, rate >= size * relative_min.
 
-        # Get effective relative bounds for the subset
-        rel_max = self.data.effective_relative_maximum.sel({dim: flow_ids})
-        rel_min = self.data.effective_relative_minimum.sel({dim: flow_ids})
+        Uses mask-based constraint creation - creates constraints for all flows but
+        masks out non-investment flows.
+        """
+        dim = self.dim_name
+        flow_ids = self.element_ids
+
+        # Build mask: True for investment flows without status
+        invest_only_ids = set(self.data.with_investment) - set(self.data.with_status)
+        mask = self._build_constraint_mask(invest_only_ids, self.rate)
+
+        if not mask.any():
+            return
+
+        # Reindex data to match flow_ids order (FlowsData uses sorted order)
+        rel_max = self.data.effective_relative_maximum.reindex({dim: flow_ids})
+        rel_min = self.data.effective_relative_minimum.reindex({dim: flow_ids})
 
         # Upper bound: rate <= size * relative_max
-        self.add_constraints(flow_rate <= size * rel_max, name='invest_ub')
+        self.model.add_constraints(
+            self.rate <= self.size * rel_max,
+            name=f'{dim}|invest_ub',
+            mask=mask,
+        )
 
         # Lower bound: rate >= size * relative_min
-        self.add_constraints(flow_rate >= size * rel_min, name='invest_lb')
+        self.model.add_constraints(
+            self.rate >= self.size * rel_min,
+            name=f'{dim}|invest_lb',
+            mask=mask,
+        )
 
     def _constraint_status_bounds(self) -> None:
         """
