@@ -2453,10 +2453,10 @@ class ConvertersModel:
                         found = True
                         break
                 if not found:
-                    # This converter doesn't have this flow - use zeros
+                    # This converter doesn't have this flow - use NaN
                     breakpoints[conv.label] = (
-                        [0.0] * self._piecewise_max_segments,
-                        [0.0] * self._piecewise_max_segments,
+                        [np.nan] * self._piecewise_max_segments,
+                        [np.nan] * self._piecewise_max_segments,
                     )
 
             # Get time coordinates from model for time-varying breakpoints
@@ -2586,8 +2586,8 @@ class ConvertersModel:
         # Compute all reconstructed values at once: (converter, flow, time, period, ...)
         all_reconstructed = (lambda0 * bp['starts'] + lambda1 * bp['ends']).sum('segment')
 
-        # Mask: valid where any segment has non-zero breakpoints
-        valid_mask = (bp['starts'] != 0).any('segment') | (bp['ends'] != 0).any('segment')
+        # Mask: valid where breakpoints exist (not NaN)
+        valid_mask = bp['starts'].notnull().any('segment')
 
         # Apply mask and sum over converter (each flow has exactly one valid converter)
         reconstructed_per_flow = all_reconstructed.where(valid_mask).sum('converter')
