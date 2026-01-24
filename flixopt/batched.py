@@ -529,6 +529,144 @@ class FlowsData:
         """IDs of flows with status parameters."""
         return [f.label_full for f in self.elements.values() if f.status_parameters is not None]
 
+    # === Boolean Masks (PyPSA-style) ===
+    # These enable efficient batched constraint creation using linopy's mask= parameter.
+
+    @cached_property
+    def has_status(self) -> xr.DataArray:
+        """(flow,) - boolean mask for flows with status parameters."""
+        return xr.DataArray(
+            [f.status_parameters is not None for f in self.elements.values()],
+            dims=['flow'],
+            coords={'flow': self._ids_index},
+        )
+
+    @cached_property
+    def has_investment(self) -> xr.DataArray:
+        """(flow,) - boolean mask for flows with investment parameters."""
+        return xr.DataArray(
+            [isinstance(f.size, InvestParameters) for f in self.elements.values()],
+            dims=['flow'],
+            coords={'flow': self._ids_index},
+        )
+
+    @cached_property
+    def has_optional_investment(self) -> xr.DataArray:
+        """(flow,) - boolean mask for flows with optional (non-mandatory) investment."""
+        return xr.DataArray(
+            [isinstance(f.size, InvestParameters) and not f.size.mandatory for f in self.elements.values()],
+            dims=['flow'],
+            coords={'flow': self._ids_index},
+        )
+
+    @cached_property
+    def has_mandatory_investment(self) -> xr.DataArray:
+        """(flow,) - boolean mask for flows with mandatory investment."""
+        return xr.DataArray(
+            [isinstance(f.size, InvestParameters) and f.size.mandatory for f in self.elements.values()],
+            dims=['flow'],
+            coords={'flow': self._ids_index},
+        )
+
+    @cached_property
+    def has_fixed_size(self) -> xr.DataArray:
+        """(flow,) - boolean mask for flows with fixed (non-investment) size."""
+        return xr.DataArray(
+            [f.size is not None and not isinstance(f.size, InvestParameters) for f in self.elements.values()],
+            dims=['flow'],
+            coords={'flow': self._ids_index},
+        )
+
+    @cached_property
+    def has_size(self) -> xr.DataArray:
+        """(flow,) - boolean mask for flows with any size (fixed or investment)."""
+        return xr.DataArray(
+            [f.size is not None for f in self.elements.values()],
+            dims=['flow'],
+            coords={'flow': self._ids_index},
+        )
+
+    @cached_property
+    def has_effects(self) -> xr.DataArray:
+        """(flow,) - boolean mask for flows with effects_per_flow_hour."""
+        return xr.DataArray(
+            [bool(f.effects_per_flow_hour) for f in self.elements.values()],
+            dims=['flow'],
+            coords={'flow': self._ids_index},
+        )
+
+    @cached_property
+    def has_flow_hours_min(self) -> xr.DataArray:
+        """(flow,) - boolean mask for flows with flow_hours_min constraint."""
+        return xr.DataArray(
+            [f.flow_hours_min is not None for f in self.elements.values()],
+            dims=['flow'],
+            coords={'flow': self._ids_index},
+        )
+
+    @cached_property
+    def has_flow_hours_max(self) -> xr.DataArray:
+        """(flow,) - boolean mask for flows with flow_hours_max constraint."""
+        return xr.DataArray(
+            [f.flow_hours_max is not None for f in self.elements.values()],
+            dims=['flow'],
+            coords={'flow': self._ids_index},
+        )
+
+    @cached_property
+    def has_load_factor_min(self) -> xr.DataArray:
+        """(flow,) - boolean mask for flows with load_factor_min constraint."""
+        return xr.DataArray(
+            [f.load_factor_min is not None for f in self.elements.values()],
+            dims=['flow'],
+            coords={'flow': self._ids_index},
+        )
+
+    @cached_property
+    def has_load_factor_max(self) -> xr.DataArray:
+        """(flow,) - boolean mask for flows with load_factor_max constraint."""
+        return xr.DataArray(
+            [f.load_factor_max is not None for f in self.elements.values()],
+            dims=['flow'],
+            coords={'flow': self._ids_index},
+        )
+
+    @cached_property
+    def has_startup_tracking(self) -> xr.DataArray:
+        """(flow,) - boolean mask for flows needing startup/shutdown tracking."""
+        mask = np.zeros(len(self.ids), dtype=bool)
+        if self._status_data:
+            for i, fid in enumerate(self.ids):
+                mask[i] = fid in self._status_data.with_startup_tracking
+        return xr.DataArray(mask, dims=['flow'], coords={'flow': self._ids_index})
+
+    @cached_property
+    def has_uptime_tracking(self) -> xr.DataArray:
+        """(flow,) - boolean mask for flows needing uptime duration tracking."""
+        mask = np.zeros(len(self.ids), dtype=bool)
+        if self._status_data:
+            for i, fid in enumerate(self.ids):
+                mask[i] = fid in self._status_data.with_uptime_tracking
+        return xr.DataArray(mask, dims=['flow'], coords={'flow': self._ids_index})
+
+    @cached_property
+    def has_downtime_tracking(self) -> xr.DataArray:
+        """(flow,) - boolean mask for flows needing downtime tracking."""
+        mask = np.zeros(len(self.ids), dtype=bool)
+        if self._status_data:
+            for i, fid in enumerate(self.ids):
+                mask[i] = fid in self._status_data.with_downtime_tracking
+        return xr.DataArray(mask, dims=['flow'], coords={'flow': self._ids_index})
+
+    @cached_property
+    def has_startup_limit(self) -> xr.DataArray:
+        """(flow,) - boolean mask for flows with startup limit."""
+        mask = np.zeros(len(self.ids), dtype=bool)
+        if self._status_data:
+            for i, fid in enumerate(self.ids):
+                mask[i] = fid in self._status_data.with_startup_limit
+        return xr.DataArray(mask, dims=['flow'], coords={'flow': self._ids_index})
+
     @property
     def with_startup_tracking(self) -> list[str]:
         """IDs of flows that need startup/shutdown tracking."""
@@ -874,6 +1012,35 @@ class FlowsData:
         if raw is None:
             return None
         return self._broadcast_existing(raw, dims=['period', 'scenario'])
+
+    # --- All-Flows Bounds (for mask-based variable creation) ---
+
+    @cached_property
+    def size_minimum_all(self) -> xr.DataArray:
+        """(flow, period, scenario) - size minimum for ALL flows. NaN for non-investment flows."""
+        if self.investment_size_minimum is not None:
+            return self.investment_size_minimum.reindex({self.dim_name: self._ids_index})
+        return xr.DataArray(
+            np.nan,
+            dims=[self.dim_name],
+            coords={self.dim_name: self._ids_index},
+        )
+
+    @cached_property
+    def size_maximum_all(self) -> xr.DataArray:
+        """(flow, period, scenario) - size maximum for ALL flows. NaN for non-investment flows."""
+        if self.investment_size_maximum is not None:
+            return self.investment_size_maximum.reindex({self.dim_name: self._ids_index})
+        return xr.DataArray(
+            np.nan,
+            dims=[self.dim_name],
+            coords={self.dim_name: self._ids_index},
+        )
+
+    @cached_property
+    def dim_name(self) -> str:
+        """Dimension name for this data container."""
+        return 'flow'
 
     @cached_property
     def effects_per_flow_hour(self) -> xr.DataArray | None:

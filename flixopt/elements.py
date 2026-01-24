@@ -730,13 +730,27 @@ class FlowsModel(TypeModel):
 
     @cached_property
     def status(self) -> linopy.Variable | None:
-        """(flow, time, ...) - binary status variable, or None if no flows have status."""
+        """(flow, time, ...) - binary status variable for ALL flows, masked to status flows only.
+
+        Using mask= instead of subsetting enables mask-based constraint creation.
+        """
         if not self.data.with_status:
             return None
+        coords = self._build_coords(dims=None)  # All flows
+        # Broadcast mask to match all variable dimensions, preserving dim order from coords
+        mask = self.data.has_status
+        # Reindex mask to match coords flow order (FlowsData uses sorted order, TypeModel uses insertion order)
+        mask = mask.reindex({self.dim_name: coords[self.dim_name]})
+        dim_order = list(coords.keys())
+        for dim in dim_order:
+            if dim not in mask.dims:
+                mask = mask.expand_dims({dim: coords[dim]})
+        mask = mask.transpose(*dim_order)  # Ensure same order as coords
         var = self.model.add_variables(
             binary=True,
-            coords=self._build_coords(dims=None, element_ids=self.data.with_status),
+            coords=coords,
             name=f'{self.dim_name}|status',
+            mask=mask,  # Only create variables where True
         )
         self._variables['status'] = var
         self.model.variable_categories[var.name] = VariableCategory.STATUS
@@ -744,14 +758,30 @@ class FlowsModel(TypeModel):
 
     @cached_property
     def size(self) -> linopy.Variable | None:
-        """(flow, period, scenario) - size variable for flows with investment."""
+        """(flow, period, scenario) - size variable for ALL flows, masked to investment flows only.
+
+        Using mask= instead of subsetting enables mask-based constraint creation.
+        """
         if not self.data.with_investment:
             return None
+        coords = self._build_coords(dims=('period', 'scenario'))  # All flows
+        # Broadcast mask to match all variable dimensions, preserving dim order from coords
+        mask = self.data.has_investment
+        # Reindex mask and bounds to match coords flow order (FlowsData uses sorted order, TypeModel uses insertion order)
+        mask = mask.reindex({self.dim_name: coords[self.dim_name]})
+        lower = self.data.size_minimum_all.reindex({self.dim_name: coords[self.dim_name]})
+        upper = self.data.size_maximum_all.reindex({self.dim_name: coords[self.dim_name]})
+        dim_order = list(coords.keys())
+        for dim in dim_order:
+            if dim not in mask.dims:
+                mask = mask.expand_dims({dim: coords[dim]})
+        mask = mask.transpose(*dim_order)  # Ensure same order as coords
         var = self.model.add_variables(
-            lower=self.data.investment_size_minimum,
-            upper=self.data.investment_size_maximum,
-            coords=self._build_coords(dims=('period', 'scenario'), element_ids=self.data.with_investment),
+            lower=lower,
+            upper=upper,
+            coords=coords,
             name=f'{self.dim_name}|size',
+            mask=mask,  # Only create variables where True
         )
         self._variables['size'] = var
         self.model.variable_categories[var.name] = VariableCategory.FLOW_SIZE
@@ -759,13 +789,27 @@ class FlowsModel(TypeModel):
 
     @cached_property
     def invested(self) -> linopy.Variable | None:
-        """(flow, period, scenario) - binary invested variable for optional investment flows."""
+        """(flow, period, scenario) - binary invested variable for ALL flows, masked to optional investment.
+
+        Using mask= instead of subsetting enables mask-based constraint creation.
+        """
         if not self.data.with_optional_investment:
             return None
+        coords = self._build_coords(dims=('period', 'scenario'))  # All flows
+        # Broadcast mask to match all variable dimensions, preserving dim order from coords
+        mask = self.data.has_optional_investment
+        # Reindex mask to match coords flow order (FlowsData uses sorted order, TypeModel uses insertion order)
+        mask = mask.reindex({self.dim_name: coords[self.dim_name]})
+        dim_order = list(coords.keys())
+        for dim in dim_order:
+            if dim not in mask.dims:
+                mask = mask.expand_dims({dim: coords[dim]})
+        mask = mask.transpose(*dim_order)  # Ensure same order as coords
         var = self.model.add_variables(
             binary=True,
-            coords=self._build_coords(dims=('period', 'scenario'), element_ids=self.data.with_optional_investment),
+            coords=coords,
             name=f'{self.dim_name}|invested',
+            mask=mask,  # Only create variables where True
         )
         self._variables['invested'] = var
         return var
