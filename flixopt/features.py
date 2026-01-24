@@ -107,6 +107,9 @@ class InvestmentHelpers:
         For elements with linked_periods, constrains size to be equal
         across linked periods.
 
+        Uses batched mask approach: builds a validity mask for all elements
+        and creates a single batched constraint.
+
         Args:
             model: The FlowSystemModel to add constraints to.
             size_var: Size variable.
@@ -115,18 +118,62 @@ class InvestmentHelpers:
             dim_name: Dimension name (e.g., 'flow', 'storage').
         """
         element_ids_with_linking = [eid for eid in element_ids if params[eid].linked_periods is not None]
-        if not element_ids_with_linking:
+        if not element_ids_with_linking or 'period' not in size_var.dims:
             return
 
-        for element_id in element_ids_with_linking:
-            linked = params[element_id].linked_periods
-            element_size = size_var.sel({dim_name: element_id})
-            masked_size = element_size.where(linked, drop=True)
-            if 'period' in masked_size.dims and masked_size.sizes.get('period', 0) > 1:
-                model.add_constraints(
-                    masked_size.isel(period=slice(None, -1)) == masked_size.isel(period=slice(1, None)),
-                    name=f'{element_id}|linked_periods',
-                )
+        periods = size_var.coords['period'].values
+        if len(periods) < 2:
+            return
+
+        # Build linking mask: (element, period) - True where period is linked
+        # Stack the linked_periods arrays for all elements with linking
+        mask_data = np.full((len(element_ids_with_linking), len(periods)), np.nan)
+        for i, eid in enumerate(element_ids_with_linking):
+            linked = params[eid].linked_periods
+            if isinstance(linked, xr.DataArray):
+                # Reindex to match periods
+                linked_reindexed = linked.reindex(period=periods, fill_value=np.nan)
+                mask_data[i, :] = linked_reindexed.values
+            else:
+                # Scalar or None - fill all
+                mask_data[i, :] = 1.0 if linked else np.nan
+
+        linking_mask = xr.DataArray(
+            mask_data,
+            dims=[dim_name, 'period'],
+            coords={dim_name: element_ids_with_linking, 'period': periods},
+        )
+
+        # Select size variable for elements with linking
+        size_subset = size_var.sel({dim_name: element_ids_with_linking})
+
+        # Create constraint: size[period_i] == size[period_i+1] for linked periods
+        # Loop over period pairs (typically few periods, so this is fast)
+        # The batching is over elements, which is where the speedup comes from
+        for i in range(len(periods) - 1):
+            period_prev = periods[i]
+            period_next = periods[i + 1]
+
+            # Check which elements are linked in both periods
+            mask_prev = linking_mask.sel(period=period_prev)
+            mask_next = linking_mask.sel(period=period_next)
+            # valid_mask: True = KEEP constraint (element is linked in both periods)
+            valid_mask = mask_prev.notnull() & mask_next.notnull()
+
+            # Skip if none valid
+            if not valid_mask.any():
+                continue
+
+            # Select size for this period pair
+            size_prev = size_subset.sel(period=period_prev)
+            size_next = size_subset.sel(period=period_next)
+
+            # Use linopy's mask parameter: True = KEEP constraint
+            model.add_constraints(
+                size_prev == size_next,
+                name=f'{dim_name}|linked_periods|{period_prev}->{period_next}',
+                mask=valid_mask,
+            )
 
     @staticmethod
     def collect_effects(

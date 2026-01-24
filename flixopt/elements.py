@@ -1779,40 +1779,34 @@ class BusesModel(TypeModel):
             logger.debug('BusesModel: no buses or flows, skipping balance constraints')
             return
 
-        # Build dense coefficient matrix: coeffs[bus, flow] = +1 inputs, -1 outputs, 0 other
-        bus_index = {b: i for i, b in enumerate(bus_ids)}
-        flow_index = {f: i for i, f in enumerate(flow_ids)}
-
+        # Build coefficient matrix: +1 for inputs, -1 for outputs, 0 otherwise
         coeffs = np.zeros((len(bus_ids), len(flow_ids)), dtype=np.float64)
-        for bus in self.elements.values():
-            bus_idx = bus_index[bus.label_full]
+        for i, bus in enumerate(self.elements.values()):
             for f in bus.inputs:
-                coeffs[bus_idx, flow_index[f.label_full]] = 1.0
+                coeffs[i, flow_ids.index(f.label_full)] = 1.0
             for f in bus.outputs:
-                coeffs[bus_idx, flow_index[f.label_full]] = -1.0
+                coeffs[i, flow_ids.index(f.label_full)] = -1.0
 
-        coeffs_da = xr.DataArray(
-            coeffs,
-            coords={bus_dim: bus_ids, flow_dim: flow_ids},
-            dims=[bus_dim, flow_dim],
-        )
+        coeffs_da = xr.DataArray(coeffs, dims=[bus_dim, flow_dim], coords={bus_dim: bus_ids, flow_dim: flow_ids})
 
-        # Compute balance: sum over flows of (coeffs * flow_rate) - vectorized
+        # Balance = sum(inputs) - sum(outputs)
         balance = (coeffs_da * flow_rate).sum(flow_dim)
 
-        # Add virtual flows for buses with imbalance
         if self.buses_with_imbalance:
-            virtual_supply = self._variables['virtual_supply']
-            virtual_demand = self._variables['virtual_demand']
-            # Only add to buses that have imbalance (others get 0 contribution)
-            balance = balance + virtual_supply.reindex({bus_dim: bus_ids}, fill_value=0)
-            balance = balance - virtual_demand.reindex({bus_dim: bus_ids}, fill_value=0)
+            imbalance_ids = [b.label_full for b in self.buses_with_imbalance]
+            is_imbalance = xr.DataArray(
+                [b in imbalance_ids for b in bus_ids], dims=[bus_dim], coords={bus_dim: bus_ids}
+            )
 
-        # Single batched constraint for all buses
-        self.model.add_constraints(
-            balance == 0,
-            name='bus|balance',
-        )
+            # Buses without imbalance: balance == 0
+            self.model.add_constraints(balance == 0, name='bus|balance', mask=~is_imbalance)
+
+            # Buses with imbalance: balance + virtual_supply - virtual_demand == 0
+            balance_imbalance = balance.sel({bus_dim: imbalance_ids})
+            virtual_balance = balance_imbalance + self._variables['virtual_supply'] - self._variables['virtual_demand']
+            self.model.add_constraints(virtual_balance == 0, name='bus|balance_imbalance')
+        else:
+            self.model.add_constraints(balance == 0, name='bus|balance')
 
         logger.debug(f'BusesModel created batched balance constraint for {len(bus_ids)} buses')
 
@@ -2375,8 +2369,8 @@ class ConvertersModel:
         # Sum over flows: (converter, equation_idx, time, ...)
         flow_sum = weighted.sum('flow')
 
-        # Build validity mask: (converter, equation_idx)
-        # True where converter has that equation, False otherwise
+        # Build valid mask: (converter, equation_idx)
+        # True where converter HAS that equation (keep constraint)
         n_equations_per_converter = xr.DataArray(
             [len(c.conversion_factors) for c in self.converters_with_factors],
             dims=['converter'],
@@ -2389,13 +2383,12 @@ class ConvertersModel:
         )
         valid_mask = equation_indices < n_equations_per_converter
 
-        # Apply mask - invalid entries become NaN and are skipped by linopy
-        masked_flow_sum = flow_sum.where(valid_mask)
-
-        # Add all constraints at once
+        # Add all constraints at once using linopy's mask parameter
+        # mask=True means KEEP constraint for that (converter, equation_idx) pair
         self.model.add_constraints(
-            masked_flow_sum == 0,
+            flow_sum == 0,
             name=ConverterVarName.Constraint.CONVERSION,
+            mask=valid_mask,
         )
 
         self._logger.debug(

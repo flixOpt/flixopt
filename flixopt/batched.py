@@ -1052,11 +1052,18 @@ class FlowsData:
             arr: Input DataArray.
 
         Returns:
-            DataArray with dims in order (flow, time, period, scenario) and
-            coords dict matching dims order.
+            DataArray with dims in order (flow, time, period, scenario, ...) and
+            coords dict matching dims order. Additional dims (like 'cluster')
+            are appended at the end.
         """
         canonical_order = ['flow', 'time', 'period', 'scenario']
+        # Start with canonical dims that exist in arr
         actual_dims = [d for d in canonical_order if d in arr.dims]
+        # Append any additional dims not in canonical order (e.g., 'cluster')
+        for d in arr.dims:
+            if d not in actual_dims:
+                actual_dims.append(d)
+
         if list(arr.dims) != actual_dims:
             arr = arr.transpose(*actual_dims)
 

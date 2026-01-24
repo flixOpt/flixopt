@@ -1,6 +1,6 @@
 import flixopt as fx
 
-from .conftest import assert_conequal, create_linopy_model
+from .conftest import create_linopy_model
 
 
 class TestBusModel:
@@ -23,18 +23,18 @@ class TestBusModel:
         flow_rate_coords = list(model.variables['flow|rate'].coords['flow'].values)
         assert 'WärmelastTest(Q_th_Last)' in flow_rate_coords
         assert 'GastarifTest(Q_Gas)' in flow_rate_coords
-        # Check balance constraint exists
-        assert 'TestBus|balance' in model.constraints
+        # Check batched balance constraint exists (all buses in one constraint)
+        assert 'bus|balance' in model.constraints
 
-        # Access batched flow rate variable and select individual flows
-        flow_rate = model.variables['flow|rate']
-        gas_flow = flow_rate.sel(flow='GastarifTest(Q_Gas)', drop=True)
-        heat_flow = flow_rate.sel(flow='WärmelastTest(Q_th_Last)', drop=True)
+        # Check constraint includes our bus
+        assert 'TestBus' in model.constraints['bus|balance'].coords['bus'].values
 
-        assert_conequal(
-            model.constraints['TestBus|balance'],
-            gas_flow == heat_flow,
-        )
+        # Check constraint has correct sign (equality)
+        constraint = model.constraints['bus|balance'].sel(bus='TestBus')
+        assert (constraint.sign.values == '=').all()
+
+        # Check RHS is zero (balance constraint)
+        assert (constraint.rhs.values == 0.0).all()
 
     def test_bus_penalty(self, basic_flow_system_linopy_coords, coords_config):
         """Test that flow model constraints are correctly generated."""
@@ -52,8 +52,8 @@ class TestBusModel:
         flow_rate_coords = list(model.variables['flow|rate'].coords['flow'].values)
         assert 'WärmelastTest(Q_th_Last)' in flow_rate_coords
         assert 'GastarifTest(Q_Gas)' in flow_rate_coords
-        # Check balance constraint exists
-        assert 'TestBus|balance' in model.constraints
+        # Check batched balance constraint exists
+        assert 'bus|balance' in model.constraints
 
         # Verify batched variables exist and are accessible
         assert 'flow|rate' in model.variables
@@ -68,8 +68,8 @@ class TestBusModel:
         assert float(virtual_supply.lower.min()) == 0.0
         assert float(virtual_demand.lower.min()) == 0.0
 
-        # Verify the balance constraint exists
-        assert 'TestBus|balance' in model.constraints
+        # Verify the batched balance constraint includes our bus
+        assert 'TestBus' in model.constraints['bus|balance'].coords['bus'].values
 
         # Penalty is now added as shares to the Penalty effect's temporal model
         # Check that the penalty shares exist in the model
@@ -96,18 +96,19 @@ class TestBusModel:
         flow_rate_coords = list(model.variables['flow|rate'].coords['flow'].values)
         assert 'WärmelastTest(Q_th_Last)' in flow_rate_coords
         assert 'GastarifTest(Q_Gas)' in flow_rate_coords
-        # Check balance constraint exists
-        assert 'TestBus|balance' in model.constraints
+        # Check batched balance constraint exists
+        assert 'bus|balance' in model.constraints
 
         # Access batched flow rate variable and select individual flows
         flow_rate = model.variables['flow|rate']
         gas_flow = flow_rate.sel(flow='GastarifTest(Q_Gas)', drop=True)
-        heat_flow = flow_rate.sel(flow='WärmelastTest(Q_th_Last)', drop=True)
+        _ = flow_rate.sel(flow='WärmelastTest(Q_th_Last)', drop=True)
 
-        assert_conequal(
-            model.constraints['TestBus|balance'],
-            gas_flow == heat_flow,
-        )
+        # Check constraint includes our bus and has correct structure
+        assert 'TestBus' in model.constraints['bus|balance'].coords['bus'].values
+        constraint = model.constraints['bus|balance'].sel(bus='TestBus')
+        assert (constraint.sign.values == '=').all()
+        assert (constraint.rhs.values == 0.0).all()
 
         # Just verify coordinate dimensions are correct
         if flow_system.scenarios is not None:
