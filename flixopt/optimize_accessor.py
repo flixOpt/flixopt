@@ -354,10 +354,11 @@ class OptimizeAccessor:
         effect_labels = set(self._fs.effects.keys())
         combined_vars: dict[str, xr.DataArray] = {}
         first_solution = segment_flow_systems[0].solution
+        first_variables = first_solution.variables
 
         # Step 1: Time-dependent → concatenate; Scalars → NaN
-        for var_name, first_var in first_solution.data_vars.items():
-            if 'time' in first_var.dims:
+        for var_name in first_solution.data_vars:
+            if 'time' in first_variables[var_name].dims:
                 arrays = [
                     seg.solution[var_name].isel(
                         time=slice(None, horizon if i < len(segment_flow_systems) - 1 else None)

@@ -287,7 +287,7 @@ class TestClusterAdvancedOptions:
 
     def test_cluster_config_parameter(self, basic_flow_system):
         """Test that cluster config parameter works."""
-        from tsam.config import ClusterConfig
+        from tsam import ClusterConfig
 
         fs_clustered = basic_flow_system.transform.cluster(
             n_clusters=2, cluster_duration='1D', cluster=ClusterConfig(method='hierarchical')
@@ -313,7 +313,7 @@ class TestClusterAdvancedOptions:
 
     def test_representation_method_parameter(self, basic_flow_system):
         """Test that representation method via ClusterConfig works."""
-        from tsam.config import ClusterConfig
+        from tsam import ClusterConfig
 
         fs_clustered = basic_flow_system.transform.cluster(
             n_clusters=2, cluster_duration='1D', cluster=ClusterConfig(representation='medoid')

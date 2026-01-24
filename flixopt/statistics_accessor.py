@@ -27,6 +27,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import xarray as xr
+from xarray_plotly.figures import update_traces
 
 from .color_processing import ColorType, hex_to_rgba, process_colors
 from .config import CONFIG
@@ -144,6 +145,31 @@ def _reshape_time_for_heatmap(
     # Reorder: timestep, timeframe, then other dimensions
     other_dims = [d for d in result.dims if d not in ['timestep', 'timeframe']]
     return result.transpose('timestep', 'timeframe', *other_dims)
+
+
+def _apply_unified_hover(fig: go.Figure, unit: str = '', decimals: int = 1) -> None:
+    """Apply unified hover mode with clean formatting to any Plotly figure.
+
+    Sets up 'x unified' hovermode with spike lines and formats hover labels
+    as '<b>name</b>: value unit'.
+
+    Works with any plot type (area, bar, line, scatter).
+
+    Args:
+        fig: Plotly Figure to style.
+        unit: Unit string to append (e.g., 'kW', 'MWh'). Empty for no unit.
+        decimals: Number of decimal places for values.
+    """
+    unit_suffix = f' {unit}' if unit else ''
+    hover_template = f'<b>%{{fullData.name}}</b>: %{{y:.{decimals}f}}{unit_suffix}<extra></extra>'
+
+    # Apply to all traces (main + animation frames) using xarray_plotly helper
+    update_traces(fig, hovertemplate=hover_template)
+
+    # Layout settings for unified hover
+    fig.update_layout(hovermode='x unified')
+    # Apply spike settings to all x-axes (for faceted plots with xaxis, xaxis2, xaxis3, etc.)
+    fig.update_xaxes(showspikes=True, spikecolor='gray', spikethickness=1)
 
 
 # --- Helper functions ---
@@ -753,7 +779,7 @@ class StatisticsAccessor:
             if element not in self._fs.components:
                 raise ValueError(f'Only use Components when retrieving Effects including flows. Got {element}')
             comp = self._fs.components[element]
-            flows = [f.label_full.split('|')[0] for f in comp.inputs + comp.outputs]
+            flows = [flow.split('|')[0] for flow in comp.flows]
             return xr.merge(
                 [ds]
                 + [
@@ -1051,20 +1077,22 @@ class SankeyPlotAccessor:
         return fig
 
     def _get_node_colors(self, node_list: list[str], colors: ColorType | None) -> list[str]:
-        """Get colors for nodes: buses use cached bus_colors, components use process_colors."""
-        # Get fallback colors from process_colors
-        fallback_colors = process_colors(colors, node_list)
-
-        # Use cached bus colors for efficiency
+        """Get colors for nodes: buses use bus_colors, components use component_colors."""
+        # Get cached colors
         bus_colors = self._stats.bus_colors
+        component_colors = self._stats.component_colors
+
+        # Get fallback colors for nodes without explicit colors
+        uncolored = [n for n in node_list if n not in bus_colors and n not in component_colors]
+        fallback_colors = process_colors(colors, uncolored) if uncolored else {}
 
         node_colors = []
         for node in node_list:
-            # Check if node is a bus with a cached color
             if node in bus_colors:
                 node_colors.append(bus_colors[node])
+            elif node in component_colors:
+                node_colors.append(component_colors[node])
             else:
-                # Fall back to process_colors
                 node_colors.append(fallback_colors[node])
 
         return node_colors
@@ -1481,8 +1509,8 @@ class StatisticsPlotAccessor:
         else:
             raise KeyError(f"'{node}' not found in buses or components")
 
-        input_labels = [f.label_full for f in element.inputs]
-        output_labels = [f.label_full for f in element.outputs]
+        input_labels = [f.label_full for f in element.inputs.values()]
+        output_labels = [f.label_full for f in element.outputs.values()]
         all_labels = input_labels + output_labels
 
         filtered_labels = _filter_by_pattern(all_labels, include, exclude)
@@ -1520,13 +1548,12 @@ class StatisticsPlotAccessor:
             unit_label = ds[first_var].attrs.get('unit', '')
 
         _apply_slot_defaults(plotly_kwargs, 'balance')
-        fig = ds.plotly.bar(
+        fig = ds.plotly.fast_bar(
             title=f'{node} [{unit_label}]' if unit_label else node,
             **color_kwargs,
             **plotly_kwargs,
         )
-        fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
-        fig.update_traces(marker_line_width=0)
+        _apply_unified_hover(fig, unit=unit_label)
 
         if show is None:
             show = CONFIG.Plotting.default_show
@@ -1590,9 +1617,9 @@ class StatisticsPlotAccessor:
         output_labels: list[str] = []  # Outputs from buses = consumption
 
         for bus in carrier_buses:
-            for flow in bus.inputs:
+            for flow in bus.inputs.values():
                 input_labels.append(flow.label_full)
-            for flow in bus.outputs:
+            for flow in bus.outputs.values():
                 output_labels.append(flow.label_full)
 
         all_labels = input_labels + output_labels
@@ -1644,13 +1671,12 @@ class StatisticsPlotAccessor:
             unit_label = ds[first_var].attrs.get('unit', '')
 
         _apply_slot_defaults(plotly_kwargs, 'carrier_balance')
-        fig = ds.plotly.bar(
+        fig = ds.plotly.fast_bar(
             title=f'{carrier.capitalize()} Balance [{unit_label}]' if unit_label else f'{carrier.capitalize()} Balance',
             **color_kwargs,
             **plotly_kwargs,
         )
-        fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
-        fig.update_traces(marker_line_width=0)
+        _apply_unified_hover(fig, unit=unit_label)
 
         if show is None:
             show = CONFIG.Plotting.default_show
@@ -2204,8 +2230,8 @@ class StatisticsPlotAccessor:
             raise ValueError(f"'{storage}' is not a storage (no charge_state variable found)")
 
         # Get flow data
-        input_labels = [f.label_full for f in component.inputs]
-        output_labels = [f.label_full for f in component.outputs]
+        input_labels = [f.label_full for f in component.inputs.values()]
+        output_labels = [f.label_full for f in component.outputs.values()]
         all_labels = input_labels + output_labels
 
         if unit == 'flow_rate':
@@ -2240,15 +2266,20 @@ class StatisticsPlotAccessor:
         else:
             color_kwargs = _build_color_kwargs(colors, flow_labels)
 
-        # Create stacked bar chart for flows
+        # Get unit label from flow data
+        unit_label = ''
+        if flow_ds.data_vars:
+            first_var = next(iter(flow_ds.data_vars))
+            unit_label = flow_ds[first_var].attrs.get('unit', '')
+
+        # Create stacked area chart for flows (styled as bar)
         _apply_slot_defaults(plotly_kwargs, 'storage')
-        fig = flow_ds.plotly.bar(
-            title=f'{storage} Operation ({unit})',
+        fig = flow_ds.plotly.fast_bar(
+            title=f'{storage} Operation [{unit_label}]' if unit_label else f'{storage} Operation',
             **color_kwargs,
             **plotly_kwargs,
         )
-        fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
-        fig.update_traces(marker_line_width=0)
+        _apply_unified_hover(fig, unit=unit_label)
 
         # Add charge state as line on secondary y-axis
         # Only pass faceting kwargs that add_line_overlay accepts

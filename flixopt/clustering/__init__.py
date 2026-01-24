@@ -8,7 +8,7 @@ This module provides wrapper classes around tsam's clustering functionality:
 Example usage:
 
     # Cluster a FlowSystem to reduce timesteps
-    from tsam.config import ExtremeConfig
+    from tsam import ExtremeConfig
 
     fs_clustered = flow_system.transform.cluster(
         n_clusters=8,

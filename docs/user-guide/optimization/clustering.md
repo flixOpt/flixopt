@@ -23,7 +23,7 @@ The recommended approach: cluster for fast sizing, then validate at full resolut
 
 ```python
 import flixopt as fx
-from tsam.config import ExtremeConfig
+from tsam import ExtremeConfig
 
 # Load or create your FlowSystem
 flow_system = fx.FlowSystem(timesteps)
@@ -61,7 +61,7 @@ flow_rates = fs_expanded.solution['Boiler(Q_th)|flow_rate']
 Use `ExtremeConfig` to ensure extreme conditions are represented:
 
 ```python
-from tsam.config import ExtremeConfig
+from tsam import ExtremeConfig
 
 # Ensure the peak demand day is included
 fs_clustered = flow_system.transform.cluster(
@@ -91,7 +91,7 @@ Without peak selection, the clustering algorithm might average out extreme days,
 Fine-tune the clustering algorithm with `ClusterConfig`:
 
 ```python
-from tsam.config import ClusterConfig, ExtremeConfig
+from tsam import ClusterConfig, ExtremeConfig
 
 fs_clustered = flow_system.transform.cluster(
     n_clusters=8,
@@ -109,9 +109,9 @@ fs_clustered = flow_system.transform.cluster(
 | Method | Description |
 |--------|-------------|
 | `'hierarchical'` | Produces consistent hierarchical groupings (default) |
-| `'k_means'` | Fast, good for most cases |
-| `'k_medoids'` | Uses actual periods as representatives |
-| `'k_maxoids'` | Maximizes representativeness |
+| `'kmeans'` | Fast, good for most cases |
+| `'kmedoids'` | Uses actual periods as representatives |
+| `'kmaxoids'` | Maximizes representativeness |
 | `'averaging'` | Simple averaging of similar periods |
 
 **Representation methods** (`ClusterConfig.representation`):

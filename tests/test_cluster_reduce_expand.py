@@ -415,11 +415,11 @@ class TestStorageClusterModes:
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
         fs_clustered.optimize(solver_fixture)
 
-        # Should have charge_state in solution (unrolled from batched storage|charge)
+        # Should have charge_state in solution
         assert 'Battery|charge_state' in fs_clustered.solution
 
         # Independent mode should NOT have SOC_boundary
-        assert 'intercluster_storage|SOC_boundary' not in fs_clustered.solution
+        assert 'Battery|SOC_boundary' not in fs_clustered.solution
 
         # Verify solution is valid (no errors)
         assert fs_clustered.solution is not None
@@ -430,11 +430,11 @@ class TestStorageClusterModes:
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
         fs_clustered.optimize(solver_fixture)
 
-        # Should have charge_state in solution (unrolled from batched storage|charge)
+        # Should have charge_state in solution
         assert 'Battery|charge_state' in fs_clustered.solution
 
         # Cyclic mode should NOT have SOC_boundary (only intercluster modes do)
-        assert 'intercluster_storage|SOC_boundary' not in fs_clustered.solution
+        assert 'Battery|SOC_boundary' not in fs_clustered.solution
 
     def test_storage_cluster_mode_intercluster(self, solver_fixture, timesteps_8_days):
         """Storage with cluster_mode='intercluster' - SOC links across clusters."""
@@ -442,10 +442,10 @@ class TestStorageClusterModes:
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
         fs_clustered.optimize(solver_fixture)
 
-        # Intercluster mode SHOULD have SOC_boundary (batched under intercluster_storage type)
-        assert 'intercluster_storage|SOC_boundary' in fs_clustered.solution
+        # Intercluster mode SHOULD have SOC_boundary
+        assert 'Battery|SOC_boundary' in fs_clustered.solution
 
-        soc_boundary = fs_clustered.solution['intercluster_storage|SOC_boundary'].sel(intercluster_storage='Battery')
+        soc_boundary = fs_clustered.solution['Battery|SOC_boundary']
         assert 'cluster_boundary' in soc_boundary.dims
 
         # Number of boundaries = n_original_clusters + 1
@@ -458,10 +458,10 @@ class TestStorageClusterModes:
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
         fs_clustered.optimize(solver_fixture)
 
-        # Intercluster_cyclic mode SHOULD have SOC_boundary (batched under intercluster_storage type)
-        assert 'intercluster_storage|SOC_boundary' in fs_clustered.solution
+        # Intercluster_cyclic mode SHOULD have SOC_boundary
+        assert 'Battery|SOC_boundary' in fs_clustered.solution
 
-        soc_boundary = fs_clustered.solution['intercluster_storage|SOC_boundary'].sel(intercluster_storage='Battery')
+        soc_boundary = fs_clustered.solution['Battery|SOC_boundary']
         assert 'cluster_boundary' in soc_boundary.dims
 
         # First and last SOC_boundary values should be equal (cyclic constraint)
@@ -479,9 +479,9 @@ class TestInterclusterStorageLinking:
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
         fs_clustered.optimize(solver_fixture)
 
-        # Verify SOC_boundary exists in solution (batched under intercluster_storage type)
-        assert 'intercluster_storage|SOC_boundary' in fs_clustered.solution
-        soc_boundary = fs_clustered.solution['intercluster_storage|SOC_boundary'].sel(intercluster_storage='Battery')
+        # Verify SOC_boundary exists in solution
+        assert 'Battery|SOC_boundary' in fs_clustered.solution
+        soc_boundary = fs_clustered.solution['Battery|SOC_boundary']
         assert 'cluster_boundary' in soc_boundary.dims
 
     def test_expand_combines_soc_boundary_with_charge_state(self, solver_fixture, timesteps_8_days):
@@ -495,7 +495,7 @@ class TestInterclusterStorageLinking:
 
         # After expansion: charge_state should be non-negative (absolute SOC)
         fs_expanded = fs_clustered.transform.expand()
-        cs_after = fs_expanded.solution['intercluster_storage|charge_state'].sel(intercluster_storage='Battery')
+        cs_after = fs_expanded.solution['Battery|charge_state']
 
         # All values should be >= 0 (with small tolerance for numerical issues)
         assert (cs_after >= -0.01).all(), f'Negative charge_state found: min={float(cs_after.min())}'
@@ -513,7 +513,7 @@ class TestInterclusterStorageLinking:
 
         # Expand solution
         fs_expanded = fs_clustered.transform.expand()
-        cs_expanded = fs_expanded.solution['intercluster_storage|charge_state'].sel(intercluster_storage='Battery')
+        cs_expanded = fs_expanded.solution['Battery|charge_state']
 
         # With self-discharge, SOC should decay over time within each period
         # The expanded solution should still be non-negative
@@ -530,15 +530,15 @@ class TestInterclusterStorageLinking:
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
         fs_clustered.optimize(solver_fixture)
 
-        # Get values needed for manual calculation (batched under intercluster_storage type)
-        soc_boundary = fs_clustered.solution['intercluster_storage|SOC_boundary'].sel(intercluster_storage='Battery')
-        cs_clustered = fs_clustered.solution['intercluster_storage|charge_state'].sel(intercluster_storage='Battery')
+        # Get values needed for manual calculation
+        soc_boundary = fs_clustered.solution['Battery|SOC_boundary']
+        cs_clustered = fs_clustered.solution['Battery|charge_state']
         clustering = fs_clustered.clustering
         cluster_assignments = clustering.cluster_assignments.values
         timesteps_per_cluster = clustering.timesteps_per_cluster
 
         fs_expanded = fs_clustered.transform.expand()
-        cs_expanded = fs_expanded.solution['intercluster_storage|charge_state'].sel(intercluster_storage='Battery')
+        cs_expanded = fs_expanded.solution['Battery|charge_state']
 
         # Manual verification for first few timesteps of first period
         p = 0  # First period
@@ -769,7 +769,7 @@ class TestPeakSelection:
 
     def test_extremes_max_value_parameter_accepted(self, timesteps_8_days):
         """Verify extremes max_value parameter is accepted."""
-        from tsam.config import ExtremeConfig
+        from tsam import ExtremeConfig
 
         fs = create_system_with_peak_demand(timesteps_8_days)
 
@@ -785,7 +785,7 @@ class TestPeakSelection:
 
     def test_extremes_min_value_parameter_accepted(self, timesteps_8_days):
         """Verify extremes min_value parameter is accepted."""
-        from tsam.config import ExtremeConfig
+        from tsam import ExtremeConfig
 
         fs = create_system_with_peak_demand(timesteps_8_days)
 
@@ -802,7 +802,7 @@ class TestPeakSelection:
 
     def test_extremes_captures_extreme_demand_day(self, solver_fixture, timesteps_8_days):
         """Verify extremes config captures day with maximum demand."""
-        from tsam.config import ExtremeConfig
+        from tsam import ExtremeConfig
 
         fs = create_system_with_peak_demand(timesteps_8_days)
 
@@ -998,7 +998,7 @@ class TestSegmentation:
 
     def test_segment_config_creates_segmented_system(self, timesteps_8_days):
         """Test that SegmentConfig creates a segmented FlowSystem."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 
@@ -1022,7 +1022,7 @@ class TestSegmentation:
 
     def test_segmented_system_has_variable_timestep_durations(self, timesteps_8_days):
         """Test that segmented systems have variable timestep durations."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 
@@ -1044,7 +1044,7 @@ class TestSegmentation:
 
     def test_segmented_system_optimizes(self, solver_fixture, timesteps_8_days):
         """Test that segmented systems can be optimized."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 
@@ -1069,7 +1069,7 @@ class TestSegmentation:
 
     def test_segmented_expand_restores_original_timesteps(self, solver_fixture, timesteps_8_days):
         """Test that expand() restores the original timestep count for segmented systems."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 
@@ -1093,7 +1093,7 @@ class TestSegmentation:
 
     def test_segmented_expand_preserves_objective(self, solver_fixture, timesteps_8_days):
         """Test that expand() preserves the objective value for segmented systems."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 
@@ -1114,7 +1114,7 @@ class TestSegmentation:
 
     def test_segmented_expand_has_correct_flow_rates(self, solver_fixture, timesteps_8_days):
         """Test that expanded flow rates have correct timestep count."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 
@@ -1136,7 +1136,7 @@ class TestSegmentation:
 
     def test_segmented_statistics_after_expand(self, solver_fixture, timesteps_8_days):
         """Test that statistics accessor works after expanding segmented system."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 
@@ -1160,7 +1160,7 @@ class TestSegmentation:
 
     def test_segmented_timestep_mapping_uses_segment_assignments(self, timesteps_8_days):
         """Test that timestep_mapping correctly maps original timesteps to segments."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 
@@ -1177,8 +1177,8 @@ class TestSegmentation:
 
         # Each mapped value should be in valid range: [0, n_clusters * n_segments)
         max_valid_idx = 2 * 6 - 1  # n_clusters * n_segments - 1
-        assert mapping.min() >= 0
-        assert mapping.max() <= max_valid_idx
+        assert mapping.min().item() >= 0
+        assert mapping.max().item() <= max_valid_idx
 
     @pytest.mark.parametrize('freq', ['1h', '2h'])
     def test_segmented_total_effects_match_solution(self, solver_fixture, freq):
@@ -1188,7 +1188,7 @@ class TestSegmentation:
         incorrectly for segmented systems, causing total_effects to not match the
         solution's objective value.
         """
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         # Create system with specified timestep frequency
         n_timesteps = 72 if freq == '1h' else 36  # 3 days worth
@@ -1231,7 +1231,7 @@ class TestSegmentationWithStorage:
 
     def test_segmented_storage_optimizes(self, solver_fixture, timesteps_8_days):
         """Test that segmented systems with storage can be optimized."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_system_with_storage(timesteps_8_days, cluster_mode='cyclic')
 
@@ -1243,13 +1243,13 @@ class TestSegmentationWithStorage:
 
         fs_segmented.optimize(solver_fixture)
 
-        # Should have solution with charge_state (unrolled from batched storage|charge)
+        # Should have solution with charge_state
         assert fs_segmented.solution is not None
         assert 'Battery|charge_state' in fs_segmented.solution
 
     def test_segmented_storage_expand(self, solver_fixture, timesteps_8_days):
         """Test that segmented storage systems can be expanded."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_system_with_storage(timesteps_8_days, cluster_mode='cyclic')
 
@@ -1262,7 +1262,7 @@ class TestSegmentationWithStorage:
         fs_segmented.optimize(solver_fixture)
         fs_expanded = fs_segmented.transform.expand()
 
-        # Charge state should be expanded to original timesteps (unrolled from batched storage|charge)
+        # Charge state should be expanded to original timesteps
         charge_state = fs_expanded.solution['Battery|charge_state']
         # charge_state has time dimension = n_original_timesteps + 1
         assert charge_state.sizes['time'] == 193
@@ -1273,7 +1273,7 @@ class TestSegmentationWithPeriods:
 
     def test_segmented_with_periods(self, solver_fixture, timesteps_8_days, periods_2):
         """Test segmentation with multiple periods."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_system_with_periods(timesteps_8_days, periods_2)
 
@@ -1294,7 +1294,7 @@ class TestSegmentationWithPeriods:
 
     def test_segmented_with_periods_expand(self, solver_fixture, timesteps_8_days, periods_2):
         """Test expansion of segmented multi-period systems."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_system_with_periods(timesteps_8_days, periods_2)
 
@@ -1318,7 +1318,7 @@ class TestSegmentationWithPeriods:
 
     def test_segmented_different_clustering_per_period(self, solver_fixture, timesteps_8_days, periods_2):
         """Test that different periods can have different cluster assignments."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_system_with_periods(timesteps_8_days, periods_2)
 
@@ -1346,7 +1346,7 @@ class TestSegmentationWithPeriods:
 
     def test_segmented_expand_maps_correctly_per_period(self, solver_fixture, timesteps_8_days, periods_2):
         """Test that expand maps values correctly for each period independently."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_system_with_periods(timesteps_8_days, periods_2)
 
@@ -1381,7 +1381,7 @@ class TestSegmentationIO:
 
     def test_segmented_roundtrip(self, solver_fixture, timesteps_8_days, tmp_path):
         """Test that segmented systems survive IO round-trip."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 
@@ -1411,7 +1411,7 @@ class TestSegmentationIO:
 
     def test_segmented_expand_after_load(self, solver_fixture, timesteps_8_days, tmp_path):
         """Test that expand works after loading segmented system."""
-        from tsam.config import SegmentConfig
+        from tsam import SegmentConfig
 
         fs = create_simple_system(timesteps_8_days)
 

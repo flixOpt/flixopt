@@ -187,7 +187,6 @@ jobs:
   deploy-docs:
     name: Deploy documentation
     needs: [create-release]
-    if: "!contains(github.ref, 'alpha') && !contains(github.ref, 'beta') && !contains(github.ref, 'rc')"
     uses: ./.github/workflows/docs.yaml
     with:
       deploy: true

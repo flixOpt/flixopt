@@ -56,7 +56,7 @@ flow_system.solve(fx.solvers.HighsSolver())
 For large problems, use time series clustering to reduce computational complexity:
 
 ```python
-from tsam.config import ExtremeConfig
+from tsam import ExtremeConfig
 
 # Cluster to 12 typical days
 fs_clustered = flow_system.transform.cluster(

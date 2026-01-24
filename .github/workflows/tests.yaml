@@ -61,6 +61,9 @@ jobs:
       - name: Install dependencies
         run: uv pip install --system .[dev]
 
+      - name: Install tsam v3 (not yet on PyPI)
+        run: uv pip install --system "tsam @ git+https://github.com/FBumann/tsam.git@a5e2ac516fb8470377a1893742df6696668539aa"
+
       - name: Run tests
         run: pytest -v --numprocesses=auto
 
@@ -84,6 +87,9 @@ jobs:
 
       - name: Install dependencies
         run: uv pip install --system .[dev]
+
+      - name: Install tsam v3 (not yet on PyPI)
+        run: uv pip install --system "tsam @ git+https://github.com/FBumann/tsam.git@a5e2ac516fb8470377a1893742df6696668539aa"
 
       - name: Run example tests
         run: pytest -v -m examples --numprocesses=auto

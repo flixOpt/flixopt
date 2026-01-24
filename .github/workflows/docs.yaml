@@ -57,6 +57,9 @@ jobs:
       - name: Install dependencies
         run: uv pip install --system ".[docs,full]"
 
+      - name: Install tsam v3 (not yet on PyPI)
+        run: uv pip install --system "tsam @ git+https://github.com/FBumann/tsam.git@a5e2ac516fb8470377a1893742df6696668539aa"
+
       - name: Get notebook cache key
         id: notebook-cache-key
         run: |
@@ -121,6 +124,9 @@ jobs:
       - name: Install dependencies
         run: uv pip install --system ".[docs,full]"
 
+      - name: Install tsam v3 (not yet on PyPI)
+        run: uv pip install --system "tsam @ git+https://github.com/FBumann/tsam.git@a5e2ac516fb8470377a1893742df6696668539aa"
+
       - name: Get notebook cache key
         id: notebook-cache-key
         run: |
@@ -164,5 +170,13 @@ jobs:
         run: |
           VERSION=${{ inputs.version }}
           VERSION=${VERSION#v}
-          mike deploy --push --update-aliases $VERSION latest
-          mike set-default --push latest
+
+          # Check if this is a pre-release (alpha, beta, rc)
+          if [[ "$VERSION" =~ (alpha|beta|rc) ]]; then
+            # Pre-release: deploy version only, don't update "latest"
+            mike deploy --push $VERSION
+          else
+            # Stable release: deploy and update "latest" alias
+            mike deploy --push --update-aliases $VERSION latest
+            mike set-default --push latest
+          fi
