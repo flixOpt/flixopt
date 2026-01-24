@@ -2575,31 +2575,26 @@ class ConvertersModel:
         )
 
         # Create batched coupling constraints for all piecewise flows
-        breakpoints = self._piecewise_flow_breakpoints
-        if not breakpoints:
+        bp = self.piecewise_breakpoints  # Dataset with (converter, segment, flow) dims
+        if bp is None:
             return
 
         flow_rate = self._flows_model._variables['rate']
         lambda0 = self._piecewise_variables['lambda0']
         lambda1 = self._piecewise_variables['lambda1']
 
-        # Stack all breakpoints into (piecewise_flow, converter, segment) arrays
-        flow_ids = list(breakpoints.keys())
-        piecewise_flow_idx = pd.Index(flow_ids, name='piecewise_flow')
-        all_starts = xr.concat([breakpoints[fid][0] for fid in flow_ids], dim=piecewise_flow_idx)
-        all_ends = xr.concat([breakpoints[fid][1] for fid in flow_ids], dim=piecewise_flow_idx)
+        # Compute all reconstructed values at once: (converter, flow, time, period, ...)
+        all_reconstructed = (lambda0 * bp['starts'] + lambda1 * bp['ends']).sum('segment')
 
-        # Compute all reconstructed values at once (batched over piecewise_flow)
-        all_reconstructed = (lambda0 * all_starts + lambda1 * all_ends).sum('segment')
-
-        # Mask from breakpoints: valid where any segment has non-zero start or end values
-        valid_mask = (all_starts != 0).any('segment') | (all_ends != 0).any('segment')
+        # Mask: valid where any segment has non-zero breakpoints
+        valid_mask = (bp['starts'] != 0).any('segment') | (bp['ends'] != 0).any('segment')
 
         # Apply mask and sum over converter (each flow has exactly one valid converter)
         reconstructed_per_flow = all_reconstructed.where(valid_mask).sum('converter')
 
         # Get flow rates for piecewise flows
-        piecewise_flow_rate = flow_rate.sel(flow=flow_ids).rename({'flow': 'piecewise_flow'})
+        flow_ids = list(bp.coords['flow'].values)
+        piecewise_flow_rate = flow_rate.sel(flow=flow_ids)
 
         # Add single batched constraint
         self.model.add_constraints(
