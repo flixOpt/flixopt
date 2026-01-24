@@ -2574,35 +2574,61 @@ class ConvertersModel:
             ConverterVarName.PIECEWISE_PREFIX,
         )
 
-        # Create coupling constraints for each flow
+        # Create batched coupling constraints for all piecewise flows
+        breakpoints = self._piecewise_flow_breakpoints
+        if not breakpoints:
+            return
+
         flow_rate = self._flows_model._variables['rate']
         lambda0 = self._piecewise_variables['lambda0']
         lambda1 = self._piecewise_variables['lambda1']
 
-        for flow_id, (starts, ends) in self._piecewise_flow_breakpoints.items():
-            # Select this flow's rate variable
-            flow_rate_for_flow = flow_rate.sel(flow=flow_id)
-
-            # Create coupling constraint
-            # The reconstructed value has (converter, time, ...) dims
-            reconstructed = (lambda0 * starts + lambda1 * ends).sum('segment')
-
-            # Map flow_id -> converter
-            flow_to_converter = {}
+        # Build flow -> converter mapping
+        flow_ids = list(breakpoints.keys())
+        flow_to_conv = {}
+        for flow_id in flow_ids:
             for conv in self.converters_with_piecewise:
                 for flow in list(conv.inputs) + list(conv.outputs):
                     if flow.label_full == flow_id:
-                        flow_to_converter[flow_id] = conv.label
+                        flow_to_conv[flow_id] = conv.label
                         break
 
-            if flow_id in flow_to_converter:
-                conv_id = flow_to_converter[flow_id]
-                # Select this converter's reconstructed value
-                reconstructed_for_conv = reconstructed.sel(converter=conv_id)
-                self.model.add_constraints(
-                    flow_rate_for_flow == reconstructed_for_conv,
-                    name=f'{ConverterVarName.Constraint.PIECEWISE_COUPLING}|{flow_id}',
-                )
+        # Stack all breakpoints into (piecewise_flow, converter, segment) arrays
+        all_starts = [breakpoints[fid][0] for fid in flow_ids]
+        all_ends = [breakpoints[fid][1] for fid in flow_ids]
+        piecewise_flow_idx = pd.Index(flow_ids, name='piecewise_flow')
+        all_starts_da = xr.concat(all_starts, dim=piecewise_flow_idx)
+        all_ends_da = xr.concat(all_ends, dim=piecewise_flow_idx)
+
+        # Compute all reconstructed values at once (batched over piecewise_flow)
+        # Result has dims: (piecewise_flow, converter, time, period, ...)
+        all_reconstructed = (lambda0 * all_starts_da + lambda1 * all_ends_da).sum('segment')
+
+        # Create mask for valid (piecewise_flow, converter) pairs
+        conv_ids = list(lambda0.coords['converter'].values)
+        mask_data = np.zeros((len(flow_ids), len(conv_ids)), dtype=bool)
+        for i, fid in enumerate(flow_ids):
+            if fid in flow_to_conv:
+                j = conv_ids.index(flow_to_conv[fid])
+                mask_data[i, j] = True
+
+        valid_mask = xr.DataArray(
+            mask_data,
+            dims=['piecewise_flow', 'converter'],
+            coords={'piecewise_flow': flow_ids, 'converter': conv_ids},
+        )
+
+        # Apply mask and sum over converter (each flow has exactly one valid converter)
+        reconstructed_per_flow = all_reconstructed.where(valid_mask).sum('converter')
+
+        # Get flow rates for piecewise flows and rename dimension to match
+        piecewise_flow_rate = flow_rate.sel(flow=flow_ids).rename({'flow': 'piecewise_flow'})
+
+        # Add single batched constraint
+        self.model.add_constraints(
+            piecewise_flow_rate == reconstructed_per_flow,
+            name=ConverterVarName.Constraint.PIECEWISE_COUPLING,
+        )
 
         self._logger.debug(
             f'ConvertersModel created piecewise constraints for {len(self.converters_with_piecewise)} converters'
