@@ -18,6 +18,23 @@ import flixopt as fx
 from flixopt.structure import FlowSystemModel
 
 # ============================================================================
+# SKIP DEPRECATED TESTS
+# ============================================================================
+# The deprecated folder contains tests for the old per-element submodel API
+# which is not supported in v7's batched architecture.
+
+
+def pytest_collection_modifyitems(items, config):
+    """Skip all tests in the deprecated folder."""
+    skip_marker = pytest.mark.skip(
+        reason='Deprecated tests use per-element submodel API not supported in v7 batched architecture'
+    )
+    for item in items:
+        if '/deprecated/' in str(item.fspath) or '\\deprecated\\' in str(item.fspath):
+            item.add_marker(skip_marker)
+
+
+# ============================================================================
 # SOLVER FIXTURES
 # ============================================================================
 

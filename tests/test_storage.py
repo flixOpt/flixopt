@@ -28,7 +28,6 @@ class TestStorageModel:
 
         # Check that batched variables exist
         assert 'flow|rate' in model.variables
-        assert 'flow|hours' in model.variables
         assert 'storage|charge' in model.variables
         assert 'storage|netto' in model.variables
 

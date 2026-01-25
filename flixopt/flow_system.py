@@ -1628,6 +1628,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._connected_and_transformed = False
         self._topology = None  # Invalidate topology accessor (and its cached colors)
         self._flow_carriers = None  # Invalidate flow-to-carrier mapping
+        self._batched = None  # Invalidate batched data accessor (forces re-creation of FlowsData)
         self._variable_categories.clear()  # Clear stale categories for segment expansion
         for element in self.values():
             element._variable_names = []

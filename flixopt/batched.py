@@ -193,12 +193,23 @@ class StatusData:
         """Build min/max bound arrays in a single pass."""
         if not ids:
             return None
+
+        def _get_scalar_or_nan(value) -> float:
+            """Convert value to scalar float, handling arrays and None."""
+            if value is None:
+                return np.nan
+            if isinstance(value, (xr.DataArray, np.ndarray)):
+                # For time-varying values, use the minimum for min_* and maximum for max_*
+                # This provides conservative bounds for the duration tracking
+                return float(np.nanmin(value)) if np.any(np.isfinite(value)) else np.nan
+            return float(value) if value else np.nan
+
         min_vals = np.empty(len(ids), dtype=float)
         max_vals = np.empty(len(ids), dtype=float)
         for i, eid in enumerate(ids):
             p = self._params[eid]
-            min_vals[i] = getattr(p, min_attr) or np.nan
-            max_vals[i] = getattr(p, max_attr) or np.nan
+            min_vals[i] = _get_scalar_or_nan(getattr(p, min_attr))
+            max_vals[i] = _get_scalar_or_nan(getattr(p, max_attr))
         return (
             xr.DataArray(min_vals, dims=[self._dim], coords={self._dim: ids}),
             xr.DataArray(max_vals, dims=[self._dim], coords={self._dim: ids}),

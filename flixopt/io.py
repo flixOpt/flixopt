@@ -1711,6 +1711,18 @@ class FlowSystemDatasetIO:
         # Rename 'solution_time' back to 'time' if present
         if 'solution_time' in solution_ds.dims:
             solution_ds = solution_ds.rename({'solution_time': 'time'})
+
+        # Restore coordinates that were saved with the solution (e.g., 'effect')
+        # These are coords in the source ds that aren't already in solution_ds
+        for coord_name in ds.coords:
+            if coord_name not in solution_ds.coords:
+                # Check if this coord's dims are used by any solution variable
+                coord_dims = set(ds.coords[coord_name].dims)
+                for var in solution_ds.data_vars.values():
+                    if coord_dims.issubset(set(var.dims)):
+                        solution_ds = solution_ds.assign_coords({coord_name: ds.coords[coord_name]})
+                        break
+
         flow_system.solution = solution_ds
 
     @classmethod
@@ -1855,9 +1867,14 @@ class FlowSystemDatasetIO:
             }
             ds = ds.assign(solution_vars)
 
-            # Add solution_time coordinate if it exists
-            if 'solution_time' in solution_renamed.coords:
-                ds = ds.assign_coords(solution_time=solution_renamed.coords['solution_time'])
+            # Add all solution coordinates (time renamed to solution_time, plus others like 'effect')
+            solution_coords_to_add = {}
+            for coord_name in solution_renamed.coords:
+                # Skip dimension coordinates that come from the base dataset
+                if coord_name not in ds.coords:
+                    solution_coords_to_add[coord_name] = solution_renamed.coords[coord_name]
+            if solution_coords_to_add:
+                ds = ds.assign_coords(solution_coords_to_add)
 
             ds.attrs['has_solution'] = True
         else:

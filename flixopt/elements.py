@@ -2584,41 +2584,36 @@ class ConvertersModel:
 
     @cached_property
     def piecewise_breakpoints(self) -> xr.Dataset | None:
-        """Dataset with (converter, segment, flow) breakpoints.
+        """Dataset with (converter, segment, flow) or (converter, segment, flow, time) breakpoints.
 
         Variables:
             - starts: segment start values
             - ends: segment end values
+
+        When breakpoints are time-varying, an additional 'time' dimension is included.
         """
         if not self.converters_with_piecewise:
             return None
 
         # Collect all flows
         all_flows = list(self._piecewise_flow_breakpoints.keys())
-        n_components = len(self._piecewise_element_ids)
-        n_segments = self._piecewise_max_segments
-        n_flows = len(all_flows)
 
-        starts_data = np.zeros((n_components, n_segments, n_flows))
-        ends_data = np.zeros((n_components, n_segments, n_flows))
+        # Build a list of DataArrays for each flow, then combine with xr.concat
+        starts_list = []
+        ends_list = []
+        for flow_id in all_flows:
+            starts_da, ends_da = self._piecewise_flow_breakpoints[flow_id]
+            # Add 'flow' as a new coordinate
+            starts_da = starts_da.expand_dims(flow=[flow_id])
+            ends_da = ends_da.expand_dims(flow=[flow_id])
+            starts_list.append(starts_da)
+            ends_list.append(ends_da)
 
-        for f_idx, flow_id in enumerate(all_flows):
-            starts_2d, ends_2d = self._piecewise_flow_breakpoints[flow_id]
-            starts_data[:, :, f_idx] = starts_2d.values
-            ends_data[:, :, f_idx] = ends_2d.values
+        # Concatenate along 'flow' dimension
+        starts_combined = xr.concat(starts_list, dim='flow')
+        ends_combined = xr.concat(ends_list, dim='flow')
 
-        coords = {
-            self._piecewise_dim_name: self._piecewise_element_ids,
-            'segment': list(range(n_segments)),
-            'flow': all_flows,
-        }
-
-        return xr.Dataset(
-            {
-                'starts': xr.DataArray(starts_data, dims=[self._piecewise_dim_name, 'segment', 'flow'], coords=coords),
-                'ends': xr.DataArray(ends_data, dims=[self._piecewise_dim_name, 'segment', 'flow'], coords=coords),
-            }
-        )
+        return xr.Dataset({'starts': starts_combined, 'ends': ends_combined})
 
     def create_piecewise_variables(self) -> dict[str, linopy.Variable]:
         """Create batched piecewise conversion variables.
