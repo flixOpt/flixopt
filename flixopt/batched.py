@@ -937,7 +937,7 @@ class FlowsData:
 
     @cached_property
     def absolute_lower_bounds(self) -> xr.DataArray:
-        """(flow, time, period, scenario) - absolute lower bounds for flow rate.
+        """(flow, cluster, time, period, scenario) - absolute lower bounds for flow rate.
 
         Logic:
         - Status flows → 0 (status variable controls activation)
@@ -952,11 +952,12 @@ class FlowsData:
         # Build mask for flows that should have lb=0 (use pre-computed boolean masks)
         is_zero = self.has_status | self.has_optional_investment | fast_isnull(self.effective_size_lower)
         # Use DataArray.where (faster than xr.where)
-        return base.where(~is_zero, 0.0).fillna(0.0)
+        result = base.where(~is_zero, 0.0).fillna(0.0)
+        return self._ensure_canonical_order(result)
 
     @cached_property
     def absolute_upper_bounds(self) -> xr.DataArray:
-        """(flow, time, period, scenario) - absolute upper bounds for flow rate.
+        """(flow, cluster, time, period, scenario) - absolute upper bounds for flow rate.
 
         Logic:
         - Investment flows → relative_max * effective_size_upper
@@ -967,7 +968,8 @@ class FlowsData:
         base = self.effective_relative_maximum * self.effective_size_upper
 
         # Inf for flows without size (use DataArray.where, faster than xr.where)
-        return base.where(fast_notnull(self.effective_size_upper), np.inf)
+        result = base.where(fast_notnull(self.effective_size_upper), np.inf)
+        return self._ensure_canonical_order(result)
 
     # --- Investment Bounds (delegated to InvestmentData) ---
 
@@ -1214,14 +1216,14 @@ class FlowsData:
             arr: Input DataArray.
 
         Returns:
-            DataArray with dims in order (flow, time, period, scenario, ...) and
-            coords dict matching dims order. Additional dims (like 'cluster')
-            are appended at the end.
+            DataArray with dims in order (flow, cluster, time, period, scenario, ...) and
+            coords dict matching dims order. Additional dims are appended at the end.
         """
-        canonical_order = ['flow', 'time', 'period', 'scenario']
+        # Note: cluster comes before time to match FlowSystem.dims ordering
+        canonical_order = ['flow', 'cluster', 'time', 'period', 'scenario']
         # Start with canonical dims that exist in arr
         actual_dims = [d for d in canonical_order if d in arr.dims]
-        # Append any additional dims not in canonical order (e.g., 'cluster')
+        # Append any additional dims not in canonical order
         for d in arr.dims:
             if d not in actual_dims:
                 actual_dims.append(d)

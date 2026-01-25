@@ -1515,6 +1515,14 @@ class FlowSystemModel(linopy.Model):
                     new_var_name = f'{storage_id}|{new_suffix}'
                     new_vars[new_var_name] = element_var
 
+            # Handle intercluster storage variables: intercluster_storage|X -> Label|X
+            elif 'intercluster_storage' in var.dims and var_name.startswith('intercluster_storage|'):
+                suffix = var_name[21:]  # Remove 'intercluster_storage|' prefix
+                for storage_id in var.coords['intercluster_storage'].values:
+                    element_var = var.sel(intercluster_storage=storage_id, drop=True)
+                    new_var_name = f'{storage_id}|{suffix}'
+                    new_vars[new_var_name] = element_var
+
             # Handle bus variables: bus|X -> Label|X
             elif 'bus' in var.dims and var_name.startswith('bus|'):
                 suffix = var_name[4:]  # Remove 'bus|' prefix

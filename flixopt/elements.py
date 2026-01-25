@@ -1604,7 +1604,7 @@ class FlowsModel(TypeModel):
 
     def constraint_cluster_cyclic(self) -> None:
         """Constrain status[0] == status[-1] for cyclic cluster mode."""
-        if not self.model.flow_system.clusters:
+        if self.model.flow_system.clusters is None:
             return
 
         dim = self.dim_name

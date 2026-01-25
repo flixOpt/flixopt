@@ -1836,9 +1836,28 @@ class TransformAccessor:
             combined = (expanded_charge_state + soc_boundary_per_timestep).clip(min=0)
             expanded_fs._solution[charge_state_name] = combined.assign_attrs(expanded_charge_state.attrs)
 
-        # Clean up SOC_boundary variables and orphaned coordinates
+            # Also update the unrolled variable names (e.g., Battery|charge_state)
+            # The intercluster_storage dimension contains the actual storage names
+            if 'intercluster_storage' in expanded_charge_state.dims:
+                for storage_id in expanded_charge_state.coords['intercluster_storage'].values:
+                    unrolled_name = f'{storage_id}|charge_state'
+                    if unrolled_name in expanded_fs._solution:
+                        # Select this storage's data from the combined result
+                        unrolled_combined = combined.sel(intercluster_storage=storage_id, drop=True)
+                        expanded_fs._solution[unrolled_name] = unrolled_combined.assign_attrs(
+                            expanded_fs._solution[unrolled_name].attrs
+                        )
+
+        # Clean up SOC_boundary variables (both batched and unrolled) and orphaned coordinates
         for soc_boundary_name in soc_boundary_vars:
             if soc_boundary_name in expanded_fs._solution:
+                # Get storage names from the intercluster_storage dimension before deleting
+                soc_var = expanded_fs._solution[soc_boundary_name]
+                if 'intercluster_storage' in soc_var.dims:
+                    for storage_id in soc_var.coords['intercluster_storage'].values:
+                        unrolled_soc_name = f'{storage_id}|SOC_boundary'
+                        if unrolled_soc_name in expanded_fs._solution:
+                            del expanded_fs._solution[unrolled_soc_name]
                 del expanded_fs._solution[soc_boundary_name]
         if 'cluster_boundary' in expanded_fs._solution.coords:
             expanded_fs._solution = expanded_fs._solution.drop_vars('cluster_boundary')
