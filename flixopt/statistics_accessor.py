@@ -1478,13 +1478,8 @@ class StatisticsPlotAccessor:
                     color = component_colors.get(flow.component)
                 else:
                     # Extract component name from label
-                    # Patterns: 'Component(flow)|var', 'Component|var', 'Component'
-                    if '(' in label:
-                        comp_name = label.split('(')[0]
-                    elif '|' in label:
-                        comp_name = label.split('|')[0]
-                    else:
-                        comp_name = label
+                    # Pattern: 'Component(flow)' → 'Component', or 'Component' → 'Component'
+                    comp_name = label.split('(')[0] if '(' in label else label
                     color = component_colors.get(comp_name)
 
             if color:
