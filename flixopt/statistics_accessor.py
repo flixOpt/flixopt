@@ -273,6 +273,12 @@ def _apply_selection(ds: xr.Dataset, select: SelectType | None, drop: bool = Tru
     return ds
 
 
+def _sort_dataset(ds: xr.Dataset) -> xr.Dataset:
+    """Sort dataset variables alphabetically for consistent plotting order."""
+    sorted_vars = sorted(ds.data_vars)
+    return ds[sorted_vars]
+
+
 def add_line_overlay(
     fig: go.Figure,
     da: xr.DataArray,
@@ -1557,6 +1563,9 @@ class StatisticsPlotAccessor:
         if round_decimals is not None:
             ds = ds.round(round_decimals)
 
+        # Sort for consistent plotting order
+        ds = _sort_dataset(ds)
+
         # Get unit label from first data variable's attributes
         unit_label = ''
         if ds.data_vars:
@@ -1687,6 +1696,9 @@ class StatisticsPlotAccessor:
         if round_decimals is not None:
             ds = ds.round(round_decimals)
 
+        # Sort for consistent plotting order
+        ds = _sort_dataset(ds)
+
         # Get unit label from carrier or first data variable
         unit_label = ''
         if ds.data_vars:
@@ -1752,6 +1764,7 @@ class StatisticsPlotAccessor:
         # Resolve, select, and stack into single DataArray
         resolved = self._resolve_variable_names(variables, solution)
         ds = _apply_selection(solution[resolved], select)
+        ds = _sort_dataset(ds)  # Sort for consistent plotting order
         da = xr.concat([ds[v] for v in ds.data_vars], dim=pd.Index(list(ds.data_vars), name='variable'))
 
         # Prepare for heatmap (reshape, transpose, squeeze)
@@ -1845,6 +1858,9 @@ class StatisticsPlotAccessor:
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
 
+        # Sort for consistent plotting order
+        ds = _sort_dataset(ds)
+
         # Get unit label from first data variable's attributes
         unit_label = ''
         if ds.data_vars:
@@ -1908,6 +1924,8 @@ class StatisticsPlotAccessor:
         if not ds.data_vars:
             fig = go.Figure()
         else:
+            # Sort for consistent plotting order
+            ds = _sort_dataset(ds)
             # Build color kwargs
             color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
             _apply_slot_defaults(plotly_kwargs, 'sizes')
@@ -1991,6 +2009,9 @@ class StatisticsPlotAccessor:
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
             return PlotResult(data=result_ds, figure=go.Figure())
+
+        # Sort for consistent plotting order
+        result_ds = _sort_dataset(result_ds)
 
         # Get unit label from first data variable's attributes
         unit_label = ''
@@ -2112,6 +2133,9 @@ class StatisticsPlotAccessor:
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
 
+        # Sort for consistent plotting order
+        ds = _sort_dataset(ds)
+
         # Build title
         effect_label = effect or 'Effects'
         title = f'{effect_label} ({aspect})' if by is None else f'{effect_label} ({aspect}) by {by}'
@@ -2184,6 +2208,9 @@ class StatisticsPlotAccessor:
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
+
+        # Sort for consistent plotting order
+        ds = _sort_dataset(ds)
 
         # Build color kwargs
         color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
@@ -2290,11 +2317,14 @@ class StatisticsPlotAccessor:
         if round_decimals is not None:
             flow_ds = flow_ds.round(round_decimals)
 
+        # Sort for consistent plotting order
+        flow_ds = _sort_dataset(flow_ds)
+
         # Build color kwargs - use default colors from element attributes if not specified
         if colors is None:
-            color_kwargs = {'color_discrete_map': self._get_color_map_for_balance(storage, flow_labels)}
+            color_kwargs = {'color_discrete_map': self._get_color_map_for_balance(storage, list(flow_ds.data_vars))}
         else:
-            color_kwargs = _build_color_kwargs(colors, flow_labels)
+            color_kwargs = _build_color_kwargs(colors, list(flow_ds.data_vars))
 
         # Get unit label from flow data
         unit_label = ''
