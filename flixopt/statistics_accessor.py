@@ -409,7 +409,7 @@ def _dataset_to_long_df(ds: xr.Dataset, value_name: str = 'value', var_name: str
 
 
 def _build_color_kwargs(colors: ColorType | None, labels: list[str]) -> dict[str, Any]:
-    """Build color kwargs for plotly based on color type.
+    """Build color kwargs for plotly based on color type (no smart defaults).
 
     Args:
         colors: Dict (color_discrete_map), list (color_discrete_sequence),
@@ -428,6 +428,44 @@ def _build_color_kwargs(colors: ColorType | None, labels: list[str]) -> dict[str
     if isinstance(colors, str):
         return {'color_discrete_map': process_colors(colors, labels)}
     return {}
+
+
+def _merge_color_kwargs(
+    colors: ColorType | None,
+    labels: list[str],
+    smart_defaults: dict[str, str],
+) -> dict[str, Any]:
+    """Build color kwargs, merging user colors with smart defaults.
+
+    Args:
+        colors: User-provided colors (dict, list, str colorscale, or None).
+        labels: Variable labels (used for colorscale conversion).
+        smart_defaults: Pre-computed smart default color map.
+
+    Returns:
+        Dict with 'color_discrete_map' or 'color_discrete_sequence'.
+
+    Behavior:
+        - None: Use smart_defaults
+        - dict: Merge with smart_defaults (user overrides win)
+        - list: Use as color_discrete_sequence (no smart defaults)
+        - str: Convert colorscale to map (no smart defaults)
+    """
+    if colors is None:
+        return {'color_discrete_map': smart_defaults}
+
+    if isinstance(colors, dict):
+        merged = smart_defaults.copy()
+        merged.update(colors)  # User overrides win
+        return {'color_discrete_map': merged}
+
+    if isinstance(colors, list):
+        return {'color_discrete_sequence': colors}
+
+    if isinstance(colors, str):
+        return {'color_discrete_map': process_colors(colors, labels)}
+
+    return {'color_discrete_map': smart_defaults}
 
 
 # --- Statistics Accessor (data only) ---
@@ -1405,76 +1443,50 @@ class StatisticsPlotAccessor:
             self._sankey = SankeyPlotAccessor(self)
         return self._sankey
 
-    def _get_color_map_for_balance(self, node: str, flow_labels: list[str]) -> dict[str, str]:
-        """Build color map for balance plot.
-
-        - Bus balance: colors from component.color (using cached component_colors)
-        - Component balance: colors from flow's carrier (using cached carrier_colors)
-
-        Raises:
-            RuntimeError: If FlowSystem is not connected_and_transformed.
-        """
-        if not self._fs.connected_and_transformed:
-            raise RuntimeError(
-                'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
-            )
-
-        is_bus = node in self._fs.buses
-        color_map = {}
-        uncolored = []
-
-        # Get cached colors for efficient lookup
-        carrier_colors = self._stats.carrier_colors
-        component_colors = self._stats.component_colors
-        flow_rates = self._stats.flow_rates
-
-        for label in flow_labels:
-            if is_bus:
-                # Use cached component colors
-                comp_label = self._fs.flows[label].component
-                color = component_colors.get(comp_label)
-            else:
-                # Use carrier name from xarray attribute (already computed) + cached colors
-                carrier_name = flow_rates[label].attrs.get('carrier') if label in flow_rates else None
-                color = carrier_colors.get(carrier_name) if carrier_name else None
-
-            if color:
-                color_map[label] = color
-            else:
-                uncolored.append(label)
-
-        if uncolored:
-            color_map.update(process_colors(None, uncolored))
-
-        return color_map
-
-    def _get_component_color_map(self, labels: list[str]) -> dict[str, str]:
-        """Build color map from component colors for variable labels.
-
-        Extracts component name from variable labels (e.g., 'Boiler(Q_th)|flow_rate' -> 'Boiler')
-        and looks up colors from component_colors.
+    def _get_smart_color_defaults(
+        self,
+        labels: list[str],
+        color_by: Literal['component', 'carrier'] = 'component',
+    ) -> dict[str, str]:
+        """Build smart color defaults for labels.
 
         Args:
             labels: Variable or flow labels.
+            color_by: 'component' for component colors, 'carrier' for carrier colors.
 
         Returns:
-            Dict mapping labels to colors. Uncolored labels get fallback colors.
+            Dict mapping labels to hex colors. Uncolored labels get fallback colors.
         """
         component_colors = self._stats.component_colors
+        carrier_colors = self._stats.carrier_colors
+        flow_rates = self._stats.flow_rates
+
         color_map = {}
         uncolored = []
 
         for label in labels:
-            # Extract component name from label
-            # Patterns: 'Component(flow)|var', 'Component|var', 'Component'
-            if '(' in label:
-                comp_name = label.split('(')[0]
-            elif '|' in label:
-                comp_name = label.split('|')[0]
-            else:
-                comp_name = label
+            color = None
 
-            color = component_colors.get(comp_name)
+            if color_by == 'carrier':
+                # Get carrier from flow attributes
+                carrier_name = flow_rates[label].attrs.get('carrier') if label in flow_rates else None
+                color = carrier_colors.get(carrier_name) if carrier_name else None
+            else:  # color_by == 'component'
+                # Try to get component from flow first
+                flow = self._fs.flows.get(label)
+                if flow:
+                    color = component_colors.get(flow.component)
+                else:
+                    # Extract component name from label
+                    # Patterns: 'Component(flow)|var', 'Component|var', 'Component'
+                    if '(' in label:
+                        comp_name = label.split('(')[0]
+                    elif '|' in label:
+                        comp_name = label.split('|')[0]
+                    else:
+                        comp_name = label
+                    color = component_colors.get(comp_name)
+
             if color:
                 color_map[label] = color
             else:
@@ -1485,38 +1497,24 @@ class StatisticsPlotAccessor:
 
         return color_map
 
-    def _build_smart_color_kwargs(self, colors: ColorType | None, labels: list[str]) -> dict[str, Any]:
-        """Build color kwargs with smart defaults from component colors.
+    def _build_color_kwargs(
+        self,
+        colors: ColorType | None,
+        labels: list[str],
+        color_by: Literal['component', 'carrier'] = 'component',
+    ) -> dict[str, Any]:
+        """Build color kwargs with smart defaults.
 
         Args:
             colors: User-provided colors (dict, list, str colorscale, or None).
             labels: Variable labels for color mapping.
+            color_by: 'component' for component colors, 'carrier' for carrier colors.
 
         Returns:
             Dict with 'color_discrete_map' or 'color_discrete_sequence'.
-
-        Behavior:
-            - None: Use component_colors with fallback
-            - dict: Merge with component_colors (user overrides win)
-            - list: Use as color_discrete_sequence (no smart defaults)
-            - str: Convert colorscale to map (no smart defaults)
         """
-        if colors is None:
-            return {'color_discrete_map': self._get_component_color_map(labels)}
-
-        if isinstance(colors, dict):
-            # Merge: smart defaults first, then user overrides
-            color_map = self._get_component_color_map(labels)
-            color_map.update(colors)
-            return {'color_discrete_map': color_map}
-
-        if isinstance(colors, list):
-            return {'color_discrete_sequence': colors}
-
-        if isinstance(colors, str):
-            return {'color_discrete_map': process_colors(colors, labels)}
-
-        return {}
+        smart_defaults = self._get_smart_color_defaults(labels, color_by)
+        return _merge_color_kwargs(colors, labels, smart_defaults)
 
     def _resolve_variable_names(self, variables: list[str], solution: xr.Dataset) -> list[str]:
         """Resolve flow labels to variable names with fallback.
@@ -1592,8 +1590,10 @@ class StatisticsPlotAccessor:
         # Get the element
         if node in self._fs.buses:
             element = self._fs.buses[node]
+            is_bus = True
         elif node in self._fs.components:
             element = self._fs.components[node]
+            is_bus = False
         else:
             raise KeyError(f"'{node}' not found in buses or components")
 
@@ -1619,19 +1619,9 @@ class StatisticsPlotAccessor:
 
         ds = _apply_selection(ds, select)
 
-        # Build color kwargs with smart defaults, merging user overrides
-        smart_colors = self._get_color_map_for_balance(node, list(ds.data_vars))
-        if colors is None:
-            color_kwargs = {'color_discrete_map': smart_colors}
-        elif isinstance(colors, dict):
-            smart_colors.update(colors)  # User overrides win
-            color_kwargs = {'color_discrete_map': smart_colors}
-        elif isinstance(colors, list):
-            color_kwargs = {'color_discrete_sequence': colors}
-        elif isinstance(colors, str):
-            color_kwargs = {'color_discrete_map': process_colors(colors, list(ds.data_vars))}
-        else:
-            color_kwargs = {'color_discrete_map': smart_colors}
+        # Build color kwargs: bus balance → component colors, component balance → carrier colors
+        color_by: Literal['component', 'carrier'] = 'component' if is_bus else 'carrier'
+        color_kwargs = self._build_color_kwargs(colors, list(ds.data_vars), color_by)
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
@@ -1747,33 +1737,8 @@ class StatisticsPlotAccessor:
 
         ds = _apply_selection(ds, select)
 
-        # Build smart color map from component colors
-        component_colors = self._stats.component_colors
-        smart_colors = {}
-        uncolored = []
-        for label in ds.data_vars:
-            flow = self._fs.flows.get(label)
-            if flow:
-                color = component_colors.get(flow.component)
-                if color:
-                    smart_colors[label] = color
-                    continue
-            uncolored.append(label)
-        if uncolored:
-            smart_colors.update(process_colors(None, uncolored))
-
-        # Build color kwargs, merging user overrides with smart defaults
-        if colors is None:
-            color_kwargs = {'color_discrete_map': smart_colors}
-        elif isinstance(colors, dict):
-            smart_colors.update(colors)  # User overrides win
-            color_kwargs = {'color_discrete_map': smart_colors}
-        elif isinstance(colors, list):
-            color_kwargs = {'color_discrete_sequence': colors}
-        elif isinstance(colors, str):
-            color_kwargs = {'color_discrete_map': process_colors(colors, list(ds.data_vars))}
-        else:
-            color_kwargs = {'color_discrete_map': smart_colors}
+        # Build color kwargs with component colors (flows colored by their parent component)
+        color_kwargs = self._build_color_kwargs(colors, list(ds.data_vars), color_by='component')
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
@@ -1955,7 +1920,7 @@ class StatisticsPlotAccessor:
             unit_label = ds[first_var].attrs.get('unit', '')
 
         # Build color kwargs with smart defaults from component colors
-        color_kwargs = self._build_smart_color_kwargs(colors, list(ds.data_vars))
+        color_kwargs = self._build_color_kwargs(colors, list(ds.data_vars))
 
         _apply_slot_defaults(plotly_kwargs, 'flows')
         fig = ds.plotly.line(
@@ -2014,7 +1979,7 @@ class StatisticsPlotAccessor:
             # Sort for consistent plotting order
             ds = _sort_dataset(ds)
             # Build color kwargs with smart defaults from component colors
-            color_kwargs = self._build_smart_color_kwargs(colors, list(ds.data_vars))
+            color_kwargs = self._build_color_kwargs(colors, list(ds.data_vars))
             _apply_slot_defaults(plotly_kwargs, 'sizes')
             fig = ds.plotly.bar(
                 title='Investment Sizes',
@@ -2107,7 +2072,7 @@ class StatisticsPlotAccessor:
             unit_label = ds[first_var].attrs.get('unit', '')
 
         # Build color kwargs with smart defaults from component colors
-        color_kwargs = self._build_smart_color_kwargs(colors, list(result_ds.data_vars))
+        color_kwargs = self._build_color_kwargs(colors, list(result_ds.data_vars))
 
         plotly_kwargs.setdefault('x', 'duration_pct' if normalize else 'duration')
         _apply_slot_defaults(plotly_kwargs, 'duration_curve')
@@ -2238,7 +2203,7 @@ class StatisticsPlotAccessor:
             labels = list(ds.data_vars)
         else:
             labels = []
-        color_kwargs = self._build_smart_color_kwargs(colors, labels) if labels else {}
+        color_kwargs = self._build_color_kwargs(colors, labels) if labels else {}
 
         plotly_kwargs.setdefault('x', x_col)
         _apply_slot_defaults(plotly_kwargs, 'effects')
@@ -2300,7 +2265,7 @@ class StatisticsPlotAccessor:
         ds = _sort_dataset(ds)
 
         # Build color kwargs with smart defaults from component colors
-        color_kwargs = self._build_smart_color_kwargs(colors, list(ds.data_vars))
+        color_kwargs = self._build_color_kwargs(colors, list(ds.data_vars))
 
         _apply_slot_defaults(plotly_kwargs, 'charge_states')
         fig = ds.plotly.line(
@@ -2407,19 +2372,8 @@ class StatisticsPlotAccessor:
         # Sort for consistent plotting order
         flow_ds = _sort_dataset(flow_ds)
 
-        # Build color kwargs with smart defaults, merging user overrides
-        smart_colors = self._get_color_map_for_balance(storage, list(flow_ds.data_vars))
-        if colors is None:
-            color_kwargs = {'color_discrete_map': smart_colors}
-        elif isinstance(colors, dict):
-            smart_colors.update(colors)  # User overrides win
-            color_kwargs = {'color_discrete_map': smart_colors}
-        elif isinstance(colors, list):
-            color_kwargs = {'color_discrete_sequence': colors}
-        elif isinstance(colors, str):
-            color_kwargs = {'color_discrete_map': process_colors(colors, list(flow_ds.data_vars))}
-        else:
-            color_kwargs = {'color_discrete_map': smart_colors}
+        # Build color kwargs with carrier colors (storage is a component, flows colored by carrier)
+        color_kwargs = self._build_color_kwargs(colors, list(flow_ds.data_vars), color_by='carrier')
 
         # Get unit label from flow data
         unit_label = ''
