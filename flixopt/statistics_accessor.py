@@ -1478,6 +1478,7 @@ class StatisticsPlotAccessor:
         exclude: FilterType | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
+        round_decimals: int | None = 6,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -1491,6 +1492,8 @@ class StatisticsPlotAccessor:
             exclude: Exclude flows containing these substrings.
             unit: 'flow_rate' (power) or 'flow_hours' (energy).
             colors: Color specification (colorscale name, color list, or label-to-color dict).
+            round_decimals: Round values to this many decimal places to avoid numerical noise
+                (e.g., tiny negative values from solver precision). Set to None to disable.
             show: Whether to display the plot.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to the plotly accessor (e.g.,
@@ -1541,6 +1544,10 @@ class StatisticsPlotAccessor:
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
 
+        # Round to avoid numerical noise (tiny negative values from solver precision)
+        if round_decimals is not None:
+            ds = ds.round(round_decimals)
+
         # Get unit label from first data variable's attributes
         unit_label = ''
         if ds.data_vars:
@@ -1571,6 +1578,7 @@ class StatisticsPlotAccessor:
         exclude: FilterType | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
+        round_decimals: int | None = 6,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -1587,6 +1595,8 @@ class StatisticsPlotAccessor:
             exclude: Exclude flows containing these substrings.
             unit: 'flow_rate' (power) or 'flow_hours' (energy).
             colors: Color specification (colorscale name, color list, or label-to-color dict).
+            round_decimals: Round values to this many decimal places to avoid numerical noise
+                (e.g., tiny negative values from solver precision). Set to None to disable.
             show: Whether to display the plot.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to the plotly accessor (e.g.,
@@ -1663,6 +1673,10 @@ class StatisticsPlotAccessor:
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
+
+        # Round to avoid numerical noise (tiny negative values from solver precision)
+        if round_decimals is not None:
+            ds = ds.round(round_decimals)
 
         # Get unit label from carrier or first data variable
         unit_label = ''
@@ -2188,6 +2202,7 @@ class StatisticsPlotAccessor:
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
         charge_state_color: str = 'black',
+        round_decimals: int | None = 6,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -2204,6 +2219,8 @@ class StatisticsPlotAccessor:
             unit: 'flow_rate' (power) or 'flow_hours' (energy).
             colors: Color specification for flow bars.
             charge_state_color: Color for the charge state line overlay.
+            round_decimals: Round values to this many decimal places to avoid numerical noise
+                (e.g., tiny negative values from solver precision). Set to None to disable.
             show: Whether to display.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to the plotly accessor (e.g.,
@@ -2259,6 +2276,10 @@ class StatisticsPlotAccessor:
         flow_labels = [lbl for lbl in ds.data_vars if lbl != 'charge_state']
         flow_ds = ds[flow_labels]
         charge_da = ds['charge_state']
+
+        # Round to avoid numerical noise (tiny negative values from solver precision)
+        if round_decimals is not None:
+            flow_ds = flow_ds.round(round_decimals)
 
         # Build color kwargs - use default colors from element attributes if not specified
         if colors is None:
