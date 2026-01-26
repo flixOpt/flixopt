@@ -16,14 +16,10 @@ import numpy as np
 import xarray as xr
 
 from .core import PlausibilityError
-from .features import ShareAllocationModel
 from .structure import (
     Element,
     ElementContainer,
-    ElementModel,
     FlowSystemModel,
-    Submodel,
-    VariableCategory,
     register_class_for_io,
 )
 
@@ -189,8 +185,6 @@ class Effect(Element):
 
     """
 
-    submodel: EffectModel | None
-
     def __init__(
         self,
         label: str,
@@ -296,11 +290,6 @@ class Effect(Element):
             f'{self.prefix}|period_weights', self.period_weights, dims=['period', 'scenario']
         )
 
-    def create_model(self, model: FlowSystemModel) -> EffectModel:
-        self._plausibility_checks()
-        self.submodel = EffectModel(model, self)
-        return self.submodel
-
     def _plausibility_checks(self) -> None:
         # Check that minimum_over_periods and maximum_over_periods require a period dimension
         if (
@@ -313,100 +302,437 @@ class Effect(Element):
             )
 
 
-class EffectModel(ElementModel):
-    """Mathematical model implementation for Effects.
+class EffectsModel:
+    """Type-level model for ALL effects with batched variables using 'effect' dimension.
 
-    Creates optimization variables and constraints for effect aggregation,
-    including periodic and temporal tracking, cross-effect contributions,
-    and effect bounds.
+    Unlike EffectModel (one per Effect), EffectsModel handles ALL effects in a single
+    instance with batched variables. This provides:
+    - Compact model structure with 'effect' dimension
+    - Vectorized constraint creation
+    - Direct expression building for effect shares
 
-    Mathematical Formulation:
-        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/effects-and-dimensions/>
+    Variables created (all with 'effect' dimension):
+        - effect|periodic: Periodic (investment) contributions per effect
+        - effect|temporal: Temporal (operation) total per effect
+        - effect|per_timestep: Per-timestep contributions per effect
+        - effect|total: Total effect (periodic + temporal)
+
+    Usage:
+        1. Call create_variables() to create effect variables
+        2. Call finalize_shares() to add share expressions to effect constraints
     """
 
-    element: Effect  # Type hint
+    def __init__(self, model: FlowSystemModel, effects: list[Effect]):
+        import pandas as pd
 
-    def __init__(self, model: FlowSystemModel, element: Effect):
-        super().__init__(model, element)
+        self.model = model
+        self.effects = effects
+        self.effect_ids = [e.label for e in effects]
+        self._effect_index = pd.Index(self.effect_ids, name='effect')
 
-    @property
-    def period_weights(self) -> xr.DataArray:
-        """
-        Get period weights for this effect.
-
-        Returns effect-specific weights if defined, otherwise falls back to FlowSystem period weights.
-        This allows different effects to have different weighting schemes over periods (e.g., discounting for costs,
-        equal weights for CO2 emissions).
-
-        Returns:
-            Weights with period dimensions (if applicable)
-        """
-        effect_weights = self.element.period_weights
-        default_weights = self.element._flow_system.period_weights
-        if effect_weights is not None:  # Use effect-specific weights
-            return effect_weights
-        elif default_weights is not None:  # Fall back to FlowSystem weights
-            return default_weights
-        return self.element._fit_coords(name='period_weights', data=1, dims=['period'])
-
-    def _do_modeling(self):
-        """Create variables, constraints, and nested submodels"""
-        super()._do_modeling()
-
+        # Variables (set during create_variables)
+        self.periodic: linopy.Variable | None = None
+        self.temporal: linopy.Variable | None = None
+        self.per_timestep: linopy.Variable | None = None
         self.total: linopy.Variable | None = None
-        self.periodic: ShareAllocationModel = self.add_submodels(
-            ShareAllocationModel(
-                model=self._model,
-                dims=('period', 'scenario'),
-                label_of_element=self.label_of_element,
-                label_of_model=f'{self.label_of_model}(periodic)',
-                total_max=self.element.maximum_periodic,
-                total_min=self.element.minimum_periodic,
-            ),
-            short_name='periodic',
+        self.total_over_periods: linopy.Variable | None = None
+
+        # Constraints for effect tracking (created in create_variables and finalize_shares)
+        self._eq_periodic: linopy.Constraint | None = None
+        self._eq_temporal: linopy.Constraint | None = None
+        self._eq_total: linopy.Constraint | None = None
+
+        self._eq_per_timestep: linopy.Constraint | None = None
+
+        # Share variables (created in create_share_variables)
+        self.share_temporal: linopy.Variable | None = None
+        self.share_periodic: linopy.Variable | None = None
+
+        # Registered contributions from type models (FlowsModel, StoragesModel, etc.)
+        self._temporal_contributions: list = []
+        self._periodic_contributions: list = []
+
+    def add_temporal_contribution(self, expr) -> None:
+        """Register a temporal effect contribution expression.
+
+        Called by FlowsModel.add_effect_contributions() to register status effects, etc.
+        Expressions are summed and subtracted from effect|per_timestep constraint.
+        """
+        self._temporal_contributions.append(expr)
+
+    def add_periodic_contribution(self, expr) -> None:
+        """Register a periodic effect contribution expression.
+
+        Called by type models to register investment effects, etc.
+        Expressions are summed and subtracted from effect|periodic constraint.
+        """
+        self._periodic_contributions.append(expr)
+
+    def _stack_bounds(self, attr_name: str, default: float = np.inf) -> xr.DataArray:
+        """Stack per-effect bounds into a single DataArray with effect dimension."""
+
+        def as_dataarray(effect: Effect) -> xr.DataArray:
+            val = getattr(effect, attr_name, None)
+            if val is None:
+                return xr.DataArray(default)
+            return val if isinstance(val, xr.DataArray) else xr.DataArray(val)
+
+        return xr.concat(
+            [as_dataarray(e).expand_dims(effect=[e.label]) for e in self.effects],
+            dim='effect',
+            fill_value=default,
         )
 
-        self.temporal: ShareAllocationModel = self.add_submodels(
-            ShareAllocationModel(
-                model=self._model,
-                dims=('time', 'period', 'scenario'),
-                label_of_element=self.label_of_element,
-                label_of_model=f'{self.label_of_model}(temporal)',
-                total_max=self.element.maximum_temporal,
-                total_min=self.element.minimum_temporal,
-                min_per_hour=self.element.minimum_per_hour if self.element.minimum_per_hour is not None else None,
-                max_per_hour=self.element.maximum_per_hour if self.element.maximum_per_hour is not None else None,
-            ),
-            short_name='temporal',
+    def _get_period_weights(self, effect: Effect) -> xr.DataArray:
+        """Get period weights for an effect."""
+        effect_weights = effect.period_weights
+        default_weights = effect._flow_system.period_weights
+        if effect_weights is not None:
+            return effect_weights
+        elif default_weights is not None:
+            return default_weights
+        return effect._fit_coords(name='period_weights', data=1, dims=['period'])
+
+    def create_variables(self) -> None:
+        """Create batched effect variables with 'effect' dimension."""
+
+        # Helper to safely merge coordinates
+        def _merge_coords(base_dict: dict, model_coords) -> dict:
+            if model_coords is not None:
+                base_dict.update({k: v for k, v in model_coords.items()})
+            return base_dict
+
+        # === Periodic (investment) ===
+        periodic_coords = xr.Coordinates(
+            _merge_coords(
+                {'effect': self._effect_index},
+                self.model.get_coords(['period', 'scenario']),
+            )
+        )
+        self.periodic = self.model.add_variables(
+            lower=self._stack_bounds('minimum_periodic', -np.inf),
+            upper=self._stack_bounds('maximum_periodic', np.inf),
+            coords=periodic_coords,
+            name='effect|periodic',
+        )
+        # Constraint: periodic == sum(shares) - start with 0, shares subtract from LHS
+        self._eq_periodic = self.model.add_constraints(
+            self.periodic == 0,
+            name='effect|periodic',
         )
 
-        self.total = self.add_variables(
-            lower=self.element.minimum_total if self.element.minimum_total is not None else -np.inf,
-            upper=self.element.maximum_total if self.element.maximum_total is not None else np.inf,
-            coords=self._model.get_coords(['period', 'scenario']),
-            name=self.label_full,
-            category=VariableCategory.TOTAL,
+        # === Temporal (operation total over time) ===
+        self.temporal = self.model.add_variables(
+            lower=self._stack_bounds('minimum_temporal', -np.inf),
+            upper=self._stack_bounds('maximum_temporal', np.inf),
+            coords=periodic_coords,
+            name='effect|temporal',
+        )
+        self._eq_temporal = self.model.add_constraints(
+            self.temporal == 0,
+            name='effect|temporal',
         )
 
-        self.add_constraints(
-            self.total == self.temporal.total + self.periodic.total, name=self.label_full, short_name='total'
+        # === Per-timestep (temporal contributions per timestep) ===
+        temporal_coords = xr.Coordinates(
+            _merge_coords(
+                {'effect': self._effect_index},
+                self.model.get_coords(None),  # All dims
+            )
         )
 
-        # Add weighted sum over all periods constraint if minimum_over_periods or maximum_over_periods is defined
-        if self.element.minimum_over_periods is not None or self.element.maximum_over_periods is not None:
-            # Calculate weighted sum over all periods
-            weighted_total = (self.total * self.period_weights).sum('period')
+        # Build per-hour bounds
+        min_per_hour = self._stack_bounds('minimum_per_hour', -np.inf)
+        max_per_hour = self._stack_bounds('maximum_per_hour', np.inf)
 
-            # Create tracking variable for the weighted sum
-            self.total_over_periods = self.add_variables(
-                lower=self.element.minimum_over_periods if self.element.minimum_over_periods is not None else -np.inf,
-                upper=self.element.maximum_over_periods if self.element.maximum_over_periods is not None else np.inf,
-                coords=self._model.get_coords(['scenario']),
-                short_name='total_over_periods',
-                category=VariableCategory.TOTAL_OVER_PERIODS,
+        self.per_timestep = self.model.add_variables(
+            lower=min_per_hour * self.model.timestep_duration if min_per_hour is not None else -np.inf,
+            upper=max_per_hour * self.model.timestep_duration if max_per_hour is not None else np.inf,
+            coords=temporal_coords,
+            name='effect|per_timestep',
+        )
+        self._eq_per_timestep = self.model.add_constraints(
+            self.per_timestep == 0,
+            name='effect|per_timestep',
+        )
+
+        # Link per_timestep to temporal (sum over time)
+        weighted_per_timestep = self.per_timestep * self.model.weights.get('cluster', 1.0)
+        self._eq_temporal.lhs -= weighted_per_timestep.sum(dim=self.model.temporal_dims)
+
+        # === Total (periodic + temporal) ===
+        self.total = self.model.add_variables(
+            lower=self._stack_bounds('minimum_total', -np.inf),
+            upper=self._stack_bounds('maximum_total', np.inf),
+            coords=periodic_coords,
+            name='effect|total',
+        )
+        self._eq_total = self.model.add_constraints(
+            self.total == self.periodic + self.temporal,
+            name='effect|total',
+        )
+
+        # === Total over periods (for effects with min/max_over_periods) ===
+        # Only applicable when periods exist in the flow system
+        if self.model.flow_system.periods is None:
+            return
+        effects_with_over_periods = [
+            e for e in self.effects if e.minimum_over_periods is not None or e.maximum_over_periods is not None
+        ]
+        if effects_with_over_periods:
+            over_periods_ids = [e.label for e in effects_with_over_periods]
+            over_periods_coords = xr.Coordinates(
+                _merge_coords(
+                    {'effect': over_periods_ids},
+                    self.model.get_coords(['scenario']),
+                )
             )
 
-            self.add_constraints(self.total_over_periods == weighted_total, short_name='total_over_periods')
+            # Stack bounds for over_periods
+            lower_over = []
+            upper_over = []
+            for e in effects_with_over_periods:
+                lower_over.append(e.minimum_over_periods if e.minimum_over_periods is not None else -np.inf)
+                upper_over.append(e.maximum_over_periods if e.maximum_over_periods is not None else np.inf)
+
+            self.total_over_periods = self.model.add_variables(
+                lower=xr.DataArray(lower_over, coords={'effect': over_periods_ids}, dims=['effect']),
+                upper=xr.DataArray(upper_over, coords={'effect': over_periods_ids}, dims=['effect']),
+                coords=over_periods_coords,
+                name='effect|total_over_periods',
+            )
+
+            # Create constraint: total_over_periods == weighted sum for each effect
+            # Can't use xr.concat with LinearExpression objects, so create individual constraints
+            for e in effects_with_over_periods:
+                total_e = self.total.sel(effect=e.label)
+                weights_e = self._get_period_weights(e)
+                weighted_total = (total_e * weights_e).sum('period')
+                self.model.add_constraints(
+                    self.total_over_periods.sel(effect=e.label) == weighted_total,
+                    name=f'effect|total_over_periods|{e.label}',
+                )
+
+    def add_share_periodic(
+        self,
+        name: str,
+        effect_id: str,
+        expression: linopy.LinearExpression,
+    ) -> None:
+        """Add a periodic share to a specific effect.
+
+        Args:
+            name: Element identifier (for debugging)
+            effect_id: Target effect identifier
+            expression: The share expression to add
+        """
+        # Expand expression to have effect dimension (with zeros for other effects)
+        effect_mask = xr.DataArray(
+            [1 if eid == effect_id else 0 for eid in self.effect_ids],
+            coords={'effect': self.effect_ids},
+            dims=['effect'],
+        )
+        self._eq_periodic.lhs -= expression * effect_mask
+
+    def add_share_temporal(
+        self,
+        name: str,
+        effect_id: str,
+        expression: linopy.LinearExpression,
+    ) -> None:
+        """Add a temporal (per-timestep) share to a specific effect.
+
+        Args:
+            name: Element identifier (for debugging)
+            effect_id: Target effect identifier
+            expression: The share expression to add
+        """
+        # Expand expression to have effect dimension (with zeros for other effects)
+        effect_mask = xr.DataArray(
+            [1 if eid == effect_id else 0 for eid in self.effect_ids],
+            coords={'effect': self.effect_ids},
+            dims=['effect'],
+        )
+        self._eq_per_timestep.lhs -= expression * effect_mask
+
+    def finalize_shares(self) -> None:
+        """Build share variables and add their sums to effect constraints.
+
+        Creates batched share variables with (element, effect, time/period) dimensions,
+        then adds sum(share) to the corresponding effect constraint.
+
+        Temporal shares (per timestep):
+            share_temporal[flow, effect, time] = rate * effects_per_flow_hour * dt
+            effect|per_timestep += sum(share_temporal, dim='flow')
+
+        Periodic shares:
+            share_periodic[investment, effect, period] = size * effects_per_size
+            effect|periodic += sum(share_periodic, dim='investment')
+        """
+        flows_model = self.model._flows_model
+        if flows_model is None:
+            return
+
+        dt = self.model.timestep_duration
+
+        # === Temporal shares (from flows) ===
+        self._create_temporal_shares(flows_model, dt)
+
+        # === Periodic shares (from flows and storages) ===
+        self._create_periodic_shares(flows_model)
+
+    def _share_coords(self, element_dim: str, element_index, temporal: bool = True) -> xr.Coordinates:
+        """Build coordinates for share variables: (element, effect) + time/period/scenario."""
+        base_dims = None if temporal else ['period', 'scenario']
+        return xr.Coordinates(
+            {
+                element_dim: element_index,
+                'effect': self._effect_index,
+                **{k: v for k, v in (self.model.get_coords(base_dims) or {}).items()},
+            }
+        )
+
+    def _create_temporal_shares(self, flows_model, dt: xr.DataArray) -> None:
+        """Create share|temporal and add all temporal contributions to effect|per_timestep."""
+        factors = flows_model.effects_per_flow_hour
+        if factors is None:
+            # Still need to collect status effects even without flow hour effects
+            flows_model.add_effect_contributions(self)
+            if self._temporal_contributions:
+                self._eq_per_timestep.lhs -= sum(self._temporal_contributions)
+            return
+
+        dim = flows_model.dim_name
+        rate = flows_model.rate.sel({dim: factors.coords[dim].values})
+
+        # share|temporal: rate * effects_per_flow_hour * dt
+        self.share_temporal = self.model.add_variables(
+            lower=-np.inf,
+            upper=np.inf,
+            coords=self._share_coords(dim, factors.coords[dim], temporal=True),
+            name='share|temporal',
+        )
+        self.model.add_constraints(
+            self.share_temporal == rate * factors * dt,
+            name='share|temporal',
+        )
+
+        # Collect contributions: share|temporal + registered contributions
+        exprs = [self.share_temporal.sum(dim)]
+
+        # Let FlowsModel register its status effect contributions
+        flows_model.add_effect_contributions(self)
+        exprs.extend(self._temporal_contributions)
+
+        self._eq_per_timestep.lhs -= sum(exprs)
+
+    def _create_periodic_shares(self, flows_model) -> None:
+        """Create share|periodic and add all periodic contributions to effect|periodic.
+
+        Collects investment effects from both flows and storages into a unified share.
+        """
+        # Collect all models with investment effects
+        models_with_effects = []
+
+        # Add flows model if it has effects
+        if flows_model.effects_per_size is not None:
+            models_with_effects.append(flows_model)
+
+        # Add storages model if it exists and has effects
+        storages_model = self.model._storages_model
+        if storages_model is not None and storages_model.effects_per_size is not None:
+            models_with_effects.append(storages_model)
+
+        if not models_with_effects:
+            # No share variable needed, just add constant effects
+            self._add_constant_effects(flows_model)
+            if storages_model is not None:
+                self._add_constant_effects(storages_model)
+            return
+
+        # Create share|periodic for each model with effects_per_size
+        all_exprs = []
+        for i, type_model in enumerate(models_with_effects):
+            factors = type_model.effects_per_size
+            dim = type_model.dim_name
+            size = type_model.size.sel({dim: factors.coords[dim].values})
+
+            # Create share variable for this model
+            var_name = 'share|periodic' if i == 0 else f'share|periodic_{dim}'
+            share_var = self.model.add_variables(
+                lower=-np.inf,
+                upper=np.inf,
+                coords=self._share_coords(dim, factors.coords[dim], temporal=False),
+                name=var_name,
+            )
+            self.model.add_constraints(share_var == size * factors, name=var_name)
+
+            # Store first share_periodic for backwards compatibility
+            if i == 0:
+                self.share_periodic = share_var
+
+            # Add to expressions
+            all_exprs.append(share_var.sum(dim))
+
+            # Add invested-based effects
+            if type_model.invested is not None:
+                if (f := type_model.effects_of_investment) is not None:
+                    all_exprs.append((type_model.invested.sel({dim: f.coords[dim].values}) * f).sum(dim))
+                if (f := type_model.effects_of_retirement) is not None:
+                    all_exprs.append((type_model.invested.sel({dim: f.coords[dim].values}) * (-f)).sum(dim))
+
+        # Add all expressions to periodic constraint
+        # NOTE: Reindex each expression to match _effect_index to ensure proper coordinate alignment.
+        # This is necessary because linopy/xarray may reorder coordinates during arithmetic operations.
+        for expr in all_exprs:
+            reindexed = expr.reindex({'effect': self._effect_index})
+            self._eq_periodic.lhs -= reindexed
+
+        # Add constant effects for all models
+        self._add_constant_effects(flows_model)
+        if storages_model is not None:
+            self._add_constant_effects(storages_model)
+
+    def _add_constant_effects(self, type_model) -> None:
+        """Add constant (non-variable) investment effects directly to effect constraints.
+
+        This handles:
+        - Mandatory fixed effects (always incurred, not dependent on invested variable)
+        - Retirement constant parts (the +factor in -invested*factor + factor)
+
+        Works with both FlowsModel and StoragesModel.
+        """
+        # Mandatory fixed effects
+        for element_id, effects_dict in type_model.effects_of_investment_mandatory:
+            self.model.effects.add_share_to_effects(
+                name=f'{element_id}|effects_fix',
+                expressions=effects_dict,
+                target='periodic',
+            )
+
+        # Retirement constant parts
+        for element_id, effects_dict in type_model.effects_of_retirement_constant:
+            self.model.effects.add_share_to_effects(
+                name=f'{element_id}|effects_retire_const',
+                expressions=effects_dict,
+                target='periodic',
+            )
+
+    def get_periodic(self, effect_id: str) -> linopy.Variable:
+        """Get periodic variable for a specific effect."""
+        return self.periodic.sel(effect=effect_id)
+
+    def get_temporal(self, effect_id: str) -> linopy.Variable:
+        """Get temporal variable for a specific effect."""
+        return self.temporal.sel(effect=effect_id)
+
+    def get_per_timestep(self, effect_id: str) -> linopy.Variable:
+        """Get per_timestep variable for a specific effect."""
+        return self.per_timestep.sel(effect=effect_id)
+
+    def get_total(self, effect_id: str) -> linopy.Variable:
+        """Get total variable for a specific effect."""
+        return self.total.sel(effect=effect_id)
 
 
 EffectExpr = dict[str, linopy.LinearExpression]  # Used to create Shares
@@ -416,8 +742,6 @@ class EffectCollection(ElementContainer[Effect]):
     """
     Handling all Effects
     """
-
-    submodel: EffectCollectionModel | None
 
     def __init__(self, *effects: Effect, truncate_repr: int | None = None):
         """
@@ -432,13 +756,13 @@ class EffectCollection(ElementContainer[Effect]):
         self._objective_effect: Effect | None = None
         self._penalty_effect: Effect | None = None
 
-        self.submodel = None
         self.add_effects(*effects)
 
     def create_model(self, model: FlowSystemModel) -> EffectCollectionModel:
         self._plausibility_checks()
-        self.submodel = EffectCollectionModel(model, self)
-        return self.submodel
+        effects_model = EffectCollectionModel(model, self)
+        effects_model.do_modeling()
+        return effects_model
 
     def _create_penalty_effect(self) -> Effect:
         """
@@ -645,14 +969,15 @@ class EffectCollection(ElementContainer[Effect]):
         return shares_temporal, shares_periodic
 
 
-class EffectCollectionModel(Submodel):
+class EffectCollectionModel:
     """
-    Handling all Effects
+    Handling all Effects using type-level (batched) modeling.
     """
 
     def __init__(self, model: FlowSystemModel, effects: EffectCollection):
         self.effects = effects
-        super().__init__(model, label_of_element='Effects')
+        self._model = model
+        self._batched_model: EffectsModel | None = None
 
     def add_share_to_effects(
         self,
@@ -660,26 +985,20 @@ class EffectCollectionModel(Submodel):
         expressions: EffectExpr,
         target: Literal['temporal', 'periodic'],
     ) -> None:
+        """Add effect shares using batched EffectsModel."""
         for effect, expression in expressions.items():
+            if self._batched_model is None:
+                raise RuntimeError('EffectsModel not initialized. Call do_modeling() first.')
+            effect_id = self.effects[effect].label
             if target == 'temporal':
-                self.effects[effect].submodel.temporal.add_share(
-                    name,
-                    expression,
-                    dims=('time', 'period', 'scenario'),
-                )
+                self._batched_model.add_share_temporal(name, effect_id, expression)
             elif target == 'periodic':
-                self.effects[effect].submodel.periodic.add_share(
-                    name,
-                    expression,
-                    dims=('period', 'scenario'),
-                )
+                self._batched_model.add_share_periodic(name, effect_id, expression)
             else:
                 raise ValueError(f'Target {target} not supported!')
 
-    def _do_modeling(self):
-        """Create variables, constraints, and nested submodels"""
-        super()._do_modeling()
-
+    def do_modeling(self):
+        """Create variables and constraints using batched EffectsModel."""
         # Ensure penalty effect exists (auto-create if user hasn't defined one)
         if self.effects._penalty_effect is None:
             penalty_effect = self.effects._create_penalty_effect()
@@ -687,35 +1006,137 @@ class EffectCollectionModel(Submodel):
             if penalty_effect._flow_system is None:
                 penalty_effect.link_to_flow_system(self._model.flow_system)
 
-        # Create EffectModel for each effect
-        for effect in self.effects.values():
-            effect.create_model(self._model)
+        # Create batched EffectsModel
+        self._batched_model = EffectsModel(
+            model=self._model,
+            effects=list(self.effects.values()),
+        )
+        self._batched_model.create_variables()
 
         # Add cross-effect shares
         self._add_share_between_effects()
 
-        # Use objective weights with objective effect and penalty effect
+        # Objective: sum over effect dim for objective and penalty effects
+        obj_id = self.effects.objective_effect.label
+        pen_id = self.effects.penalty_effect.label
         self._model.add_objective(
-            (self.effects.objective_effect.submodel.total * self._model.objective_weights).sum()
-            + (self.effects.penalty_effect.submodel.total * self._model.objective_weights).sum()
+            (self._batched_model.total.sel(effect=obj_id) * self._model.objective_weights).sum()
+            + (self._batched_model.total.sel(effect=pen_id) * self._model.objective_weights).sum()
         )
 
     def _add_share_between_effects(self):
+        """Type-level mode: Add cross-effect shares using batched EffectsModel."""
         for target_effect in self.effects.values():
+            target_id = target_effect.label
             # 1. temporal: <- receiving temporal shares from other effects
             for source_effect, time_series in target_effect.share_from_temporal.items():
-                target_effect.submodel.temporal.add_share(
-                    self.effects[source_effect].submodel.temporal.label_full,
-                    self.effects[source_effect].submodel.temporal.total_per_timestep * time_series,
-                    dims=('time', 'period', 'scenario'),
+                source_id = self.effects[source_effect].label
+                source_per_timestep = self._batched_model.get_per_timestep(source_id)
+                self._batched_model.add_share_temporal(
+                    f'{source_id}(temporal)',
+                    target_id,
+                    source_per_timestep * time_series,
                 )
             # 2. periodic: <- receiving periodic shares from other effects
             for source_effect, factor in target_effect.share_from_periodic.items():
-                target_effect.submodel.periodic.add_share(
-                    self.effects[source_effect].submodel.periodic.label_full,
-                    self.effects[source_effect].submodel.periodic.total * factor,
-                    dims=('period', 'scenario'),
+                source_id = self.effects[source_effect].label
+                source_periodic = self._batched_model.get_periodic(source_id)
+                self._batched_model.add_share_periodic(
+                    f'{source_id}(periodic)',
+                    target_id,
+                    source_periodic * factor,
                 )
+
+    def apply_batched_flow_effect_shares(
+        self,
+        flow_rate: linopy.Variable,
+        effect_specs: dict[str, list[tuple[str, float | xr.DataArray]]],
+    ) -> None:
+        """Apply batched effect shares for flows to all relevant effects.
+
+        This method receives pre-grouped effect specifications and applies them
+        efficiently using vectorized operations.
+
+        In type_level mode:
+            - Tracks contributions for unified share variable creation
+            - Adds sum of shares to effect's per_timestep constraint
+
+        In traditional mode:
+            - Creates per-effect share variables
+            - Adds sum to effect's total_per_timestep
+
+        Args:
+            flow_rate: The batched flow_rate variable with flow dimension.
+            effect_specs: Dict mapping effect_name to list of (element_id, factor) tuples.
+                Example: {'costs': [('Boiler(gas_in)', 0.05), ('HP(elec_in)', 0.1)]}
+        """
+
+        # Detect the element dimension name from flow_rate (e.g., 'flow')
+        flow_rate_dims = [d for d in flow_rate.dims if d not in ('time', 'period', 'scenario', '_term')]
+        dim = flow_rate_dims[0] if flow_rate_dims else 'flow'
+
+        for effect_name, element_factors in effect_specs.items():
+            if effect_name not in self.effects:
+                logger.warning(f'Effect {effect_name} not found, skipping shares')
+                continue
+
+            element_ids = [eid for eid, _ in element_factors]
+            factors = [factor for _, factor in element_factors]
+
+            # Build factors array with element dimension
+            # Use coords='minimal' since factors may have different dimensions (e.g., some have period, others don't)
+            factors_da = xr.concat(
+                [xr.DataArray(f) if not isinstance(f, xr.DataArray) else f for f in factors],
+                dim=dim,
+                coords='minimal',
+            ).assign_coords({dim: element_ids})
+
+            # Select relevant flow rates and compute expression per element
+            flow_rate_subset = flow_rate.sel({dim: element_ids})
+
+            # Add sum of shares to effect's per_timestep constraint
+            expression_all = flow_rate_subset * self._model.timestep_duration * factors_da
+            share_sum = expression_all.sum(dim)
+            effect_mask = xr.DataArray(
+                [1 if eid == effect_name else 0 for eid in self._batched_model.effect_ids],
+                coords={'effect': self._batched_model.effect_ids},
+                dims=['effect'],
+            )
+            self._batched_model._eq_per_timestep.lhs -= share_sum * effect_mask
+
+    def apply_batched_penalty_shares(
+        self,
+        penalty_expressions: list[tuple[str, linopy.LinearExpression]],
+    ) -> None:
+        """Apply batched penalty effect shares.
+
+        Creates individual share variables to preserve per-element contribution info.
+
+        Args:
+            penalty_expressions: List of (element_label, penalty_expression) tuples.
+        """
+        for element_label, expression in penalty_expressions:
+            # Create share variable for this element (preserves per-element info in results)
+            share_var = self._model.add_variables(
+                coords=self._model.get_coords(self._model.temporal_dims),
+                name=f'{element_label}->Penalty(temporal)',
+            )
+
+            # Constraint: share_var == penalty_expression
+            self._model.add_constraints(
+                share_var == expression,
+                name=f'{element_label}->Penalty(temporal)',
+            )
+
+            # Add to Penalty effect's per_timestep constraint
+            # Expand share_var to have effect dimension (with zeros for other effects)
+            effect_mask = xr.DataArray(
+                [1 if eid == PENALTY_EFFECT_LABEL else 0 for eid in self._batched_model.effect_ids],
+                coords={'effect': self._batched_model.effect_ids},
+                dims=['effect'],
+            )
+            expanded_share = share_var * effect_mask
+            self._batched_model._eq_per_timestep.lhs -= expanded_share
 
 
 def calculate_all_conversion_paths(

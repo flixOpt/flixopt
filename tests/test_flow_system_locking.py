@@ -142,19 +142,17 @@ class TestReset:
         simple_flow_system.reset()
         assert simple_flow_system.model is None
 
-    def test_reset_clears_element_submodels(self, simple_flow_system, highs_solver):
-        """Reset should clear element submodels."""
+    def test_reset_clears_element_variable_names(self, simple_flow_system, highs_solver):
+        """Reset should clear element variable names."""
         simple_flow_system.optimize(highs_solver)
 
-        # Check that elements have submodels after optimization
+        # Check that elements have variable names after optimization
         boiler = simple_flow_system.components['Boiler']
-        assert boiler.submodel is not None
         assert len(boiler._variable_names) > 0
 
         simple_flow_system.reset()
 
-        # Check that submodels are cleared
-        assert boiler.submodel is None
+        # Check that variable names are cleared
         assert len(boiler._variable_names) == 0
 
     def test_reset_returns_self(self, simple_flow_system, highs_solver):

@@ -4,31 +4,38 @@ This module contains the basic elements of the flixopt framework.
 
 from __future__ import annotations
 
-import functools
 import logging
+from functools import cached_property
 from typing import TYPE_CHECKING
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError
-from .features import InvestmentModel, StatusModel
+from .features import MaskHelpers, fast_notnull
 from .interface import InvestParameters, StatusParameters
-from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
+from .modeling import ModelingUtilitiesAbstract
 from .structure import (
+    ComponentVarName,
+    ConverterVarName,
     Element,
-    ElementModel,
-    FlowContainer,
+    ElementType,
     FlowSystemModel,
+    FlowVarName,
+    TransmissionVarName,
+    TypeModel,
     VariableCategory,
+    VariableType,
     register_class_for_io,
 )
 
 if TYPE_CHECKING:
     import linopy
 
+    from .batched import FlowsData
     from .types import (
         Effect_TPS,
         Numeric_PS,
@@ -90,49 +97,23 @@ class Component(Element):
     def __init__(
         self,
         label: str,
-        inputs: list[Flow] | dict[str, Flow] | None = None,
-        outputs: list[Flow] | dict[str, Flow] | None = None,
+        inputs: list[Flow] | None = None,
+        outputs: list[Flow] | None = None,
         status_parameters: StatusParameters | None = None,
         prevent_simultaneous_flows: list[Flow] | None = None,
         meta_data: dict | None = None,
         color: str | None = None,
     ):
         super().__init__(label, meta_data=meta_data, color=color)
+        self.inputs: list[Flow] = inputs or []
+        self.outputs: list[Flow] = outputs or []
         self.status_parameters = status_parameters
         self.prevent_simultaneous_flows: list[Flow] = prevent_simultaneous_flows or []
 
-        # Convert dict to list (for deserialization compatibility)
-        # FlowContainers serialize as dicts, but constructor expects lists
-        if isinstance(inputs, dict):
-            inputs = list(inputs.values())
-        if isinstance(outputs, dict):
-            outputs = list(outputs.values())
+        self._check_unique_flow_labels()
+        self._connect_flows()
 
-        # Use temporary lists, connect flows first (sets component name on flows),
-        # then create FlowContainers (which use label_full as key)
-        _inputs = inputs or []
-        _outputs = outputs or []
-        self._check_unique_flow_labels(_inputs, _outputs)
-        self._connect_flows(_inputs, _outputs)
-
-        # Create FlowContainers after connecting (so label_full is correct)
-        self.inputs: FlowContainer = FlowContainer(_inputs, element_type_name='inputs')
-        self.outputs: FlowContainer = FlowContainer(_outputs, element_type_name='outputs')
-
-    @functools.cached_property
-    def flows(self) -> FlowContainer:
-        """All flows (inputs and outputs) as a FlowContainer.
-
-        Supports access by label_full or short label:
-            component.flows['Boiler(Q_th)']  # Full label
-            component.flows['Q_th']          # Short label
-        """
-        return self.inputs + self.outputs
-
-    def create_model(self, model: FlowSystemModel) -> ComponentModel:
-        self._plausibility_checks()
-        self.submodel = ComponentModel(model, self)
-        return self.submodel
+        self.flows: dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested Interface objects and flows.
@@ -142,29 +123,18 @@ class Component(Element):
         super().link_to_flow_system(flow_system, self.label_full)
         if self.status_parameters is not None:
             self.status_parameters.link_to_flow_system(flow_system, self._sub_prefix('status_parameters'))
-        for flow in self.flows.values():
+        for flow in self.inputs + self.outputs:
             flow.link_to_flow_system(flow_system)
 
     def transform_data(self) -> None:
         if self.status_parameters is not None:
             self.status_parameters.transform_data()
 
-        for flow in self.flows.values():
+        for flow in self.inputs + self.outputs:
             flow.transform_data()
 
-    def _check_unique_flow_labels(self, inputs: list[Flow] = None, outputs: list[Flow] = None):
-        """Check that all flow labels within a component are unique.
-
-        Args:
-            inputs: List of input flows (optional, defaults to self.inputs)
-            outputs: List of output flows (optional, defaults to self.outputs)
-        """
-        if inputs is None:
-            inputs = list(self.inputs.values())
-        if outputs is None:
-            outputs = list(self.outputs.values())
-
-        all_flow_labels = [flow.label for flow in inputs + outputs]
+    def _check_unique_flow_labels(self):
+        all_flow_labels = [flow.label for flow in self.inputs + self.outputs]
 
         if len(set(all_flow_labels)) != len(all_flow_labels):
             duplicates = {label for label in all_flow_labels if all_flow_labels.count(label) > 1}
@@ -176,7 +146,7 @@ class Component(Element):
         # Component with status_parameters requires all flows to have sizes set
         # (status_parameters are propagated to flows in _do_modeling, which need sizes for big-M constraints)
         if self.status_parameters is not None:
-            flows_without_size = [flow.label for flow in self.flows.values() if flow.size is None]
+            flows_without_size = [flow.label for flow in self.inputs + self.outputs if flow.size is None]
             if flows_without_size:
                 raise PlausibilityError(
                     f'Component "{self.label_full}" has status_parameters, but the following flows have no size: '
@@ -184,20 +154,9 @@ class Component(Element):
                     f'(required for big-M constraints).'
                 )
 
-    def _connect_flows(self, inputs: list[Flow] = None, outputs: list[Flow] = None):
-        """Connect flows to this component by setting component name and direction.
-
-        Args:
-            inputs: List of input flows (optional, defaults to self.inputs)
-            outputs: List of output flows (optional, defaults to self.outputs)
-        """
-        if inputs is None:
-            inputs = list(self.inputs.values())
-        if outputs is None:
-            outputs = list(self.outputs.values())
-
+    def _connect_flows(self):
         # Inputs
-        for flow in inputs:
+        for flow in self.inputs:
             if flow.component not in ('UnknownComponent', self.label_full):
                 raise ValueError(
                     f'Flow "{flow.label}" already assigned to component "{flow.component}". '
@@ -206,7 +165,7 @@ class Component(Element):
             flow.component = self.label_full
             flow.is_input_in_component = True
         # Outputs
-        for flow in outputs:
+        for flow in self.outputs:
             if flow.component not in ('UnknownComponent', self.label_full):
                 raise ValueError(
                     f'Flow "{flow.label}" already assigned to component "{flow.component}". '
@@ -222,7 +181,7 @@ class Component(Element):
             self.prevent_simultaneous_flows = [
                 f for f in self.prevent_simultaneous_flows if id(f) not in seen and not seen.add(id(f))
             ]
-            local = set(inputs + outputs)
+            local = set(self.inputs + self.outputs)
             foreign = [f for f in self.prevent_simultaneous_flows if f not in local]
             if foreign:
                 names = ', '.join(f.label_full for f in foreign)
@@ -302,8 +261,6 @@ class Bus(Element):
         by the FlowSystem during system setup.
     """
 
-    submodel: BusModel | None
-
     def __init__(
         self,
         label: str,
@@ -319,18 +276,8 @@ class Bus(Element):
         self._validate_kwargs(kwargs)
         self.carrier = carrier.lower() if carrier else None  # Store as lowercase string
         self.imbalance_penalty_per_flow_hour = imbalance_penalty_per_flow_hour
-        self.inputs: FlowContainer = FlowContainer(element_type_name='inputs')
-        self.outputs: FlowContainer = FlowContainer(element_type_name='outputs')
-
-    @property
-    def flows(self) -> FlowContainer:
-        """All flows (inputs and outputs) as a FlowContainer."""
-        return self.inputs + self.outputs
-
-    def create_model(self, model: FlowSystemModel) -> BusModel:
-        self._plausibility_checks()
-        self.submodel = BusModel(model, self)
-        return self.submodel
+        self.inputs: list[Flow] = []
+        self.outputs: list[Flow] = []
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested flows.
@@ -338,7 +285,7 @@ class Bus(Element):
         Elements use their label_full as prefix by default, ignoring the passed prefix.
         """
         super().link_to_flow_system(flow_system, self.label_full)
-        for flow in self.flows.values():
+        for flow in self.inputs + self.outputs:
             flow.link_to_flow_system(flow_system)
 
     def transform_data(self) -> None:
@@ -517,8 +464,6 @@ class Flow(Element):
 
     """
 
-    submodel: FlowModel | None
-
     def __init__(
         self,
         label: str,
@@ -565,11 +510,6 @@ class Flow(Element):
                 f'This is no longer supported. Add the Bus to the FlowSystem and pass its label (string) to the Flow.'
             )
         self.bus = bus
-
-    def create_model(self, model: FlowSystemModel) -> FlowModel:
-        self._plausibility_checks()
-        self.submodel = FlowModel(model, self)
-        return self.submodel
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested Interface objects.
@@ -688,6 +628,45 @@ class Flow(Element):
     def label_full(self) -> str:
         return f'{self.component}({self.label})'
 
+    # =========================================================================
+    # Type-Level Model Access (for FlowsModel integration)
+    # =========================================================================
+
+    _flows_model: FlowsModel | None = None  # Set by FlowsModel during creation
+
+    def set_flows_model(self, flows_model: FlowsModel) -> None:
+        """Set reference to the type-level FlowsModel.
+
+        Called by FlowsModel during initialization to enable element access.
+        """
+        self._flows_model = flows_model
+
+    @property
+    def flow_rate_from_type_model(self) -> linopy.Variable | None:
+        """Get flow_rate from FlowsModel (if using type-level modeling).
+
+        Returns the slice of the batched variable for this specific flow.
+        """
+        if self._flows_model is None:
+            return None
+        return self._flows_model.get_variable('flow_rate', self.label_full)
+
+    @property
+    def total_flow_hours_from_type_model(self) -> linopy.Variable | None:
+        """Get total_flow_hours from FlowsModel (if using type-level modeling)."""
+        if self._flows_model is None:
+            return None
+        return self._flows_model.get_variable('total_flow_hours', self.label_full)
+
+    @property
+    def status_from_type_model(self) -> linopy.Variable | None:
+        """Get status from FlowsModel (if using type-level modeling)."""
+        if self._flows_model is None or 'status' not in self._flows_model.variables:
+            return None
+        if self.label_full not in self._flows_model.status_ids:
+            return None
+        return self._flows_model.get_variable('status', self.label_full)
+
     @property
     def size_is_fixed(self) -> bool:
         # Wenn kein InvestParameters existiert --> True; Wenn Investparameter, den Wert davon nehmen
@@ -698,465 +677,2339 @@ class Flow(Element):
         return f'size: {params.format_for_repr()}'
 
 
-class FlowModel(ElementModel):
-    """Mathematical model implementation for Flow elements.
+# =============================================================================
+# Type-Level Model: FlowsModel
+# =============================================================================
 
-    Creates optimization variables and constraints for flow rate bounds,
-    flow-hours tracking, and load factors.
 
-    Mathematical Formulation:
-        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/Flow/>
+class FlowsModel(TypeModel):
+    """Type-level model for ALL flows in a FlowSystem.
+
+    Unlike FlowModel (one per Flow instance), FlowsModel handles ALL flows
+    in a single instance with batched variables and constraints.
+
+    This enables:
+    - One `flow_rate` variable with element dimension for all flows
+    - One constraint call for all flow rate bounds
+    - Efficient batch creation instead of N individual calls
+
+    The model handles heterogeneous flows by creating subsets:
+    - All flows: flow_rate, total_flow_hours
+    - Flows with status: status variable
+    - Flows with investment: size, invested variables
+
+    Example:
+        >>> flows_model = FlowsModel(model, all_flows)
+        >>> flows_model.create_variables()
+        >>> flows_model.create_constraints()
+        >>> # Access individual flow's variable:
+        >>> boiler_rate = flows_model.get_variable('flow_rate', 'Boiler(gas_in)')
     """
 
-    element: Flow  # Type hint
+    element_type = ElementType.FLOW
 
-    def __init__(self, model: FlowSystemModel, element: Flow):
-        super().__init__(model, element)
+    @property
+    def data(self) -> FlowsData:
+        """Access FlowsData from the batched accessor."""
+        return self.model.flow_system.batched.flows
 
-    def _do_modeling(self):
-        """Create variables, constraints, and nested submodels"""
-        super()._do_modeling()
+    # === Variables (cached_property) ===
 
-        # Main flow rate variable
-        self.add_variables(
-            lower=self.absolute_flow_rate_bounds[0],
-            upper=self.absolute_flow_rate_bounds[1],
-            coords=self._model.get_coords(),
-            short_name='flow_rate',
-            category=VariableCategory.FLOW_RATE,
+    @cached_property
+    def rate(self) -> linopy.Variable:
+        """(flow, time, ...) - flow rate variable for ALL flows."""
+        coords = self._build_coords(dims=None)
+        # Reindex bounds to match coords flow order (FlowsData uses sorted order, TypeModel uses insertion order)
+        lower = self.data.absolute_lower_bounds.reindex({self.dim_name: coords[self.dim_name]})
+        upper = self.data.absolute_upper_bounds.reindex({self.dim_name: coords[self.dim_name]})
+        var = self.model.add_variables(
+            lower=lower,
+            upper=upper,
+            coords=coords,
+            name=f'{self.dim_name}|rate',
         )
+        self._variables['rate'] = var
+        self.model.variable_categories[var.name] = VariableCategory.FLOW_RATE
+        return var
 
-        self._constraint_flow_rate()
+    @cached_property
+    def status(self) -> linopy.Variable | None:
+        """(flow, time, ...) - binary status variable for ALL flows, masked to status flows only.
 
-        # Total flow hours tracking (per period)
-        ModelingPrimitives.expression_tracking_variable(
-            model=self,
-            name=f'{self.label_full}|total_flow_hours',
-            tracked_expression=self._model.sum_temporal(self.flow_rate),
-            bounds=(
-                self.element.flow_hours_min if self.element.flow_hours_min is not None else 0,
-                self.element.flow_hours_max if self.element.flow_hours_max is not None else None,
-            ),
-            coords=['period', 'scenario'],
-            short_name='total_flow_hours',
-            category=VariableCategory.TOTAL,
-        )
-
-        # Weighted sum over all periods constraint
-        if self.element.flow_hours_min_over_periods is not None or self.element.flow_hours_max_over_periods is not None:
-            # Validate that period dimension exists
-            if self._model.flow_system.periods is None:
-                raise ValueError(
-                    f"{self.label_full}: flow_hours_*_over_periods requires FlowSystem to define 'periods', "
-                    f'but FlowSystem has no period dimension. Please define periods in FlowSystem constructor.'
-                )
-            # Get period weights from FlowSystem
-            weighted_flow_hours_over_periods = (self.total_flow_hours * self._model.flow_system.period_weights).sum(
-                'period'
-            )
-
-            # Create tracking variable for the weighted sum
-            ModelingPrimitives.expression_tracking_variable(
-                model=self,
-                name=f'{self.label_full}|flow_hours_over_periods',
-                tracked_expression=weighted_flow_hours_over_periods,
-                bounds=(
-                    self.element.flow_hours_min_over_periods
-                    if self.element.flow_hours_min_over_periods is not None
-                    else 0,
-                    self.element.flow_hours_max_over_periods
-                    if self.element.flow_hours_max_over_periods is not None
-                    else None,
-                ),
-                coords=['scenario'],
-                short_name='flow_hours_over_periods',
-                category=VariableCategory.TOTAL_OVER_PERIODS,
-            )
-
-        # Load factor constraints
-        self._create_bounds_for_load_factor()
-
-        # Effects
-        self._create_shares()
-
-    def _create_status_model(self):
-        status = self.add_variables(
+        Using mask= instead of subsetting enables mask-based constraint creation.
+        """
+        if not self.data.with_status:
+            return None
+        coords = self._build_coords(dims=None)  # All flows
+        # Broadcast mask to match all variable dimensions, preserving dim order from coords
+        mask = self.data.has_status
+        # Reindex mask to match coords flow order (FlowsData uses sorted order, TypeModel uses insertion order)
+        mask = mask.reindex({self.dim_name: coords[self.dim_name]})
+        dim_order = list(coords.keys())
+        for dim in dim_order:
+            if dim not in mask.dims:
+                mask = mask.expand_dims({dim: coords[dim]})
+        mask = mask.transpose(*dim_order)  # Ensure same order as coords
+        var = self.model.add_variables(
             binary=True,
-            short_name='status',
-            coords=self._model.get_coords(),
-            category=VariableCategory.STATUS,
+            coords=coords,
+            name=f'{self.dim_name}|status',
+            mask=mask,  # Only create variables where True
         )
-        self.add_submodels(
-            StatusModel(
-                model=self._model,
-                label_of_element=self.label_of_element,
-                parameters=self.element.status_parameters,
-                status=status,
-                previous_status=self.previous_status,
-                label_of_model=self.label_of_element,
-            ),
-            short_name='status',
+        self._variables['status'] = var
+        self.model.variable_categories[var.name] = VariableCategory.STATUS
+        return var
+
+    @cached_property
+    def size(self) -> linopy.Variable | None:
+        """(flow, period, scenario) - size variable for ALL flows, masked to investment flows only.
+
+        Using mask= instead of subsetting enables mask-based constraint creation.
+        """
+        if not self.data.with_investment:
+            return None
+        coords = self._build_coords(dims=('period', 'scenario'))  # All flows
+        # Broadcast mask to match all variable dimensions, preserving dim order from coords
+        mask = self.data.has_investment
+        # Reindex mask and bounds to match coords flow order (FlowsData uses sorted order, TypeModel uses insertion order)
+        mask = mask.reindex({self.dim_name: coords[self.dim_name]})
+        lower = self.data.size_minimum_all.reindex({self.dim_name: coords[self.dim_name]})
+        upper = self.data.size_maximum_all.reindex({self.dim_name: coords[self.dim_name]})
+        dim_order = list(coords.keys())
+        for dim in dim_order:
+            if dim not in mask.dims:
+                mask = mask.expand_dims({dim: coords[dim]})
+        mask = mask.transpose(*dim_order)  # Ensure same order as coords
+        var = self.model.add_variables(
+            lower=lower,
+            upper=upper,
+            coords=coords,
+            name=f'{self.dim_name}|size',
+            mask=mask,  # Only create variables where True
+        )
+        self._variables['size'] = var
+        self.model.variable_categories[var.name] = VariableCategory.FLOW_SIZE
+        return var
+
+    @cached_property
+    def invested(self) -> linopy.Variable | None:
+        """(flow, period, scenario) - binary invested variable for ALL flows, masked to optional investment.
+
+        Using mask= instead of subsetting enables mask-based constraint creation.
+        """
+        if not self.data.with_optional_investment:
+            return None
+        coords = self._build_coords(dims=('period', 'scenario'))  # All flows
+        # Broadcast mask to match all variable dimensions, preserving dim order from coords
+        mask = self.data.has_optional_investment
+        # Reindex mask to match coords flow order (FlowsData uses sorted order, TypeModel uses insertion order)
+        mask = mask.reindex({self.dim_name: coords[self.dim_name]})
+        dim_order = list(coords.keys())
+        for dim in dim_order:
+            if dim not in mask.dims:
+                mask = mask.expand_dims({dim: coords[dim]})
+        mask = mask.transpose(*dim_order)  # Ensure same order as coords
+        var = self.model.add_variables(
+            binary=True,
+            coords=coords,
+            name=f'{self.dim_name}|invested',
+            mask=mask,  # Only create variables where True
+        )
+        self._variables['invested'] = var
+        return var
+
+    def create_variables(self) -> None:
+        """Create all batched variables for flows.
+
+        Triggers cached property creation for:
+        - flow|rate: For ALL flows
+        - flow|status: For flows with status_parameters
+        - flow|size: For flows with investment
+        - flow|invested: For flows with optional investment
+        """
+        # Trigger variable creation via cached properties
+        _ = self.rate
+        _ = self.status
+        _ = self.size
+        _ = self.invested
+
+        logger.debug(
+            f'FlowsModel created variables: {len(self.elements)} flows, '
+            f'{len(self.data.with_status)} with status, {len(self.data.with_investment)} with investment'
         )
 
-    def _create_investment_model(self):
-        self.add_submodels(
-            InvestmentModel(
-                model=self._model,
-                label_of_element=self.label_of_element,
-                parameters=self.element.size,
-                label_of_model=self.label_of_element,
-                size_category=VariableCategory.FLOW_SIZE,
-            ),
-            'investment',
-        )
+    def create_constraints(self) -> None:
+        """Create all batched constraints for flows."""
+        # Trigger investment variable creation first (cached properties)
+        # These must exist before rate bounds constraints that reference them
+        _ = self.size  # Creates size variable if with_investment
+        _ = self.invested  # Creates invested variable if with_optional_investment
 
-    def _constraint_flow_rate(self):
-        """Create bounding constraints for flow_rate (models already created in _create_variables)"""
-        if not self.with_investment and not self.with_status:
-            # Most basic case. Already covered by direct variable bounds
-            pass
+        self.constraint_flow_hours()
+        self.constraint_flow_hours_over_periods()
+        self.constraint_load_factor()
+        self.constraint_rate_bounds()
+        self.constraint_investment()
 
-        elif self.with_status and not self.with_investment:
-            # Status, but no Investment
-            self._create_status_model()
-            bounds = self.relative_flow_rate_bounds
-            BoundingPatterns.bounds_with_state(
-                self,
-                variable=self.flow_rate,
-                bounds=(bounds[0] * self.element.size, bounds[1] * self.element.size),
-                state=self.status.status,
+        logger.debug(f'FlowsModel created {len(self._constraints)} constraint types')
+
+    def constraint_investment(self) -> None:
+        """Investment constraints: optional size bounds, linked periods, piecewise effects."""
+        if self.size is None:
+            return
+
+        from .features import InvestmentHelpers
+
+        dim = self.dim_name
+
+        # Optional investment: size controlled by invested binary
+        if self.invested is not None:
+            InvestmentHelpers.add_optional_size_bounds(
+                model=self.model,
+                size_var=self.size,
+                invested_var=self.invested,
+                min_bounds=self.data.optional_investment_size_minimum,
+                max_bounds=self.data.optional_investment_size_maximum,
+                element_ids=self.data.with_optional_investment,
+                dim_name=dim,
+                name_prefix='flow',
             )
 
-        elif self.with_investment and not self.with_status:
-            # Investment, but no Status
-            self._create_investment_model()
-            BoundingPatterns.scaled_bounds(
-                self,
-                variable=self.flow_rate,
-                scaling_variable=self.investment.size,
-                relative_bounds=self.relative_flow_rate_bounds,
-            )
+        # Linked periods constraints
+        InvestmentHelpers.add_linked_periods_constraints(
+            model=self.model,
+            size_var=self.size,
+            params=self.data.invest_params,
+            element_ids=self.data.with_investment,
+            dim_name=dim,
+        )
 
-        elif self.with_investment and self.with_status:
-            # Investment and Status
-            self._create_investment_model()
-            self._create_status_model()
+        # Piecewise effects
+        self._create_piecewise_effects()
 
-            BoundingPatterns.scaled_bounds_with_state(
-                model=self,
-                variable=self.flow_rate,
-                scaling_variable=self._investment.size,
-                relative_bounds=self.relative_flow_rate_bounds,
-                scaling_bounds=(self.element.size.minimum_or_fixed_size, self.element.size.maximum_or_fixed_size),
-                state=self.status.status,
-            )
-        else:
-            raise Exception('Not valid')
+    # === Constraints (methods with constraint_* naming) ===
+
+    def constraint_flow_hours(self) -> None:
+        """Constrain sum_temporal(rate) for flows with flow_hours bounds."""
+        dim = self.dim_name
+
+        # Min constraint
+        if self.data.flow_hours_minimum is not None:
+            flow_ids = self.data.with_flow_hours_min
+            hours = self.model.sum_temporal(self.rate.sel({dim: flow_ids}))
+            self.add_constraints(hours >= self.data.flow_hours_minimum, name='hours_min')
+
+        # Max constraint
+        if self.data.flow_hours_maximum is not None:
+            flow_ids = self.data.with_flow_hours_max
+            hours = self.model.sum_temporal(self.rate.sel({dim: flow_ids}))
+            self.add_constraints(hours <= self.data.flow_hours_maximum, name='hours_max')
+
+    def constraint_flow_hours_over_periods(self) -> None:
+        """Constrain weighted sum of hours across periods."""
+        dim = self.dim_name
+
+        def compute_hours_over_periods(flow_ids: list[str]):
+            rate_subset = self.rate.sel({dim: flow_ids})
+            hours_per_period = self.model.sum_temporal(rate_subset)
+            if self.model.flow_system.periods is not None:
+                period_weights = self.model.flow_system.weights.get('period', 1)
+                return (hours_per_period * period_weights).sum('period')
+            return hours_per_period
+
+        # Min constraint
+        if self.data.flow_hours_minimum_over_periods is not None:
+            flow_ids = self.data.with_flow_hours_over_periods_min
+            hours = compute_hours_over_periods(flow_ids)
+            self.add_constraints(hours >= self.data.flow_hours_minimum_over_periods, name='hours_over_periods_min')
+
+        # Max constraint
+        if self.data.flow_hours_maximum_over_periods is not None:
+            flow_ids = self.data.with_flow_hours_over_periods_max
+            hours = compute_hours_over_periods(flow_ids)
+            self.add_constraints(hours <= self.data.flow_hours_maximum_over_periods, name='hours_over_periods_max')
+
+    def constraint_load_factor(self) -> None:
+        """Load factor min/max constraints for flows that have them."""
+        dim = self.dim_name
+        total_time = self.model.timestep_duration.sum(self.model.temporal_dims)
+
+        # Min constraint: hours >= total_time * load_factor_min * size
+        if self.data.load_factor_minimum is not None:
+            flow_ids = self.data.with_load_factor_min
+            hours = self.model.sum_temporal(self.rate.sel({dim: flow_ids}))
+            size = self.data.effective_size_lower.sel({dim: flow_ids}).fillna(0)
+            rhs = total_time * self.data.load_factor_minimum * size
+            self.add_constraints(hours >= rhs, name='load_factor_min')
+
+        # Max constraint: hours <= total_time * load_factor_max * size
+        if self.data.load_factor_maximum is not None:
+            flow_ids = self.data.with_load_factor_max
+            hours = self.model.sum_temporal(self.rate.sel({dim: flow_ids}))
+            size = self.data.effective_size_upper.sel({dim: flow_ids}).fillna(np.inf)
+            rhs = total_time * self.data.load_factor_maximum * size
+            self.add_constraints(hours <= rhs, name='load_factor_max')
+
+    def __init__(self, model: FlowSystemModel, elements: list[Flow]):
+        """Initialize the type-level model for all flows.
+
+        Args:
+            model: The FlowSystemModel to create variables/constraints in.
+            elements: List of all Flow elements to model.
+        """
+        super().__init__(model, elements)
+
+        # Set reference on each flow element for element access pattern
+        for flow in elements:
+            flow.set_flows_model(self)
 
     @property
-    def with_status(self) -> bool:
-        return self.element.status_parameters is not None
+    def _previous_status(self) -> dict[str, xr.DataArray]:
+        """Previous status for flows that have it, keyed by label_full.
 
-    @property
-    def with_investment(self) -> bool:
-        return isinstance(self.element.size, InvestParameters)
+        Delegates to FlowsData.previous_states.
+        """
+        return self.data.previous_states
 
-    # Properties for clean access to variables
-    @property
-    def flow_rate(self) -> linopy.Variable:
-        """Main flow rate variable"""
-        return self['flow_rate']
+    def _add_subset_variables(
+        self,
+        name: str,
+        var_type: VariableType,
+        element_ids: list[str],
+        dims: tuple[str, ...] | None,
+        lower: xr.DataArray | float = -np.inf,
+        upper: xr.DataArray | float = np.inf,
+        binary: bool = False,
+        **kwargs,
+    ) -> None:
+        """Create a variable for a subset of elements.
 
-    @property
-    def total_flow_hours(self) -> linopy.Variable:
-        """Total flow hours variable"""
-        return self['total_flow_hours']
+        Unlike add_variables() which uses self.element_ids, this creates
+        a variable with a custom subset of element IDs.
 
-    def results_structure(self):
-        return {
-            **super().results_structure(),
-            'start': self.element.bus if self.element.is_input_in_component else self.element.component,
-            'end': self.element.component if self.element.is_input_in_component else self.element.bus,
-            'component': self.element.component,
+        Args:
+            dims: Dimensions to include. None means ALL model dimensions.
+        """
+        coords = self._build_coords(dims=dims, element_ids=element_ids)
+
+        # Create variable
+        full_name = f'{self.element_type.value}|{name}'
+        variable = self.model.add_variables(
+            lower=lower if not binary else None,
+            upper=upper if not binary else None,
+            coords=coords,
+            name=full_name,
+            binary=binary,
+            **kwargs,
+        )
+
+        # Register expansion category
+        from .structure import VARIABLE_TYPE_TO_EXPANSION
+
+        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(var_type)
+        if expansion_category is not None:
+            self.model.variable_categories[variable.name] = expansion_category
+
+        self._variables[name] = variable
+
+    def _build_constraint_mask(self, selected_ids: set[str], reference_var: linopy.Variable) -> xr.DataArray:
+        """Build a mask for constraint creation from selected flow IDs.
+
+        Args:
+            selected_ids: Set of flow IDs to include (mask=True).
+            reference_var: Variable whose dimensions the mask should match.
+
+        Returns:
+            Boolean DataArray matching reference_var dimensions, True where flow ID is in selected_ids.
+        """
+        dim = self.dim_name
+        flow_ids = self.element_ids
+
+        # Build 1D mask
+        mask = xr.DataArray(
+            [fid in selected_ids for fid in flow_ids],
+            dims=[dim],
+            coords={dim: flow_ids},
+        )
+
+        # Broadcast to match reference variable dimensions
+        for d in reference_var.dims:
+            if d != dim and d not in mask.dims:
+                mask = mask.expand_dims({d: reference_var.coords[d]})
+        return mask.transpose(*reference_var.dims)
+
+    def constraint_rate_bounds(self) -> None:
+        """Create flow rate bounding constraints based on status/investment configuration."""
+        # Group flow IDs by their constraint type
+        status_set = set(self.data.with_status)
+        investment_set = set(self.data.with_investment)
+        without_size_set = set(self.data.without_size)
+
+        # 1. Status only (no investment) - exclude flows with size=None (bounds come from converter)
+        status_only_ids = list(status_set - investment_set - without_size_set)
+        if status_only_ids:
+            self._constraint_status_bounds()
+
+        # 2. Investment only (no status)
+        invest_only_ids = [fid for fid in self.data.with_investment if fid not in status_set]
+        if invest_only_ids:
+            self._constraint_investment_bounds()
+
+        # 3. Both status and investment
+        both_ids = [fid for fid in self.data.with_status if fid in investment_set]
+        if both_ids:
+            self._constraint_status_investment_bounds()
+
+    def _constraint_investment_bounds(self) -> None:
+        """
+        Case: With investment, without status.
+        rate <= size * relative_max, rate >= size * relative_min.
+
+        Uses mask-based constraint creation - creates constraints for all flows but
+        masks out non-investment flows.
+        """
+        dim = self.dim_name
+        flow_ids = self.element_ids
+
+        # Build mask: True for investment flows without status
+        invest_only_ids = set(self.data.with_investment) - set(self.data.with_status)
+        mask = self._build_constraint_mask(invest_only_ids, self.rate)
+
+        if not mask.any():
+            return
+
+        # Reindex data to match flow_ids order (FlowsData uses sorted order)
+        rel_max = self.data.effective_relative_maximum.reindex({dim: flow_ids})
+        rel_min = self.data.effective_relative_minimum.reindex({dim: flow_ids})
+
+        # Upper bound: rate <= size * relative_max
+        self.model.add_constraints(
+            self.rate <= self.size * rel_max,
+            name=f'{dim}|invest_ub',
+            mask=mask,
+        )
+
+        # Lower bound: rate >= size * relative_min
+        self.model.add_constraints(
+            self.rate >= self.size * rel_min,
+            name=f'{dim}|invest_lb',
+            mask=mask,
+        )
+
+    def _constraint_status_bounds(self) -> None:
+        """
+        Case: With status, without investment.
+        rate <= status * size * relative_max, rate >= status * epsilon."""
+        flow_ids = sorted(
+            [fid for fid in set(self.data.with_status) - set(self.data.with_investment) - set(self.data.without_size)]
+        )
+        dim = self.dim_name
+        flow_rate = self.rate.sel({dim: flow_ids})
+        status = self.status.sel({dim: flow_ids})
+
+        # Get effective relative bounds and fixed size for the subset
+        rel_max = self.data.effective_relative_maximum.sel({dim: flow_ids})
+        rel_min = self.data.effective_relative_minimum.sel({dim: flow_ids})
+        size = self.data.fixed_size.sel({dim: flow_ids})
+
+        # Upper bound: rate <= status * size * relative_max
+        upper_bounds = rel_max * size
+        self.add_constraints(flow_rate <= status * upper_bounds, name='status_ub')
+
+        # Lower bound: rate >= status * max(epsilon, size * relative_min)
+        lower_bounds = np.maximum(CONFIG.Modeling.epsilon, rel_min * size)
+        self.add_constraints(flow_rate >= status * lower_bounds, name='status_lb')
+
+    def _constraint_status_investment_bounds(self) -> None:
+        """Bounds for flows with both status and investment.
+
+        Three constraints:
+        1. rate <= status * M (big-M): forces status=1 when rate>0
+        2. rate <= size * rel_max: limits rate by actual invested size
+        3. rate >= (status - 1) * M + size * rel_min: enforces minimum when status=1
+        """
+        flow_ids = sorted([fid for fid in set(self.data.with_investment) & set(self.data.with_status)])
+        dim = self.dim_name
+        flow_rate = self.rate.sel({dim: flow_ids})
+        size = self.size.sel({dim: flow_ids})
+        status = self.status.sel({dim: flow_ids})
+
+        # Get effective relative bounds and effective_size_upper for the subset
+        rel_max = self.data.effective_relative_maximum.sel({dim: flow_ids})
+        rel_min = self.data.effective_relative_minimum.sel({dim: flow_ids})
+        max_size = self.data.effective_size_upper.sel({dim: flow_ids})
+
+        # Upper bound 1: rate <= status * M where M = max_size * relative_max
+        big_m_upper = max_size * rel_max
+        self.add_constraints(flow_rate <= status * big_m_upper, name='status+invest_ub1')
+
+        # Upper bound 2: rate <= size * relative_max
+        self.add_constraints(flow_rate <= size * rel_max, name='status+invest_ub2')
+
+        # Lower bound: rate >= (status - 1) * M + size * relative_min
+        big_m_lower = max_size * rel_min
+        rhs = (status - 1) * big_m_lower + size * rel_min
+        self.add_constraints(flow_rate >= rhs, name='status+invest_lb')
+
+    def _create_piecewise_effects(self) -> None:
+        """Create batched piecewise effects for flows with piecewise_effects_of_investment.
+
+        Uses PiecewiseHelpers for pad-to-max batching across all flows with
+        piecewise effects. Creates batched segment variables, share variables,
+        and coupling constraints.
+        """
+        from .features import PiecewiseHelpers
+
+        dim = self.dim_name
+        size_var = self._variables.get('size')
+        invested_var = self._variables.get('invested')
+
+        if size_var is None:
+            return
+
+        # Find flows with piecewise effects
+        invest_params = self.data.invest_params
+        with_piecewise = [
+            fid for fid in self.data.with_investment if invest_params[fid].piecewise_effects_of_investment is not None
+        ]
+
+        if not with_piecewise:
+            return
+
+        element_ids = with_piecewise
+
+        # Collect segment counts
+        segment_counts = {
+            fid: len(invest_params[fid].piecewise_effects_of_investment.piecewise_origin) for fid in with_piecewise
         }
 
-    def _create_shares(self):
-        # Effects per flow hour (use timestep_duration only, cluster_weight is applied when summing to total)
-        if self.element.effects_per_flow_hour:
-            self._model.effects.add_share_to_effects(
-                name=self.label_full,
-                expressions={
-                    effect: self.flow_rate * self._model.timestep_duration * factor
-                    for effect, factor in self.element.effects_per_flow_hour.items()
-                },
-                target='temporal',
-            )
+        # Build segment mask
+        max_segments, segment_mask = PiecewiseHelpers.collect_segment_info(element_ids, segment_counts, dim)
 
-    def _create_bounds_for_load_factor(self):
-        """Create load factor constraints using current approach"""
-        # Get the size (either from element or investment)
-        size = self.investment.size if self.with_investment else self.element.size
+        # Collect origin breakpoints (for size)
+        origin_breakpoints = {}
+        for fid in with_piecewise:
+            piecewise_origin = invest_params[fid].piecewise_effects_of_investment.piecewise_origin
+            starts = [p.start for p in piecewise_origin]
+            ends = [p.end for p in piecewise_origin]
+            origin_breakpoints[fid] = (starts, ends)
 
-        # Total hours in the period (sum of temporal weights)
-        total_hours = self._model.temporal_weight.sum(self._model.temporal_dims)
-
-        # Maximum load factor constraint
-        if self.element.load_factor_max is not None:
-            flow_hours_per_size_max = total_hours * self.element.load_factor_max
-            self.add_constraints(
-                self.total_flow_hours <= size * flow_hours_per_size_max,
-                short_name='load_factor_max',
-            )
-
-        # Minimum load factor constraint
-        if self.element.load_factor_min is not None:
-            flow_hours_per_size_min = total_hours * self.element.load_factor_min
-            self.add_constraints(
-                self.total_flow_hours >= size * flow_hours_per_size_min,
-                short_name='load_factor_min',
-            )
-
-    @functools.cached_property
-    def relative_flow_rate_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
-        if self.element.fixed_relative_profile is not None:
-            return self.element.fixed_relative_profile, self.element.fixed_relative_profile
-        # Ensure both bounds have matching dimensions (broadcast once here,
-        # so downstream code doesn't need to handle dimension mismatches)
-        return xr.broadcast(self.element.relative_minimum, self.element.relative_maximum)
-
-    @property
-    def absolute_flow_rate_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
-        """
-        Returns the absolute bounds the flow_rate can reach.
-        Further constraining might be needed
-        """
-        lb_relative, ub_relative = self.relative_flow_rate_bounds
-
-        lb = 0
-        if not self.with_status:
-            if not self.with_investment:
-                # Basic case without investment and without Status
-                if self.element.size is not None:
-                    lb = lb_relative * self.element.size
-            elif self.with_investment and self.element.size.mandatory:
-                # With mandatory Investment
-                lb = lb_relative * self.element.size.minimum_or_fixed_size
-
-        if self.with_investment:
-            ub = ub_relative * self.element.size.maximum_or_fixed_size
-        elif self.element.size is not None:
-            ub = ub_relative * self.element.size
-        else:
-            ub = np.inf  # Unbounded when size is None
-
-        return lb, ub
-
-    @property
-    def status(self) -> StatusModel | None:
-        """Status feature"""
-        if 'status' not in self.submodels:
-            return None
-        return self.submodels['status']
-
-    @property
-    def _investment(self) -> InvestmentModel | None:
-        """Deprecated alias for investment"""
-        return self.investment
-
-    @property
-    def investment(self) -> InvestmentModel | None:
-        """Investment feature"""
-        if 'investment' not in self.submodels:
-            return None
-        return self.submodels['investment']
-
-    @property
-    def previous_status(self) -> xr.DataArray | None:
-        """Previous status of the flow rate"""
-        # TODO: This would be nicer to handle in the Flow itself, and allow DataArrays as well.
-        previous_flow_rate = self.element.previous_flow_rate
-        if previous_flow_rate is None:
-            return None
-
-        return ModelingUtilitiesAbstract.to_binary(
-            values=xr.DataArray(
-                [previous_flow_rate] if np.isscalar(previous_flow_rate) else previous_flow_rate, dims='time'
-            ),
-            epsilon=CONFIG.Modeling.epsilon,
-            dims='time',
+        origin_starts, origin_ends = PiecewiseHelpers.pad_breakpoints(
+            element_ids, origin_breakpoints, max_segments, dim
         )
 
+        # Collect all effect names across all flows
+        all_effect_names: set[str] = set()
+        for fid in with_piecewise:
+            shares = invest_params[fid].piecewise_effects_of_investment.piecewise_shares
+            all_effect_names.update(shares.keys())
 
-class BusModel(ElementModel):
-    """Mathematical model implementation for Bus elements.
+        # Collect breakpoints for each effect
+        effect_breakpoints: dict[str, tuple[xr.DataArray, xr.DataArray]] = {}
+        for effect_name in all_effect_names:
+            breakpoints = {}
+            for fid in with_piecewise:
+                shares = invest_params[fid].piecewise_effects_of_investment.piecewise_shares
+                if effect_name in shares:
+                    piecewise = shares[effect_name]
+                    starts = [p.start for p in piecewise]
+                    ends = [p.end for p in piecewise]
+                else:
+                    # This flow doesn't have this effect - use NaN (will be masked)
+                    starts = [0.0] * segment_counts[fid]
+                    ends = [0.0] * segment_counts[fid]
+                breakpoints[fid] = (starts, ends)
 
-    Creates optimization variables and constraints for nodal balance equations,
-    and optional excess/deficit variables with penalty costs.
+            starts, ends = PiecewiseHelpers.pad_breakpoints(element_ids, breakpoints, max_segments, dim)
+            effect_breakpoints[effect_name] = (starts, ends)
 
-    Mathematical Formulation:
-        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/Bus/>
+        # Create batched piecewise variables
+        base_coords = self.model.get_coords(['period', 'scenario'])
+        name_prefix = f'{dim}|piecewise_effects'  # Tied to element type (flow)
+        piecewise_vars = PiecewiseHelpers.create_piecewise_variables(
+            self.model,
+            element_ids,
+            max_segments,
+            dim,
+            segment_mask,
+            base_coords,
+            name_prefix,
+        )
+
+        # Build zero_point array if any flows are non-mandatory
+        zero_point = None
+        if invested_var is not None:
+            non_mandatory_ids = [fid for fid in element_ids if not invest_params[fid].mandatory]
+            if non_mandatory_ids:
+                # Select invested for non-mandatory flows in this batch
+                available_ids = [fid for fid in non_mandatory_ids if fid in invested_var.coords.get(dim, [])]
+                if available_ids:
+                    zero_point = invested_var.sel({dim: element_ids})
+
+        # Create piecewise constraints
+        PiecewiseHelpers.create_piecewise_constraints(
+            self.model,
+            piecewise_vars,
+            segment_mask,
+            zero_point,
+            dim,
+            name_prefix,
+        )
+
+        # Create coupling constraint for size (origin)
+        size_subset = size_var.sel({dim: element_ids})
+        PiecewiseHelpers.create_coupling_constraint(
+            self.model,
+            size_subset,
+            piecewise_vars['lambda0'],
+            piecewise_vars['lambda1'],
+            origin_starts,
+            origin_ends,
+            f'{name_prefix}|size|coupling',
+        )
+
+        # Create share variables and coupling constraints for each effect
+        import pandas as pd
+
+        coords_dict = {dim: pd.Index(element_ids, name=dim)}
+        if base_coords is not None:
+            coords_dict.update(dict(base_coords))
+        share_coords = xr.Coordinates(coords_dict)
+
+        for effect_name in all_effect_names:
+            # Create batched share variable
+            share_var = self.model.add_variables(
+                lower=-np.inf,  # Shares can be negative (e.g., costs)
+                upper=np.inf,
+                coords=share_coords,
+                name=f'{name_prefix}|{effect_name}',
+            )
+
+            # Create coupling constraint for this share
+            starts, ends = effect_breakpoints[effect_name]
+            PiecewiseHelpers.create_coupling_constraint(
+                self.model,
+                share_var,
+                piecewise_vars['lambda0'],
+                piecewise_vars['lambda1'],
+                starts,
+                ends,
+                f'{name_prefix}|{effect_name}|coupling',
+            )
+
+            # Add to effects (sum over element dimension for periodic share)
+            self.model.effects.add_share_to_effects(
+                name=f'{name_prefix}|{effect_name}',
+                expressions={effect_name: share_var.sum(dim)},
+                target='periodic',
+            )
+
+        logger.debug(f'Created batched piecewise effects for {len(element_ids)} flows')
+
+    # === Effect properties (used by EffectsModel) ===
+    # Investment effect properties are defined below, delegating to data._investment_data
+
+    @property
+    def effects_per_active_hour(self) -> xr.DataArray | None:
+        """Combined effects_per_active_hour with (flow, effect) dims."""
+        return self.data.effects_per_active_hour
+
+    @property
+    def effects_per_startup(self) -> xr.DataArray | None:
+        """Combined effects_per_startup with (flow, effect) dims."""
+        return self.data.effects_per_startup
+
+    def add_effect_contributions(self, effects_model) -> None:
+        """Register effect contributions with EffectsModel.
+
+        Called by EffectsModel.finalize_shares() to collect contributions from FlowsModel.
+        Adds temporal contributions (status effects) to effect|per_timestep constraint.
+
+        Args:
+            effects_model: The EffectsModel to register contributions with.
+        """
+        if self.status is None:
+            return
+
+        dim = self.dim_name
+        dt = self.model.timestep_duration
+
+        # Effects per active hour: status * factor * dt
+        factor = self.data.effects_per_active_hour
+        if factor is not None:
+            flow_ids = factor.coords[dim].values
+            status_subset = self.status.sel({dim: flow_ids})
+            effects_model.add_temporal_contribution((status_subset * factor * dt).sum(dim))
+
+        # Effects per startup: startup * factor
+        factor = self.data.effects_per_startup
+        if self.startup is not None and factor is not None:
+            flow_ids = factor.coords[dim].values
+            startup_subset = self.startup.sel({dim: flow_ids})
+            effects_model.add_temporal_contribution((startup_subset * factor).sum(dim))
+
+    # === Status Variables (cached_property) ===
+
+    @cached_property
+    def active_hours(self) -> linopy.Variable | None:
+        """(flow, period, scenario) - total active hours for flows with status."""
+        if not self.data.with_status:
+            return None
+
+        import pandas as pd
+
+        dim = self.dim_name
+        element_ids = self.data.with_status
+        params = self.data.status_params
+        total_hours = self.model.temporal_weight.sum(self.model.temporal_dims)
+
+        # Build bounds from params
+        min_vals = [params[eid].active_hours_min or 0 for eid in element_ids]
+        active_hours_min = xr.DataArray(min_vals, dims=[dim], coords={dim: element_ids})
+
+        max_list = [params[eid].active_hours_max for eid in element_ids]
+        has_max = xr.DataArray([v is not None for v in max_list], dims=[dim], coords={dim: element_ids})
+        max_vals = xr.DataArray([v if v is not None else 0 for v in max_list], dims=[dim], coords={dim: element_ids})
+        active_hours_max = xr.where(has_max, max_vals, total_hours)
+
+        base_coords = self.model.get_coords(['period', 'scenario'])
+        base_coords_dict = dict(base_coords) if base_coords is not None else {}
+        coords = xr.Coordinates({dim: pd.Index(element_ids, name=dim), **base_coords_dict})
+
+        var = self.model.add_variables(
+            lower=active_hours_min,
+            upper=active_hours_max,
+            coords=coords,
+            name=FlowVarName.ACTIVE_HOURS,
+        )
+        self._variables['active_hours'] = var
+        return var
+
+    @cached_property
+    def startup(self) -> linopy.Variable | None:
+        """(flow, time, ...) - binary startup variable for flows with startup tracking."""
+        if not self.data.with_startup_tracking:
+            return None
+
+        import pandas as pd
+
+        dim = self.dim_name
+        element_ids = self.data.with_startup_tracking
+        temporal_coords = self.model.get_coords()
+        coords = xr.Coordinates({dim: pd.Index(element_ids, name=dim), **dict(temporal_coords)})
+
+        var = self.model.add_variables(binary=True, coords=coords, name=FlowVarName.STARTUP)
+        self._variables['startup'] = var
+        return var
+
+    @cached_property
+    def shutdown(self) -> linopy.Variable | None:
+        """(flow, time, ...) - binary shutdown variable for flows with startup tracking."""
+        if not self.data.with_startup_tracking:
+            return None
+
+        import pandas as pd
+
+        dim = self.dim_name
+        element_ids = self.data.with_startup_tracking
+        temporal_coords = self.model.get_coords()
+        coords = xr.Coordinates({dim: pd.Index(element_ids, name=dim), **dict(temporal_coords)})
+
+        var = self.model.add_variables(binary=True, coords=coords, name=FlowVarName.SHUTDOWN)
+        self._variables['shutdown'] = var
+        return var
+
+    @cached_property
+    def inactive(self) -> linopy.Variable | None:
+        """(flow, time, ...) - binary inactive variable for flows with downtime tracking."""
+        if not self.data.with_downtime_tracking:
+            return None
+
+        import pandas as pd
+
+        dim = self.dim_name
+        element_ids = self.data.with_downtime_tracking
+        temporal_coords = self.model.get_coords()
+        coords = xr.Coordinates({dim: pd.Index(element_ids, name=dim), **dict(temporal_coords)})
+
+        var = self.model.add_variables(binary=True, coords=coords, name=FlowVarName.INACTIVE)
+        self._variables['inactive'] = var
+        return var
+
+    @cached_property
+    def startup_count(self) -> linopy.Variable | None:
+        """(flow, period, scenario) - startup count for flows with startup limit."""
+        if not self.data.with_startup_limit:
+            return None
+
+        import pandas as pd
+
+        dim = self.dim_name
+        element_ids = self.data.with_startup_limit
+
+        base_coords = self.model.get_coords(['period', 'scenario'])
+        base_coords_dict = dict(base_coords) if base_coords is not None else {}
+        coords = xr.Coordinates({dim: pd.Index(element_ids, name=dim), **base_coords_dict})
+
+        var = self.model.add_variables(
+            lower=0, upper=self.data.startup_limit_values, coords=coords, name=FlowVarName.STARTUP_COUNT
+        )
+        self._variables['startup_count'] = var
+        return var
+
+    @cached_property
+    def uptime(self) -> linopy.Variable | None:
+        """(flow, time, ...) - consecutive uptime duration for flows with uptime tracking."""
+        if not self.data.with_uptime_tracking:
+            return None
+
+        from .features import StatusHelpers
+
+        previous_uptime = self.data.previous_uptime
+        var = StatusHelpers.add_batched_duration_tracking(
+            model=self.model,
+            state=self.status.sel({self.dim_name: self.data.with_uptime_tracking}),
+            name=FlowVarName.UPTIME,
+            dim_name=self.dim_name,
+            timestep_duration=self.model.timestep_duration,
+            minimum_duration=self.data.min_uptime,
+            maximum_duration=self.data.max_uptime,
+            previous_duration=previous_uptime
+            if previous_uptime is not None and fast_notnull(previous_uptime).any()
+            else None,
+        )
+        self._variables['uptime'] = var
+        return var
+
+    @cached_property
+    def downtime(self) -> linopy.Variable | None:
+        """(flow, time, ...) - consecutive downtime duration for flows with downtime tracking."""
+        if not self.data.with_downtime_tracking:
+            return None
+
+        from .features import StatusHelpers
+
+        # inactive variable is required for downtime tracking
+        inactive = self.inactive
+
+        previous_downtime = self.data.previous_downtime
+        var = StatusHelpers.add_batched_duration_tracking(
+            model=self.model,
+            state=inactive,
+            name=FlowVarName.DOWNTIME,
+            dim_name=self.dim_name,
+            timestep_duration=self.model.timestep_duration,
+            minimum_duration=self.data.min_downtime,
+            maximum_duration=self.data.max_downtime,
+            previous_duration=previous_downtime
+            if previous_downtime is not None and fast_notnull(previous_downtime).any()
+            else None,
+        )
+        self._variables['downtime'] = var
+        return var
+
+    # === Status Constraints ===
+
+    def constraint_active_hours(self) -> None:
+        """Constrain active_hours == sum_temporal(status)."""
+        if self.active_hours is None:
+            return
+
+        self.model.add_constraints(
+            self.active_hours == self.model.sum_temporal(self.status),
+            name=FlowVarName.Constraint.ACTIVE_HOURS,
+        )
+
+    def constraint_complementary(self) -> None:
+        """Constrain status + inactive == 1 for downtime tracking flows."""
+        if self.inactive is None:
+            return
+
+        dim = self.dim_name
+        element_ids = self.data.with_downtime_tracking
+        status_subset = self.status.sel({dim: element_ids})
+
+        self.model.add_constraints(
+            status_subset + self.inactive == 1,
+            name=FlowVarName.Constraint.COMPLEMENTARY,
+        )
+
+    def constraint_switch_transition(self) -> None:
+        """Constrain startup[t] - shutdown[t] == status[t] - status[t-1] for t > 0."""
+        if self.startup is None:
+            return
+
+        dim = self.dim_name
+        element_ids = self.data.with_startup_tracking
+        status_subset = self.status.sel({dim: element_ids})
+
+        # Transition constraint for t > 0
+        self.model.add_constraints(
+            self.startup.isel(time=slice(1, None)) - self.shutdown.isel(time=slice(1, None))
+            == status_subset.isel(time=slice(1, None)) - status_subset.isel(time=slice(None, -1)),
+            name=FlowVarName.Constraint.SWITCH_TRANSITION,
+        )
+
+    def constraint_switch_mutex(self) -> None:
+        """Constrain startup + shutdown <= 1 (can't start and stop at the same time)."""
+        if self.startup is None:
+            return
+
+        self.model.add_constraints(
+            self.startup + self.shutdown <= 1,
+            name=FlowVarName.Constraint.SWITCH_MUTEX,
+        )
+
+    def constraint_switch_initial(self) -> None:
+        """Constrain startup[0] - shutdown[0] == status[0] - previous_status[-1]."""
+        if self.startup is None:
+            return
+
+        dim = self.dim_name
+        element_ids = self.data.with_startup_tracking
+
+        # Only for elements with previous_status
+        elements_with_initial = [eid for eid in element_ids if eid in self._previous_status]
+        if not elements_with_initial:
+            return
+
+        prev_arrays = [self._previous_status[eid].expand_dims({dim: [eid]}) for eid in elements_with_initial]
+        prev_status_batched = xr.concat(prev_arrays, dim=dim)
+        prev_state = prev_status_batched.isel(time=-1)
+
+        startup_subset = self.startup.sel({dim: elements_with_initial})
+        shutdown_subset = self.shutdown.sel({dim: elements_with_initial})
+        status_subset = self.status.sel({dim: elements_with_initial})
+        status_initial = status_subset.isel(time=0)
+
+        self.model.add_constraints(
+            startup_subset.isel(time=0) - shutdown_subset.isel(time=0) == status_initial - prev_state,
+            name=FlowVarName.Constraint.SWITCH_INITIAL,
+        )
+
+    def constraint_startup_count(self) -> None:
+        """Constrain startup_count == sum(startup) over temporal dims."""
+        if self.startup_count is None:
+            return
+
+        dim = self.dim_name
+        element_ids = self.data.with_startup_limit
+        startup_subset = self.startup.sel({dim: element_ids})
+        startup_temporal_dims = [d for d in startup_subset.dims if d not in ('period', 'scenario', dim)]
+
+        self.model.add_constraints(
+            self.startup_count == startup_subset.sum(startup_temporal_dims),
+            name=FlowVarName.Constraint.STARTUP_COUNT,
+        )
+
+    def constraint_cluster_cyclic(self) -> None:
+        """Constrain status[0] == status[-1] for cyclic cluster mode."""
+        if self.model.flow_system.clusters is None:
+            return
+
+        dim = self.dim_name
+        params = self.data.status_params
+        cyclic_ids = [eid for eid in self.data.with_status if params[eid].cluster_mode == 'cyclic']
+
+        if not cyclic_ids:
+            return
+
+        status_cyclic = self.status.sel({dim: cyclic_ids})
+        self.model.add_constraints(
+            status_cyclic.isel(time=0) == status_cyclic.isel(time=-1),
+            name=FlowVarName.Constraint.CLUSTER_CYCLIC,
+        )
+
+    def create_status_model(self) -> None:
+        """Create status variables and constraints for flows with status.
+
+        Triggers cached property creation for all status variables and calls
+        individual constraint methods.
+
+        Creates:
+        - flow|active_hours: For all flows with status
+        - flow|startup, flow|shutdown: For flows needing startup tracking
+        - flow|inactive: For flows needing downtime tracking
+        - flow|startup_count: For flows with startup limit
+        - flow|uptime, flow|downtime: Duration tracking variables
+
+        Must be called AFTER create_variables() and create_constraints().
+        """
+        if not self.data.with_status:
+            return
+
+        # Trigger variable creation via cached properties
+        _ = self.active_hours
+        _ = self.startup
+        _ = self.shutdown
+        _ = self.inactive
+        _ = self.startup_count
+        _ = self.uptime
+        _ = self.downtime
+
+        # Create constraints
+        self.constraint_active_hours()
+        self.constraint_complementary()
+        self.constraint_switch_transition()
+        self.constraint_switch_mutex()
+        self.constraint_switch_initial()
+        self.constraint_startup_count()
+        self.constraint_cluster_cyclic()
+
+    @property
+    def effects_per_flow_hour(self) -> xr.DataArray | None:
+        """Combined effect factors with (flow, effect, ...) dims."""
+        return self.data.effects_per_flow_hour
+
+    # --- Investment Effect Properties (delegating to _investment_data) ---
+
+    @property
+    def effects_per_size(self) -> xr.DataArray | None:
+        """(flow, effect) - effects per unit size."""
+        inv = self.data._investment_data
+        return inv.effects_per_size if inv else None
+
+    @property
+    def effects_of_investment(self) -> xr.DataArray | None:
+        """(flow, effect) - fixed effects of investment (optional only)."""
+        inv = self.data._investment_data
+        return inv.effects_of_investment if inv else None
+
+    @property
+    def effects_of_retirement(self) -> xr.DataArray | None:
+        """(flow, effect) - effects of retirement (optional only)."""
+        inv = self.data._investment_data
+        return inv.effects_of_retirement if inv else None
+
+    @property
+    def effects_of_investment_mandatory(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
+        """List of (element_id, effects_dict) for mandatory investments with fixed effects."""
+        inv = self.data._investment_data
+        return inv.effects_of_investment_mandatory if inv else []
+
+    @property
+    def effects_of_retirement_constant(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
+        """List of (element_id, effects_dict) for retirement constant parts."""
+        inv = self.data._investment_data
+        return inv.effects_of_retirement_constant if inv else []
+
+    @property
+    def investment_ids(self) -> list[str]:
+        """IDs of flows with investment parameters (alias for data.with_investment)."""
+        return self.data.with_investment
+
+    # --- Previous Status ---
+
+    @cached_property
+    def previous_status_batched(self) -> xr.DataArray | None:
+        """Concatenated previous status (flow, time) from previous_flow_rate."""
+        with_previous = self.data.with_previous_flow_rate
+        if not with_previous:
+            return None
+
+        previous_arrays = []
+        for fid in with_previous:
+            previous_flow_rate = self.data[fid].previous_flow_rate
+
+            # Convert to DataArray and compute binary status
+            previous_status = ModelingUtilitiesAbstract.to_binary(
+                values=xr.DataArray(
+                    [previous_flow_rate] if np.isscalar(previous_flow_rate) else previous_flow_rate,
+                    dims='time',
+                ),
+                epsilon=CONFIG.Modeling.epsilon,
+                dims='time',
+            )
+            # Expand dims to add flow dimension
+            previous_status = previous_status.expand_dims({self.dim_name: [fid]})
+            previous_arrays.append(previous_status)
+
+        return xr.concat(previous_arrays, dim=self.dim_name)
+
+    def get_previous_status(self, flow: Flow) -> xr.DataArray | None:
+        """Get previous status for a specific flow.
+
+        Args:
+            flow: The Flow element to get previous status for.
+
+        Returns:
+            DataArray of previous status (time dimension), or None if no previous status.
+        """
+        fid = flow.label_full
+        return self._previous_status.get(fid)
+
+
+class BusesModel(TypeModel):
+    """Type-level model for ALL buses in a FlowSystem.
+
+    Unlike BusModel (one per Bus instance), BusesModel handles ALL buses
+    in a single instance with batched variables and constraints.
+
+    This enables:
+    - One constraint call for all bus balance constraints
+    - Batched virtual_supply/virtual_demand for buses with imbalance
+    - Efficient batch creation instead of N individual calls
+
+    The model handles heterogeneous buses by creating subsets:
+    - All buses: balance constraints
+    - Buses with imbalance: virtual_supply, virtual_demand variables
+
+    Example:
+        >>> buses_model = BusesModel(model, all_buses, flows_model)
+        >>> buses_model.create_variables()
+        >>> buses_model.create_constraints()
     """
 
-    element: Bus  # Type hint
+    element_type = ElementType.BUS
 
-    def __init__(self, model: FlowSystemModel, element: Bus):
-        self.virtual_supply: linopy.Variable | None = None
-        self.virtual_demand: linopy.Variable | None = None
-        super().__init__(model, element)
+    def __init__(self, model: FlowSystemModel, elements: list[Bus], flows_model: FlowsModel):
+        """Initialize the type-level model for all buses.
 
-    def _do_modeling(self):
-        """Create variables, constraints, and nested submodels"""
-        super()._do_modeling()
-        # inputs == outputs
-        for flow in self.element.flows.values():
-            self.register_variable(flow.submodel.flow_rate, flow.label_full)
-        inputs = sum([flow.submodel.flow_rate for flow in self.element.inputs.values()])
-        outputs = sum([flow.submodel.flow_rate for flow in self.element.outputs.values()])
-        eq_bus_balance = self.add_constraints(inputs == outputs, short_name='balance')
+        Args:
+            model: The FlowSystemModel to create variables/constraints in.
+            elements: List of all Bus elements to model.
+            flows_model: The FlowsModel containing flow_rate variables.
+        """
+        super().__init__(model, elements)
+        self._flows_model = flows_model
 
-        # Add virtual supply/demand to balance and penalty if needed
-        if self.element.allows_imbalance:
-            imbalance_penalty = self.element.imbalance_penalty_per_flow_hour * self._model.timestep_duration
+        # Categorize buses by their features
+        self.buses_with_imbalance: list[Bus] = [b for b in elements if b.allows_imbalance]
 
-            self.virtual_supply = self.add_variables(
-                lower=0,
-                coords=self._model.get_coords(),
-                short_name='virtual_supply',
-                category=VariableCategory.VIRTUAL_FLOW,
+        # Element ID lists for subsets
+        self.imbalance_ids: list[str] = [b.label_full for b in self.buses_with_imbalance]
+
+        # Set reference on each bus element
+        for bus in elements:
+            bus._buses_model = self
+
+    def create_variables(self) -> None:
+        """Create all batched variables for buses.
+
+        Creates:
+        - virtual_supply: For buses with imbalance penalty
+        - virtual_demand: For buses with imbalance penalty
+        """
+        if self.buses_with_imbalance:
+            # virtual_supply: allows adding flow to meet demand
+            self._add_subset_variables(
+                name='virtual_supply',
+                var_type=VariableType.VIRTUAL_FLOW,
+                element_ids=self.imbalance_ids,
+                lower=0.0,
+                upper=np.inf,
+                dims=self.model.temporal_dims,
             )
 
-            self.virtual_demand = self.add_variables(
-                lower=0,
-                coords=self._model.get_coords(),
-                short_name='virtual_demand',
-                category=VariableCategory.VIRTUAL_FLOW,
+            # virtual_demand: allows removing excess flow
+            self._add_subset_variables(
+                name='virtual_demand',
+                var_type=VariableType.VIRTUAL_FLOW,
+                element_ids=self.imbalance_ids,
+                lower=0.0,
+                upper=np.inf,
+                dims=self.model.temporal_dims,
             )
 
-            # Σ(inflows) + virtual_supply = Σ(outflows) + virtual_demand
-            eq_bus_balance.lhs += self.virtual_supply - self.virtual_demand
+        logger.debug(
+            f'BusesModel created variables: {len(self.elements)} buses, {len(self.buses_with_imbalance)} with imbalance'
+        )
 
-            # Add penalty shares as temporal effects (time-dependent)
-            from .effects import PENALTY_EFFECT_LABEL
+    def _add_subset_variables(
+        self,
+        name: str,
+        var_type: VariableType,
+        element_ids: list[str],
+        dims: tuple[str, ...],
+        lower: xr.DataArray | float = -np.inf,
+        upper: xr.DataArray | float = np.inf,
+        **kwargs,
+    ) -> None:
+        """Create a variable for a subset of elements."""
+        coords = self._build_coords(dims=dims, element_ids=element_ids)
 
-            total_imbalance_penalty = (self.virtual_supply + self.virtual_demand) * imbalance_penalty
-            self._model.effects.add_share_to_effects(
-                name=self.label_of_element,
-                expressions={PENALTY_EFFECT_LABEL: total_imbalance_penalty},
-                target='temporal',
+        # Create variable
+        full_name = f'{self.element_type.value}|{name}'
+        variable = self.model.add_variables(
+            lower=lower,
+            upper=upper,
+            coords=coords,
+            name=full_name,
+            **kwargs,
+        )
+
+        # Register category for segment expansion
+        from .structure import VARIABLE_TYPE_TO_EXPANSION
+
+        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(var_type)
+        if expansion_category is not None:
+            self.model.variable_categories[variable.name] = expansion_category
+
+        # Store reference
+        self._variables[name] = variable
+
+    def create_constraints(self) -> None:
+        """Create all batched constraints for buses.
+
+        Creates:
+        - bus|balance: Sum(inputs) - Sum(outputs) == 0 for all buses
+        - With virtual_supply/demand adjustment for buses with imbalance
+
+        Uses dense coefficient matrix approach for fast vectorized computation.
+        The coefficient matrix has +1 for inputs, -1 for outputs, 0 for unconnected flows.
+        """
+        flow_rate = self._flows_model._variables['rate']
+        flow_dim = self._flows_model.dim_name  # 'flow'
+        bus_dim = self.dim_name  # 'bus'
+
+        # Get ordered lists for coefficient matrix
+        bus_ids = list(self.elements.keys())
+        flow_ids = list(flow_rate.coords[flow_dim].values)
+
+        if not bus_ids or not flow_ids:
+            logger.debug('BusesModel: no buses or flows, skipping balance constraints')
+            return
+
+        # Build coefficient matrix: +1 for inputs, -1 for outputs, 0 otherwise
+        coeffs = np.zeros((len(bus_ids), len(flow_ids)), dtype=np.float64)
+        for i, bus in enumerate(self.elements.values()):
+            for f in bus.inputs:
+                coeffs[i, flow_ids.index(f.label_full)] = 1.0
+            for f in bus.outputs:
+                coeffs[i, flow_ids.index(f.label_full)] = -1.0
+
+        coeffs_da = xr.DataArray(coeffs, dims=[bus_dim, flow_dim], coords={bus_dim: bus_ids, flow_dim: flow_ids})
+
+        # Balance = sum(inputs) - sum(outputs)
+        balance = (coeffs_da * flow_rate).sum(flow_dim)
+
+        if self.buses_with_imbalance:
+            imbalance_ids = [b.label_full for b in self.buses_with_imbalance]
+            is_imbalance = xr.DataArray(
+                [b in imbalance_ids for b in bus_ids], dims=[bus_dim], coords={bus_dim: bus_ids}
             )
 
-    def results_structure(self):
-        inputs = [flow.submodel.flow_rate.name for flow in self.element.inputs.values()]
-        outputs = [flow.submodel.flow_rate.name for flow in self.element.outputs.values()]
-        if self.virtual_supply is not None:
-            inputs.append(self.virtual_supply.name)
-        if self.virtual_demand is not None:
-            outputs.append(self.virtual_demand.name)
-        return {
-            **super().results_structure(),
-            'inputs': inputs,
-            'outputs': outputs,
-            'flows': [flow.label_full for flow in self.element.flows.values()],
-        }
+            # Buses without imbalance: balance == 0
+            self.model.add_constraints(balance == 0, name='bus|balance', mask=~is_imbalance)
+
+            # Buses with imbalance: balance + virtual_supply - virtual_demand == 0
+            balance_imbalance = balance.sel({bus_dim: imbalance_ids})
+            virtual_balance = balance_imbalance + self._variables['virtual_supply'] - self._variables['virtual_demand']
+            self.model.add_constraints(virtual_balance == 0, name='bus|balance_imbalance')
+        else:
+            self.model.add_constraints(balance == 0, name='bus|balance')
+
+        logger.debug(f'BusesModel created batched balance constraint for {len(bus_ids)} buses')
+
+    def collect_penalty_share_specs(self) -> list[tuple[str, xr.DataArray]]:
+        """Collect penalty effect share specifications for buses with imbalance.
+
+        Returns:
+            List of (element_label, penalty_expression) tuples.
+        """
+        if not self.buses_with_imbalance:
+            return []
+
+        dim = self.dim_name
+        penalty_specs = []
+        for bus in self.buses_with_imbalance:
+            bus_label = bus.label_full
+            imbalance_penalty = bus.imbalance_penalty_per_flow_hour * self.model.timestep_duration
+
+            virtual_supply = self._variables['virtual_supply'].sel({dim: bus_label})
+            virtual_demand = self._variables['virtual_demand'].sel({dim: bus_label})
+
+            total_imbalance_penalty = (virtual_supply + virtual_demand) * imbalance_penalty
+            penalty_specs.append((bus_label, total_imbalance_penalty))
+
+        return penalty_specs
+
+    def create_effect_shares(self) -> None:
+        """Create penalty effect shares for buses with imbalance.
+
+        Collects specs and delegates to EffectCollectionModel for application.
+        """
+        penalty_specs = self.collect_penalty_share_specs()
+        if penalty_specs:
+            self.model.effects.apply_batched_penalty_shares(penalty_specs)
+
+    def get_variable(self, name: str, element_id: str | None = None):
+        """Get a variable, optionally selecting a specific element.
+
+        Args:
+            name: Variable name (e.g., 'virtual_supply').
+            element_id: Optional element label_full. If provided, returns slice for that element.
+
+        Returns:
+            Full batched variable, or element slice if element_id provided.
+        """
+        var = self._variables.get(name)
+        if var is None:
+            return None
+        if element_id is not None:
+            return var.sel({self.dim_name: element_id})
+        return var
 
 
-class ComponentModel(ElementModel):
-    element: Component  # Type hint
+class ComponentsModel:
+    """Type-level model for component status variables and constraints.
 
-    def __init__(self, model: FlowSystemModel, element: Component):
-        self.status: StatusModel | None = None
-        super().__init__(model, element)
+    This handles component status for components with status_parameters:
+    - Status variables and constraints linking component status to flow statuses
+    - Status features (startup, shutdown, active_hours, etc.) via StatusHelpers
 
-    def _do_modeling(self):
-        """Create variables, constraints, and nested submodels"""
-        super()._do_modeling()
+    Component status is derived from flow statuses:
+    - Single-flow component: status == flow_status
+    - Multi-flow component: status is 1 if ANY flow is active
 
-        all_flows = list(self.element.flows.values())
+    Note:
+        Piecewise conversion is handled by ConvertersModel.
+        Transmission constraints are handled by TransmissionsModel.
 
-        # Set status_parameters on flows if needed
-        if self.element.status_parameters:
+    Example:
+        >>> components_model = ComponentsModel(
+        ...     model=flow_system_model,
+        ...     components_with_status=components_with_status,
+        ...     flows_model=flows_model,
+        ... )
+        >>> components_model.create_variables()
+        >>> components_model.create_constraints()
+        >>> components_model.create_status_features()
+    """
+
+    def __init__(
+        self,
+        model: FlowSystemModel,
+        components_with_status: list[Component],
+        flows_model: FlowsModel,
+    ):
+        """Initialize the component status model.
+
+        Args:
+            model: The FlowSystemModel to create variables/constraints in.
+            components_with_status: List of components with status_parameters.
+            flows_model: The FlowsModel that owns flow variables.
+        """
+        self._logger = logging.getLogger('flixopt')
+        self.model = model
+        self.components = components_with_status
+        self._flows_model = flows_model
+        self.element_ids: list[str] = [c.label for c in components_with_status]
+        self.dim_name = 'component'
+
+        # Variables dict
+        self._variables: dict[str, linopy.Variable] = {}
+
+        # Status feature variables (active_hours, startup, shutdown, etc.) created by StatusHelpers
+        self._status_variables: dict[str, linopy.Variable] = {}
+
+        self._logger.debug(f'ComponentsModel initialized: {len(components_with_status)} with status')
+
+    # --- Cached Properties ---
+
+    @cached_property
+    def _status_params(self) -> dict[str, StatusParameters]:
+        """Dict of component_id -> StatusParameters."""
+        return {c.label: c.status_parameters for c in self.components}
+
+    @cached_property
+    def _previous_status_dict(self) -> dict[str, xr.DataArray]:
+        """Dict of component_id -> previous_status DataArray."""
+        result = {}
+        for c in self.components:
+            prev = self._get_previous_status_for_component(c)
+            if prev is not None:
+                result[c.label] = prev
+        return result
+
+    @cached_property
+    def _flow_mask(self) -> xr.DataArray:
+        """(component, flow) mask: 1 if flow belongs to component."""
+        membership = MaskHelpers.build_flow_membership(
+            self.components,
+            lambda c: c.inputs + c.outputs,
+        )
+        return MaskHelpers.build_mask(
+            row_dim='component',
+            row_ids=self.element_ids,
+            col_dim='flow',
+            col_ids=self._flows_model.element_ids,
+            membership=membership,
+        )
+
+    @cached_property
+    def _flow_count(self) -> xr.DataArray:
+        """(component,) number of flows per component."""
+        counts = [len(c.inputs) + len(c.outputs) for c in self.components]
+        return xr.DataArray(
+            counts,
+            dims=['component'],
+            coords={'component': self.element_ids},
+        )
+
+    def create_variables(self) -> None:
+        """Create batched component status variable with component dimension."""
+        if not self.components:
+            return
+
+        dim = self.dim_name
+
+        # Create component status binary variable
+        temporal_coords = self.model.get_coords()
+        status_coords = xr.Coordinates(
+            {
+                dim: pd.Index(self.element_ids, name=dim),
+                **dict(temporal_coords),
+            }
+        )
+
+        self._variables['status'] = self.model.add_variables(
+            binary=True,
+            coords=status_coords,
+            name='component|status',
+        )
+
+        self._logger.debug(f'ComponentsModel created status variable for {len(self.components)} components')
+
+    def create_constraints(self) -> None:
+        """Create batched constraints linking component status to flow statuses.
+
+        Uses mask matrix for batched constraint creation:
+        - Single-flow components: comp_status == flow_status (equality)
+        - Multi-flow components: bounded by flow sum with epsilon tolerance
+        """
+        if not self.components:
+            return
+
+        comp_status = self._variables['status']
+        flow_status = self._flows_model._variables['status']
+        mask = self._flow_mask
+        n_flows = self._flow_count
+
+        # Sum of flow statuses for each component: (component, time, ...)
+        flow_sum = (flow_status * mask).sum('flow')
+
+        # Separate single-flow vs multi-flow components
+        single_flow_ids = [c.label for c in self.components if len(c.inputs) + len(c.outputs) == 1]
+        multi_flow_ids = [c.label for c in self.components if len(c.inputs) + len(c.outputs) > 1]
+
+        # Single-flow: exact equality
+        if single_flow_ids:
+            self.model.add_constraints(
+                comp_status.sel(component=single_flow_ids) == flow_sum.sel(component=single_flow_ids),
+                name='component|status|eq',
+            )
+
+        # Multi-flow: bounded constraints
+        if multi_flow_ids:
+            comp_status_multi = comp_status.sel(component=multi_flow_ids)
+            flow_sum_multi = flow_sum.sel(component=multi_flow_ids)
+            n_flows_multi = n_flows.sel(component=multi_flow_ids)
+
+            # Upper bound: status <= sum(flow_statuses) + epsilon
+            self.model.add_constraints(
+                comp_status_multi <= flow_sum_multi + CONFIG.Modeling.epsilon,
+                name='component|status|ub',
+            )
+
+            # Lower bound: status >= sum(flow_statuses) / (n + epsilon)
+            self.model.add_constraints(
+                comp_status_multi >= flow_sum_multi / (n_flows_multi + CONFIG.Modeling.epsilon),
+                name='component|status|lb',
+            )
+
+        self._logger.debug(f'ComponentsModel created batched constraints for {len(self.components)} components')
+
+    @cached_property
+    def previous_status_batched(self) -> xr.DataArray | None:
+        """Concatenated previous status (component, time) derived from component flows.
+
+        Returns None if no components have previous status.
+        For each component, previous status is OR of its flows' previous statuses.
+        """
+        previous_arrays = []
+        components_with_previous = []
+
+        for component in self.components:
+            all_flows = component.inputs + component.outputs
+            previous_status = []
             for flow in all_flows:
-                if flow.status_parameters is None:
-                    flow.status_parameters = StatusParameters()
-                    flow.status_parameters.link_to_flow_system(
-                        self._model.flow_system, f'{flow.label_full}|status_parameters'
-                    )
+                prev = self._flows_model.get_previous_status(flow)
+                if prev is not None:
+                    previous_status.append(prev)
 
-        if self.element.prevent_simultaneous_flows:
-            for flow in self.element.prevent_simultaneous_flows:
-                if flow.status_parameters is None:
-                    flow.status_parameters = StatusParameters()
-                    flow.status_parameters.link_to_flow_system(
-                        self._model.flow_system, f'{flow.label_full}|status_parameters'
-                    )
+            if previous_status:
+                # Combine flow statuses using OR (any flow active = component active)
+                max_len = max(da.sizes['time'] for da in previous_status)
+                padded = [
+                    da.assign_coords(time=range(-da.sizes['time'], 0)).reindex(time=range(-max_len, 0), fill_value=0)
+                    for da in previous_status
+                ]
+                comp_prev_status = xr.concat(padded, dim='flow').any(dim='flow').astype(int)
+                comp_prev_status = comp_prev_status.expand_dims({self.dim_name: [component.label]})
+                previous_arrays.append(comp_prev_status)
+                components_with_previous.append(component)
 
-        # Create FlowModels (which creates their variables and constraints)
-        for flow in all_flows:
-            self.add_submodels(flow.create_model(self._model), short_name=flow.label)
-
-        # Create component status variable and StatusModel if needed
-        if self.element.status_parameters:
-            status = self.add_variables(
-                binary=True,
-                short_name='status',
-                coords=self._model.get_coords(),
-                category=VariableCategory.STATUS,
-            )
-            if len(all_flows) == 1:
-                self.add_constraints(status == all_flows[0].submodel.status.status, short_name='status')
-            else:
-                flow_statuses = [flow.submodel.status.status for flow in all_flows]
-                # TODO: Is the EPSILON even necessary?
-                self.add_constraints(status <= sum(flow_statuses) + CONFIG.Modeling.epsilon, short_name='status|ub')
-                self.add_constraints(
-                    status >= sum(flow_statuses) / (len(flow_statuses) + CONFIG.Modeling.epsilon),
-                    short_name='status|lb',
-                )
-
-            self.status = self.add_submodels(
-                StatusModel(
-                    model=self._model,
-                    label_of_element=self.label_of_element,
-                    parameters=self.element.status_parameters,
-                    status=status,
-                    label_of_model=self.label_of_element,
-                    previous_status=self.previous_status,
-                ),
-                short_name='status',
-            )
-
-        if self.element.prevent_simultaneous_flows:
-            # Simultanious Useage --> Only One FLow is On at a time, but needs a Binary for every flow
-            ModelingPrimitives.mutual_exclusivity_constraint(
-                self,
-                binary_variables=[flow.submodel.status.status for flow in self.element.prevent_simultaneous_flows],
-                short_name='prevent_simultaneous_use',
-            )
-
-    def results_structure(self):
-        return {
-            **super().results_structure(),
-            'inputs': [flow.submodel.flow_rate.name for flow in self.element.inputs.values()],
-            'outputs': [flow.submodel.flow_rate.name for flow in self.element.outputs.values()],
-            'flows': [flow.label_full for flow in self.element.flows.values()],
-        }
-
-    @property
-    def previous_status(self) -> xr.DataArray | None:
-        """Previous status of the component, derived from its flows"""
-        if self.element.status_parameters is None:
-            raise ValueError(f'StatusModel not present in \n{self}\nCant access previous_status')
-
-        previous_status = [flow.submodel.status._previous_status for flow in self.element.flows.values()]
-        previous_status = [da for da in previous_status if da is not None]
-
-        if not previous_status:  # Empty list
+        if not previous_arrays:
             return None
 
-        max_len = max(da.sizes['time'] for da in previous_status)
+        return xr.concat(previous_arrays, dim=self.dim_name)
 
-        padded_previous_status = [
+    def _get_previous_status_for_component(self, component) -> xr.DataArray | None:
+        """Get previous status for a single component (OR of flow statuses).
+
+        Args:
+            component: The component to get previous status for.
+
+        Returns:
+            DataArray of previous status, or None if no flows have previous status.
+        """
+        all_flows = component.inputs + component.outputs
+        previous_status = []
+        for flow in all_flows:
+            prev = self._flows_model.get_previous_status(flow)
+            if prev is not None:
+                previous_status.append(prev)
+
+        if not previous_status:
+            return None
+
+        # Combine flow statuses using OR (any flow active = component active)
+        max_len = max(da.sizes['time'] for da in previous_status)
+        padded = [
             da.assign_coords(time=range(-da.sizes['time'], 0)).reindex(time=range(-max_len, 0), fill_value=0)
             for da in previous_status
         ]
-        return xr.concat(padded_previous_status, dim='flow').any(dim='flow').astype(int)
+        return xr.concat(padded, dim='flow').any(dim='flow').astype(int)
+
+    def create_status_features(self) -> None:
+        """Create status features (startup, shutdown, active_hours, etc.) using StatusHelpers."""
+        if not self.components:
+            return
+
+        from .features import StatusHelpers
+
+        # Use helper to create all status features with cached properties
+        status_vars = StatusHelpers.create_status_features(
+            model=self.model,
+            status=self._variables['status'],
+            params=self._status_params,
+            dim_name=self.dim_name,
+            var_names=ComponentVarName,
+            previous_status=self._previous_status_dict,
+            has_clusters=self.model.flow_system.clusters is not None,
+        )
+
+        # Store created variables
+        self._status_variables = status_vars
+
+        self._logger.debug(f'ComponentsModel created status features for {len(self.components)} components')
+
+    def create_effect_shares(self) -> None:
+        """No-op: effect shares are now collected centrally in EffectsModel.finalize_shares()."""
+        pass
+
+    # === Variable accessor properties ===
+
+    @property
+    def status(self) -> linopy.Variable | None:
+        """Batched component status variable with (component, time) dims."""
+        return self.model.variables['component|status'] if 'component|status' in self.model.variables else None
+
+    def get_variable(self, var_name: str, component_id: str):
+        """Get variable slice for a specific component."""
+        dim = self.dim_name
+        if var_name in self._variables:
+            return self._variables[var_name].sel({dim: component_id})
+        elif hasattr(self, '_status_variables') and var_name in self._status_variables:
+            var = self._status_variables[var_name]
+            if component_id in var.coords.get(dim, []):
+                return var.sel({dim: component_id})
+            return None
+        else:
+            raise KeyError(f'Variable {var_name} not found in ComponentsModel')
+
+
+class ConvertersModel:
+    """Type-level model for ALL converter constraints.
+
+    Handles LinearConverters with:
+    1. Linear conversion factors: sum(flow * coeff * sign) == 0
+    2. Piecewise conversion: inside_piece, lambda0, lambda1 + coupling constraints
+
+    This consolidates converter logic that was previously split between
+    LinearConvertersModel (linear) and ComponentsModel (piecewise).
+
+    Example:
+        >>> converters_model = ConvertersModel(
+        ...     model=flow_system_model,
+        ...     converters_with_factors=converters_with_linear_factors,
+        ...     converters_with_piecewise=converters_with_piecewise,
+        ...     flows_model=flows_model,
+        ... )
+        >>> converters_model.create_linear_constraints()
+        >>> converters_model.create_piecewise_variables()
+        >>> converters_model.create_piecewise_constraints()
+    """
+
+    def __init__(
+        self,
+        model: FlowSystemModel,
+        converters_with_factors: list,  # list[LinearConverter] - avoid circular import
+        converters_with_piecewise: list,  # list[LinearConverter] - avoid circular import
+        flows_model: FlowsModel,
+    ):
+        """Initialize the converter model.
+
+        Args:
+            model: The FlowSystemModel to create variables/constraints in.
+            converters_with_factors: List of LinearConverters with conversion_factors.
+            converters_with_piecewise: List of LinearConverters with piecewise_conversion.
+            flows_model: The FlowsModel that owns flow variables.
+        """
+        from .features import PiecewiseHelpers
+
+        self._logger = logging.getLogger('flixopt')
+        self.model = model
+        self.converters_with_factors = converters_with_factors
+        self.converters_with_piecewise = converters_with_piecewise
+        self._flows_model = flows_model
+        self._PiecewiseHelpers = PiecewiseHelpers
+
+        # Element IDs for linear conversion
+        self.element_ids: list[str] = [c.label for c in converters_with_factors]
+        self.dim_name = 'converter'
+
+        # Piecewise conversion variables
+        self._piecewise_variables: dict[str, linopy.Variable] = {}
+
+        self._logger.debug(
+            f'ConvertersModel initialized: {len(converters_with_factors)} with factors, '
+            f'{len(converters_with_piecewise)} with piecewise'
+        )
+
+    # === Linear Conversion Properties (from LinearConvertersModel) ===
+
+    @cached_property
+    def _max_equations(self) -> int:
+        """Maximum number of conversion equations across all converters."""
+        if not self.converters_with_factors:
+            return 0
+        return max(len(c.conversion_factors) for c in self.converters_with_factors)
+
+    @cached_property
+    def _flow_sign(self) -> xr.DataArray:
+        """(converter, flow) sign: +1 for inputs, -1 for outputs, 0 if not involved."""
+        all_flow_ids = self._flows_model.element_ids
+
+        # Build sign array
+        sign_data = np.zeros((len(self.element_ids), len(all_flow_ids)))
+        for i, conv in enumerate(self.converters_with_factors):
+            for flow in conv.inputs:
+                if flow.label_full in all_flow_ids:
+                    j = all_flow_ids.index(flow.label_full)
+                    sign_data[i, j] = 1.0  # inputs are positive
+            for flow in conv.outputs:
+                if flow.label_full in all_flow_ids:
+                    j = all_flow_ids.index(flow.label_full)
+                    sign_data[i, j] = -1.0  # outputs are negative
+
+        return xr.DataArray(
+            sign_data,
+            dims=['converter', 'flow'],
+            coords={'converter': self.element_ids, 'flow': all_flow_ids},
+        )
+
+    @cached_property
+    def _equation_mask(self) -> xr.DataArray:
+        """(converter, equation_idx) mask: 1 if equation exists, 0 otherwise."""
+        max_eq = self._max_equations
+        mask_data = np.zeros((len(self.element_ids), max_eq))
+
+        for i, conv in enumerate(self.converters_with_factors):
+            for eq_idx in range(len(conv.conversion_factors)):
+                mask_data[i, eq_idx] = 1.0
+
+        return xr.DataArray(
+            mask_data,
+            dims=['converter', 'equation_idx'],
+            coords={'converter': self.element_ids, 'equation_idx': list(range(max_eq))},
+        )
+
+    @cached_property
+    def _coefficients(self) -> xr.DataArray:
+        """(converter, equation_idx, flow, [time, ...]) conversion coefficients.
+
+        Returns DataArray with dims (converter, equation_idx, flow) for constant coefficients,
+        or (converter, equation_idx, flow, time, ...) for time-varying coefficients.
+        Values are 0 where flow is not involved in equation.
+        """
+        max_eq = self._max_equations
+        all_flow_ids = self._flows_model.element_ids
+        n_conv = len(self.element_ids)
+        n_flows = len(all_flow_ids)
+
+        # Build flow_label -> flow_id mapping for each converter
+        conv_flow_maps = []
+        for conv in self.converters_with_factors:
+            flow_map = {fl.label: fl.label_full for fl in conv.flows.values()}
+            conv_flow_maps.append(flow_map)
+
+        # First pass: collect all coefficients and check for time-varying
+        coeff_values = {}  # (i, eq_idx, j) -> value
+        has_dataarray = False
+        extra_coords = {}
+
+        flow_id_to_idx = {fid: j for j, fid in enumerate(all_flow_ids)}
+
+        for i, (conv, flow_map) in enumerate(zip(self.converters_with_factors, conv_flow_maps, strict=False)):
+            for eq_idx, conv_factors in enumerate(conv.conversion_factors):
+                for flow_label, coeff in conv_factors.items():
+                    flow_id = flow_map.get(flow_label)
+                    if flow_id and flow_id in flow_id_to_idx:
+                        j = flow_id_to_idx[flow_id]
+                        coeff_values[(i, eq_idx, j)] = coeff
+                        if isinstance(coeff, xr.DataArray) and coeff.ndim > 0:
+                            has_dataarray = True
+                            for d in coeff.dims:
+                                if d not in extra_coords:
+                                    extra_coords[d] = coeff.coords[d].values
+
+        # Build the coefficient array
+        if not has_dataarray:
+            # Fast path: all scalars - use simple numpy array
+            data = np.zeros((n_conv, max_eq, n_flows), dtype=np.float64)
+            for (i, eq_idx, j), val in coeff_values.items():
+                if isinstance(val, xr.DataArray):
+                    data[i, eq_idx, j] = float(val.values)
+                else:
+                    data[i, eq_idx, j] = float(val)
+
+            return xr.DataArray(
+                data,
+                dims=['converter', 'equation_idx', 'flow'],
+                coords={
+                    'converter': self.element_ids,
+                    'equation_idx': list(range(max_eq)),
+                    'flow': all_flow_ids,
+                },
+            )
+        else:
+            # Slow path: some time-varying coefficients - broadcast all to common shape
+            extra_dims = list(extra_coords.keys())
+            extra_shape = [len(c) for c in extra_coords.values()]
+            full_shape = [n_conv, max_eq, n_flows] + extra_shape
+            full_dims = ['converter', 'equation_idx', 'flow'] + extra_dims
+
+            data = np.zeros(full_shape, dtype=np.float64)
+
+            # Create template for broadcasting
+            template = xr.DataArray(coords=extra_coords, dims=extra_dims) if extra_coords else None
+
+            for (i, eq_idx, j), val in coeff_values.items():
+                if isinstance(val, xr.DataArray):
+                    if val.ndim == 0:
+                        data[i, eq_idx, j, ...] = float(val.values)
+                    elif template is not None:
+                        broadcasted = val.broadcast_like(template)
+                        data[i, eq_idx, j, ...] = broadcasted.values
+                    else:
+                        data[i, eq_idx, j, ...] = val.values
+                else:
+                    data[i, eq_idx, j, ...] = float(val)
+
+            full_coords = {
+                'converter': self.element_ids,
+                'equation_idx': list(range(max_eq)),
+                'flow': all_flow_ids,
+            }
+            full_coords.update(extra_coords)
+
+            return xr.DataArray(data, dims=full_dims, coords=full_coords)
+
+    def create_linear_constraints(self) -> None:
+        """Create batched linear conversion factor constraints.
+
+        For each converter c with equation i:
+            sum_f(flow_rate[f] * coefficient[c,i,f] * sign[c,f]) == 0
+
+        where:
+            - Inputs have positive sign, outputs have negative sign
+            - coefficient contains the conversion factors (may be time-varying)
+        """
+        if not self.converters_with_factors:
+            return
+
+        coefficients = self._coefficients
+        flow_rate = self._flows_model._variables['rate']
+        sign = self._flow_sign
+
+        # Pre-combine coefficients and sign (both are xr.DataArrays, not linopy)
+        # This avoids creating intermediate linopy expressions
+        # coefficients: (converter, equation_idx, flow, [time, ...])
+        # sign: (converter, flow)
+        # Result: (converter, equation_idx, flow, [time, ...])
+        signed_coeffs = coefficients * sign
+
+        # Now multiply flow_rate by the combined coefficients
+        # flow_rate: (flow, time, ...)
+        # signed_coeffs: (converter, equation_idx, flow, [time, ...])
+        # Result: (converter, equation_idx, flow, time, ...)
+        weighted = flow_rate * signed_coeffs
+
+        # Sum over flows: (converter, equation_idx, time, ...)
+        flow_sum = weighted.sum('flow')
+
+        # Build valid mask: (converter, equation_idx)
+        # True where converter HAS that equation (keep constraint)
+        n_equations_per_converter = xr.DataArray(
+            [len(c.conversion_factors) for c in self.converters_with_factors],
+            dims=['converter'],
+            coords={'converter': self.element_ids},
+        )
+        equation_indices = xr.DataArray(
+            list(range(self._max_equations)),
+            dims=['equation_idx'],
+            coords={'equation_idx': list(range(self._max_equations))},
+        )
+        valid_mask = equation_indices < n_equations_per_converter
+
+        # Add all constraints at once using linopy's mask parameter
+        # mask=True means KEEP constraint for that (converter, equation_idx) pair
+        self.model.add_constraints(
+            flow_sum == 0,
+            name=ConverterVarName.Constraint.CONVERSION,
+            mask=valid_mask,
+        )
+
+        self._logger.debug(
+            f'ConvertersModel created linear constraints for {len(self.converters_with_factors)} converters'
+        )
+
+    # === Piecewise Conversion Properties (from ComponentsModel) ===
+
+    @cached_property
+    def _piecewise_element_ids(self) -> list[str]:
+        """Element IDs for converters with piecewise conversion."""
+        return [c.label for c in self.converters_with_piecewise]
+
+    @cached_property
+    def _piecewise_segment_counts(self) -> dict[str, int]:
+        """Dict mapping converter_id -> number of segments."""
+        return {
+            c.label: len(list(c.piecewise_conversion.piecewises.values())[0]) for c in self.converters_with_piecewise
+        }
+
+    @cached_property
+    def _piecewise_max_segments(self) -> int:
+        """Maximum segment count across all converters."""
+        if not self.converters_with_piecewise:
+            return 0
+        return max(self._piecewise_segment_counts.values())
+
+    @cached_property
+    def _piecewise_segment_mask(self) -> xr.DataArray:
+        """(converter, segment) mask: 1=valid, 0=padded."""
+        _, mask = self._PiecewiseHelpers.collect_segment_info(
+            self._piecewise_element_ids, self._piecewise_segment_counts, self._piecewise_dim_name
+        )
+        return mask
+
+    @cached_property
+    def _piecewise_dim_name(self) -> str:
+        """Dimension name for piecewise converters."""
+        return 'converter'
+
+    @cached_property
+    def _piecewise_flow_breakpoints(self) -> dict[str, tuple[xr.DataArray, xr.DataArray]]:
+        """Dict mapping flow_id -> (starts, ends) padded DataArrays."""
+        # Collect all flow ids that appear in piecewise conversions
+        all_flow_ids: set[str] = set()
+        for conv in self.converters_with_piecewise:
+            for flow_label in conv.piecewise_conversion.piecewises:
+                flow_id = conv.flows[flow_label].label_full
+                all_flow_ids.add(flow_id)
+
+        result = {}
+        for flow_id in all_flow_ids:
+            breakpoints: dict[str, tuple[list[float], list[float]]] = {}
+            for conv in self.converters_with_piecewise:
+                # Check if this converter has this flow
+                found = False
+                for flow_label, piecewise in conv.piecewise_conversion.piecewises.items():
+                    if conv.flows[flow_label].label_full == flow_id:
+                        starts = [p.start for p in piecewise]
+                        ends = [p.end for p in piecewise]
+                        breakpoints[conv.label] = (starts, ends)
+                        found = True
+                        break
+                if not found:
+                    # This converter doesn't have this flow - use NaN
+                    breakpoints[conv.label] = (
+                        [np.nan] * self._piecewise_max_segments,
+                        [np.nan] * self._piecewise_max_segments,
+                    )
+
+            # Get time coordinates from model for time-varying breakpoints
+            time_coords = self.model.flow_system.timesteps
+            starts, ends = self._PiecewiseHelpers.pad_breakpoints(
+                self._piecewise_element_ids,
+                breakpoints,
+                self._piecewise_max_segments,
+                self._piecewise_dim_name,
+                time_coords=time_coords,
+            )
+            result[flow_id] = (starts, ends)
+
+        return result
+
+    @cached_property
+    def piecewise_segment_counts(self) -> xr.DataArray | None:
+        """(converter,) - number of segments per converter with piecewise conversion."""
+        if not self.converters_with_piecewise:
+            return None
+        counts = [len(list(c.piecewise_conversion.piecewises.values())[0]) for c in self.converters_with_piecewise]
+        return xr.DataArray(
+            counts,
+            dims=[self._piecewise_dim_name],
+            coords={self._piecewise_dim_name: self._piecewise_element_ids},
+        )
+
+    @cached_property
+    def piecewise_segment_mask(self) -> xr.DataArray | None:
+        """(converter, segment) - 1=valid segment, 0=padded."""
+        if not self.converters_with_piecewise:
+            return None
+        return self._piecewise_segment_mask
+
+    @cached_property
+    def piecewise_breakpoints(self) -> xr.Dataset | None:
+        """Dataset with (converter, segment, flow) or (converter, segment, flow, time) breakpoints.
+
+        Variables:
+            - starts: segment start values
+            - ends: segment end values
+
+        When breakpoints are time-varying, an additional 'time' dimension is included.
+        """
+        if not self.converters_with_piecewise:
+            return None
+
+        # Collect all flows
+        all_flows = list(self._piecewise_flow_breakpoints.keys())
+
+        # Build a list of DataArrays for each flow, then combine with xr.concat
+        starts_list = []
+        ends_list = []
+        for flow_id in all_flows:
+            starts_da, ends_da = self._piecewise_flow_breakpoints[flow_id]
+            # Add 'flow' as a new coordinate
+            starts_da = starts_da.expand_dims(flow=[flow_id])
+            ends_da = ends_da.expand_dims(flow=[flow_id])
+            starts_list.append(starts_da)
+            ends_list.append(ends_da)
+
+        # Concatenate along 'flow' dimension
+        starts_combined = xr.concat(starts_list, dim='flow')
+        ends_combined = xr.concat(ends_list, dim='flow')
+
+        return xr.Dataset({'starts': starts_combined, 'ends': ends_combined})
+
+    def create_piecewise_variables(self) -> dict[str, linopy.Variable]:
+        """Create batched piecewise conversion variables.
+
+        Returns:
+            Dict with 'inside_piece', 'lambda0', 'lambda1' variables.
+        """
+        if not self.converters_with_piecewise:
+            return {}
+
+        base_coords = self.model.get_coords(['time', 'period', 'scenario'])
+
+        self._piecewise_variables = self._PiecewiseHelpers.create_piecewise_variables(
+            self.model,
+            self._piecewise_element_ids,
+            self._piecewise_max_segments,
+            self._piecewise_dim_name,
+            self._piecewise_segment_mask,
+            base_coords,
+            ConverterVarName.PIECEWISE_PREFIX,
+        )
+
+        self._logger.debug(
+            f'ConvertersModel created piecewise variables for {len(self.converters_with_piecewise)} converters'
+        )
+        return self._piecewise_variables
+
+    def create_piecewise_constraints(self) -> None:
+        """Create batched piecewise constraints and coupling constraints."""
+        if not self.converters_with_piecewise:
+            return
+
+        # Get zero_point for each converter (status variable if available)
+        # TODO: Integrate status from ComponentsModel when converters overlap
+        zero_point = None
+
+        # Create lambda_sum and single_segment constraints
+        self._PiecewiseHelpers.create_piecewise_constraints(
+            self.model,
+            self._piecewise_variables,
+            self._piecewise_segment_mask,
+            zero_point,
+            self._piecewise_dim_name,
+            ConverterVarName.PIECEWISE_PREFIX,
+        )
+
+        # Create batched coupling constraints for all piecewise flows
+        bp = self.piecewise_breakpoints  # Dataset with (converter, segment, flow) dims
+        if bp is None:
+            return
+
+        flow_rate = self._flows_model._variables['rate']
+        lambda0 = self._piecewise_variables['lambda0']
+        lambda1 = self._piecewise_variables['lambda1']
+
+        # Compute all reconstructed values at once: (converter, flow, time, period, ...)
+        all_reconstructed = (lambda0 * bp['starts'] + lambda1 * bp['ends']).sum('segment')
+
+        # Mask: valid where breakpoints exist (not NaN)
+        valid_mask = fast_notnull(bp['starts']).any('segment')
+
+        # Apply mask and sum over converter (each flow has exactly one valid converter)
+        reconstructed_per_flow = all_reconstructed.where(valid_mask).sum('converter')
+
+        # Get flow rates for piecewise flows
+        flow_ids = list(bp.coords['flow'].values)
+        piecewise_flow_rate = flow_rate.sel(flow=flow_ids)
+
+        # Add single batched constraint
+        self.model.add_constraints(
+            piecewise_flow_rate == reconstructed_per_flow,
+            name=ConverterVarName.Constraint.PIECEWISE_COUPLING,
+        )
+
+        self._logger.debug(
+            f'ConvertersModel created piecewise constraints for {len(self.converters_with_piecewise)} converters'
+        )
+
+
+class TransmissionsModel:
+    """Type-level model for batched transmission efficiency constraints.
+
+    Handles Transmission components with batched constraints:
+    - Efficiency: out = in * (1 - rel_losses) - status * abs_losses
+    - Balanced size: in1.size == in2.size
+
+    All constraints have a 'transmission' dimension for proper batching.
+
+    Example:
+        >>> transmissions_model = TransmissionsModel(
+        ...     model=flow_system_model,
+        ...     transmissions=transmissions,
+        ...     flows_model=flows_model,
+        ... )
+        >>> transmissions_model.create_constraints()
+    """
+
+    def __init__(
+        self,
+        model: FlowSystemModel,
+        transmissions: list,  # list[Transmission] - avoid circular import
+        flows_model: FlowsModel,
+    ):
+        """Initialize the transmission model.
+
+        Args:
+            model: The FlowSystemModel to create constraints in.
+            transmissions: List of Transmission components.
+            flows_model: The FlowsModel that owns flow variables.
+        """
+        self._logger = logging.getLogger('flixopt')
+        self.model = model
+        self.transmissions = transmissions
+        self._flows_model = flows_model
+        self.element_ids: list[str] = [t.label for t in transmissions]
+        self.dim_name = 'transmission'
+
+        self._logger.debug(f'TransmissionsModel initialized: {len(transmissions)} transmissions')
+
+    # === Flow Mapping Properties ===
+
+    @cached_property
+    def _bidirectional(self) -> list:
+        """List of transmissions that are bidirectional."""
+        return [t for t in self.transmissions if t.in2 is not None]
+
+    @cached_property
+    def _bidirectional_ids(self) -> list[str]:
+        """Element IDs for bidirectional transmissions."""
+        return [t.label for t in self._bidirectional]
+
+    @cached_property
+    def _balanced(self) -> list:
+        """List of transmissions with balanced=True."""
+        return [t for t in self.transmissions if t.balanced]
+
+    @cached_property
+    def _balanced_ids(self) -> list[str]:
+        """Element IDs for balanced transmissions."""
+        return [t.label for t in self._balanced]
+
+    # === Flow Masks for Batched Selection ===
+
+    def _build_flow_mask(self, transmission_ids: list[str], flow_getter) -> xr.DataArray:
+        """Build (transmission, flow) mask: 1 if flow belongs to transmission.
+
+        Args:
+            transmission_ids: List of transmission labels to include.
+            flow_getter: Function that takes a transmission and returns its flow label_full.
+        """
+        all_flow_ids = self._flows_model.element_ids
+        mask_data = np.zeros((len(transmission_ids), len(all_flow_ids)))
+
+        for t_idx, t_id in enumerate(transmission_ids):
+            t = next(t for t in self.transmissions if t.label == t_id)
+            flow_id = flow_getter(t)
+            if flow_id in all_flow_ids:
+                f_idx = all_flow_ids.index(flow_id)
+                mask_data[t_idx, f_idx] = 1.0
+
+        return xr.DataArray(
+            mask_data,
+            dims=[self.dim_name, 'flow'],
+            coords={self.dim_name: transmission_ids, 'flow': all_flow_ids},
+        )
+
+    @cached_property
+    def _in1_mask(self) -> xr.DataArray:
+        """(transmission, flow) mask: 1 if flow is in1 for transmission."""
+        return self._build_flow_mask(self.element_ids, lambda t: t.in1.label_full)
+
+    @cached_property
+    def _out1_mask(self) -> xr.DataArray:
+        """(transmission, flow) mask: 1 if flow is out1 for transmission."""
+        return self._build_flow_mask(self.element_ids, lambda t: t.out1.label_full)
+
+    @cached_property
+    def _in2_mask(self) -> xr.DataArray:
+        """(transmission, flow) mask for bidirectional: 1 if flow is in2."""
+        return self._build_flow_mask(self._bidirectional_ids, lambda t: t.in2.label_full)
+
+    @cached_property
+    def _out2_mask(self) -> xr.DataArray:
+        """(transmission, flow) mask for bidirectional: 1 if flow is out2."""
+        return self._build_flow_mask(self._bidirectional_ids, lambda t: t.out2.label_full)
+
+    # === Loss Properties ===
+
+    @cached_property
+    def _relative_losses(self) -> xr.DataArray:
+        """(transmission, [time, ...]) relative losses. 0 if None."""
+        if not self.transmissions:
+            return xr.DataArray()
+        values = []
+        for t in self.transmissions:
+            loss = t.relative_losses if t.relative_losses is not None else 0
+            values.append(loss)
+        return self._stack_data(values)
+
+    @cached_property
+    def _absolute_losses(self) -> xr.DataArray:
+        """(transmission, [time, ...]) absolute losses. 0 if None."""
+        if not self.transmissions:
+            return xr.DataArray()
+        values = []
+        for t in self.transmissions:
+            loss = t.absolute_losses if t.absolute_losses is not None else 0
+            values.append(loss)
+        return self._stack_data(values)
+
+    @cached_property
+    def _has_absolute_losses_mask(self) -> xr.DataArray:
+        """(transmission,) bool mask for transmissions with absolute losses."""
+        if not self.transmissions:
+            return xr.DataArray()
+        has_abs = [t.absolute_losses is not None and np.any(t.absolute_losses != 0) for t in self.transmissions]
+        return xr.DataArray(
+            has_abs,
+            dims=[self.dim_name],
+            coords={self.dim_name: self.element_ids},
+        )
+
+    @cached_property
+    def _transmissions_with_abs_losses(self) -> list[str]:
+        """Element IDs for transmissions with absolute losses."""
+        return [t.label for t in self.transmissions if t.absolute_losses is not None and np.any(t.absolute_losses != 0)]
+
+    def _stack_data(self, values: list) -> xr.DataArray:
+        """Stack transmission data into (transmission, [time, ...]) array."""
+        if not values:
+            return xr.DataArray()
+
+        # Convert scalars to arrays with proper coords
+        arrays = []
+        for i, val in enumerate(values):
+            if isinstance(val, xr.DataArray):
+                arr = val.expand_dims({self.dim_name: [self.element_ids[i]]})
+            else:
+                # Scalar - create simple array
+                arr = xr.DataArray(
+                    val,
+                    dims=[self.dim_name],
+                    coords={self.dim_name: [self.element_ids[i]]},
+                )
+            arrays.append(arr)
+
+        return xr.concat(arrays, dim=self.dim_name)
+
+    def create_constraints(self) -> None:
+        """Create batched transmission efficiency constraints.
+
+        Uses mask-based batching: mask[transmission, flow] = 1 if flow belongs to transmission.
+        Broadcasting (flow_rate * mask).sum('flow') gives (transmission, time, ...) rates.
+
+        Creates batched constraints with transmission dimension:
+        - Direction 1: out1 == in1 * (1 - rel_losses) - in1_status * abs_losses
+        - Direction 2: out2 == in2 * (1 - rel_losses) - in2_status * abs_losses (bidirectional only)
+        - Balanced: in1.size == in2.size (balanced only)
+        """
+        if not self.transmissions:
+            return
+
+        con = TransmissionVarName.Constraint
+        flow_rate = self._flows_model._variables['rate']
+
+        # === Direction 1: All transmissions (batched) ===
+        # Use masks to batch flow selection: (flow_rate * mask).sum('flow') -> (transmission, time, ...)
+        in1_rate = (flow_rate * self._in1_mask).sum('flow')
+        out1_rate = (flow_rate * self._out1_mask).sum('flow')
+        rel_losses = self._relative_losses
+        abs_losses = self._absolute_losses
+
+        # Build the efficiency expression: in1 * (1 - rel_losses) - abs_losses_term
+        efficiency_expr = in1_rate * (1 - rel_losses)
+
+        # Add absolute losses term if any transmission has them
+        if self._transmissions_with_abs_losses:
+            flow_status = self._flows_model._variables['status']
+            in1_status = (flow_status * self._in1_mask).sum('flow')
+            efficiency_expr = efficiency_expr - in1_status * abs_losses
+
+        # out1 == in1 * (1 - rel_losses) - in1_status * abs_losses
+        self.model.add_constraints(
+            out1_rate == efficiency_expr,
+            name=con.DIR1,
+        )
+
+        # === Direction 2: Bidirectional transmissions only (batched) ===
+        if self._bidirectional:
+            in2_rate = (flow_rate * self._in2_mask).sum('flow')
+            out2_rate = (flow_rate * self._out2_mask).sum('flow')
+            rel_losses_bidir = self._relative_losses.sel({self.dim_name: self._bidirectional_ids})
+            abs_losses_bidir = self._absolute_losses.sel({self.dim_name: self._bidirectional_ids})
+
+            # Build the efficiency expression for direction 2
+            efficiency_expr_2 = in2_rate * (1 - rel_losses_bidir)
+
+            # Add absolute losses for bidirectional if any have them
+            bidir_with_abs = [t.label for t in self._bidirectional if t.label in self._transmissions_with_abs_losses]
+            if bidir_with_abs:
+                flow_status = self._flows_model._variables['status']
+                in2_status = (flow_status * self._in2_mask).sum('flow')
+                efficiency_expr_2 = efficiency_expr_2 - in2_status * abs_losses_bidir
+
+            # out2 == in2 * (1 - rel_losses) - in2_status * abs_losses
+            self.model.add_constraints(
+                out2_rate == efficiency_expr_2,
+                name=con.DIR2,
+            )
+
+        # === Balanced constraints: in1.size == in2.size (batched) ===
+        if self._balanced:
+            flow_size = self._flows_model._variables['size']
+            # Build masks for balanced transmissions only
+            in1_size_mask = self._build_flow_mask(self._balanced_ids, lambda t: t.in1.label_full)
+            in2_size_mask = self._build_flow_mask(self._balanced_ids, lambda t: t.in2.label_full)
+
+            in1_size_batched = (flow_size * in1_size_mask).sum('flow')
+            in2_size_batched = (flow_size * in2_size_mask).sum('flow')
+
+            self.model.add_constraints(
+                in1_size_batched == in2_size_batched,
+                name=con.BALANCED,
+            )
+
+        self._logger.debug(
+            f'TransmissionsModel created batched constraints for {len(self.transmissions)} transmissions'
+        )
+
+
+class PreventSimultaneousFlowsModel:
+    """Type-level model for batched prevent_simultaneous_flows constraints.
+
+    Handles mutual exclusivity constraints for components where flows cannot
+    be active simultaneously (e.g., Storage charge/discharge, SourceAndSink buy/sell).
+
+    Each constraint enforces: sum(flow_statuses) <= 1
+    """
+
+    def __init__(
+        self,
+        model: FlowSystemModel,
+        components: list[Component],
+        flows_model: FlowsModel,
+    ):
+        """Initialize the prevent simultaneous flows model.
+
+        Args:
+            model: The FlowSystemModel to create constraints in.
+            components: List of components with prevent_simultaneous_flows set.
+            flows_model: The FlowsModel that owns flow status variables.
+        """
+        self._logger = logging.getLogger('flixopt')
+        self.model = model
+        self.components = components
+        self._flows_model = flows_model
+
+        self._logger.debug(f'PreventSimultaneousFlowsModel initialized: {len(components)} components')
+
+    @cached_property
+    def _flow_mask(self) -> xr.DataArray:
+        """(component, flow) mask: 1 if flow belongs to component's prevent_simultaneous_flows."""
+        membership = MaskHelpers.build_flow_membership(
+            self.components,
+            lambda c: c.prevent_simultaneous_flows,
+        )
+        return MaskHelpers.build_mask(
+            row_dim='component',
+            row_ids=[c.label for c in self.components],
+            col_dim='flow',
+            col_ids=self._flows_model.element_ids,
+            membership=membership,
+        )
+
+    def create_constraints(self) -> None:
+        """Create batched mutual exclusivity constraints.
+
+        Uses a mask matrix to batch all components into a single constraint:
+        - mask: (component, flow) = 1 if flow in component's prevent_simultaneous_flows
+        - status: (flow, time, ...)
+        - (status * mask).sum('flow') <= 1 gives (component, time, ...) constraint
+        """
+        if not self.components:
+            return
+
+        status = self._flows_model._variables['status']
+        mask = self._flow_mask
+
+        # Batched constraint: sum of statuses for each component's flows <= 1
+        # status * mask broadcasts to (component, flow, time, ...)
+        # .sum('flow') reduces to (component, time, ...)
+        self.model.add_constraints(
+            (status * mask).sum('flow') <= 1,
+            name='prevent_simultaneous',
+        )
+
+        self._logger.debug(
+            f'PreventSimultaneousFlowsModel created batched constraint for {len(self.components)} components'
+        )

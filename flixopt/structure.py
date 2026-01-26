@@ -11,7 +11,7 @@ import logging
 import pathlib
 import re
 import warnings
-from dataclasses import dataclass
+from abc import ABC, abstractmethod
 from difflib import get_close_matches
 from enum import Enum
 from typing import (
@@ -33,7 +33,7 @@ from .config import DEPRECATION_REMOVAL_VERSION
 from .core import FlowSystemDimensions, TimeSeriesData, get_dataarray_stats
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
-    from collections.abc import Collection, ItemsView, Iterator
+    from collections.abc import Collection
 
     from .effects import EffectCollectionModel
     from .flow_system import FlowSystem
@@ -61,9 +61,13 @@ def _ensure_coords(
     else:
         coord_dims = list(coords.dims)
 
+    # Handle None (no bound specified)
+    if data is None:
+        return data
+
     # Keep infinity values as scalars (linopy uses them for special checks)
     if not isinstance(data, xr.DataArray):
-        if np.isinf(data):
+        if np.isscalar(data) and np.isinf(data):
             return data
         # Finite scalar - create full DataArray
         return xr.DataArray(data, coords=coords, dims=coord_dims)
@@ -141,6 +145,681 @@ EXPAND_DIVIDE: set[VariableCategory] = {VariableCategory.PER_TIMESTEP, VariableC
 EXPAND_FIRST_TIMESTEP: set[VariableCategory] = {VariableCategory.STARTUP, VariableCategory.SHUTDOWN}
 """Binary events that should appear only at the first timestep of the segment."""
 
+# Alias for clarity - VariableCategory is specifically for segment expansion behavior
+# New code should use ExpansionCategory; VariableCategory is kept for backward compatibility
+ExpansionCategory = VariableCategory
+
+
+# =============================================================================
+# New Categorization Enums for Type-Level Models
+# =============================================================================
+
+
+class ElementType(Enum):
+    """What kind of element creates a variable/constraint.
+
+    Used to group elements by type for batch processing in type-level models.
+    """
+
+    FLOW = 'flow'
+    BUS = 'bus'
+    STORAGE = 'storage'
+    CONVERTER = 'converter'
+    EFFECT = 'effect'
+
+
+class VariableType(Enum):
+    """What role a variable plays in the model.
+
+    Provides semantic meaning for variables beyond just their name.
+    Maps to ExpansionCategory (formerly VariableCategory) for segment expansion.
+    """
+
+    # === Rates/Power ===
+    FLOW_RATE = 'flow_rate'  # Flow rate (kW)
+    NETTO_DISCHARGE = 'netto_discharge'  # Storage net discharge
+    VIRTUAL_FLOW = 'virtual_flow'  # Bus penalty slack variables
+
+    # === State ===
+    CHARGE_STATE = 'charge_state'  # Storage SOC (interpolate between boundaries)
+    SOC_BOUNDARY = 'soc_boundary'  # Intercluster SOC boundaries
+
+    # === Binary state ===
+    STATUS = 'status'  # On/off status (persists through segment)
+    INACTIVE = 'inactive'  # Complementary inactive status
+    STARTUP = 'startup'  # Startup event
+    SHUTDOWN = 'shutdown'  # Shutdown event
+
+    # === Aggregates ===
+    TOTAL = 'total'  # total_flow_hours, active_hours
+    TOTAL_OVER_PERIODS = 'total_over_periods'  # Sum across periods
+
+    # === Investment ===
+    SIZE = 'size'  # Investment size
+    INVESTED = 'invested'  # Invested yes/no binary
+
+    # === Piecewise linearization ===
+    INSIDE_PIECE = 'inside_piece'  # Binary segment selection
+    LAMBDA = 'lambda_weight'  # Interpolation weight
+
+    # === Effects ===
+    PER_TIMESTEP = 'per_timestep'  # Effect per timestep
+    SHARE = 'share'  # Effect share contribution
+
+    # === Other ===
+    OTHER = 'other'  # Uncategorized
+
+
+class ConstraintType(Enum):
+    """What kind of constraint this is.
+
+    Provides semantic meaning for constraints to enable batch processing.
+    """
+
+    # === Tracking equations ===
+    TRACKING = 'tracking'  # var = sum(other) or var = expression
+
+    # === Bounds ===
+    UPPER_BOUND = 'upper_bound'  # var <= bound
+    LOWER_BOUND = 'lower_bound'  # var >= bound
+
+    # === Balance ===
+    BALANCE = 'balance'  # sum(inflows) == sum(outflows)
+
+    # === Linking ===
+    LINKING = 'linking'  # var[t+1] = f(var[t])
+
+    # === State transitions ===
+    STATE_TRANSITION = 'state_transition'  # status, startup, shutdown relationships
+
+    # === Piecewise ===
+    PIECEWISE = 'piecewise'  # SOS2, lambda constraints
+
+    # === Other ===
+    OTHER = 'other'  # Uncategorized
+
+
+# Mapping from VariableType to ExpansionCategory (for segment expansion)
+# This connects the new enum system to the existing segment expansion logic
+VARIABLE_TYPE_TO_EXPANSION: dict[VariableType, ExpansionCategory] = {
+    VariableType.FLOW_RATE: VariableCategory.FLOW_RATE,
+    VariableType.NETTO_DISCHARGE: VariableCategory.NETTO_DISCHARGE,
+    VariableType.VIRTUAL_FLOW: VariableCategory.VIRTUAL_FLOW,
+    VariableType.CHARGE_STATE: VariableCategory.CHARGE_STATE,
+    VariableType.SOC_BOUNDARY: VariableCategory.SOC_BOUNDARY,
+    VariableType.STATUS: VariableCategory.STATUS,
+    VariableType.INACTIVE: VariableCategory.INACTIVE,
+    VariableType.STARTUP: VariableCategory.STARTUP,
+    VariableType.SHUTDOWN: VariableCategory.SHUTDOWN,
+    VariableType.TOTAL: VariableCategory.TOTAL,
+    VariableType.TOTAL_OVER_PERIODS: VariableCategory.TOTAL_OVER_PERIODS,
+    VariableType.SIZE: VariableCategory.SIZE,
+    VariableType.INVESTED: VariableCategory.INVESTED,
+    VariableType.INSIDE_PIECE: VariableCategory.INSIDE_PIECE,
+    VariableType.LAMBDA: VariableCategory.LAMBDA0,  # Maps to LAMBDA0 for expansion
+    VariableType.PER_TIMESTEP: VariableCategory.PER_TIMESTEP,
+    VariableType.SHARE: VariableCategory.SHARE,
+    VariableType.OTHER: VariableCategory.OTHER,
+}
+
+
+# =============================================================================
+# Central Variable/Constraint Naming
+# =============================================================================
+
+
+class FlowVarName:
+    """Central variable naming for Flow type-level models.
+
+    All variable and constraint names for FlowsModel should reference these constants.
+    Pattern: flow|{variable_name} (max 2 levels for variables)
+    """
+
+    # === Flow Variables ===
+    RATE = 'flow|rate'
+    HOURS = 'flow|hours'
+    STATUS = 'flow|status'
+    SIZE = 'flow|size'
+    INVESTED = 'flow|invested'
+
+    # === Status Tracking Variables (for flows with status) ===
+    ACTIVE_HOURS = 'flow|active_hours'
+    STARTUP = 'flow|startup'
+    SHUTDOWN = 'flow|shutdown'
+    INACTIVE = 'flow|inactive'
+    STARTUP_COUNT = 'flow|startup_count'
+
+    # === Duration Tracking Variables ===
+    UPTIME = 'flow|uptime'
+    DOWNTIME = 'flow|downtime'
+
+
+# Constraint names for FlowsModel (references FlowVarName)
+class _FlowConstraint:
+    """Constraint names for FlowsModel.
+
+    Constraints can have 3 levels: flow|{var}|{constraint_type}
+    """
+
+    HOURS_EQ = 'flow|hours_eq'
+    RATE_STATUS_LB = 'flow|rate_status_lb'
+    RATE_STATUS_UB = 'flow|rate_status_ub'
+    ACTIVE_HOURS = FlowVarName.ACTIVE_HOURS  # Same as variable (tracking constraint)
+    COMPLEMENTARY = 'flow|complementary'
+    SWITCH_TRANSITION = 'flow|switch_transition'
+    SWITCH_MUTEX = 'flow|switch_mutex'
+    SWITCH_INITIAL = 'flow|switch_initial'
+    STARTUP_COUNT = FlowVarName.STARTUP_COUNT  # Same as variable
+    CLUSTER_CYCLIC = 'flow|cluster_cyclic'
+
+    # Uptime tracking constraints (built from variable name)
+    UPTIME_UB = f'{FlowVarName.UPTIME}|ub'
+    UPTIME_FORWARD = f'{FlowVarName.UPTIME}|forward'
+    UPTIME_BACKWARD = f'{FlowVarName.UPTIME}|backward'
+    UPTIME_INITIAL_UB = f'{FlowVarName.UPTIME}|initial_ub'
+    UPTIME_INITIAL_LB = f'{FlowVarName.UPTIME}|initial_lb'
+
+    # Downtime tracking constraints (built from variable name)
+    DOWNTIME_UB = f'{FlowVarName.DOWNTIME}|ub'
+    DOWNTIME_FORWARD = f'{FlowVarName.DOWNTIME}|forward'
+    DOWNTIME_BACKWARD = f'{FlowVarName.DOWNTIME}|backward'
+    DOWNTIME_INITIAL_UB = f'{FlowVarName.DOWNTIME}|initial_ub'
+    DOWNTIME_INITIAL_LB = f'{FlowVarName.DOWNTIME}|initial_lb'
+
+
+FlowVarName.Constraint = _FlowConstraint
+
+
+class ComponentVarName:
+    """Central variable naming for Component type-level models.
+
+    All variable and constraint names for ComponentsModel should reference these constants.
+    Pattern: {element_type}|{variable_suffix}
+    """
+
+    # === Component Status Variables ===
+    STATUS = 'component|status'
+    ACTIVE_HOURS = 'component|active_hours'
+    STARTUP = 'component|startup'
+    SHUTDOWN = 'component|shutdown'
+    INACTIVE = 'component|inactive'
+    STARTUP_COUNT = 'component|startup_count'
+
+    # === Duration Tracking Variables ===
+    UPTIME = 'component|uptime'
+    DOWNTIME = 'component|downtime'
+
+
+# Constraint names for ComponentsModel (references ComponentVarName)
+class _ComponentConstraint:
+    """Constraint names for ComponentsModel.
+
+    Constraints can have 3 levels: component|{var}|{constraint_type}
+    """
+
+    ACTIVE_HOURS = ComponentVarName.ACTIVE_HOURS
+    COMPLEMENTARY = 'component|complementary'
+    SWITCH_TRANSITION = 'component|switch_transition'
+    SWITCH_MUTEX = 'component|switch_mutex'
+    SWITCH_INITIAL = 'component|switch_initial'
+    STARTUP_COUNT = ComponentVarName.STARTUP_COUNT
+    CLUSTER_CYCLIC = 'component|cluster_cyclic'
+
+    # Uptime tracking constraints
+    UPTIME_UB = f'{ComponentVarName.UPTIME}|ub'
+    UPTIME_FORWARD = f'{ComponentVarName.UPTIME}|forward'
+    UPTIME_BACKWARD = f'{ComponentVarName.UPTIME}|backward'
+    UPTIME_INITIAL_UB = f'{ComponentVarName.UPTIME}|initial_ub'
+    UPTIME_INITIAL_LB = f'{ComponentVarName.UPTIME}|initial_lb'
+
+    # Downtime tracking constraints
+    DOWNTIME_UB = f'{ComponentVarName.DOWNTIME}|ub'
+    DOWNTIME_FORWARD = f'{ComponentVarName.DOWNTIME}|forward'
+    DOWNTIME_BACKWARD = f'{ComponentVarName.DOWNTIME}|backward'
+    DOWNTIME_INITIAL_UB = f'{ComponentVarName.DOWNTIME}|initial_ub'
+    DOWNTIME_INITIAL_LB = f'{ComponentVarName.DOWNTIME}|initial_lb'
+
+
+ComponentVarName.Constraint = _ComponentConstraint
+
+
+class StorageVarName:
+    """Central variable naming for Storage type-level models.
+
+    All variable and constraint names for StoragesModel should reference these constants.
+    """
+
+    # === Storage Variables ===
+    CHARGE = 'storage|charge'
+    NETTO = 'storage|netto'
+    SIZE = 'storage|size'
+    INVESTED = 'storage|invested'
+
+
+class ConverterVarName:
+    """Central variable naming for Converter type-level models.
+
+    All variable and constraint names for ConvertersModel should reference these constants.
+    Pattern: converter|{variable_name}
+    """
+
+    # === Piecewise Conversion Variables ===
+    # Prefix for all piecewise-related names (used by PiecewiseHelpers)
+    PIECEWISE_PREFIX = 'converter|piecewise_conversion'
+
+    # Full variable names (prefix + suffix added by PiecewiseHelpers)
+    PIECEWISE_INSIDE = f'{PIECEWISE_PREFIX}|inside_piece'
+    PIECEWISE_LAMBDA0 = f'{PIECEWISE_PREFIX}|lambda0'
+    PIECEWISE_LAMBDA1 = f'{PIECEWISE_PREFIX}|lambda1'
+
+
+# Constraint names for ConvertersModel
+class _ConverterConstraint:
+    """Constraint names for ConvertersModel.
+
+    Constraints can have 3 levels: converter|{var}|{constraint_type}
+    """
+
+    # Linear conversion constraints (indexed by equation number)
+    CONVERSION = 'converter|conversion'  # Base name, actual: converter|conversion_{eq_idx}
+
+    # Piecewise conversion constraints
+    PIECEWISE_LAMBDA_SUM = 'converter|piecewise_conversion|lambda_sum'
+    PIECEWISE_SINGLE_SEGMENT = 'converter|piecewise_conversion|single_segment'
+    PIECEWISE_COUPLING = 'converter|piecewise_conversion|coupling'  # Per-flow: {base}|{flow_id}|coupling
+
+
+ConverterVarName.Constraint = _ConverterConstraint
+
+
+class TransmissionVarName:
+    """Central variable naming for Transmission type-level models.
+
+    All variable and constraint names for TransmissionsModel should reference these constants.
+    Pattern: transmission|{variable_name}
+
+    Note: Transmissions currently don't create variables (only constraints linking flows).
+    """
+
+    pass  # No variables yet - transmissions only create constraints
+
+
+# Constraint names for TransmissionsModel
+class _TransmissionConstraint:
+    """Constraint names for TransmissionsModel.
+
+    Batched constraints with transmission dimension: transmission|{constraint_type}
+    """
+
+    # Efficiency constraints (batched with transmission dimension)
+    DIR1 = 'transmission|dir1'  # Direction 1: out1 == in1 * (1 - rel_losses) [+ abs_losses]
+    DIR2 = 'transmission|dir2'  # Direction 2: out2 == in2 * (1 - rel_losses) [+ abs_losses]
+
+    # Size constraints
+    BALANCED = 'transmission|balanced'  # in1.size == in2.size
+
+    # Status coupling (for absolute losses)
+    IN1_STATUS_COUPLING = 'transmission|in1_status_coupling'
+    IN2_STATUS_COUPLING = 'transmission|in2_status_coupling'
+
+
+TransmissionVarName.Constraint = _TransmissionConstraint
+
+
+class EffectVarName:
+    """Central variable naming for Effect models."""
+
+    # === Effect Variables ===
+    PERIODIC = 'effect|periodic'
+    TEMPORAL = 'effect|temporal'
+    PER_TIMESTEP = 'effect|per_timestep'
+    TOTAL = 'effect|total'
+
+
+# =============================================================================
+# TypeModel Base Class
+# =============================================================================
+
+
+class TypeModel(ABC):
+    """Base class for type-level models that handle ALL elements of a type.
+
+    Unlike Submodel (one per element instance), TypeModel handles ALL elements
+    of a given type (e.g., FlowsModel for ALL Flows) in a single instance.
+
+    This enables true vectorized batch creation:
+    - One variable with 'flow' dimension for all flows
+    - One constraint call for all elements
+
+    Variable/Constraint Naming Convention:
+        - Variables: '{element_type}|{var_name}' e.g., 'flow|rate', 'storage|charge'
+        - Constraints: '{element_type}|{constraint_name}' e.g., 'flow|rate_ub'
+
+    Dimension Naming:
+        - Each element type uses its own dimension name: 'flow', 'storage', 'effect', 'component'
+        - This prevents unwanted broadcasting when merging into solution Dataset
+
+    Attributes:
+        model: The FlowSystemModel to create variables/constraints in.
+        element_type: The ElementType this model handles.
+        elements: List of elements this model manages.
+        element_ids: List of element identifiers (label_full).
+        dim_name: Dimension name for this element type (e.g., 'flow', 'storage').
+
+    Example:
+        >>> class FlowsModel(TypeModel):
+        ...     element_type = ElementType.FLOW
+        ...
+        ...     def create_variables(self):
+        ...         self.add_variables(
+        ...             'rate',  # Creates 'flow|rate' with 'flow' dimension
+        ...             VariableType.FLOW_RATE,
+        ...             lower=self._stack_bounds('lower'),
+        ...             upper=self._stack_bounds('upper'),
+        ...         )
+    """
+
+    element_type: ClassVar[ElementType]
+
+    def __init__(self, model: FlowSystemModel, elements: list):
+        """Initialize the type-level model.
+
+        Args:
+            model: The FlowSystemModel to create variables/constraints in.
+            elements: List of elements of this type to model.
+        """
+        self.model = model
+        self.elements: ElementContainer = ElementContainer(elements)
+
+        # Storage for created variables and constraints
+        self._variables: dict[str, linopy.Variable] = {}
+        self._constraints: dict[str, linopy.Constraint] = {}
+
+    @property
+    def element_ids(self) -> list[str]:
+        """List of element IDs (label_full) in this model."""
+        return list(self.elements.keys())
+
+    @property
+    def dim_name(self) -> str:
+        """Dimension name for this element type (e.g., 'flow', 'storage')."""
+        return self.element_type.value
+
+    @abstractmethod
+    def create_variables(self) -> None:
+        """Create all batched variables for this element type.
+
+        Implementations should use add_variables() to create variables
+        with the element dimension already included.
+        """
+
+    @abstractmethod
+    def create_constraints(self) -> None:
+        """Create all batched constraints for this element type.
+
+        Implementations should create vectorized constraints that operate
+        on the full element dimension at once.
+        """
+
+    def add_variables(
+        self,
+        name: str,
+        var_type: VariableType,
+        lower: xr.DataArray | float = -np.inf,
+        upper: xr.DataArray | float = np.inf,
+        dims: tuple[str, ...] | None = ('time',),
+        **kwargs,
+    ) -> linopy.Variable:
+        """Create a batched variable with element dimension.
+
+        Args:
+            name: Variable name (will be prefixed with element type).
+            var_type: Variable type for semantic categorization.
+            lower: Lower bounds (scalar or per-element DataArray).
+            upper: Upper bounds (scalar or per-element DataArray).
+            dims: Dimensions beyond 'element'. None means ALL model dimensions.
+            **kwargs: Additional arguments passed to model.add_variables().
+
+        Returns:
+            The created linopy Variable with element dimension.
+        """
+        # Build coordinates with element dimension first
+        coords = self._build_coords(dims)
+
+        # Create variable
+        full_name = f'{self.element_type.value}|{name}'
+        variable = self.model.add_variables(
+            lower=lower,
+            upper=upper,
+            coords=coords,
+            name=full_name,
+            **kwargs,
+        )
+
+        # Register category for segment expansion
+        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(var_type)
+        if expansion_category is not None:
+            self.model.variable_categories[variable.name] = expansion_category
+
+        # Store reference
+        self._variables[name] = variable
+        return variable
+
+    def add_constraints(
+        self,
+        expression: linopy.expressions.LinearExpression,
+        name: str,
+        **kwargs,
+    ) -> linopy.Constraint:
+        """Create a batched constraint for all elements.
+
+        Args:
+            expression: The constraint expression (e.g., lhs == rhs, lhs <= rhs).
+            name: Constraint name (will be prefixed with element type).
+            **kwargs: Additional arguments passed to model.add_constraints().
+
+        Returns:
+            The created linopy Constraint.
+        """
+        full_name = f'{self.element_type.value}|{name}'
+        constraint = self.model.add_constraints(expression, name=full_name, **kwargs)
+        self._constraints[name] = constraint
+        return constraint
+
+    def _build_coords(
+        self,
+        dims: tuple[str, ...] | None = ('time',),
+        element_ids: list[str] | None = None,
+        extra_timestep: bool = False,
+    ) -> xr.Coordinates:
+        """Build coordinate dict with element-type dimension + model dimensions.
+
+        Args:
+            dims: Tuple of dimension names from the model. If None, includes ALL model dimensions.
+            element_ids: Subset of element IDs. If None, uses all self.element_ids.
+            extra_timestep: If True, extends time dimension by 1 (for charge_state boundaries).
+
+        Returns:
+            xarray Coordinates with element-type dim (e.g., 'flow') + requested dims.
+        """
+        if element_ids is None:
+            element_ids = self.element_ids
+
+        # Use element-type-specific dimension name (e.g., 'flow', 'storage')
+        coord_dict: dict[str, Any] = {self.dim_name: pd.Index(element_ids, name=self.dim_name)}
+
+        # Add model dimensions
+        model_coords = self.model.get_coords(dims=dims, extra_timestep=extra_timestep)
+        if model_coords is not None:
+            if dims is None:
+                # Include all model coords
+                for dim, coord in model_coords.items():
+                    coord_dict[dim] = coord
+            else:
+                for dim in dims:
+                    if dim in model_coords:
+                        coord_dict[dim] = model_coords[dim]
+
+        return xr.Coordinates(coord_dict)
+
+    def _stack_bounds(
+        self,
+        bounds: list[float | xr.DataArray],
+    ) -> xr.DataArray | float:
+        """Stack per-element bounds into array with element-type dimension.
+
+        Args:
+            bounds: List of bounds (one per element, same order as self.elements).
+
+        Returns:
+            Stacked DataArray with element-type dimension (e.g., 'flow'), or scalar if all identical.
+        """
+        dim = self.dim_name  # e.g., 'flow', 'storage'
+
+        # Extract scalar values from 0-d DataArrays or plain scalars
+        scalar_values = []
+        has_multidim = False
+
+        for b in bounds:
+            if isinstance(b, xr.DataArray):
+                if b.ndim == 0:
+                    scalar_values.append(float(b.values))
+                else:
+                    has_multidim = True
+                    break
+            else:
+                scalar_values.append(float(b))
+
+        # Fast path: all scalars
+        if not has_multidim:
+            unique_values = set(scalar_values)
+            if len(unique_values) == 1:
+                return scalar_values[0]  # Return scalar - linopy will broadcast
+
+            return xr.DataArray(
+                np.array(scalar_values),
+                coords={dim: self.element_ids},
+                dims=[dim],
+            )
+
+        # Slow path: need full concat for multi-dimensional bounds
+        arrays_to_stack = []
+        for bound, eid in zip(bounds, self.element_ids, strict=False):
+            if isinstance(bound, xr.DataArray):
+                arr = bound.expand_dims({dim: [eid]})
+            else:
+                arr = xr.DataArray(bound, coords={dim: [eid]}, dims=[dim])
+            arrays_to_stack.append(arr)
+
+        # Find union of all non-element dimensions and their coords
+        all_dims = {}  # dim -> coords
+        for arr in arrays_to_stack:
+            for d in arr.dims:
+                if d != dim and d not in all_dims:
+                    all_dims[d] = arr.coords[d].values
+
+        # Expand each array to have all non-element dimensions
+        expanded = []
+        for arr in arrays_to_stack:
+            for d, coords in all_dims.items():
+                if d not in arr.dims:
+                    arr = arr.expand_dims({d: coords})
+            expanded.append(arr)
+
+        stacked = xr.concat(expanded, dim=dim, coords='minimal')
+
+        # Ensure element-type dim is first dimension
+        if dim in stacked.dims and stacked.dims[0] != dim:
+            dim_order = [dim] + [d for d in stacked.dims if d != dim]
+            stacked = stacked.transpose(*dim_order)
+
+        return stacked
+
+    def _broadcast_to_model_coords(
+        self,
+        data: xr.DataArray | float,
+        dims: list[str] | None = None,
+    ) -> xr.DataArray:
+        """Broadcast data to include model dimensions.
+
+        Args:
+            data: Input data (scalar or DataArray).
+            dims: Model dimensions to include. None = all (time, period, scenario).
+
+        Returns:
+            DataArray broadcast to include model dimensions and element dimension.
+        """
+        # Get model coords for broadcasting
+        model_coords = self.model.get_coords(dims=dims)
+
+        # Convert scalar to DataArray with element dimension
+        if np.isscalar(data):
+            # Start with just element dimension
+            result = xr.DataArray(
+                [data] * len(self.element_ids),
+                dims=[self.dim_name],
+                coords={self.dim_name: self.element_ids},
+            )
+            if model_coords is not None:
+                # Broadcast to include model coords
+                template = xr.DataArray(coords=model_coords)
+                result = result.broadcast_like(template)
+            return result
+
+        if not isinstance(data, xr.DataArray):
+            data = xr.DataArray(data)
+
+        if model_coords is None:
+            return data
+
+        # Create template with all required dims
+        template = xr.DataArray(coords=model_coords)
+        return data.broadcast_like(template)
+
+    def get_variable(self, name: str, element_id: str | None = None) -> linopy.Variable:
+        """Get a variable, optionally sliced to a specific element.
+
+        Args:
+            name: Variable name.
+            element_id: If provided, return slice for this element only.
+
+        Returns:
+            Full batched variable or element slice.
+        """
+        variable = self._variables[name]
+        if element_id is not None:
+            return variable.sel({self.dim_name: element_id})
+        return variable
+
+    def get_constraint(self, name: str) -> linopy.Constraint:
+        """Get a constraint by name.
+
+        Args:
+            name: Constraint name.
+
+        Returns:
+            The constraint.
+        """
+        return self._constraints[name]
+
+    @property
+    def variables(self) -> dict[str, linopy.Variable]:
+        """All variables created by this type model."""
+        return self._variables
+
+    @property
+    def constraints(self) -> dict[str, linopy.Constraint]:
+        """All constraints created by this type model."""
+        return self._constraints
+
+    def __repr__(self) -> str:
+        return (
+            f'{self.__class__.__name__}('
+            f'elements={len(self.elements)}, '
+            f'vars={len(self._variables)}, '
+            f'constraints={len(self._constraints)})'
+        )
+
 
 CLASS_REGISTRY = {}
 
@@ -157,35 +836,7 @@ def register_class_for_io(cls):
     return cls
 
 
-class SubmodelsMixin:
-    """Mixin that provides submodel functionality for both FlowSystemModel and Submodel."""
-
-    submodels: Submodels
-
-    @property
-    def all_submodels(self) -> list[Submodel]:
-        """Get all submodels including nested ones recursively."""
-        direct_submodels = list(self.submodels.values())
-
-        # Recursively collect nested sub-models
-        nested_submodels = []
-        for submodel in direct_submodels:
-            nested_submodels.extend(submodel.all_submodels)
-
-        return direct_submodels + nested_submodels
-
-    def add_submodels(self, submodel: Submodel, short_name: str = None) -> Submodel:
-        """Register a sub-model with the model"""
-        if short_name is None:
-            short_name = submodel.__class__.__name__
-        if short_name in self.submodels:
-            raise ValueError(f'Short name "{short_name}" already assigned to model')
-        self.submodels.add(submodel, name=short_name)
-
-        return submodel
-
-
-class FlowSystemModel(linopy.Model, SubmodelsMixin):
+class FlowSystemModel(linopy.Model):
     """
     The FlowSystemModel is the linopy Model that is used to create the mathematical model of the flow_system.
     It is used to create and store the variables and constraints for the flow_system.
@@ -198,14 +849,21 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         super().__init__(force_dim_names=True)
         self.flow_system = flow_system
         self.effects: EffectCollectionModel | None = None
-        self.submodels: Submodels = Submodels({})
         self.variable_categories: dict[str, VariableCategory] = {}
+        self._flows_model: TypeModel | None = None  # Reference to FlowsModel
+        self._buses_model: TypeModel | None = None  # Reference to BusesModel
+        self._storages_model = None  # Reference to StoragesModel
+        self._components_model = None  # Reference to ComponentsModel
+        self._converters_model = None  # Reference to ConvertersModel
+        self._transmissions_model = None  # Reference to TransmissionsModel
+        self._prevent_simultaneous_model = None  # Reference to PreventSimultaneousFlowsModel
 
     def add_variables(
         self,
-        lower: xr.DataArray | float = -np.inf,
-        upper: xr.DataArray | float = np.inf,
+        lower: xr.DataArray | float | None = None,
+        upper: xr.DataArray | float | None = None,
         coords: xr.Coordinates | None = None,
+        binary: bool = False,
         **kwargs,
     ) -> linopy.Variable:
         """Override to ensure bounds are broadcasted to coords shape.
@@ -214,31 +872,504 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         This override ensures at least one bound has all target dimensions when coords
         is provided, allowing internal data to remain compact (scalars, 1D arrays).
         """
+        # Binary variables cannot have bounds in linopy
+        if binary:
+            return super().add_variables(coords=coords, binary=True, **kwargs)
+
+        # Apply default bounds for non-binary variables
+        if lower is None:
+            lower = -np.inf
+        if upper is None:
+            upper = np.inf
+
         if coords is not None:
             lower = _ensure_coords(lower, coords)
             upper = _ensure_coords(upper, coords)
         return super().add_variables(lower=lower, upper=upper, coords=coords, **kwargs)
 
-    def do_modeling(self):
-        # Create all element models
-        self.effects = self.flow_system.effects.create_model(self)
-        for component in self.flow_system.components.values():
-            component.create_model(self)
+    def _populate_element_variable_names(self):
+        """Populate _variable_names and _constraint_names on each Element from type-level models."""
+        # Use type-level models to populate variable/constraint names for each element
+        self._populate_names_from_type_level_models()
+
+    def _populate_names_from_type_level_models(self):
+        """Populate element variable/constraint names from type-level models."""
+
+        # Suffix mappings for unrolling (must match _unroll_batched_solution)
+        flow_suffix_map = {
+            'status': 'status',
+            'active_hours': 'active_hours',
+            'uptime': 'uptime',
+            'downtime': 'downtime',
+            'startup': 'startup',
+            'shutdown': 'shutdown',
+            'inactive': 'inactive',
+            'startup_count': 'startup_count',
+            'size': 'size',
+            'invested': 'invested',
+            'hours': 'hours',
+        }
+
+        # Storage suffixes: batched variable suffix -> unrolled variable suffix
+        # Must match _unroll_batched_solution's mapping
+        storage_suffix_map = {
+            'charge': 'charge_state',  # storage|charge -> Speicher|charge_state
+            'netto': 'netto_discharge',  # storage|netto -> Speicher|netto_discharge
+            'size': 'size',
+            'invested': 'invested',
+        }
+
+        # Helper to find variables/constraints that contain a specific element ID in a dimension
+        # Returns UNROLLED variable names (e.g., 'Element|flow_rate' not 'flow|rate')
+        def _find_vars_for_element(element_id: str, dim_name: str) -> list[str]:
+            """Find all variable names that have this element in their dimension.
+
+            Returns the unrolled variable names that will exist in the solution after
+            _unroll_batched_solution is called.
+            """
+            var_names = []
+            for var_name in self.variables:
+                var = self.variables[var_name]
+                if dim_name in var.dims:
+                    try:
+                        if element_id in var.coords[dim_name].values:
+                            # Determine the unrolled name based on the batched variable pattern
+                            if dim_name == 'flow' and var_name.startswith('flow|'):
+                                suffix = var_name[5:]  # Remove 'flow|' prefix
+                                mapped_suffix = flow_suffix_map.get(suffix, f'flow_{suffix}')
+                                unrolled_name = f'{element_id}|{mapped_suffix}'
+                                var_names.append(unrolled_name)
+                            elif dim_name == 'storage' and var_name.startswith('storage|'):
+                                suffix = var_name[8:]  # Remove 'storage|' prefix
+                                mapped_suffix = storage_suffix_map.get(suffix, suffix)
+                                unrolled_name = f'{element_id}|{mapped_suffix}'
+                                var_names.append(unrolled_name)
+                            elif dim_name == 'bus' and var_name.startswith('bus|'):
+                                suffix = var_name[4:]  # Remove 'bus|' prefix
+                                unrolled_name = f'{element_id}|{suffix}'
+                                var_names.append(unrolled_name)
+                            elif dim_name == 'effect' and var_name.startswith('effect|'):
+                                suffix = var_name[7:]  # Remove 'effect|' prefix
+                                unrolled_name = f'{element_id}|{suffix}'
+                                var_names.append(unrolled_name)
+                            else:
+                                # Fallback - use original name
+                                var_names.append(var_name)
+                    except (KeyError, AttributeError):
+                        pass
+            return var_names
+
+        def _find_constraints_for_element(element_id: str, dim_name: str) -> list[str]:
+            """Find all constraint names that have this element in their dimension."""
+            con_names = []
+            for con_name in self.constraints:
+                con = self.constraints[con_name]
+                if dim_name in con.dims:
+                    try:
+                        if element_id in con.coords[dim_name].values:
+                            con_names.append(con_name)
+                    except (KeyError, AttributeError):
+                        pass
+                # Also check for element-specific constraints (e.g., bus|BusLabel|balance)
+                elif element_id in con_name:
+                    con_names.append(con_name)
+            return con_names
+
+        # Populate flows
+        for flow in self.flow_system.flows.values():
+            flow._variable_names = _find_vars_for_element(flow.label_full, 'flow')
+            flow._constraint_names = _find_constraints_for_element(flow.label_full, 'flow')
+
+        # Populate buses
         for bus in self.flow_system.buses.values():
-            bus.create_model(self)
+            bus._variable_names = _find_vars_for_element(bus.label_full, 'bus')
+            bus._constraint_names = _find_constraints_for_element(bus.label_full, 'bus')
 
-        # Add scenario equality constraints after all elements are modeled
+        # Populate storages
+        from .components import Storage
+
+        for comp in self.flow_system.components.values():
+            if isinstance(comp, Storage):
+                comp._variable_names = _find_vars_for_element(comp.label_full, 'storage')
+                comp._constraint_names = _find_constraints_for_element(comp.label_full, 'storage')
+                # Also add flow variables (storages have charging/discharging flows)
+                for flow in comp.inputs + comp.outputs:
+                    comp._variable_names.extend(flow._variable_names)
+                    comp._constraint_names.extend(flow._constraint_names)
+            else:
+                # Generic component - collect from child flows
+                comp._variable_names = []
+                comp._constraint_names = []
+                # Add component-level variables (status, etc.)
+                comp._variable_names.extend(_find_vars_for_element(comp.label_full, 'component'))
+                comp._constraint_names.extend(_find_constraints_for_element(comp.label_full, 'component'))
+                # Add flow variables
+                for flow in comp.inputs + comp.outputs:
+                    comp._variable_names.extend(flow._variable_names)
+                    comp._constraint_names.extend(flow._constraint_names)
+
+        # Populate effects
+        for effect in self.flow_system.effects.values():
+            effect._variable_names = _find_vars_for_element(effect.label, 'effect')
+            effect._constraint_names = _find_constraints_for_element(effect.label, 'effect')
+
+    def _build_results_structure(self) -> dict[str, dict]:
+        """Build results structure for all elements using type-level models."""
+
+        results = {
+            'Components': {},
+            'Buses': {},
+            'Effects': {},
+            'Flows': {},
+        }
+
+        # Components
+        for comp in sorted(self.flow_system.components.values(), key=lambda c: c.label_full.upper()):
+            flow_labels = [f.label_full for f in comp.inputs + comp.outputs]
+            results['Components'][comp.label_full] = {
+                'label': comp.label_full,
+                'variables': comp._variable_names,
+                'constraints': comp._constraint_names,
+                'inputs': ['flow|rate' for f in comp.inputs],  # Variable names for inputs
+                'outputs': ['flow|rate' for f in comp.outputs],  # Variable names for outputs
+                'flows': flow_labels,
+            }
+
+        # Buses
+        for bus in sorted(self.flow_system.buses.values(), key=lambda b: b.label_full.upper()):
+            input_vars = ['flow|rate'] * len(bus.inputs)
+            output_vars = ['flow|rate'] * len(bus.outputs)
+            if bus.allows_imbalance:
+                input_vars.append('bus|virtual_supply')
+                output_vars.append('bus|virtual_demand')
+            results['Buses'][bus.label_full] = {
+                'label': bus.label_full,
+                'variables': bus._variable_names,
+                'constraints': bus._constraint_names,
+                'inputs': input_vars,
+                'outputs': output_vars,
+                'flows': [f.label_full for f in bus.inputs + bus.outputs],
+            }
+
+        # Effects
+        for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.label_full.upper()):
+            results['Effects'][effect.label_full] = {
+                'label': effect.label_full,
+                'variables': effect._variable_names,
+                'constraints': effect._constraint_names,
+            }
+
+        # Flows
+        for flow in sorted(self.flow_system.flows.values(), key=lambda f: f.label_full.upper()):
+            results['Flows'][flow.label_full] = {
+                'label': flow.label_full,
+                'variables': flow._variable_names,
+                'constraints': flow._constraint_names,
+                'start': flow.bus if flow.is_input_in_component else flow.component,
+                'end': flow.component if flow.is_input_in_component else flow.bus,
+                'component': flow.component,
+            }
+
+        return results
+
+    def do_modeling(self, timing: bool = False):
+        """Build the model using type-level models (one model per element TYPE).
+
+        Uses TypeModel classes (e.g., FlowsModel, BusesModel) which handle ALL
+        elements of a type in a single instance with true vectorized operations.
+
+        Benefits:
+        - Cleaner architecture: One model per type, not per instance
+        - Direct variable ownership: FlowsModel owns flow_rate directly
+        - Better performance: 5-13x faster for large systems
+
+        Args:
+            timing: If True, print detailed timing breakdown.
+
+        Note:
+            FlowsModel, BusesModel, StoragesModel, and InterclusterStoragesModel
+            are all implemented as batched type-level models.
+        """
+        import time
+
+        from .components import LinearConverter, Storage, StoragesModel
+        from .elements import BusesModel, ConvertersModel, FlowsModel, TransmissionsModel
+
+        timings = {}
+
+        def record(name):
+            timings[name] = time.perf_counter()
+
+        record('start')
+
+        # Create effect models first
+        self.effects = self.flow_system.effects.create_model(self)
+
+        record('effects')
+
+        # Propagate component status_parameters to flows BEFORE collecting them
+        # This matches the behavior in ComponentModel._do_modeling() but happens earlier
+        # so FlowsModel knows which flows need status variables
+        from .components import Transmission
+        from .interface import StatusParameters
+
+        for component in self.flow_system.components.values():
+            if component.status_parameters:
+                for flow in component.inputs + component.outputs:
+                    if flow.status_parameters is None:
+                        flow.status_parameters = StatusParameters()
+                        flow.status_parameters.link_to_flow_system(
+                            self.flow_system, f'{flow.label_full}|status_parameters'
+                        )
+            if component.prevent_simultaneous_flows:
+                for flow in component.prevent_simultaneous_flows:
+                    if flow.status_parameters is None:
+                        flow.status_parameters = StatusParameters()
+                        flow.status_parameters.link_to_flow_system(
+                            self.flow_system, f'{flow.label_full}|status_parameters'
+                        )
+            # Transmissions with absolute_losses need status variables on their flows
+            # Also need relative_minimum > 0 to link status to flow rate properly
+            if isinstance(component, Transmission):
+                if component.absolute_losses is not None and np.any(component.absolute_losses != 0):
+                    # Only input flows need status for absolute_losses constraint
+                    input_flows = [component.in1]
+                    if component.in2 is not None:
+                        input_flows.append(component.in2)
+                    for flow in input_flows:
+                        if flow.status_parameters is None:
+                            flow.status_parameters = StatusParameters()
+                            flow.status_parameters.link_to_flow_system(
+                                self.flow_system, f'{flow.label_full}|status_parameters'
+                            )
+                        # Ensure relative_minimum is positive so status links to rate
+                        # Handle scalar, numpy array, and xarray DataArray
+                        rel_min = flow.relative_minimum
+                        needs_update = (
+                            rel_min is None
+                            or (np.isscalar(rel_min) and rel_min <= 0)
+                            or (isinstance(rel_min, np.ndarray) and np.all(rel_min <= 0))
+                            or (isinstance(rel_min, xr.DataArray) and np.all(rel_min.values <= 0))
+                        )
+                        if needs_update:
+                            from .config import CONFIG
+
+                            epsilon = CONFIG.Modeling.epsilon
+                            # If relative_minimum is already a DataArray, replace with
+                            # epsilon while preserving shape (but ensure float dtype)
+                            if isinstance(rel_min, xr.DataArray):
+                                flow.relative_minimum = xr.full_like(rel_min, epsilon, dtype=float)
+                            else:
+                                flow.relative_minimum = epsilon
+
+        # Collect all flows from all components
+        all_flows = []
+        for component in self.flow_system.components.values():
+            all_flows.extend(component.inputs)
+            all_flows.extend(component.outputs)
+
+        record('collect_flows')
+
+        # Create type-level model for all flows
+        self._flows_model = FlowsModel(self, all_flows)
+        self._flows_model.create_variables()
+
+        record('flows_variables')
+
+        # Create batched status model for flows (creates active_hours, startup, shutdown, etc.)
+        self._flows_model.create_status_model()
+
+        record('flows_status_model')
+
+        self._flows_model.create_constraints()
+
+        record('flows_constraints')
+
+        # Flow effect shares are collected by EffectsModel.finalize_shares()
+
+        record('flows_effects')
+
+        # Create type-level model for all buses
+        all_buses = list(self.flow_system.buses.values())
+        self._buses_model = BusesModel(self, all_buses, self._flows_model)
+        self._buses_model.create_variables()
+
+        record('buses_variables')
+
+        self._buses_model.create_constraints()
+
+        record('buses_constraints')
+
+        # Create effect shares for buses (imbalance penalties)
+        self._buses_model.create_effect_shares()
+
+        record('buses_effects')
+
+        # Collect basic (non-intercluster) storages for batching
+        # Intercluster storages are handled traditionally
+        basic_storages = []
+        for component in self.flow_system.components.values():
+            if isinstance(component, Storage):
+                clustering = self.flow_system.clustering
+                is_intercluster = clustering is not None and component.cluster_mode in (
+                    'intercluster',
+                    'intercluster_cyclic',
+                )
+                if not is_intercluster:
+                    basic_storages.append(component)
+
+        # Create type-level model for basic storages
+        self._storages_model = StoragesModel(self, basic_storages, self._flows_model)
+        self._storages_model.create_variables()
+
+        record('storages_variables')
+
+        self._storages_model.create_constraints()
+
+        record('storages_constraints')
+
+        # Create batched investment model for storages (creates size/invested variables, constraints, effects)
+        self._storages_model.create_investment_model()
+
+        record('storages_investment_model')
+
+        # Create batched investment constraints linking charge_state to investment size
+        self._storages_model.create_investment_constraints()
+
+        record('storages_investment_constraints')
+
+        # Create batched InterclusterStoragesModel for intercluster storages
+        from .components import InterclusterStoragesModel
+
+        intercluster_storages: list[Storage] = []
+        clustering = self.flow_system.clustering
+        if clustering is not None:
+            for component in self.flow_system.components.values():
+                if isinstance(component, Storage) and component.cluster_mode in (
+                    'intercluster',
+                    'intercluster_cyclic',
+                ):
+                    intercluster_storages.append(component)
+
+        self._intercluster_storages_model: InterclusterStoragesModel | None = None
+        if intercluster_storages:
+            self._intercluster_storages_model = InterclusterStoragesModel(
+                self, intercluster_storages, self._flows_model
+            )
+            self._intercluster_storages_model.create_variables()
+            self._intercluster_storages_model.create_constraints()
+            self._intercluster_storages_model.create_investment_model()
+            self._intercluster_storages_model.create_investment_constraints()
+            self._intercluster_storages_model.create_effect_shares()
+
+        record('intercluster_storages')
+
+        # Collect components for batched handling
+        from .components import Transmission
+        from .elements import ComponentsModel, PreventSimultaneousFlowsModel
+
+        components_with_status = [c for c in self.flow_system.components.values() if c.status_parameters is not None]
+        converters_with_factors = [
+            c for c in self.flow_system.components.values() if isinstance(c, LinearConverter) and c.conversion_factors
+        ]
+        converters_with_piecewise = [
+            c for c in self.flow_system.components.values() if isinstance(c, LinearConverter) and c.piecewise_conversion
+        ]
+        transmissions = [c for c in self.flow_system.components.values() if isinstance(c, Transmission)]
+
+        # Create type-level model for component status variables/constraints
+        self._components_model = ComponentsModel(self, components_with_status, self._flows_model)
+        self._components_model.create_variables()
+
+        record('component_status_variables')
+
+        self._components_model.create_constraints()
+
+        record('component_status_constraints')
+
+        self._components_model.create_status_features()
+
+        record('component_status_features')
+
+        self._components_model.create_effect_shares()
+
+        record('component_status_effects')
+
+        # Create converters model (linear conversion factors + piecewise)
+        self._converters_model = ConvertersModel(
+            self, converters_with_factors, converters_with_piecewise, self._flows_model
+        )
+        self._converters_model.create_linear_constraints()
+        self._converters_model.create_piecewise_variables()
+        self._converters_model.create_piecewise_constraints()
+
+        record('converters')
+
+        # Create transmissions model
+        self._transmissions_model = TransmissionsModel(self, transmissions, self._flows_model)
+        self._transmissions_model.create_constraints()
+
+        record('transmissions')
+
+        # Collect components with prevent_simultaneous_flows
+        components_with_prevent_simultaneous = [
+            c for c in self.flow_system.components.values() if c.prevent_simultaneous_flows
+        ]
+
+        # Create type-level model for prevent simultaneous flows
+        self._prevent_simultaneous_model = PreventSimultaneousFlowsModel(
+            self, components_with_prevent_simultaneous, self._flows_model
+        )
+        self._prevent_simultaneous_model.create_constraints()
+
+        record('prevent_simultaneous')
+
+        # Post-processing
         self._add_scenario_equality_constraints()
-
-        # Populate _variable_names and _constraint_names on each Element
         self._populate_element_variable_names()
 
-    def _populate_element_variable_names(self):
-        """Populate _variable_names and _constraint_names on each Element from its submodel."""
-        for element in self.flow_system.values():
-            if element.submodel is not None:
-                element._variable_names = list(element.submodel.variables)
-                element._constraint_names = list(element.submodel.constraints)
+        # Finalize effect shares (creates share variables and adds to effect constraints)
+        if self.effects._batched_model is not None:
+            self.effects._batched_model.finalize_shares()
+
+        record('end')
+
+        if timing:
+            print('\n  Type-Level Modeling Timing Breakdown:')
+            prev = timings['start']
+            for name in [
+                'effects',
+                'collect_flows',
+                'flows_variables',
+                'flows_constraints',
+                'flows_effects',
+                'buses_variables',
+                'buses_constraints',
+                'buses_effects',
+                'storages_variables',
+                'storages_constraints',
+                'storages_investment_model',
+                'storages_investment_constraints',
+                'component_status_variables',
+                'component_status_constraints',
+                'component_status_features',
+                'component_status_effects',
+                'converters',
+                'transmissions',
+                'prevent_simultaneous',
+                'components',
+                'buses',
+                'end',
+            ]:
+                elapsed = (timings[name] - prev) * 1000
+                print(f'    {name:25s}: {elapsed:8.2f}ms')
+                prev = timings[name]
+            total = (timings['end'] - timings['start']) * 1000
+            print(f'    {"TOTAL":25s}: {total:8.2f}ms')
+
+        logger.info(
+            f'Type-level modeling complete: {len(self.variables)} variables, {len(self.constraints)} constraints'
+        )
 
     def _add_scenario_equality_for_parameter_type(
         self,
@@ -254,27 +1385,39 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         if config is False:
             return  # All vary per scenario, no constraints needed
 
-        suffix = f'|{parameter_type}'
+        # Map parameter types to batched variable names
+        batched_var_map = {'flow_rate': 'flow|rate', 'size': 'flow|size'}
+        batched_var_name = batched_var_map[parameter_type]
+
+        if batched_var_name not in self.variables:
+            return  # Variable doesn't exist (e.g., no flows with investment)
+
+        batched_var = self.variables[batched_var_name]
+        if 'scenario' not in batched_var.dims:
+            return  # No scenario dimension, nothing to equalize
+
+        all_flow_labels = list(batched_var.coords['flow'].values)
+
         if config is True:
-            # All should be scenario-independent
-            vars_to_constrain = [var for var in self.variables if var.endswith(suffix)]
+            # All flows should be scenario-independent
+            flows_to_constrain = all_flow_labels
         else:
             # Only those in the list should be scenario-independent
-            all_vars = [var for var in self.variables if var.endswith(suffix)]
-            to_equalize = {f'{element}{suffix}' for element in config}
-            vars_to_constrain = [var for var in all_vars if var in to_equalize]
+            flows_to_constrain = [f for f in config if f in all_flow_labels]
+            # Validate that all specified flows exist
+            missing = [f for f in config if f not in all_flow_labels]
+            if missing:
+                param_name = (
+                    'scenario_independent_sizes' if parameter_type == 'size' else 'scenario_independent_flow_rates'
+                )
+                logger.warning(f'{param_name} contains labels not in {batched_var_name}: {missing}')
 
-        # Validate that all specified variables exist
-        missing_vars = [v for v in vars_to_constrain if v not in self.variables]
-        if missing_vars:
-            param_name = 'scenario_independent_sizes' if parameter_type == 'size' else 'scenario_independent_flow_rates'
-            raise ValueError(f'{param_name} contains invalid labels: {missing_vars}')
-
-        logger.debug(f'Adding scenario equality constraints for {len(vars_to_constrain)} {parameter_type} variables')
-        for var in vars_to_constrain:
+        logger.debug(f'Adding scenario equality constraints for {len(flows_to_constrain)} {parameter_type} variables')
+        for flow_label in flows_to_constrain:
+            var_slice = batched_var.sel(flow=flow_label)
             self.add_constraints(
-                self.variables[var].isel(scenario=0) == self.variables[var].isel(scenario=slice(1, None)),
-                name=f'{var}|scenario_independent',
+                var_slice.isel(scenario=0) == var_slice.isel(scenario=slice(1, None)),
+                name=f'{flow_label}|{parameter_type}|scenario_independent',
             )
 
     def _add_scenario_equality_constraints(self):
@@ -299,42 +1442,163 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             )
             solution = super().solution
         solution['objective'] = self.objective.value
+
+        # Unroll batched variables into individual element variables
+        solution = self._unroll_batched_solution(solution)
+
         # Store attrs as JSON strings for netCDF compatibility
+        # Use _build_results_structure to build from type-level models
+        results_structure = self._build_results_structure()
         solution.attrs = {
-            'Components': json.dumps(
-                {
-                    comp.label_full: comp.submodel.results_structure()
-                    for comp in sorted(
-                        self.flow_system.components.values(), key=lambda component: component.label_full.upper()
-                    )
-                }
-            ),
-            'Buses': json.dumps(
-                {
-                    bus.label_full: bus.submodel.results_structure()
-                    for bus in sorted(self.flow_system.buses.values(), key=lambda bus: bus.label_full.upper())
-                }
-            ),
-            'Effects': json.dumps(
-                {
-                    effect.label_full: effect.submodel.results_structure()
-                    for effect in sorted(
-                        self.flow_system.effects.values(), key=lambda effect: effect.label_full.upper()
-                    )
-                }
-            ),
-            'Flows': json.dumps(
-                {
-                    flow.label_full: flow.submodel.results_structure()
-                    for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
-                }
-            ),
+            'Components': json.dumps(results_structure['Components']),
+            'Buses': json.dumps(results_structure['Buses']),
+            'Effects': json.dumps(results_structure['Effects']),
+            'Flows': json.dumps(results_structure['Flows']),
         }
         # Ensure solution is always indexed by timesteps_extra for consistency.
         # Variables without extra timestep data will have NaN at the final timestep.
         if 'time' in solution.coords:
             if not solution.indexes['time'].equals(self.flow_system.timesteps_extra):
                 solution = solution.reindex(time=self.flow_system.timesteps_extra)
+        return solution
+
+    def _unroll_batched_solution(self, solution: xr.Dataset) -> xr.Dataset:
+        """Unroll batched variables into individual element variables.
+
+        Transforms batched variables like 'flow|rate' with flow dimension
+        into individual variables like 'Boiler(Q_th)|flow_rate'.
+
+        Args:
+            solution: Raw solution with batched variables.
+
+        Returns:
+            Solution with both batched and individual element variables.
+        """
+        new_vars = {}
+
+        for var_name in list(solution.data_vars):
+            var = solution[var_name]
+
+            # Handle flow variables: flow|X -> Label|flow_X (with suffix mapping for backward compatibility)
+            if 'flow' in var.dims and var_name.startswith('flow|'):
+                suffix = var_name[5:]  # Remove 'flow|' prefix
+                # Map flow suffixes to expected names for backward compatibility
+                # Old naming: status, active_hours; New batched naming: flow_status, flow_active_hours
+                flow_suffix_map = {
+                    'status': 'status',  # Keep as-is (not flow_status)
+                    'active_hours': 'active_hours',  # Keep as-is
+                    'uptime': 'uptime',
+                    'downtime': 'downtime',
+                    'startup': 'startup',
+                    'shutdown': 'shutdown',
+                    'inactive': 'inactive',
+                    'startup_count': 'startup_count',
+                    'size': 'size',  # Investment variable
+                    'invested': 'invested',  # Investment variable
+                    'hours': 'hours',  # Flow hours tracking
+                }
+                for flow_id in var.coords['flow'].values:
+                    element_var = var.sel(flow=flow_id, drop=True)
+                    # Use mapped suffix or default to flow_{suffix}
+                    mapped_suffix = flow_suffix_map.get(suffix, f'flow_{suffix}')
+                    new_var_name = f'{flow_id}|{mapped_suffix}'
+                    new_vars[new_var_name] = element_var
+
+            # Handle storage variables: storage|X -> Label|X
+            elif 'storage' in var.dims and var_name.startswith('storage|'):
+                suffix = var_name[8:]  # Remove 'storage|' prefix
+                # Map storage suffixes to expected names
+                suffix_map = {'charge': 'charge_state', 'netto': 'netto_discharge'}
+                new_suffix = suffix_map.get(suffix, suffix)
+                for storage_id in var.coords['storage'].values:
+                    element_var = var.sel(storage=storage_id, drop=True)
+                    new_var_name = f'{storage_id}|{new_suffix}'
+                    new_vars[new_var_name] = element_var
+
+            # Handle intercluster storage variables: intercluster_storage|X -> Label|X
+            elif 'intercluster_storage' in var.dims and var_name.startswith('intercluster_storage|'):
+                suffix = var_name[21:]  # Remove 'intercluster_storage|' prefix
+                for storage_id in var.coords['intercluster_storage'].values:
+                    element_var = var.sel(intercluster_storage=storage_id, drop=True)
+                    new_var_name = f'{storage_id}|{suffix}'
+                    new_vars[new_var_name] = element_var
+
+            # Handle bus variables: bus|X -> Label|X
+            elif 'bus' in var.dims and var_name.startswith('bus|'):
+                suffix = var_name[4:]  # Remove 'bus|' prefix
+                for bus_id in var.coords['bus'].values:
+                    element_var = var.sel(bus=bus_id, drop=True)
+                    new_var_name = f'{bus_id}|{suffix}'
+                    new_vars[new_var_name] = element_var
+
+            # Handle component variables: component|X -> Label|X
+            elif 'component' in var.dims and var_name.startswith('component|'):
+                suffix = var_name[10:]  # Remove 'component|' prefix
+                for comp_id in var.coords['component'].values:
+                    element_var = var.sel(component=comp_id, drop=True)
+                    new_var_name = f'{comp_id}|{suffix}'
+                    new_vars[new_var_name] = element_var
+
+            # Handle effect variables with special naming conventions:
+            # - effect|total -> effect_name (just the effect name)
+            # - effect|periodic -> effect_name(periodic) (for non-objective effects)
+            # - effect|temporal -> effect_name(temporal)
+            # - effect|per_timestep -> effect_name(temporal)|per_timestep
+            elif 'effect' in var.dims and var_name.startswith('effect|'):
+                suffix = var_name[7:]  # Remove 'effect|' prefix
+                for effect_id in var.coords['effect'].values:
+                    element_var = var.sel(effect=effect_id, drop=True)
+                    if suffix == 'total':
+                        new_var_name = effect_id
+                    elif suffix == 'temporal':
+                        new_var_name = f'{effect_id}(temporal)'
+                    elif suffix == 'periodic':
+                        new_var_name = f'{effect_id}(periodic)'
+                    elif suffix == 'per_timestep':
+                        new_var_name = f'{effect_id}(temporal)|per_timestep'
+                    elif suffix == 'total_over_periods':
+                        new_var_name = f'{effect_id}(total_over_periods)'
+                    else:
+                        new_var_name = f'{effect_id}|{suffix}'
+                    new_vars[new_var_name] = element_var
+
+        # Handle share variables with flow/source dimensions
+        # share|temporal -> source->effect(temporal)
+        # share|periodic -> source->effect(periodic)
+        for var_name in list(solution.data_vars):
+            var = solution[var_name]
+            if var_name.startswith('share|'):
+                suffix = var_name[6:]  # Remove 'share|' prefix
+                # Determine share type (temporal or periodic)
+                if 'temporal' in suffix:
+                    share_type = 'temporal'
+                elif 'periodic' in suffix:
+                    share_type = 'periodic'
+                else:
+                    share_type = suffix
+
+                # Find source dimension (flow, storage, component, or custom)
+                source_dim = None
+                for dim in ['flow', 'storage', 'component', 'source']:
+                    if dim in var.dims:
+                        source_dim = dim
+                        break
+
+                if source_dim is not None and 'effect' in var.dims:
+                    for source_id in var.coords[source_dim].values:
+                        for effect_id in var.coords['effect'].values:
+                            share_var = var.sel({source_dim: source_id, 'effect': effect_id}, drop=True)
+                            # Skip all-zero shares
+                            if hasattr(share_var, 'sum') and share_var.sum().item() == 0:
+                                continue
+                            # Format: source->effect(temporal) or source(temporal)->effect(temporal)
+                            new_var_name = f'{source_id}->{effect_id}({share_type})'
+                            new_vars[new_var_name] = share_var
+
+        # Add unrolled variables to solution
+        for name, var in new_vars.items():
+            solution[name] = var
+
         return solution
 
     @property
@@ -407,9 +1671,18 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         """
         Objective weights of model (period_weights × scenario_weights).
         """
-        period_weights = self.flow_system.effects.objective_effect.submodel.period_weights
-        scenario_weights = self.scenario_weights
+        obj_effect = self.flow_system.effects.objective_effect
+        # Compute period_weights directly from effect
+        effect_weights = obj_effect.period_weights
+        default_weights = self.flow_system.period_weights
+        if effect_weights is not None:
+            period_weights = effect_weights
+        elif default_weights is not None:
+            period_weights = default_weights
+        else:
+            period_weights = obj_effect._fit_coords(name='period_weights', data=1, dims=['period'])
 
+        scenario_weights = self.scenario_weights
         return period_weights * scenario_weights
 
     def get_coords(
@@ -457,7 +1730,6 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         sections = {
             f'Variables: [{len(self.variables)}]': self.variables.__repr__().split('\n', 2)[2],
             f'Constraints: [{len(self.constraints)}]': self.constraints.__repr__().split('\n', 2)[2],
-            f'Submodels: [{len(self.submodels)}]': self.submodels.__repr__().split('\n', 2)[2],
             'Status': self.status,
         }
 
@@ -715,17 +1987,6 @@ class Interface:
         elif isinstance(obj, (list, tuple)):
             processed_items = []
             for i, item in enumerate(obj):
-                item_context = f'{context_name}[{i}]' if context_name else f'item[{i}]'
-                processed_item, nested_arrays = self._extract_dataarrays_recursive(item, item_context)
-                extracted_arrays.update(nested_arrays)
-                processed_items.append(processed_item)
-            return processed_items, extracted_arrays
-
-        # Handle ContainerMixin (FlowContainer, etc.) - serialize as list of values
-        # Must come BEFORE dict check since ContainerMixin inherits from dict
-        elif isinstance(obj, ContainerMixin):
-            processed_items = []
-            for i, item in enumerate(obj.values()):
                 item_context = f'{context_name}[{i}]' if context_name else f'item[{i}]'
                 processed_item, nested_arrays = self._extract_dataarrays_recursive(item, item_context)
                 extracted_arrays.update(nested_arrays)
@@ -1030,10 +2291,6 @@ class Interface:
             return bool(obj)
         elif isinstance(obj, (np.ndarray, pd.Series, pd.DataFrame)):
             return obj.tolist() if hasattr(obj, 'tolist') else list(obj)
-        # Handle ContainerMixin (FlowContainer, etc.) - serialize as list of values
-        # Must come BEFORE dict check since ContainerMixin inherits from dict
-        elif isinstance(obj, ContainerMixin):
-            return [self._serialize_to_basic_types(item) for item in obj.values()]
         elif isinstance(obj, dict):
             return {k: self._serialize_to_basic_types(v) for k, v in obj.items()}
         elif isinstance(obj, (list, tuple)):
@@ -1134,15 +2391,13 @@ class Interface:
             # Use ds.variables with coord_cache for faster DataArray construction
             variables = ds.variables
             coord_cache = {k: ds.coords[k] for k in ds.coords}
-            coord_names = set(coord_cache)
             arrays_dict = {
                 name: xr.DataArray(
                     variables[name],
                     coords={k: coord_cache[k] for k in variables[name].dims if k in coord_cache},
                     name=name,
                 )
-                for name in variables
-                if name not in coord_names
+                for name in ds.data_vars
             }
 
             # Resolve all references using the centralized method
@@ -1258,8 +2513,6 @@ class Interface:
 class Element(Interface):
     """This class is the basic Element of flixopt. Every Element has a label"""
 
-    submodel: ElementModel | None
-
     # Attributes that are serialized but set after construction (not passed to child __init__)
     # These are internal state populated during modeling, not user-facing parameters
     _deferred_init_attrs: ClassVar[set[str]] = {'_variable_names', '_constraint_names'}
@@ -1283,7 +2536,6 @@ class Element(Interface):
         self.label = Element._valid_label(label)
         self.meta_data = meta_data if meta_data is not None else {}
         self.color = color
-        self.submodel = None
         self._flow_system: FlowSystem | None = None
         # Variable/constraint names - populated after modeling, serialized for results
         self._variable_names: list[str] = _variable_names if _variable_names is not None else []
@@ -1293,9 +2545,6 @@ class Element(Interface):
         """This function is used to do some basic plausibility checks for each Element during initialization.
         This is run after all data is transformed to the correct format/type"""
         raise NotImplementedError('Every Element needs a _plausibility_checks() method')
-
-    def create_model(self, model: FlowSystemModel) -> ElementModel:
-        raise NotImplementedError('Every Element needs a create_model() method')
 
     @property
     def label_full(self) -> str:
@@ -1523,25 +2772,6 @@ class ContainerMixin(dict[str, T]):
         """Return a string representation using the instance's truncate_repr setting."""
         return self._get_repr()
 
-    def __add__(self, other: ContainerMixin[T]) -> ContainerMixin[T]:
-        """Concatenate two containers.
-
-        Returns a new container of the same type containing elements from both containers.
-        Does not modify the original containers.
-
-        Args:
-            other: Another container to concatenate
-
-        Returns:
-            New container with elements from both containers
-        """
-        result = self.__class__(element_type_name=self._element_type_name)
-        for element in self.values():
-            result.add(element)
-        for element in other.values():
-            result.add(element)
-        return result
-
 
 class ElementContainer(ContainerMixin[T]):
     """
@@ -1565,95 +2795,6 @@ class ResultsContainer(ContainerMixin[T]):
     def _get_label(self, element: T) -> str:
         """Extract label from Results object."""
         return element.label
-
-
-class FlowContainer(ContainerMixin[T]):
-    """Container for Flow objects with dual access: by index or by label_full.
-
-    Supports:
-        - container['Boiler(Q_th)']  # label_full-based access
-        - container['Q_th']          # short-label access (when all flows share same component)
-        - container[0]               # index-based access
-        - container.add(flow)
-        - for flow in container.values()
-        - container1 + container2    # concatenation
-
-    Examples:
-        >>> boiler = Boiler(label='Boiler', inputs=[Flow('Q_th', bus=heat_bus)])
-        >>> boiler.inputs[0]  # Index access
-        >>> boiler.inputs['Boiler(Q_th)']  # Full label access
-        >>> boiler.inputs['Q_th']  # Short label access (same component)
-        >>> for flow in boiler.inputs.values():
-        ...     print(flow.label_full)
-    """
-
-    def _get_label(self, flow: T) -> str:
-        """Extract label_full from Flow."""
-        return flow.label_full
-
-    def __getitem__(self, key: str | int) -> T:
-        """Get flow by label_full, short label, or index.
-
-        Args:
-            key: Flow's label_full (string), short label (string), or index (int).
-                Short label access (e.g., 'Q_th' instead of 'Boiler(Q_th)') is only
-                supported when all flows in the container belong to the same component.
-
-        Returns:
-            The Flow at the given key/index
-
-        Raises:
-            KeyError: If string key not found
-            IndexError: If integer index out of range
-        """
-        if isinstance(key, int):
-            # Index-based access: convert to list and index
-            try:
-                return list(self.values())[key]
-            except IndexError:
-                raise IndexError(f'Flow index {key} out of range (container has {len(self)} flows)') from None
-
-        # Try exact label_full match first
-        if dict.__contains__(self, key):
-            return super().__getitem__(key)
-
-        # Try short-label match if all flows share the same component
-        if len(self) > 0:
-            components = {flow.component for flow in self.values()}
-            if len(components) == 1:
-                component = next(iter(components))
-                full_key = f'{component}({key})'
-                if dict.__contains__(self, full_key):
-                    return super().__getitem__(full_key)
-
-        # Key not found - raise with helpful message
-        raise KeyError(f"'{key}' not found in {self._element_type_name}")
-
-    def __contains__(self, key: object) -> bool:
-        """Check if key exists (supports label_full or short label).
-
-        Args:
-            key: Flow's label_full or short label
-
-        Returns:
-            True if the key matches a flow in the container
-        """
-        if not isinstance(key, str):
-            return False
-
-        # Try exact label_full match first
-        if dict.__contains__(self, key):
-            return True
-
-        # Try short-label match if all flows share the same component
-        if len(self) > 0:
-            components = {flow.component for flow in self.values()}
-            if len(components) == 1:
-                component = next(iter(components))
-                full_key = f'{component}({key})'
-                return dict.__contains__(self, full_key)
-
-        return False
 
 
 T_element = TypeVar('T_element')
@@ -1836,292 +2977,3 @@ class CompositeContainerMixin(Generic[T_element]):
                 parts.append(repr(container).rstrip('\n'))
 
         return '\n'.join(parts)
-
-
-class Submodel(SubmodelsMixin):
-    """Stores Variables and Constraints. Its a subset of a FlowSystemModel.
-    Variables and constraints are stored in the main FlowSystemModel, and are referenced here.
-    Can have other Submodels assigned, and can be a Submodel of another Submodel.
-    """
-
-    def __init__(self, model: FlowSystemModel, label_of_element: str, label_of_model: str | None = None):
-        """
-        Args:
-            model: The FlowSystemModel that is used to create the model.
-            label_of_element: The label of the parent (Element). Used to construct the full label of the model.
-            label_of_model: The label of the model. Used as a prefix in all variables and constraints.
-        """
-        self._model = model
-        self.label_of_element = label_of_element
-        self.label_of_model = label_of_model if label_of_model is not None else self.label_of_element
-
-        self._variables: dict[str, linopy.Variable] = {}  # Mapping from short name to variable
-        self._constraints: dict[str, linopy.Constraint] = {}  # Mapping from short name to constraint
-        self.submodels: Submodels = Submodels({})
-
-        logger.debug(f'Creating {self.__class__.__name__}  "{self.label_full}"')
-        self._do_modeling()
-
-    def add_variables(
-        self,
-        short_name: str = None,
-        category: VariableCategory = None,
-        **kwargs: Any,
-    ) -> linopy.Variable:
-        """Create and register a variable in one step.
-
-        Args:
-            short_name: Short name for the variable (used as suffix in full name).
-            category: Category for segment expansion handling. See VariableCategory.
-            **kwargs: Additional arguments passed to linopy.Model.add_variables().
-
-        Returns:
-            The created linopy Variable.
-        """
-        if kwargs.get('name') is None:
-            if short_name is None:
-                raise ValueError('Short name must be provided when no name is given')
-            kwargs['name'] = f'{self.label_of_model}|{short_name}'
-
-        variable = self._model.add_variables(**kwargs)
-        self.register_variable(variable, short_name)
-
-        # Register category in FlowSystemModel for segment expansion handling
-        if category is not None:
-            self._model.variable_categories[variable.name] = category
-
-        return variable
-
-    def add_constraints(self, expression, short_name: str = None, **kwargs) -> linopy.Constraint:
-        """Create and register a constraint in one step"""
-        if kwargs.get('name') is None:
-            if short_name is None:
-                raise ValueError('Short name must be provided when no name is given')
-            kwargs['name'] = f'{self.label_of_model}|{short_name}'
-
-        constraint = self._model.add_constraints(expression, **kwargs)
-        self.register_constraint(constraint, short_name)
-        return constraint
-
-    def register_variable(self, variable: linopy.Variable, short_name: str = None) -> linopy.Variable:
-        """Register a variable with the model"""
-        if short_name is None:
-            short_name = variable.name
-        elif short_name in self._variables:
-            raise ValueError(f'Short name "{short_name}" already assigned to model variables')
-
-        self._variables[short_name] = variable
-        return variable
-
-    def register_constraint(self, constraint: linopy.Constraint, short_name: str = None) -> linopy.Constraint:
-        """Register a constraint with the model"""
-        if short_name is None:
-            short_name = constraint.name
-        elif short_name in self._constraints:
-            raise ValueError(f'Short name "{short_name}" already assigned to model constraint')
-
-        self._constraints[short_name] = constraint
-        return constraint
-
-    def __getitem__(self, key: str) -> linopy.Variable:
-        """Get a variable by its short name"""
-        if key in self._variables:
-            return self._variables[key]
-        raise KeyError(f'Variable "{key}" not found in model "{self.label_full}"')
-
-    def __contains__(self, name: str) -> bool:
-        """Check if a variable exists in the model"""
-        return name in self._variables or name in self.variables
-
-    def get(self, name: str, default=None):
-        """Get variable by short name, returning default if not found"""
-        try:
-            return self[name]
-        except KeyError:
-            return default
-
-    def get_coords(
-        self,
-        dims: Collection[str] | None = None,
-        extra_timestep: bool = False,
-    ) -> xr.Coordinates | None:
-        return self._model.get_coords(dims=dims, extra_timestep=extra_timestep)
-
-    def filter_variables(
-        self,
-        filter_by: Literal['binary', 'continuous', 'integer'] | None = None,
-        length: Literal['scalar', 'time'] | None = None,
-    ):
-        if filter_by is None:
-            all_variables = self.variables
-        elif filter_by == 'binary':
-            all_variables = self.variables.binaries
-        elif filter_by == 'integer':
-            all_variables = self.variables.integers
-        elif filter_by == 'continuous':
-            all_variables = self.variables.continuous
-        else:
-            raise ValueError(f'Invalid filter_by "{filter_by}", must be one of "binary", "continous", "integer"')
-        if length is None:
-            return all_variables
-        elif length == 'scalar':
-            return all_variables[[name for name in all_variables if all_variables[name].ndim == 0]]
-        elif length == 'time':
-            return all_variables[[name for name in all_variables if 'time' in all_variables[name].dims]]
-        raise ValueError(f'Invalid length "{length}", must be one of "scalar", "time" or None')
-
-    @property
-    def label_full(self) -> str:
-        return self.label_of_model
-
-    @property
-    def variables_direct(self) -> linopy.Variables:
-        """Variables of the model, excluding those of sub-models"""
-        return self._model.variables[[var.name for var in self._variables.values()]]
-
-    @property
-    def constraints_direct(self) -> linopy.Constraints:
-        """Constraints of the model, excluding those of sub-models"""
-        return self._model.constraints[[con.name for con in self._constraints.values()]]
-
-    @property
-    def constraints(self) -> linopy.Constraints:
-        """All constraints of the model, including those of all sub-models"""
-        names = list(self.constraints_direct) + [
-            constraint_name for submodel in self.submodels.values() for constraint_name in submodel.constraints
-        ]
-
-        return self._model.constraints[names]
-
-    @property
-    def variables(self) -> linopy.Variables:
-        """All variables of the model, including those of all sub-models"""
-        names = list(self.variables_direct) + [
-            variable_name for submodel in self.submodels.values() for variable_name in submodel.variables
-        ]
-
-        return self._model.variables[names]
-
-    def __repr__(self) -> str:
-        """
-        Return a string representation of the linopy model.
-        """
-        # Extract content from existing representations
-        sections = {
-            f'Variables: [{len(self.variables)}/{len(self._model.variables)}]': self.variables.__repr__().split(
-                '\n', 2
-            )[2],
-            f'Constraints: [{len(self.constraints)}/{len(self._model.constraints)}]': self.constraints.__repr__().split(
-                '\n', 2
-            )[2],
-            f'Submodels: [{len(self.submodels)}]': self.submodels.__repr__().split('\n', 2)[2],
-        }
-
-        # Format sections with headers and underlines
-        formatted_sections = fx_io.format_sections_with_headers(sections)
-
-        model_string = f'Submodel "{self.label_of_model}":'
-        all_sections = '\n'.join(formatted_sections)
-
-        return f'{model_string}\n{"=" * len(model_string)}\n\n{all_sections}'
-
-    @property
-    def timestep_duration(self):
-        return self._model.timestep_duration
-
-    def _do_modeling(self):
-        """
-        Override in subclasses to create variables, constraints, and submodels.
-
-        This method is called during __init__. Create all nested submodels first
-        (so their variables exist), then create constraints that reference those variables.
-        """
-        pass
-
-
-@dataclass(repr=False)
-class Submodels:
-    """A simple collection for storing submodels with easy access and representation."""
-
-    data: dict[str, Submodel]
-
-    def __getitem__(self, name: str) -> Submodel:
-        """Get a submodel by its name."""
-        return self.data[name]
-
-    def __getattr__(self, name: str) -> Submodel:
-        """Get a submodel by attribute access."""
-        if name in self.data:
-            return self.data[name]
-        raise AttributeError(f"Submodels has no attribute '{name}'")
-
-    def __len__(self) -> int:
-        return len(self.data)
-
-    def __iter__(self) -> Iterator[str]:
-        return iter(self.data)
-
-    def __contains__(self, name: str) -> bool:
-        return name in self.data
-
-    def __repr__(self) -> str:
-        """Simple representation of the submodels collection."""
-        if not self.data:
-            return fx_io.format_title_with_underline('flixopt.structure.Submodels') + ' <empty>\n'
-
-        total_vars = sum(len(submodel.variables) for submodel in self.data.values())
-        total_cons = sum(len(submodel.constraints) for submodel in self.data.values())
-
-        title = (
-            f'flixopt.structure.Submodels ({total_vars} vars, {total_cons} constraints, {len(self.data)} submodels):'
-        )
-
-        result = fx_io.format_title_with_underline(title)
-        for name, submodel in self.data.items():
-            type_name = submodel.__class__.__name__
-            var_count = len(submodel.variables)
-            con_count = len(submodel.constraints)
-            result += f' * {name} [{type_name}] ({var_count}v/{con_count}c)\n'
-
-        return result
-
-    def items(self) -> ItemsView[str, Submodel]:
-        return self.data.items()
-
-    def keys(self):
-        return self.data.keys()
-
-    def values(self):
-        return self.data.values()
-
-    def add(self, submodel: Submodel, name: str) -> None:
-        """Add a submodel to the collection."""
-        self.data[name] = submodel
-
-    def get(self, name: str, default=None):
-        """Get submodel by name, returning default if not found."""
-        return self.data.get(name, default)
-
-
-class ElementModel(Submodel):
-    """
-    Stores the mathematical Variables and Constraints for Elements.
-    ElementModels are directly registered in the main FlowSystemModel
-    """
-
-    def __init__(self, model: FlowSystemModel, element: Element):
-        """
-        Args:
-            model: The FlowSystemModel that is used to create the model.
-            element: The element this model is created for.
-        """
-        self.element = element
-        super().__init__(model, label_of_element=element.label_full, label_of_model=element.label_full)
-        self._model.add_submodels(self, short_name=self.label_of_model)
-
-    def results_structure(self):
-        return {
-            'label': self.label_full,
-            'variables': list(self.variables),
-            'constraints': list(self.constraints),
-        }

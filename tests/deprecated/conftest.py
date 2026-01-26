@@ -5,6 +5,9 @@ It helps avoid redundancy and centralizes reusable test logic.
 
 This folder contains tests for the deprecated Optimization/Results API.
 Delete this entire folder when the deprecation cycle ends in v6.0.0.
+
+NOTE: These tests are skipped in v7+ because the batched model architecture replaces
+the per-element submodel API that these tests rely on. See tests/conftest.py for skip logic.
 """
 
 import os

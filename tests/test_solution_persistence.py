@@ -145,13 +145,12 @@ class TestVariableNamesPopulation:
         assert len(boiler._constraint_names) >= 0  # Some elements might have no constraints
 
     def test_all_elements_have_variable_names(self, simple_flow_system):
-        """All elements with submodels should have _variable_names populated."""
+        """All elements should have _variable_names populated after modeling."""
         simple_flow_system.build_model()
 
         for element in simple_flow_system.values():
-            if element.submodel is not None:
-                # Element was modeled, should have variable names
-                assert isinstance(element._variable_names, list)
+            # Element should have variable names attribute
+            assert isinstance(element._variable_names, list)
 
 
 class TestSolutionPersistence:
@@ -355,7 +354,6 @@ class TestEdgeCases:
         for element in simple_flow_system.values():
             element._variable_names = []
             element._constraint_names = []
-            element.submodel = None
 
         # Re-optimize
         simple_flow_system.optimize(highs_solver)
@@ -479,7 +477,6 @@ class TestFlowSystemDirectMethods:
         for element in simple_flow_system.values():
             element._variable_names = []
             element._constraint_names = []
-            element.submodel = None
 
         # Second optimization
         simple_flow_system.optimize(highs_solver)

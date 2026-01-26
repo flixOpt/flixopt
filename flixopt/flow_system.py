@@ -16,6 +16,7 @@ import pandas as pd
 import xarray as xr
 
 from . import io as fx_io
+from .batched import BatchedAccessor
 from .components import Storage
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 from .core import (
@@ -210,7 +211,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Use provided timestep_duration if given (for segmented systems), otherwise use computed value
         # For RangeIndex (segmented systems), computed_timestep_duration is None
         if timestep_duration is not None:
-            self.timestep_duration = self.fit_to_model_coords('timestep_duration', timestep_duration)
+            self.timestep_duration = timestep_duration
         elif computed_timestep_duration is not None:
             self.timestep_duration = self.fit_to_model_coords('timestep_duration', computed_timestep_duration)
         else:
@@ -273,6 +274,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Topology accessor cache - lazily initialized, invalidated on structure change
         self._topology: TopologyAccessor | None = None
+
+        # Batched data accessor - provides indexed/batched access to element properties
+        self._batched: BatchedAccessor | None = None
 
         # Carrier container - local carriers override CONFIG.Carriers
         self._carriers: CarrierContainer = CarrierContainer()
@@ -354,9 +358,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         For RangeIndex (segmented systems), simply appends the next integer.
         """
         if isinstance(timesteps, pd.RangeIndex):
-            # For RangeIndex, preserve start and step, extend by one step
-            new_stop = timesteps.stop + timesteps.step
-            return pd.RangeIndex(start=timesteps.start, stop=new_stop, step=timesteps.step, name='time')
+            # For RangeIndex, just add one more integer
+            return pd.RangeIndex(len(timesteps) + 1, name='time')
 
         if hours_of_last_timestep is None:
             hours_of_last_timestep = (timesteps[-1] - timesteps[-2]) / pd.Timedelta(hours=1)
@@ -545,10 +548,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 new_time_index, hours_of_last_timestep, hours_of_previous_timesteps
             )
 
-            # Update timestep_duration DataArray if it exists in the dataset and new value is computed
+            # Update timestep_duration DataArray if it exists in the dataset
             # This prevents stale data after resampling operations
-            # Skip for RangeIndex (segmented systems) where timestep_duration is None
-            if 'timestep_duration' in dataset.data_vars and timestep_duration is not None:
+            if 'timestep_duration' in dataset.data_vars:
                 dataset['timestep_duration'] = timestep_duration
 
         # Update time-related attributes only when new values are provided/computed
@@ -664,11 +666,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Remove timesteps, as it's directly stored in dataset index
         reference_structure.pop('timesteps', None)
-        # For DatetimeIndex, timestep_duration can be computed from timesteps_extra on load
-        # For RangeIndex (segmented systems), it must be saved as it cannot be computed
-        if isinstance(self.timesteps, pd.DatetimeIndex):
-            reference_structure.pop('timestep_duration', None)
-            all_extracted_arrays.pop('timestep_duration', None)
 
         # Extract from components
         components_structure = {}
@@ -968,7 +965,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Now previous_flow_rate=None means relaxed (no constraint at t=0)
         for comp in flow_system.components.values():
             if getattr(comp, 'status_parameters', None) is not None:
-                for flow in comp.flows.values():
+                for flow in comp.inputs + comp.outputs:
                     if flow.previous_flow_rate is None:
                         flow.previous_flow_rate = 0
 
@@ -980,7 +977,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Creates a new FlowSystem with copies of all elements, but without:
         - The solution dataset
         - The optimization model
-        - Element submodels and variable/constraint names
+        - Element variable/constraint names
 
         This is useful for creating variations of a FlowSystem for different
         optimization scenarios without affecting the original.
@@ -1407,9 +1404,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             )
         self.connect_and_transform()
         self.create_model()
-
         self.model.do_modeling()
-
         return self
 
     def solve(self, solver: _Solver) -> FlowSystem:
@@ -1524,8 +1519,51 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         category_set = set(categories)
 
-        if self._variable_categories:
-            # Use registered categories
+        # Prefixes for batched type-level variables that should be expanded to individual elements
+        batched_prefixes = ('flow|', 'storage|', 'bus|', 'effect|', 'share|', 'converter|', 'transmission|')
+
+        if self._variable_categories and self._solution is not None:
+            # Use registered categories, but handle batched variables that were unrolled
+            # Categories may have batched names (e.g., 'flow|rate') but solution has
+            # unrolled names (e.g., 'Boiler(Q_th)|flow_rate')
+            solution_vars = set(self._solution.data_vars)
+            matching = []
+            for name, cat in self._variable_categories.items():
+                if cat in category_set:
+                    is_batched = any(name.startswith(prefix) for prefix in batched_prefixes)
+                    if is_batched:
+                        # Batched variables should be expanded to unrolled element names
+                        # Handle size categories specially - they use |size suffix but different labels
+                        if cat == VariableCategory.FLOW_SIZE:
+                            # Only return flows that have investment parameters (not fixed sizes)
+                            from .interface import InvestParameters
+
+                            invest_flow_labels = {
+                                label for label, flow in self.flows.items() if isinstance(flow.size, InvestParameters)
+                            }
+                            matching.extend(
+                                v
+                                for v in solution_vars
+                                if v.endswith('|size') and v.rsplit('|', 1)[0] in invest_flow_labels
+                            )
+                        elif cat == VariableCategory.STORAGE_SIZE:
+                            storage_labels = set(self.storages.keys())
+                            matching.extend(
+                                v
+                                for v in solution_vars
+                                if v.endswith('|size') and v.rsplit('|', 1)[0] in storage_labels
+                            )
+                        else:
+                            suffix = f'|{cat.value}'
+                            matching.extend(v for v in solution_vars if v.endswith(suffix))
+                    elif name in solution_vars:
+                        # Non-batched variable - direct match
+                        matching.append(name)
+            # Remove duplicates while preserving order
+            seen = set()
+            matching = [v for v in matching if not (v in seen or seen.add(v))]
+        elif self._variable_categories:
+            # No solution - return registered batched names
             matching = [name for name, cat in self._variable_categories.items() if cat in category_set]
         elif self._solution is not None:
             # Fallback for old files without categories: match by suffix pattern
@@ -1534,11 +1572,16 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             for cat in category_set:
                 # Handle new sub-categories that map to old |size suffix
                 if cat == VariableCategory.FLOW_SIZE:
-                    flow_labels = set(self.flows.keys())
+                    # Only return flows that have investment parameters (not fixed sizes)
+                    from .interface import InvestParameters
+
+                    invest_flow_labels = {
+                        label for label, flow in self.flows.items() if isinstance(flow.size, InvestParameters)
+                    }
                     matching.extend(
                         v
                         for v in self._solution.data_vars
-                        if v.endswith('|size') and v.rsplit('|', 1)[0] in flow_labels
+                        if v.endswith('|size') and v.rsplit('|', 1)[0] in invest_flow_labels
                     )
                 elif cat == VariableCategory.STORAGE_SIZE:
                     storage_labels = set(self.storages.keys())
@@ -1568,11 +1611,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return self._solution is not None
 
     def _invalidate_model(self) -> None:
-        """Invalidate the model and element submodels when structure changes.
+        """Invalidate the model when structure changes.
 
         This clears the model, resets the ``connected_and_transformed`` flag,
-        clears all element submodels and variable/constraint names, and invalidates
-        the topology accessor cache.
+        clears all element variable/constraint names, and invalidates the
+        topology accessor cache.
 
         Called internally by :meth:`add_elements`, :meth:`add_carriers`,
         :meth:`reset`, and :meth:`invalidate`.
@@ -1585,9 +1628,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._connected_and_transformed = False
         self._topology = None  # Invalidate topology accessor (and its cached colors)
         self._flow_carriers = None  # Invalidate flow-to-carrier mapping
+        self._batched = None  # Invalidate batched data accessor (forces re-creation of FlowsData)
         self._variable_categories.clear()  # Clear stale categories for segment expansion
         for element in self.values():
-            element.submodel = None
             element._variable_names = []
             element._constraint_names = []
 
@@ -1597,7 +1640,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         This method unlocks the FlowSystem by clearing:
         - The solution dataset
         - The optimization model
-        - All element submodels and variable/constraint names
+        - All element variable/constraint names
         - The connected_and_transformed flag
 
         After calling reset(), the FlowSystem can be modified again
@@ -1770,6 +1813,36 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self._topology = TopologyAccessor(self)
         return self._topology
 
+    @property
+    def batched(self) -> BatchedAccessor:
+        """
+        Access batched data containers for element properties.
+
+        This property returns a BatchedAccessor that provides indexed/batched
+        access to element properties as xarray DataArrays with element dimensions.
+
+        Returns:
+            A cached BatchedAccessor instance.
+
+        Examples:
+            Access flow categorizations:
+
+            >>> flow_system.batched.flows.with_status  # List of flow IDs with status
+            >>> flow_system.batched.flows.with_investment  # List of flow IDs with investment
+
+            Access batched parameters:
+
+            >>> flow_system.batched.flows.relative_minimum  # DataArray with flow dimension
+            >>> flow_system.batched.flows.effective_size_upper  # DataArray with flow dimension
+
+            Access individual flows:
+
+            >>> flow = flow_system.batched.flows['Boiler(gas_in)']
+        """
+        if self._batched is None:
+            self._batched = BatchedAccessor(self)
+        return self._batched
+
     def plot_network(
         self,
         path: bool | str | pathlib.Path = 'flow_system.html',
@@ -1912,9 +1985,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def _connect_network(self):
         """Connects the network of components and buses. Can be rerun without changes if no elements were added"""
         for component in self.components.values():
-            for flow in component.flows.values():
+            for flow in component.inputs + component.outputs:
                 flow.component = component.label_full
-                flow.is_input_in_component = flow.label_full in component.inputs
+                flow.is_input_in_component = True if flow in component.inputs else False
 
                 # Connect Buses
                 bus = self.buses.get(flow.bus)
@@ -1923,10 +1996,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                         f'Bus {flow.bus} not found in the FlowSystem, but used by "{flow.label_full}". '
                         f'Please add it first.'
                     )
-                if flow.is_input_in_component and flow.label_full not in bus.outputs:
-                    bus.outputs.add(flow)
-                elif not flow.is_input_in_component and flow.label_full not in bus.inputs:
-                    bus.inputs.add(flow)
+                if flow.is_input_in_component and flow not in bus.outputs:
+                    bus.outputs.append(flow)
+                elif not flow.is_input_in_component and flow not in bus.inputs:
+                    bus.inputs.append(flow)
 
         # Count flows manually to avoid triggering cache rebuild
         flow_count = sum(len(c.inputs) + len(c.outputs) for c in self.components.values())
@@ -2010,7 +2083,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     @property
     def flows(self) -> ElementContainer[Flow]:
         if self._flows_cache is None:
-            flows = [f for c in self.components.values() for f in c.flows.values()]
+            flows = [f for c in self.components.values() for f in c.inputs + c.outputs]
             # Deduplicate by id and sort for reproducibility
             flows = sorted({id(f): f for f in flows}.values(), key=lambda f: f.label_full.lower())
             self._flows_cache = ElementContainer(flows, element_type_name='flows', truncate_repr=10)

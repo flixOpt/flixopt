@@ -20,7 +20,7 @@ from .modeling import _scalar_safe_reduce
 from .structure import EXPAND_DIVIDE, EXPAND_INTERPOLATE, VariableCategory
 
 if TYPE_CHECKING:
-    from tsam import ClusterConfig, ExtremeConfig, SegmentConfig
+    from tsam.config import ClusterConfig, ExtremeConfig, SegmentConfig
 
     from .clustering import Clustering
     from .flow_system import FlowSystem
@@ -71,15 +71,13 @@ class TransformAccessor:
         group_weights = {group: 1 / count for group, count in group_counts.items()}
 
         weights = {}
-        variables = ds.variables
-        for name in ds.data_vars:
-            var_attrs = variables[name].attrs
-            clustering_group = var_attrs.get('clustering_group')
+        for name, da in ds.data_vars.items():
+            clustering_group = da.attrs.get('clustering_group')
             group_weight = group_weights.get(clustering_group)
             if group_weight is not None:
                 weights[name] = group_weight
             else:
-                weights[name] = var_attrs.get('clustering_weight', 1)
+                weights[name] = da.attrs.get('clustering_weight', 1)
 
         if np.all(np.isclose(list(weights.values()), 1, atol=1e-6)):
             logger.debug('All Clustering weights were set to 1')
@@ -100,7 +98,7 @@ class TransformAccessor:
         Returns:
             ClusterConfig with weights set (either user-provided or auto-calculated).
         """
-        from tsam import ClusterConfig
+        from tsam.config import ClusterConfig
 
         # User provided ClusterConfig with weights - use as-is
         if cluster is not None and cluster.weights is not None:
@@ -163,8 +161,7 @@ class TransformAccessor:
 
         def _weight_for_key(key: tuple) -> xr.DataArray:
             occurrences = cluster_occurrences_all[key]
-            # Missing clusters contribute zero weight (not 1)
-            weights = np.array([occurrences.get(c, 0) for c in range(n_clusters)])
+            weights = np.array([occurrences.get(c, 1) for c in range(n_clusters)])
             return xr.DataArray(weights, dims=['cluster'], coords={'cluster': cluster_coords})
 
         weight_slices = {key: _weight_for_key(key) for key in cluster_occurrences_all}
@@ -1031,9 +1028,8 @@ class TransformAccessor:
             Resampled dataset with original dimension structure preserved
         """
         dim_groups = defaultdict(list)
-        variables = time_dataset.variables
-        for var_name in time_dataset.data_vars:
-            dims_key = tuple(sorted(d for d in variables[var_name].dims if d != 'time'))
+        for var_name, var in time_dataset.data_vars.items():
+            dims_key = tuple(sorted(d for d in var.dims if d != 'time'))
             dim_groups[dims_key].append(var_name)
 
         # Note: defaultdict is always truthy, so we check length explicitly
@@ -1338,7 +1334,7 @@ class TransformAccessor:
         Examples:
             Basic clustering with peak preservation:
 
-            >>> from tsam import ExtremeConfig
+            >>> from tsam.config import ExtremeConfig
             >>> fs_clustered = flow_system.transform.cluster(
             ...     n_clusters=8,
             ...     cluster_duration='1D',
@@ -1610,18 +1606,6 @@ class TransformAccessor:
 
         ds = self._fs.to_dataset(include_solution=False)
 
-        # Validate that timesteps match the clustering expectations
-        current_timesteps = len(self._fs.timesteps)
-        expected_timesteps = clustering.n_original_clusters * clustering.timesteps_per_cluster
-        if current_timesteps != expected_timesteps:
-            raise ValueError(
-                f'Timestep count mismatch in apply_clustering(): '
-                f'FlowSystem has {current_timesteps} timesteps, but clustering expects '
-                f'{expected_timesteps} timesteps ({clustering.n_original_clusters} clusters × '
-                f'{clustering.timesteps_per_cluster} timesteps/cluster). '
-                f'Ensure self._fs.timesteps matches the original data used for clustering.results.apply(ds).'
-            )
-
         # Apply existing clustering to all (period, scenario) combinations at once
         logger.info('Applying clustering...')
         with warnings.catch_warnings():
@@ -1852,9 +1836,28 @@ class TransformAccessor:
             combined = (expanded_charge_state + soc_boundary_per_timestep).clip(min=0)
             expanded_fs._solution[charge_state_name] = combined.assign_attrs(expanded_charge_state.attrs)
 
-        # Clean up SOC_boundary variables and orphaned coordinates
+            # Also update the unrolled variable names (e.g., Battery|charge_state)
+            # The intercluster_storage dimension contains the actual storage names
+            if 'intercluster_storage' in expanded_charge_state.dims:
+                for storage_id in expanded_charge_state.coords['intercluster_storage'].values:
+                    unrolled_name = f'{storage_id}|charge_state'
+                    if unrolled_name in expanded_fs._solution:
+                        # Select this storage's data from the combined result
+                        unrolled_combined = combined.sel(intercluster_storage=storage_id, drop=True)
+                        expanded_fs._solution[unrolled_name] = unrolled_combined.assign_attrs(
+                            expanded_fs._solution[unrolled_name].attrs
+                        )
+
+        # Clean up SOC_boundary variables (both batched and unrolled) and orphaned coordinates
         for soc_boundary_name in soc_boundary_vars:
             if soc_boundary_name in expanded_fs._solution:
+                # Get storage names from the intercluster_storage dimension before deleting
+                soc_var = expanded_fs._solution[soc_boundary_name]
+                if 'intercluster_storage' in soc_var.dims:
+                    for storage_id in soc_var.coords['intercluster_storage'].values:
+                        unrolled_soc_name = f'{storage_id}|SOC_boundary'
+                        if unrolled_soc_name in expanded_fs._solution:
+                            del expanded_fs._solution[unrolled_soc_name]
                 del expanded_fs._solution[soc_boundary_name]
         if 'cluster_boundary' in expanded_fs._solution.coords:
             expanded_fs._solution = expanded_fs._solution.drop_vars('cluster_boundary')
@@ -2213,10 +2216,7 @@ class TransformAccessor:
         data_vars = {}
         # Use ds.variables pattern to avoid slow _construct_dataarray calls
         coord_cache = {k: v for k, v in reduced_ds.coords.items()}
-        coord_names = set(coord_cache)
-        for name in reduced_ds.variables:
-            if name in coord_names:
-                continue
+        for name in reduced_ds.data_vars:
             if name in skip_vars or name.startswith('clustering|'):
                 continue
             da = _fast_get_da(reduced_ds, name, coord_cache)
@@ -2225,10 +2225,12 @@ class TransformAccessor:
             if 'cluster' in da.dims and 'time' not in da.dims:
                 continue
             data_vars[name] = expand_da(da, name)
-        # Remove timestep_duration reference from attrs - let FlowSystem compute it from timesteps_extra
-        # This ensures proper time coordinates for xarray alignment with N+1 solution timesteps
-        attrs = {k: v for k, v in reduced_ds.attrs.items() if k not in clustering_attrs and k != 'timestep_duration'}
+        attrs = {k: v for k, v in reduced_ds.attrs.items() if k not in clustering_attrs}
         expanded_ds = xr.Dataset(data_vars, attrs=attrs)
+
+        # Update timestep_duration for original timesteps
+        timestep_duration = FlowSystem.calculate_timestep_duration(original_timesteps_extra)
+        expanded_ds.attrs['timestep_duration'] = timestep_duration.values.tolist()
 
         expanded_fs = FlowSystem.from_dataset(expanded_ds)
 
@@ -2236,11 +2238,8 @@ class TransformAccessor:
         reduced_solution = self._fs.solution
         # Use ds.variables pattern to avoid slow _construct_dataarray calls
         sol_coord_cache = {k: v for k, v in reduced_solution.coords.items()}
-        sol_coord_names = set(sol_coord_cache)
         expanded_sol_vars = {}
-        for name in reduced_solution.variables:
-            if name in sol_coord_names:
-                continue
+        for name in reduced_solution.data_vars:
             da = _fast_get_da(reduced_solution, name, sol_coord_cache)
             expanded_sol_vars[name] = expand_da(da, name, is_solution=True)
         expanded_fs._solution = xr.Dataset(expanded_sol_vars, attrs=reduced_solution.attrs)

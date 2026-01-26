@@ -563,10 +563,7 @@ def save_dataset_to_netcdf(
     # Convert all DataArray attrs to JSON strings
     # Use ds.variables to avoid slow _construct_dataarray calls
     variables = ds.variables
-    coord_names = set(ds.coords)
-    for var_name in variables:
-        if var_name in coord_names:
-            continue
+    for var_name in ds.data_vars:
         var = variables[var_name]
         if var.attrs:  # Only if there are attrs
             var.attrs = {'attrs': json.dumps(var.attrs)}
@@ -584,7 +581,7 @@ def save_dataset_to_netcdf(
             path,
             encoding=None
             if compression == 0
-            else {name: {'zlib': True, 'complevel': compression} for name in variables if name not in coord_names},
+            else {data_var: {'zlib': True, 'complevel': compression} for data_var in ds.data_vars},
             engine='netcdf4',
         )
 
@@ -610,11 +607,8 @@ def _reduce_constant_arrays(ds: xr.Dataset) -> xr.Dataset:
     """
     new_data_vars = {}
     variables = ds.variables
-    coord_names = set(ds.coords)
 
-    for name in variables:
-        if name in coord_names:
-            continue
+    for name in ds.data_vars:
         var = variables[name]
         dims = var.dims
         data = var.values
@@ -670,13 +664,13 @@ def _stack_equal_vars(ds: xr.Dataset, stacked_dim: str = '__stacked__') -> xr.Da
     """
     # Use ds.variables to avoid slow _construct_dataarray calls
     variables = ds.variables
-    coord_names = set(ds.coords)
+    data_var_names = set(ds.data_vars)
 
-    # Group data variables by their dimensions (preserve insertion order for deterministic stacking)
+    # Group variables by their dimensions
     groups = defaultdict(list)
-    for name in variables:
-        if name not in coord_names:
-            groups[variables[name].dims].append(name)
+    for name in data_var_names:
+        var = variables[name]
+        groups[var.dims].append(name)
 
     new_data_vars = {}
     for dims, var_names in groups.items():
@@ -692,14 +686,10 @@ def _stack_equal_vars(ds: xr.Dataset, stacked_dim: str = '__stacked__') -> xr.Da
             arrays = [variables[name].values for name in var_names]
             stacked_data = np.stack(arrays, axis=0)
 
-            # Capture per-variable attrs before stacking
-            per_variable_attrs = {name: dict(variables[name].attrs) for name in var_names}
-
             # Create new Variable with stacked dimension first
             stacked_var = xr.Variable(
                 dims=(group_stacked_dim,) + dims,
                 data=stacked_data,
-                attrs={'__per_variable_attrs__': per_variable_attrs},
             )
             new_data_vars[f'stacked_{dim_suffix}'] = stacked_var
 
@@ -729,11 +719,8 @@ def _unstack_vars(ds: xr.Dataset, stacked_prefix: str = '__stacked__') -> xr.Dat
     """
     new_data_vars = {}
     variables = ds.variables
-    coord_names = set(ds.coords)
 
-    for name in variables:
-        if name in coord_names:
-            continue
+    for name in ds.data_vars:
         var = variables[name]
         # Find stacked dimension (if any)
         stacked_dim = None
@@ -749,22 +736,16 @@ def _unstack_vars(ds: xr.Dataset, stacked_prefix: str = '__stacked__') -> xr.Dat
             labels = ds.coords[stacked_dim].values
             # Get remaining dims (everything except stacked dim)
             remaining_dims = var.dims[:stacked_dim_idx] + var.dims[stacked_dim_idx + 1 :]
-            # Get per-variable attrs if available
-            per_variable_attrs = var.attrs.get('__per_variable_attrs__', {})
             # Extract each slice using numpy indexing (much faster than .sel())
             data = var.values
             for idx, label in enumerate(labels):
                 # Use numpy indexing to get the slice
                 sliced_data = np.take(data, idx, axis=stacked_dim_idx)
-                # Restore original attrs if available
-                restored_attrs = per_variable_attrs.get(str(label), {})
-                new_data_vars[str(label)] = xr.Variable(remaining_dims, sliced_data, attrs=restored_attrs)
+                new_data_vars[str(label)] = xr.Variable(remaining_dims, sliced_data)
         else:
             new_data_vars[name] = var
 
-    # Preserve non-dimension coordinates (filter out stacked dim coords)
-    preserved_coords = {k: v for k, v in ds.coords.items() if not k.startswith(stacked_prefix)}
-    return xr.Dataset(new_data_vars, coords=preserved_coords, attrs=ds.attrs)
+    return xr.Dataset(new_data_vars, coords=ds.coords, attrs=ds.attrs)
 
 
 def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
@@ -792,8 +773,14 @@ def load_dataset_from_netcdf(path: str | pathlib.Path) -> xr.Dataset:
     # Restore DataArray attrs (before unstacking, as stacked vars have no individual attrs)
     # Use ds.variables to avoid slow _construct_dataarray calls
     variables = ds.variables
-    for var_name in variables:
+    for var_name in ds.data_vars:
         var = variables[var_name]
+        if 'attrs' in var.attrs:
+            var.attrs = json.loads(var.attrs['attrs'])
+
+    # Restore coordinate attrs
+    for coord_name in ds.coords:
+        var = variables[coord_name]
         if 'attrs' in var.attrs:
             var.attrs = json.loads(var.attrs['attrs'])
 
@@ -1392,12 +1379,12 @@ def format_flow_details(obj: Any, has_inputs: bool = True, has_outputs: bool = T
 
     if has_inputs and hasattr(obj, 'inputs') and obj.inputs:
         flow_lines.append('  inputs:')
-        for flow in obj.inputs.values():
+        for flow in obj.inputs:
             flow_lines.append(f'    * {repr(flow)}')
 
     if has_outputs and hasattr(obj, 'outputs') and obj.outputs:
         flow_lines.append('  outputs:')
-        for flow in obj.outputs.values():
+        for flow in obj.outputs:
             flow_lines.append(f'    * {repr(flow)}')
 
     return '\n' + '\n'.join(flow_lines) if flow_lines else ''
@@ -1587,11 +1574,8 @@ class FlowSystemDatasetIO:
         """
         solution_var_names: dict[str, str] = {}  # Maps original_name -> ds_name
         config_var_names: list[str] = []
-        coord_names = set(ds.coords)
 
-        for name in ds.variables:
-            if name in coord_names:
-                continue
+        for name in ds.data_vars:
             if name.startswith(cls.SOLUTION_PREFIX):
                 solution_var_names[name[len(cls.SOLUTION_PREFIX) :]] = name
             else:
@@ -1646,19 +1630,12 @@ class FlowSystemDatasetIO:
         if ds.indexes.get('scenario') is not None and 'scenario_weights' in reference_structure:
             scenario_weights = cls._resolve_dataarray_reference(reference_structure['scenario_weights'], arrays_dict)
 
-        # Resolve timestep_duration if present
-        # For segmented systems, it's stored as a data_var; for others it's computed from timesteps_extra
+        # Resolve timestep_duration if present as DataArray reference
         timestep_duration = None
-        if 'timestep_duration' in arrays_dict:
-            # Segmented systems store timestep_duration as a data_var
-            timestep_duration = arrays_dict['timestep_duration']
-        elif 'timestep_duration' in reference_structure:
+        if 'timestep_duration' in reference_structure:
             ref_value = reference_structure['timestep_duration']
             if isinstance(ref_value, str) and ref_value.startswith(':::'):
                 timestep_duration = cls._resolve_dataarray_reference(ref_value, arrays_dict)
-            else:
-                # Concrete value (e.g., list from expand())
-                timestep_duration = ref_value
 
         # Get timesteps - convert integer index to RangeIndex for segmented systems
         time_index = ds.indexes['time']
@@ -1734,6 +1711,18 @@ class FlowSystemDatasetIO:
         # Rename 'solution_time' back to 'time' if present
         if 'solution_time' in solution_ds.dims:
             solution_ds = solution_ds.rename({'solution_time': 'time'})
+
+        # Restore coordinates that were saved with the solution (e.g., 'effect')
+        # These are coords in the source ds that aren't already in solution_ds
+        for coord_name in ds.coords:
+            if coord_name not in solution_ds.coords:
+                # Check if this coord's dims are used by any solution variable
+                coord_dims = set(ds.coords[coord_name].dims)
+                for var in solution_ds.data_vars.values():
+                    if coord_dims.issubset(set(var.dims)):
+                        solution_ds = solution_ds.assign_coords({coord_name: ds.coords[coord_name]})
+                        break
+
         flow_system.solution = solution_ds
 
     @classmethod
@@ -1878,9 +1867,14 @@ class FlowSystemDatasetIO:
             }
             ds = ds.assign(solution_vars)
 
-            # Add solution_time coordinate if it exists
-            if 'solution_time' in solution_renamed.coords:
-                ds = ds.assign_coords(solution_time=solution_renamed.coords['solution_time'])
+            # Add all solution coordinates (time renamed to solution_time, plus others like 'effect')
+            solution_coords_to_add = {}
+            for coord_name in solution_renamed.coords:
+                # Skip dimension coordinates that come from the base dataset
+                if coord_name not in ds.coords:
+                    solution_coords_to_add[coord_name] = solution_renamed.coords[coord_name]
+            if solution_coords_to_add:
+                ds = ds.assign_coords(solution_coords_to_add)
 
             ds.attrs['has_solution'] = True
         else:

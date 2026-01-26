@@ -1144,8 +1144,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
         Caveats:
             - The linopy model is NOT attached (only the solution data)
-            - Element submodels are NOT recreated (no re-optimization without
-              calling build_model() first)
+            - Re-optimization requires calling build_model() first
             - Variable/constraint names on elements are NOT restored
 
         Examples:
