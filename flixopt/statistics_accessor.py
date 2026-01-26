@@ -44,7 +44,7 @@ SelectType = dict[str, Any]
 """xarray-style selection dict: {'time': slice(...), 'scenario': 'base'}"""
 
 FilterType = str | list[str]
-"""For include/exclude filtering: 'Boiler' or ['Boiler', 'CHP']"""
+"""For include/exclude filtering: exact label(s) to match, e.g., 'Boiler(Q_th)' or ['Boiler(Q_th)', 'CHP(Q_th)']"""
 
 
 # Sankey select types with Literal keys for IDE autocomplete
@@ -231,19 +231,28 @@ def _prepare_for_heatmap(
     return finalize(da, fallback_dims())
 
 
-def _filter_by_pattern(
+def _filter_by_labels(
     names: list[str],
     include: FilterType | None,
     exclude: FilterType | None,
 ) -> list[str]:
-    """Filter names using substring matching."""
+    """Filter names using exact string matching.
+
+    Args:
+        names: List of names to filter.
+        include: Only keep names that exactly match one of these labels.
+        exclude: Remove names that exactly match one of these labels.
+
+    Returns:
+        Filtered list of names.
+    """
     result = names.copy()
     if include is not None:
-        patterns = [include] if isinstance(include, str) else include
-        result = [n for n in result if any(p in n for p in patterns)]
+        include_set = {include} if isinstance(include, str) else set(include)
+        result = [n for n in result if n in include_set]
     if exclude is not None:
-        patterns = [exclude] if isinstance(exclude, str) else exclude
-        result = [n for n in result if not any(p in n for p in patterns)]
+        exclude_set = {exclude} if isinstance(exclude, str) else set(exclude)
+        result = [n for n in result if n not in exclude_set]
     return result
 
 
@@ -1488,8 +1497,8 @@ class StatisticsPlotAccessor:
         Args:
             node: Label of the Bus or Component to plot.
             select: xarray-style selection dict.
-            include: Only include flows containing these substrings.
-            exclude: Exclude flows containing these substrings.
+            include: Only include flows with these exact labels.
+            exclude: Exclude flows with these exact labels.
             unit: 'flow_rate' (power) or 'flow_hours' (energy).
             colors: Color specification (colorscale name, color list, or label-to-color dict).
             round_decimals: Round values to this many decimal places to avoid numerical noise
@@ -1516,7 +1525,7 @@ class StatisticsPlotAccessor:
         output_labels = [f.label_full for f in element.outputs.values()]
         all_labels = input_labels + output_labels
 
-        filtered_labels = _filter_by_pattern(all_labels, include, exclude)
+        filtered_labels = _filter_by_labels(all_labels, include, exclude)
         if not filtered_labels:
             logger.warning(f'No flows remaining after filtering for node {node}')
             return PlotResult(data=xr.Dataset(), figure=go.Figure())
@@ -1591,8 +1600,8 @@ class StatisticsPlotAccessor:
         Args:
             carrier: Carrier name (e.g., 'heat', 'electricity', 'gas').
             select: xarray-style selection dict.
-            include: Only include flows containing these substrings.
-            exclude: Exclude flows containing these substrings.
+            include: Only include flows with these exact labels.
+            exclude: Exclude flows with these exact labels.
             unit: 'flow_rate' (power) or 'flow_hours' (energy).
             colors: Color specification (colorscale name, color list, or label-to-color dict).
             round_decimals: Round values to this many decimal places to avoid numerical noise
@@ -1633,7 +1642,7 @@ class StatisticsPlotAccessor:
                 output_labels.append(flow.label_full)
 
         all_labels = input_labels + output_labels
-        filtered_labels = _filter_by_pattern(all_labels, include, exclude)
+        filtered_labels = _filter_by_labels(all_labels, include, exclude)
         if not filtered_labels:
             logger.warning(f'No flows remaining after filtering for carrier {carrier}')
             return PlotResult(data=xr.Dataset(), figure=go.Figure())

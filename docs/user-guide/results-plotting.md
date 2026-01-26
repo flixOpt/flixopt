@@ -75,7 +75,7 @@ flow_system.statistics.plot.balance('Boiler', mode='area')
 | `node` | str | Label of the Bus or Component |
 | `mode` | `'bar'`, `'line'`, `'area'` | Visual style (default: `'bar'`) |
 | `unit` | `'flow_rate'`, `'flow_hours'` | Power (kW) or energy (kWh) |
-| `include` / `exclude` | str or list | Filter flows by substring |
+| `include` / `exclude` | str or list | Filter flows by exact label |
 | `aggregate` | `'sum'`, `'mean'`, `'max'`, `'min'` | Aggregate over time |
 | `select` | dict | xarray-style data selection |
 
@@ -208,11 +208,14 @@ flow_system.statistics.plot.balance('Bus', animate_by='period')
 
 ### Include/Exclude Filtering
 
-Filter flows using substring matching:
+Filter flows by exact label:
 
 ```python
-flow_system.statistics.plot.balance('Bus', include='Q_th')
-flow_system.statistics.plot.balance('Bus', exclude=['Gas', 'Grid'])
+# Include only specific flows
+flow_system.statistics.plot.balance('Bus', include=['Boiler(Q_th)', 'CHP(Q_th)'])
+
+# Exclude specific flows
+flow_system.statistics.plot.balance('Bus', exclude='GridImport(P_el)')
 ```
 
 ### Colors
