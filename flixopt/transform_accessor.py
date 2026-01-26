@@ -1101,7 +1101,7 @@ class TransformAccessor:
             >>> fs_sizing.optimize(solver)
             >>>
             >>> # Stage 2: Fix sizes and optimize at full resolution
-            >>> fs_dispatch = flow_system.transform.fix_sizes(fs_sizing.statistics.sizes)
+            >>> fs_dispatch = flow_system.transform.fix_sizes(fs_sizing.stats.sizes)
             >>> fs_dispatch.optimize(solver)
 
             Using a dict:
@@ -1124,7 +1124,7 @@ class TransformAccessor:
                     'No sizes provided and FlowSystem has no solution. '
                     'Either provide sizes or optimize the FlowSystem first.'
                 )
-            sizes = self._fs.statistics.sizes
+            sizes = self._fs.stats.sizes
 
         # Convert dict to Dataset format
         if isinstance(sizes, dict):
@@ -2060,9 +2060,9 @@ class TransformAccessor:
             >>> fs_expanded = fs_reduced.transform.expand()
             >>>
             >>> # Use all existing accessors with full timesteps
-            >>> fs_expanded.statistics.flow_rates  # Full 8760 timesteps
-            >>> fs_expanded.statistics.plot.balance('HeatBus')  # Full resolution plots
-            >>> fs_expanded.statistics.plot.heatmap('Boiler(Q_th)|flow_rate')
+            >>> fs_expanded.stats.flow_rates  # Full 8760 timesteps
+            >>> fs_expanded.stats.plot.balance('HeatBus')  # Full resolution plots
+            >>> fs_expanded.stats.plot.heatmap('Boiler(Q_th)|flow_rate')
 
         Note:
             The expanded FlowSystem repeats the typical cluster values for all

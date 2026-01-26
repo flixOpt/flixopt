@@ -4,17 +4,17 @@ This module provides a user-friendly API for analyzing optimization results
 directly from a FlowSystem.
 
 Structure:
-    - `.statistics` - Data/metrics access (cached xarray Datasets)
-    - `.statistics.plot` - Plotting methods using the statistics data
+    - `.stats` - Data/metrics access (cached xarray Datasets)
+    - `.stats.plot` - Plotting methods using the statistics data
 
 Example:
     >>> flow_system.optimize(solver)
     >>> # Data access
-    >>> flow_system.statistics.flow_rates
-    >>> flow_system.statistics.flow_hours
+    >>> flow_system.stats.flow_rates
+    >>> flow_system.stats.flow_hours
     >>> # Plotting
-    >>> flow_system.statistics.plot.balance('ElectricityBus')
-    >>> flow_system.statistics.plot.heatmap('Boiler|on')
+    >>> flow_system.stats.plot.balance('ElectricityBus')
+    >>> flow_system.stats.plot.heatmap('Boiler|on')
 """
 
 from __future__ import annotations
@@ -472,7 +472,7 @@ def _merge_color_kwargs(
 
 
 class StatisticsAccessor:
-    """Statistics accessor for FlowSystem. Access via ``flow_system.statistics``.
+    """Statistics accessor for FlowSystem. Access via ``flow_system.stats``.
 
     This accessor provides cached data properties for optimization results.
     Use ``.plot`` for visualization methods.
@@ -497,8 +497,8 @@ class StatisticsAccessor:
 
     Examples:
         >>> flow_system.optimize(solver)
-        >>> flow_system.statistics.flow_rates  # Get data
-        >>> flow_system.statistics.plot.balance('Bus')  # Plot
+        >>> flow_system.stats.flow_rates  # Get data
+        >>> flow_system.stats.plot.balance('Bus')  # Plot
     """
 
     def __init__(self, flow_system: FlowSystem) -> None:
@@ -586,8 +586,8 @@ class StatisticsAccessor:
             A StatisticsPlotAccessor instance.
 
         Examples:
-            >>> flow_system.statistics.plot.balance('ElectricityBus')
-            >>> flow_system.statistics.plot.heatmap('Boiler|on')
+            >>> flow_system.stats.plot.balance('ElectricityBus')
+            >>> flow_system.stats.plot.heatmap('Boiler|on')
         """
         if self._plot is None:
             self._plot = StatisticsPlotAccessor(self)
@@ -984,14 +984,14 @@ class StatisticsAccessor:
 
 
 class SankeyPlotAccessor:
-    """Sankey diagram accessor. Access via ``flow_system.statistics.plot.sankey``.
+    """Sankey diagram accessor. Access via ``flow_system.stats.plot.sankey``.
 
     Provides typed methods for different sankey diagram types.
 
     Examples:
-        >>> fs.statistics.plot.sankey.flows(select={'bus': 'HeatBus'})
-        >>> fs.statistics.plot.sankey.effects(select={'effect': 'costs'})
-        >>> fs.statistics.plot.sankey.sizes(select={'component': 'Boiler'})
+        >>> fs.stats.plot.sankey.flows(select={'bus': 'HeatBus'})
+        >>> fs.stats.plot.sankey.effects(select={'effect': 'costs'})
+        >>> fs.stats.plot.sankey.sizes(select={'component': 'Boiler'})
     """
 
     def __init__(self, plot_accessor: StatisticsPlotAccessor) -> None:
@@ -1418,7 +1418,7 @@ class SankeyPlotAccessor:
 
 
 class StatisticsPlotAccessor:
-    """Plot accessor for statistics. Access via ``flow_system.statistics.plot``.
+    """Plot accessor for statistics. Access via ``flow_system.stats.plot``.
 
     All methods return PlotResult with both data and figure.
     """
@@ -1436,8 +1436,8 @@ class StatisticsPlotAccessor:
             SankeyPlotAccessor with methods: flows(), sizes(), peak_flow(), effects()
 
         Examples:
-            >>> fs.statistics.plot.sankey.flows(select={'bus': 'HeatBus'})
-            >>> fs.statistics.plot.sankey.effects(select={'effect': 'costs'})
+            >>> fs.stats.plot.sankey.flows(select={'bus': 'HeatBus'})
+            >>> fs.stats.plot.sankey.effects(select={'effect': 'costs'})
         """
         if self._sankey is None:
             self._sankey = SankeyPlotAccessor(self)
@@ -1687,8 +1687,8 @@ class StatisticsPlotAccessor:
             PlotResult with .data and .figure.
 
         Examples:
-            >>> fs.statistics.plot.carrier_balance('heat')
-            >>> fs.statistics.plot.carrier_balance('electricity', unit='flow_hours')
+            >>> fs.stats.plot.carrier_balance('heat')
+            >>> fs.stats.plot.carrier_balance('electricity', unit='flow_hours')
 
         Notes:
             - Inputs to carrier buses (from sources/converters) are shown as positive
@@ -2118,11 +2118,11 @@ class StatisticsPlotAccessor:
             PlotResult with effect breakdown data.
 
         Examples:
-            >>> flow_system.statistics.plot.effects()  # Aggregated totals per effect
-            >>> flow_system.statistics.plot.effects(effect='costs')  # Just costs
-            >>> flow_system.statistics.plot.effects(by='component')  # Breakdown by component
-            >>> flow_system.statistics.plot.effects(by='contributor')  # By individual flows
-            >>> flow_system.statistics.plot.effects(aspect='temporal', by='time')  # Over time
+            >>> flow_system.stats.plot.effects()  # Aggregated totals per effect
+            >>> flow_system.stats.plot.effects(effect='costs')  # Just costs
+            >>> flow_system.stats.plot.effects(by='component')  # Breakdown by component
+            >>> flow_system.stats.plot.effects(by='contributor')  # By individual flows
+            >>> flow_system.stats.plot.effects(aspect='temporal', by='time')  # Over time
         """
         self._stats._require_solution()
 

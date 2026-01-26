@@ -71,12 +71,12 @@ class Comparison:
         comp = fx.Comparison([fs_base, fs_modified], names=['baseline', 'modified'])
 
         # Side-by-side plots (auto-facets by 'case')
-        comp.statistics.plot.balance('Heat')
-        comp.statistics.flow_rates.plotly.line()
+        comp.stats.plot.balance('Heat')
+        comp.stats.flow_rates.plotly.line()
 
         # Access combined data
         comp.solution  # xr.Dataset with 'case' dimension
-        comp.statistics.flow_rates  # xr.Dataset with 'case' dimension
+        comp.stats.flow_rates  # xr.Dataset with 'case' dimension
 
         # Compute differences relative to first case
         comp.diff()  # Returns xr.Dataset of differences
@@ -175,11 +175,21 @@ class Comparison:
         return self._solution
 
     @property
-    def statistics(self) -> ComparisonStatistics:
+    def stats(self) -> ComparisonStatistics:
         """Combined statistics accessor with 'case' dimension."""
         if self._statistics is None:
             self._statistics = ComparisonStatistics(self)
         return self._statistics
+
+    @property
+    def statistics(self) -> ComparisonStatistics:
+        """Deprecated: Use :attr:`stats` instead."""
+        warnings.warn(
+            "The 'statistics' accessor is deprecated. Use 'stats' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.stats
 
     def diff(self, reference: str | int = 0) -> xr.Dataset:
         """Compute differences relative to a reference case.
@@ -237,7 +247,7 @@ class ComparisonStatistics:
     """Combined statistics accessor for comparing FlowSystems.
 
     Mirrors StatisticsAccessor properties, concatenating data with a 'case' dimension.
-    Access via ``Comparison.statistics``.
+    Access via ``Comparison.stats``.
     """
 
     def __init__(self, comparison: Comparison) -> None:
@@ -266,7 +276,7 @@ class ComparisonStatistics:
         datasets = []
         for fs, name in zip(self._comp._systems, self._comp._names, strict=True):
             try:
-                ds = getattr(fs.statistics, prop_name)
+                ds = getattr(fs.stats, prop_name)
                 datasets.append(ds.expand_dims(case=[name]))
             except RuntimeError as e:
                 warnings.warn(f"Skipping case '{name}': {e}", stacklevel=3)
@@ -279,7 +289,7 @@ class ComparisonStatistics:
         """Merge a dict property from all cases (later cases override)."""
         result: dict[str, str] = {}
         for fs in self._comp._systems:
-            result.update(getattr(fs.statistics, prop_name))
+            result.update(getattr(fs.stats, prop_name))
         return result
 
     @property
@@ -408,7 +418,7 @@ class ComparisonStatisticsPlot:
 
         for fs, case_name in zip(self._comp._systems, self._comp._names, strict=True):
             try:
-                result = getattr(fs.statistics.plot, method_name)(*args, **kwargs)
+                result = getattr(fs.stats.plot, method_name)(*args, **kwargs)
                 datasets.append(result.data.expand_dims(case=[case_name]))
             except (KeyError, ValueError) as e:
                 warnings.warn(

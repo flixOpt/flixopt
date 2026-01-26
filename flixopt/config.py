@@ -844,7 +844,7 @@ class CONFIG:
             fx.CONFIG.notebook()
 
             # Now plots display inline automatically
-            flow_system.statistics.plot.balance('Heat')  # Displays inline
+            flow_system.stats.plot.balance('Heat')  # Displays inline
             ```
         """
         import plotly.io as pio

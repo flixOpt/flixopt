@@ -30,12 +30,12 @@ class PlotResult:
     Examples:
         Basic usage with chaining:
 
-        >>> result = flow_system.statistics.plot.balance('Bus')
+        >>> result = flow_system.stats.plot.balance('Bus')
         >>> result.show().to_html('plot.html')
 
         Accessing underlying data:
 
-        >>> result = flow_system.statistics.plot.flows()
+        >>> result = flow_system.stats.plot.flows()
         >>> df = result.data.to_dataframe()
         >>> result.to_csv('data.csv')
 
