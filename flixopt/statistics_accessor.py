@@ -1693,7 +1693,8 @@ class StatisticsPlotAccessor:
         Notes:
             - Inputs to carrier buses (from sources/converters) are shown as positive
             - Outputs from carrier buses (to sinks/converters) are shown as negative
-            - Internal transfers between buses of the same carrier appear on both sides
+            - Components with same carrier on both sides (e.g., transmission, storage)
+              are shown as net contribution under the component name
         """
         self._stats._require_solution()
         carrier = carrier.lower()
@@ -1703,15 +1704,19 @@ class StatisticsPlotAccessor:
         if not carrier_buses:
             raise KeyError(f"No buses found with carrier '{carrier}'")
 
-        # Collect all flows connected to these buses
+        # Collect all flows connected to these buses, grouped by component
         input_labels: list[str] = []  # Inputs to buses = production
         output_labels: list[str] = []  # Outputs from buses = consumption
+        component_inputs: dict[str, list[str]] = {}  # component -> input flow labels
+        component_outputs: dict[str, list[str]] = {}  # component -> output flow labels
 
         for bus in carrier_buses:
             for flow in bus.inputs.values():
                 input_labels.append(flow.label_full)
+                component_inputs.setdefault(flow.component, []).append(flow.label_full)
             for flow in bus.outputs.values():
                 output_labels.append(flow.label_full)
+                component_outputs.setdefault(flow.component, []).append(flow.label_full)
 
         all_labels = input_labels + output_labels
         filtered_labels = _filter_by_labels(all_labels, include, exclude)
@@ -1719,16 +1724,41 @@ class StatisticsPlotAccessor:
             logger.warning(f'No flows remaining after filtering for carrier {carrier}')
             return PlotResult(data=xr.Dataset(), figure=go.Figure())
 
-        # Get data from statistics
+        # Get source data
         if unit == 'flow_rate':
-            ds = self._stats.flow_rates[[lbl for lbl in filtered_labels if lbl in self._stats.flow_rates]]
+            source_ds = self._stats.flow_rates
         else:
-            ds = self._stats.flow_hours[[lbl for lbl in filtered_labels if lbl in self._stats.flow_hours]]
+            source_ds = self._stats.flow_hours
 
-        # Negate outputs (consumption) - opposite convention from bus balance
-        for label in output_labels:
-            if label in ds:
-                ds[label] = -ds[label]
+        # Find components with same carrier on both sides (e.g., transmission, storage)
+        # These get netted out to avoid visual clutter
+        same_carrier_components = set(component_inputs.keys()) & set(component_outputs.keys())
+        output_set = set(output_labels)
+
+        # Build dataset with netto logic
+        data_vars: dict[str, xr.DataArray] = {}
+        for label in filtered_labels:
+            if label not in source_ds:
+                continue
+            flow = self._fs.flows.get(label)
+            if not flow:
+                continue
+
+            sign = -1 if label in output_set else 1
+            comp_name = flow.component
+
+            if comp_name in same_carrier_components:
+                # Netto: combine into single component entry
+                val = source_ds[label] if sign == 1 else -source_ds[label]
+                if comp_name in data_vars:
+                    data_vars[comp_name] = data_vars[comp_name] + val
+                else:
+                    data_vars[comp_name] = val
+            else:
+                # Separate: keep individual flow
+                data_vars[label] = source_ds[label] if sign == 1 else -source_ds[label]
+
+        ds = xr.Dataset(data_vars)
 
         ds = _apply_selection(ds, select)
 
