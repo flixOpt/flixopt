@@ -453,6 +453,47 @@ Colors are resolved in this order:
 3. **Carrier colors** from FlowSystem or CONFIG.Carriers (for buses)
 4. **Default colorscale** (controlled by `CONFIG.Plotting.default_qualitative_colorscale`)
 
+### How Colors Work Internally
+
+Understanding the internal color architecture helps when debugging or extending:
+
+#### Storage Locations
+
+| Element Type | Attribute | Notes |
+|-------------|-----------|-------|
+| **Components** | `component.color` | String attribute on [`Element`][flixopt.structure.Element] base class |
+| **Carriers** | `carrier.color` | String attribute on [`Carrier`][flixopt.carrier.Carrier] |
+| **Buses** | *(none)* | Colors derived from carrier at plot time via `topology.bus_colors` |
+
+#### Auto-Assignment
+
+When you call `flow_system.optimize()` or `flow_system.connect_and_transform()`, components without explicit colors are automatically assigned colors:
+
+1. The system collects all components where `color is None`
+2. Colors are generated from `CONFIG.Plotting.default_qualitative_colorscale` (default: `'plotly'`)
+3. Colors are assigned to each component's `.color` attribute
+
+This means you can always inspect or modify colors after optimization:
+
+```python
+# Check assigned colors
+for comp in flow_system.components.values():
+    print(f"{comp.label}: {comp.color}")
+
+# Modify if needed
+flow_system.components['Boiler'].color = '#FF0000'
+```
+
+#### Accessing Colors Programmatically
+
+The `topology` accessor provides cached dictionaries for efficient color lookup:
+
+```python
+flow_system.topology.carrier_colors   # {'electricity': '#FECB52', 'heat': '#D62728', ...}
+flow_system.topology.component_colors # {'Boiler': '#1f77b4', 'CHP': '#ff7f0e', ...}
+flow_system.topology.bus_colors       # {'ElecBus': '#FECB52', ...} (derived from carriers)
+```
+
 ### Persistence
 
 Color configurations are automatically saved with the FlowSystem:
@@ -465,6 +506,8 @@ flow_system.to_netcdf('my_system.nc')
 loaded = fx.FlowSystem.from_netcdf('my_system.nc')
 loaded.topology.component_colors  # Colors are restored
 ```
+
+**Why this works:** The serialization system introspects `__init__` parameters. Since `color` is a parameter of the `Element` constructor, it's automatically captured during `to_netcdf()` and restored during `from_netcdf()`. No special handling is needed—colors are treated like any other simple attribute.
 
 ### Display Control
 
