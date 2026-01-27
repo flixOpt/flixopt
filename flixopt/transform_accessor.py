@@ -569,15 +569,12 @@ class TransformAccessor:
                 )
             elif set(typical_das[name].keys()) != all_keys:
                 # Partial typical slices: fill missing keys with constant values
-                time_idx = var.dims.index('time')
-                slices_list = [slice(None)] * len(var.dims)
-                slices_list[time_idx] = slice(0, n_reduced_timesteps)
-                sliced_values = var.values[tuple(slices_list)]
+                # For multi-period/scenario data, we need to select the right slice for each key
 
-                other_dims = [d for d in var.dims if d != 'time']
+                # Exclude 'period' and 'scenario' - they're handled by _combine_slices_to_dataarray_2d
+                other_dims = [d for d in var.dims if d not in ('time', 'period', 'scenario')]
                 other_shape = [var.sizes[d] for d in other_dims]
                 new_shape = [actual_n_clusters, n_time_points] + other_shape
-                reshaped_constant = sliced_values.reshape(new_shape)
 
                 new_coords = {'cluster': cluster_coords, 'time': time_coords}
                 for dim in other_dims:
@@ -590,6 +587,27 @@ class TransformAccessor:
                     if key in typical_das[name]:
                         filled_slices[key] = typical_das[name][key]
                     else:
+                        # Select the specific period/scenario slice, then reshape
+                        period_label, scenario_label = key
+                        selector = {}
+                        if period_label is not None and 'period' in var.dims:
+                            selector['period'] = period_label
+                        if scenario_label is not None and 'scenario' in var.dims:
+                            selector['scenario'] = scenario_label
+
+                        # Select per-key slice if needed, otherwise use full variable
+                        if selector:
+                            var_slice = ds[name].sel(**selector, drop=True)
+                        else:
+                            var_slice = ds[name]
+
+                        # Now slice time and reshape
+                        time_idx = var_slice.dims.index('time')
+                        slices_list = [slice(None)] * len(var_slice.dims)
+                        slices_list[time_idx] = slice(0, n_reduced_timesteps)
+                        sliced_values = var_slice.values[tuple(slices_list)]
+                        reshaped_constant = sliced_values.reshape(new_shape)
+
                         filled_slices[key] = xr.DataArray(
                             reshaped_constant,
                             dims=['cluster', 'time'] + other_dims,
