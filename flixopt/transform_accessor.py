@@ -1432,6 +1432,20 @@ class TransformAccessor:
                 f'Use the corresponding cluster() parameters instead.'
             )
 
+        # Validate ExtremeConfig compatibility with multi-period/scenario systems
+        # Methods 'new_cluster' and 'append' can produce different n_clusters per period,
+        # which breaks the xarray structure that requires uniform dimensions
+        is_multi_dimensional = has_periods or has_scenarios
+        if is_multi_dimensional and extremes is not None:
+            extreme_method = getattr(extremes, 'method', None)
+            if extreme_method in ('new_cluster', 'append'):
+                raise ValueError(
+                    f'ExtremeConfig with method="{extreme_method}" is not supported for multi-period '
+                    f'or multi-scenario systems because it can produce different cluster counts per '
+                    f'period/scenario. Use method="replace" instead, which replaces existing clusters '
+                    f'with extreme periods while maintaining the requested n_clusters.'
+                )
+
         # Cluster each (period, scenario) combination using tsam directly
         tsam_aggregation_results: dict[tuple, Any] = {}  # AggregationResult objects
         tsam_clustering_results: dict[tuple, Any] = {}  # ClusteringResult objects for persistence
@@ -1482,7 +1496,7 @@ class TransformAccessor:
                         df_for_clustering,
                         n_clusters=n_clusters,
                         period_duration=hours_per_cluster,
-                        timestep_duration=dt,
+                        temporal_resolution=dt,
                         cluster=cluster_config,
                         extremes=extremes,
                         segments=segments,
