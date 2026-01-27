@@ -338,31 +338,18 @@ class TransformAccessor:
                 }
             )
 
-        # Multi-dim case - each period may have different time series
-        # Build union of all time series indices (different periods may exclude different constant arrays)
-        all_time_series = sorted(set().union(*(set(df.index) for df in non_empty_metrics.values())))
-
-        # Get all metric columns (should be consistent across periods)
+        # Multi-dim case - all periods have same time series (constant arrays filtered on full dataset)
         sample_df = next(iter(non_empty_metrics.values()))
+        time_series_index = list(sample_df.index)
         data_vars = {}
 
         for metric in sample_df.columns:
             slices = []
             for key, df in metrics_dfs.items():
-                if df.empty:
-                    # Create NaN-filled array for empty DataFrames
-                    values = np.full(len(all_time_series), np.nan)
-                else:
-                    # Reindex to common index, filling missing with NaN
-                    values = df[metric].reindex(all_time_series).values
-                da = xr.DataArray(
-                    values,
-                    dims=['time_series'],
-                    coords={'time_series': all_time_series},
-                )
+                values = np.full(len(time_series_index), np.nan) if df.empty else df[metric].values
+                da = xr.DataArray(values, dims=['time_series'], coords={'time_series': time_series_index})
                 slices.append(_expand_dims_for_key(da, dim_names, key))
-            if slices:
-                data_vars[metric] = _combine_dataarray_slices(slices, ['time_series'], dim_names, name=metric)
+            data_vars[metric] = _combine_dataarray_slices(slices, ['time_series'], dim_names, name=metric)
 
         return xr.Dataset(data_vars)
 
