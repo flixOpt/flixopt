@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from ..plot_result import PlotResult
     from ..statistics_accessor import SelectType
 
+from ..dim_iterator import DimIterator
 from ..statistics_accessor import _build_color_kwargs
 
 
@@ -48,75 +49,6 @@ def _select_dims(da: xr.DataArray, period: Any = None, scenario: Any = None) -> 
     if 'scenario' in da.dims and scenario is not None:
         da = da.sel(scenario=scenario)
     return da
-
-
-def combine_slices(
-    slices: dict[tuple, np.ndarray],
-    extra_dims: list[str],
-    dim_coords: dict[str, list],
-    output_dim: str,
-    output_coord: Any,
-    attrs: dict | None = None,
-) -> xr.DataArray:
-    """Combine {(dim_values): 1D_array} dict into a DataArray.
-
-    This utility simplifies the common pattern of iterating over extra dimensions
-    (like period, scenario), processing each slice, and combining results.
-
-    Args:
-        slices: Dict mapping dimension value tuples to 1D numpy arrays.
-            Keys are tuples like ('period1', 'scenario1') matching extra_dims order.
-        extra_dims: Dimension names in order (e.g., ['period', 'scenario']).
-        dim_coords: Dict mapping dimension names to coordinate values.
-        output_dim: Name of the output dimension (typically 'time').
-        output_coord: Coordinate values for output dimension.
-        attrs: Optional DataArray attributes.
-
-    Returns:
-        DataArray with dims [output_dim, *extra_dims].
-
-    Raises:
-        ValueError: If slices is empty.
-        KeyError: If a required key is missing from slices.
-
-    Example:
-        >>> slices = {
-        ...     ('P1', 'base'): np.array([1, 2, 3]),
-        ...     ('P1', 'high'): np.array([4, 5, 6]),
-        ...     ('P2', 'base'): np.array([7, 8, 9]),
-        ...     ('P2', 'high'): np.array([10, 11, 12]),
-        ... }
-        >>> result = combine_slices(
-        ...     slices,
-        ...     extra_dims=['period', 'scenario'],
-        ...     dim_coords={'period': ['P1', 'P2'], 'scenario': ['base', 'high']},
-        ...     output_dim='time',
-        ...     output_coord=[0, 1, 2],
-        ... )
-        >>> result.dims
-        ('time', 'period', 'scenario')
-    """
-    if not slices:
-        raise ValueError('slices cannot be empty')
-
-    first = next(iter(slices.values()))
-    n_output = len(first)
-    shape = [n_output] + [len(dim_coords[d]) for d in extra_dims]
-    data = np.empty(shape, dtype=first.dtype)
-
-    for combo in np.ndindex(*shape[1:]):
-        key = tuple(dim_coords[d][i] for d, i in zip(extra_dims, combo, strict=True))
-        try:
-            data[(slice(None),) + combo] = slices[key]
-        except KeyError:
-            raise KeyError(f'Missing slice for key {key} (extra_dims={extra_dims})') from None
-
-    return xr.DataArray(
-        data,
-        dims=[output_dim] + extra_dims,
-        coords={output_dim: output_coord, **dim_coords},
-        attrs=attrs or {},
-    )
 
 
 def _cluster_occurrences(cr: TsamClusteringResult) -> np.ndarray:
@@ -231,6 +163,14 @@ class ClusteringResults:
             Dict mapping dimension names to lists of coordinate values.
         """
         return {dim: self._get_dim_values(dim) for dim in self._dim_names}
+
+    @functools.cached_property
+    def _iterator(self) -> DimIterator:
+        """DimIterator for this ClusteringResults (cached)."""
+        return DimIterator(
+            periods=self._get_dim_values('period'),
+            scenarios=self._get_dim_values('scenario'),
+        )
 
     def sel(self, **kwargs: Any) -> TsamClusteringResult:
         """Select result by dimension labels (xarray-like).
@@ -551,33 +491,8 @@ class ClusteringResults:
         name: str | None = None,
     ) -> xr.DataArray:
         """Build a DataArray property, handling both single and multi-dimensional cases."""
-        base_coords = base_coords or {}
-        periods = self._get_dim_values('period')
-        scenarios = self._get_dim_values('scenario')
-
-        # Build list of (dim_name, values) for dimensions that exist
-        extra_dims = []
-        if periods is not None:
-            extra_dims.append(('period', periods))
-        if scenarios is not None:
-            extra_dims.append(('scenario', scenarios))
-
-        # Simple case: no extra dimensions
-        if not extra_dims:
-            return xr.DataArray(get_data(self._results[()]), dims=base_dims, coords=base_coords, name=name)
-
-        # Multi-dimensional: stack data for each combination
-        first_data = get_data(next(iter(self._results.values())))
-        shape = list(first_data.shape) + [len(vals) for _, vals in extra_dims]
-        data = np.empty(shape, dtype=first_data.dtype)  # Preserve dtype
-
-        for combo in np.ndindex(*[len(vals) for _, vals in extra_dims]):
-            key = tuple(extra_dims[i][1][idx] for i, idx in enumerate(combo))
-            data[(...,) + combo] = get_data(self._results[key])
-
-        dims = base_dims + [dim_name for dim_name, _ in extra_dims]
-        coords = {**base_coords, **{dim_name: vals for dim_name, vals in extra_dims}}
-        return xr.DataArray(data, dims=dims, coords=coords, name=name)
+        slices = {key: get_data(cr) for key, cr in self._results.items()}
+        return self._iterator.combine_arrays(slices, base_dims, base_coords, name)
 
     @staticmethod
     def _key_to_str(key: tuple) -> str:
@@ -628,10 +543,7 @@ class ClusteringResults:
 
         results = {}
         for key, cr in self._results.items():
-            # Build selector for this key
-            selector = dict(zip(self._dim_names, key, strict=False))
-
-            # Select the slice for this (period, scenario)
+            selector = self._iterator.selector_for_key(key)
             data_slice = data.sel(**selector, drop=True) if selector else data
 
             # Drop constant arrays and convert to DataFrame

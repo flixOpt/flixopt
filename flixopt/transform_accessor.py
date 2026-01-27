@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from .dim_iterator import DimIterator
 from .modeling import _scalar_safe_reduce
 from .structure import EXPAND_DIVIDE, EXPAND_FIRST_TIMESTEP, EXPAND_INTERPOLATE, VariableCategory
 
@@ -167,9 +168,11 @@ class TransformAccessor:
             weights = np.array([occurrences.get(c, 0) for c in range(n_clusters)])
             return xr.DataArray(weights, dims=['cluster'], coords={'cluster': cluster_coords})
 
-        weight_slices = {key: _weight_for_key(key) for key in cluster_occurrences_all}
-        return self._combine_slices_to_dataarray_generic(
-            weight_slices, ['cluster'], periods, scenarios, 'cluster_weight'
+        iterator = DimIterator.from_sentinel_lists(periods, scenarios)
+        # Convert old (period, scenario) keys to DimIterator keys
+        weight_slices = {iterator.key_from_values(p, s): _weight_for_key((p, s)) for p, s in cluster_occurrences_all}
+        return iterator.combine(
+            weight_slices, base_dims=['cluster'], name='cluster_weight', join='outer', fill_value=np.nan
         )
 
     def _build_typical_das(
@@ -259,9 +262,10 @@ class TransformAccessor:
             DataArray with dims [cluster, time] or [cluster, time, period?, scenario?]
             containing duration in hours for each segment.
         """
+        iterator = DimIterator.from_sentinel_lists(periods, scenarios)
         segment_duration_slices: dict[tuple, xr.DataArray] = {}
 
-        for key, tsam_result in tsam_aggregation_results.items():
+        for (p, s), tsam_result in tsam_aggregation_results.items():
             # segment_durations is tuple of tuples: ((dur1, dur2, ...), (dur1, dur2, ...), ...)
             # Each inner tuple is durations for one cluster
             seg_durs = tsam_result.segment_durations
@@ -274,14 +278,18 @@ class TransformAccessor:
                     # Duration in hours = number of original timesteps * dt
                     data[cluster_id, seg_id] = cluster_seg_durs[seg_id] * dt
 
-            segment_duration_slices[key] = xr.DataArray(
+            segment_duration_slices[iterator.key_from_values(p, s)] = xr.DataArray(
                 data,
                 dims=['cluster', 'time'],
                 coords={'cluster': cluster_coords, 'time': time_coords},
             )
 
-        return self._combine_slices_to_dataarray_generic(
-            segment_duration_slices, ['cluster', 'time'], periods, scenarios, 'timestep_duration'
+        return iterator.combine(
+            segment_duration_slices,
+            base_dims=['cluster', 'time'],
+            name='timestep_duration',
+            join='outer',
+            fill_value=np.nan,
         )
 
     def _build_clustering_metrics(
@@ -323,6 +331,7 @@ class TransformAccessor:
             )
 
         # Multi-dim case
+        iterator = DimIterator.from_sentinel_lists(periods, scenarios)
         sample_df = next(iter(non_empty_metrics.values()))
         metric_names = list(sample_df.columns)
         data_vars = {}
@@ -330,20 +339,21 @@ class TransformAccessor:
         for metric in metric_names:
             slices = {}
             for (p, s), df in clustering_metrics_all.items():
+                key = iterator.key_from_values(p, s)
                 if df.empty:
-                    slices[(p, s)] = xr.DataArray(
+                    slices[key] = xr.DataArray(
                         np.full(len(sample_df.index), np.nan),
                         dims=['time_series'],
                         coords={'time_series': list(sample_df.index)},
                     )
                 else:
-                    slices[(p, s)] = xr.DataArray(
+                    slices[key] = xr.DataArray(
                         df[metric].values,
                         dims=['time_series'],
                         coords={'time_series': list(df.index)},
                     )
-            data_vars[metric] = self._combine_slices_to_dataarray_generic(
-                slices, ['time_series'], periods, scenarios, metric
+            data_vars[metric] = iterator.combine(
+                slices, base_dims=['time_series'], name=metric, join='outer', fill_value=np.nan
             )
 
         return xr.Dataset(data_vars)
@@ -532,7 +542,7 @@ class TransformAccessor:
         """
         from .core import TimeSeriesData
 
-        all_keys = {(p, s) for p in periods for s in scenarios}
+        iterator = DimIterator.from_sentinel_lists(periods, scenarios)
         ds_new_vars = {}
 
         # Use ds.variables to avoid _construct_dataarray overhead
@@ -567,11 +577,11 @@ class TransformAccessor:
                     coords=new_coords,
                     attrs=var.attrs,
                 )
-            elif set(typical_das[name].keys()) != all_keys:
+            elif set(typical_das[name].keys()) != {(p, s) for p in periods for s in scenarios}:
                 # Partial typical slices: fill missing keys with constant values
                 # For multi-period/scenario data, we need to select the right slice for each key
 
-                # Exclude 'period' and 'scenario' - they're handled by _combine_slices_to_dataarray_2d
+                # Exclude 'period' and 'scenario' - they're handled by iterator.combine
                 other_dims = [d for d in var.dims if d not in ('time', 'period', 'scenario')]
                 other_shape = [var.sizes[d] for d in other_dims]
                 new_shape = [actual_n_clusters, n_time_points] + other_shape
@@ -583,54 +593,46 @@ class TransformAccessor:
 
                 # Build filled slices dict: use typical where available, constant otherwise
                 filled_slices = {}
-                for key in all_keys:
-                    if key in typical_das[name]:
-                        filled_slices[key] = typical_das[name][key]
-                    else:
-                        # Select the specific period/scenario slice, then reshape
-                        period_label, scenario_label = key
-                        selector = {}
-                        if period_label is not None and 'period' in var.dims:
-                            selector['period'] = period_label
-                        if scenario_label is not None and 'scenario' in var.dims:
-                            selector['scenario'] = scenario_label
-
-                        # Select per-key slice if needed, otherwise use full variable
-                        if selector:
-                            var_slice = ds[name].sel(**selector, drop=True)
+                for p in iterator._periods or [None]:
+                    for s in iterator._scenarios or [None]:
+                        old_key = (p, s)
+                        new_key = iterator.key_from_values(p, s)
+                        if old_key in typical_das[name]:
+                            filled_slices[new_key] = typical_das[name][old_key]
                         else:
-                            var_slice = ds[name]
+                            # Select the specific period/scenario slice, then reshape
+                            selector = iterator._build_selector(p, s)
 
-                        # Now slice time and reshape
-                        time_idx = var_slice.dims.index('time')
-                        slices_list = [slice(None)] * len(var_slice.dims)
-                        slices_list[time_idx] = slice(0, n_reduced_timesteps)
-                        sliced_values = var_slice.values[tuple(slices_list)]
-                        reshaped_constant = sliced_values.reshape(new_shape)
+                            # Select per-key slice if needed, otherwise use full variable
+                            if selector:
+                                # Only include dims that exist in the variable
+                                var_selector = {k: v for k, v in selector.items() if k in var.dims}
+                                var_slice = ds[name].sel(**var_selector, drop=True) if var_selector else ds[name]
+                            else:
+                                var_slice = ds[name]
 
-                        filled_slices[key] = xr.DataArray(
-                            reshaped_constant,
-                            dims=['cluster', 'time'] + other_dims,
-                            coords=new_coords,
-                        )
+                            # Now slice time and reshape
+                            time_idx = var_slice.dims.index('time')
+                            slices_list = [slice(None)] * len(var_slice.dims)
+                            slices_list[time_idx] = slice(0, n_reduced_timesteps)
+                            sliced_values = var_slice.values[tuple(slices_list)]
+                            reshaped_constant = sliced_values.reshape(new_shape)
 
-                da = self._combine_slices_to_dataarray_2d(
-                    slices=filled_slices,
-                    attrs=var.attrs,
-                    periods=periods,
-                    scenarios=scenarios,
-                )
+                            filled_slices[new_key] = xr.DataArray(
+                                reshaped_constant,
+                                dims=['cluster', 'time'] + other_dims,
+                                coords=new_coords,
+                            )
+
+                da = iterator.combine(filled_slices, base_dims=['cluster', 'time'], attrs=var.attrs)
                 if var.attrs.get('__timeseries_data__', False):
                     da = TimeSeriesData.from_dataarray(da.assign_attrs(var.attrs))
                 ds_new_vars[name] = da
             else:
                 # Time-varying: combine per-(period, scenario) slices
-                da = self._combine_slices_to_dataarray_2d(
-                    slices=typical_das[name],
-                    attrs=var.attrs,
-                    periods=periods,
-                    scenarios=scenarios,
-                )
+                # Convert old-style keys to DimIterator keys
+                converted_slices = {iterator.key_from_values(p, s): da for (p, s), da in typical_das[name].items()}
+                da = iterator.combine(converted_slices, base_dims=['cluster', 'time'], attrs=var.attrs)
                 if var.attrs.get('__timeseries_data__', False):
                     da = TimeSeriesData.from_dataarray(da.assign_attrs(var.attrs))
                 ds_new_vars[name] = da
@@ -656,25 +658,16 @@ class TransformAccessor:
         Returns:
             DataArray with dims [original_cluster] or [original_cluster, period?, scenario?].
         """
-        has_periods = periods != [None]
-        has_scenarios = scenarios != [None]
-
-        if has_periods or has_scenarios:
-            # Multi-dimensional case
-            cluster_assignments_slices = {}
-            for p in periods:
-                for s in scenarios:
-                    key = (p, s)
-                    cluster_assignments_slices[key] = xr.DataArray(
-                        cluster_assignmentss[key], dims=['original_cluster'], name='cluster_assignments'
-                    )
-            return self._combine_slices_to_dataarray_generic(
-                cluster_assignments_slices, ['original_cluster'], periods, scenarios, 'cluster_assignments'
+        iterator = DimIterator.from_sentinel_lists(periods, scenarios)
+        slices = {
+            iterator.key_from_values(p, s): xr.DataArray(
+                cluster_assignmentss[(p, s)], dims=['original_cluster'], name='cluster_assignments'
             )
-        else:
-            # Simple case
-            first_key = (periods[0], scenarios[0])
-            return xr.DataArray(cluster_assignmentss[first_key], dims=['original_cluster'], name='cluster_assignments')
+            for p, s in cluster_assignmentss
+        }
+        return iterator.combine(
+            slices, base_dims=['original_cluster'], name='cluster_assignments', join='outer', fill_value=np.nan
+        )
 
     def sel(
         self,
@@ -1695,114 +1688,6 @@ class TransformAccessor:
             periods=periods,
             scenarios=scenarios,
         )
-
-    @staticmethod
-    def _combine_slices_to_dataarray_generic(
-        slices: dict[tuple, xr.DataArray],
-        base_dims: list[str],
-        periods: list,
-        scenarios: list,
-        name: str,
-    ) -> xr.DataArray:
-        """Combine per-(period, scenario) slices into a multi-dimensional DataArray.
-
-        Generic version that works with any base dimension (not just 'time').
-
-        Args:
-            slices: Dict mapping (period, scenario) tuples to DataArrays.
-            base_dims: Base dimensions of each slice (e.g., ['original_cluster'] or ['original_time']).
-            periods: List of period labels ([None] if no periods dimension).
-            scenarios: List of scenario labels ([None] if no scenarios dimension).
-            name: Name for the resulting DataArray.
-
-        Returns:
-            DataArray with dimensions [base_dims..., period?, scenario?].
-        """
-        first_key = (periods[0], scenarios[0])
-        has_periods = periods != [None]
-        has_scenarios = scenarios != [None]
-
-        # Simple case: no period/scenario dimensions
-        if not has_periods and not has_scenarios:
-            return slices[first_key].rename(name)
-
-        # Multi-dimensional: use xr.concat to stack along period/scenario dims
-        # Use join='outer' to handle cases where different periods/scenarios have different
-        # coordinate values (e.g., different time_series after drop_constant_arrays)
-        if has_periods and has_scenarios:
-            # Stack scenarios first, then periods
-            period_arrays = []
-            for p in periods:
-                scenario_arrays = [slices[(p, s)] for s in scenarios]
-                period_arrays.append(
-                    xr.concat(
-                        scenario_arrays, dim=pd.Index(scenarios, name='scenario'), join='outer', fill_value=np.nan
-                    )
-                )
-            result = xr.concat(period_arrays, dim=pd.Index(periods, name='period'), join='outer', fill_value=np.nan)
-        elif has_periods:
-            result = xr.concat(
-                [slices[(p, None)] for p in periods],
-                dim=pd.Index(periods, name='period'),
-                join='outer',
-                fill_value=np.nan,
-            )
-        else:
-            result = xr.concat(
-                [slices[(None, s)] for s in scenarios],
-                dim=pd.Index(scenarios, name='scenario'),
-                join='outer',
-                fill_value=np.nan,
-            )
-
-        # Put base dimension first (standard order)
-        result = result.transpose(base_dims[0], ...)
-
-        return result.rename(name)
-
-    @staticmethod
-    def _combine_slices_to_dataarray_2d(
-        slices: dict[tuple, xr.DataArray],
-        attrs: dict,
-        periods: list,
-        scenarios: list,
-    ) -> xr.DataArray:
-        """Combine per-(period, scenario) slices into a multi-dimensional DataArray with (cluster, time) dims.
-
-        Args:
-            slices: Dict mapping (period, scenario) tuples to DataArrays with (cluster, time) dims.
-            attrs: Attributes to assign to the result.
-            periods: List of period labels ([None] if no periods dimension).
-            scenarios: List of scenario labels ([None] if no scenarios dimension).
-
-        Returns:
-            DataArray with dimensions (cluster, time, period?, scenario?).
-        """
-        first_key = (periods[0], scenarios[0])
-        has_periods = periods != [None]
-        has_scenarios = scenarios != [None]
-
-        # Simple case: no period/scenario dimensions
-        if not has_periods and not has_scenarios:
-            return slices[first_key].assign_attrs(attrs)
-
-        # Multi-dimensional: use xr.concat to stack along period/scenario dims
-        if has_periods and has_scenarios:
-            # Stack scenarios first, then periods
-            period_arrays = []
-            for p in periods:
-                scenario_arrays = [slices[(p, s)] for s in scenarios]
-                period_arrays.append(xr.concat(scenario_arrays, dim=pd.Index(scenarios, name='scenario')))
-            result = xr.concat(period_arrays, dim=pd.Index(periods, name='period'))
-        elif has_periods:
-            result = xr.concat([slices[(p, None)] for p in periods], dim=pd.Index(periods, name='period'))
-        else:
-            result = xr.concat([slices[(None, s)] for s in scenarios], dim=pd.Index(scenarios, name='scenario'))
-
-        # Put cluster and time first (standard order for clustered data)
-        result = result.transpose('cluster', 'time', ...)
-
-        return result.assign_attrs(attrs)
 
     def _validate_for_expansion(self) -> Clustering:
         """Validate FlowSystem can be expanded and return clustering info.
