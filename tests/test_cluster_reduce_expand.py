@@ -838,6 +838,72 @@ class TestPeakSelection:
         # The peak may or may not be captured depending on clustering algorithm
         assert fs_no_peaks.solution is not None
 
+    def test_extremes_new_cluster_increases_n_clusters(self, solver_fixture, timesteps_8_days):
+        """Test that method='new_cluster' correctly increases n_clusters."""
+        from tsam import ExtremeConfig
+
+        fs = create_system_with_peak_demand(timesteps_8_days)
+
+        # Cluster with extremes as new clusters
+        fs_clustered = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            extremes=ExtremeConfig(
+                method='new_cluster',
+                max_value=['HeatDemand(Q)|fixed_relative_profile'],
+            ),
+        )
+
+        # n_clusters should be > 2 because extreme periods are added as new clusters
+        # The exact number depends on how many extreme periods are detected
+        assert fs_clustered.clustering.n_clusters >= 2
+
+        # Verify optimization works with the actual cluster count
+        fs_clustered.optimize(solver_fixture)
+        assert fs_clustered.solution is not None
+
+        # Verify expansion works
+        fs_expanded = fs_clustered.transform.expand()
+        assert len(fs_expanded.timesteps) == 192
+
+        # The sum of cluster occurrences should equal n_original_clusters (8 days)
+        assert int(fs_clustered.clustering.cluster_occurrences.sum()) == 8
+
+    def test_extremes_new_cluster_with_segments(self, solver_fixture, timesteps_8_days):
+        """Test that method='new_cluster' works correctly with segmentation."""
+        from tsam import ExtremeConfig, SegmentConfig
+
+        fs = create_system_with_peak_demand(timesteps_8_days)
+
+        # Cluster with BOTH extremes AND segments
+        fs_clustered = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            extremes=ExtremeConfig(
+                method='append',
+                max_value=['HeatDemand(Q)|fixed_relative_profile'],
+            ),
+            segments=SegmentConfig(n_segments=6),
+        )
+
+        # n_clusters should be >= 2 (extreme periods add clusters)
+        n_clusters = fs_clustered.clustering.n_clusters
+        assert n_clusters >= 2
+
+        # n_representatives = n_clusters * n_segments
+        assert fs_clustered.clustering.n_representatives == n_clusters * 6
+
+        # Verify optimization works
+        fs_clustered.optimize(solver_fixture)
+        assert fs_clustered.solution is not None
+
+        # Verify expansion works
+        fs_expanded = fs_clustered.transform.expand()
+        assert len(fs_expanded.timesteps) == 192
+
+        # The sum of cluster occurrences should equal n_original_clusters (8 days)
+        assert int(fs_clustered.clustering.cluster_occurrences.sum()) == 8
+
 
 # ==================== Data Vars Parameter Tests ====================
 
