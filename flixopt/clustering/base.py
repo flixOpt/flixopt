@@ -490,12 +490,14 @@ class ClusteringResults:
             slices.append(da)
 
         if len(slices) == 1:
-            return slices[0]
-
-        combined = xr.combine_by_coords(slices)
-        if isinstance(combined, xr.Dataset):
-            combined = combined[name]
-        return combined.transpose(*base_dims, *self._dim_names)
+            result = slices[0]
+        else:
+            combined = xr.combine_by_coords(slices)
+            if isinstance(combined, xr.Dataset):
+                result = combined[name]
+            else:
+                result = combined
+        return result.transpose(*base_dims, *self._dim_names)
 
     @staticmethod
     def _key_to_str(key: tuple) -> str:

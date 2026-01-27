@@ -54,7 +54,9 @@ def _combine_dataarray_slices(
             result = list(combined.data_vars.values())[0]
         else:
             result = combined
-        result = result.transpose(*base_dims, *extra_dims)
+
+    # Ensure consistent dimension order for both single and multi-slice paths
+    result = result.transpose(*base_dims, *extra_dims)
 
     if name is not None:
         result = result.rename(name)
