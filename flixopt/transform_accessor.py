@@ -1299,6 +1299,18 @@ class TransformAccessor:
         else:
             ds_for_clustering = ds
 
+        # Filter constant arrays once on the full dataset (not per slice)
+        # This ensures all slices have the same variables for consistent metrics
+        ds_for_clustering = drop_constant_arrays(ds_for_clustering, dim='time')
+
+        # Guard against empty dataset after removing constant arrays
+        if not ds_for_clustering.data_vars:
+            filter_info = f'data_vars={data_vars}' if data_vars else 'all variables'
+            raise ValueError(
+                f'No time-varying data found for clustering ({filter_info}). '
+                f'All variables are constant over time. Check your data_vars filter or input data.'
+            )
+
         # Validate tsam_kwargs doesn't override explicit parameters
         reserved_tsam_keys = {
             'n_clusters',
@@ -1357,22 +1369,9 @@ class TransformAccessor:
                 key = to_clean_key(period_label, scenario_label)
                 selector = {k: v for k, v in [('period', period_label), ('scenario', scenario_label)] if v is not None}
 
-                # Select data for clustering (may be subset if data_vars specified)
-                ds_slice_for_clustering = (
-                    ds_for_clustering.sel(**selector, drop=True) if selector else ds_for_clustering
-                )
-                temporaly_changing_ds_for_clustering = drop_constant_arrays(ds_slice_for_clustering, dim='time')
-
-                # Guard against empty dataset after removing constant arrays
-                if not temporaly_changing_ds_for_clustering.data_vars:
-                    filter_info = f'data_vars={data_vars}' if data_vars else 'all variables'
-                    selector_info = f', selector={selector}' if selector else ''
-                    raise ValueError(
-                        f'No time-varying data found for clustering ({filter_info}{selector_info}). '
-                        f'All variables are constant over time. Check your data_vars filter or input data.'
-                    )
-
-                df_for_clustering = temporaly_changing_ds_for_clustering.to_dataframe()
+                # Select data slice for clustering
+                ds_slice = ds_for_clustering.sel(**selector, drop=True) if selector else ds_for_clustering
+                df_for_clustering = ds_slice.to_dataframe()
 
                 if selector:
                     logger.info(f'Clustering {", ".join(f"{k}={v}" for k, v in selector.items())}...')
@@ -1382,7 +1381,7 @@ class TransformAccessor:
                     warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
 
                     # Build ClusterConfig with auto-calculated weights
-                    clustering_weights = self._calculate_clustering_weights(temporaly_changing_ds_for_clustering)
+                    clustering_weights = self._calculate_clustering_weights(ds_slice)
                     filtered_weights = {
                         name: w for name, w in clustering_weights.items() if name in df_for_clustering.columns
                     }
