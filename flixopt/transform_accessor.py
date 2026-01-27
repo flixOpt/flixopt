@@ -145,32 +145,33 @@ class TransformAccessor:
         cluster_occurrences_all: dict[tuple, dict],
         n_clusters: int,
         cluster_coords: np.ndarray,
-        periods: list,
-        scenarios: list,
+        dim_names: list[str],
     ) -> xr.DataArray:
         """Build cluster_weight DataArray from occurrence counts.
 
         Args:
-            cluster_occurrences_all: Dict mapping (period, scenario) tuples to
-                dicts of {cluster_id: occurrence_count}.
+            cluster_occurrences_all: Dict mapping key tuples to {cluster_id: count}.
             n_clusters: Number of clusters.
             cluster_coords: Cluster coordinate values.
-            periods: List of period labels ([None] if no periods dimension).
-            scenarios: List of scenario labels ([None] if no scenarios dimension).
+            dim_names: Names of extra dimensions (e.g., ['period', 'scenario']).
 
         Returns:
-            DataArray with dims [cluster] or [cluster, period?, scenario?].
+            DataArray with dims [cluster, *dim_names].
         """
         results = []
-        for p in periods:
-            for s in scenarios:
-                occurrences = cluster_occurrences_all[(p, s)]
-                weights = np.array([occurrences.get(c, 0) for c in range(n_clusters)])
-                da = xr.DataArray(weights, dims=['cluster'], coords={'cluster': cluster_coords})
-                results.append(add_slice_dims(da, period=p, scenario=s))
+        for key, occurrences in cluster_occurrences_all.items():
+            weights = np.array([occurrences.get(c, 0) for c in range(n_clusters)])
+            da = xr.DataArray(weights, dims=['cluster'], coords={'cluster': cluster_coords})
+            for dim_name, coord_val in zip(dim_names, key, strict=False):
+                da = da.expand_dims({dim_name: [coord_val]})
+            results.append(da)
 
-        combined = xr.combine_by_coords(results) if len(results) > 1 else results[0]
-        return combined.transpose('cluster', ...).rename('cluster_weight')
+        if len(results) == 1:
+            return results[0].rename('cluster_weight')
+        combined = xr.combine_by_coords(results)
+        if isinstance(combined, xr.Dataset):
+            combined = list(combined.data_vars.values())[0]
+        return combined.transpose('cluster', *dim_names).rename('cluster_weight')
 
     def _build_typical_das(
         self,
@@ -231,68 +232,59 @@ class TransformAccessor:
 
     def _build_segment_durations_da(
         self,
-        tsam_aggregation_results: dict[tuple, Any],
+        aggregation_results: dict[tuple, Any],
         actual_n_clusters: int,
         n_segments: int,
         cluster_coords: np.ndarray,
         time_coords: pd.RangeIndex,
         dt: float,
-        periods: list,
-        scenarios: list,
+        dim_names: list[str],
     ) -> xr.DataArray:
         """Build timestep_duration DataArray from segment durations.
 
-        For segmented systems, each segment represents multiple original timesteps.
-        The duration is segment_duration_in_original_timesteps * dt (hours per original timestep).
-
         Args:
-            tsam_aggregation_results: Dict mapping (period, scenario) to tsam results.
+            aggregation_results: Dict mapping key tuples to tsam results.
             actual_n_clusters: Number of clusters.
             n_segments: Number of segments per cluster.
             cluster_coords: Cluster coordinate values.
             time_coords: Time coordinate values (RangeIndex for segments).
             dt: Hours per original timestep.
-            periods: List of period labels ([None] if no periods dimension).
-            scenarios: List of scenario labels ([None] if no scenarios dimension).
+            dim_names: Names of extra dimensions (e.g., ['period', 'scenario']).
 
         Returns:
-            DataArray with dims [cluster, time] or [cluster, time, period?, scenario?]
-            containing duration in hours for each segment.
+            DataArray with dims [cluster, time, *dim_names].
         """
         results = []
-        for (p, s), tsam_result in tsam_aggregation_results.items():
-            # segment_durations is tuple of tuples: ((dur1, dur2, ...), (dur1, dur2, ...), ...)
+        for key, tsam_result in aggregation_results.items():
             seg_durs = tsam_result.segment_durations
-
-            # Build 2D array (cluster, segment) of durations in hours
             data = np.zeros((actual_n_clusters, n_segments))
             for cluster_id in range(actual_n_clusters):
                 cluster_seg_durs = seg_durs[cluster_id]
                 for seg_id in range(n_segments):
                     data[cluster_id, seg_id] = cluster_seg_durs[seg_id] * dt
 
-            da = xr.DataArray(
-                data,
-                dims=['cluster', 'time'],
-                coords={'cluster': cluster_coords, 'time': time_coords},
-            )
-            results.append(add_slice_dims(da, period=p, scenario=s))
+            da = xr.DataArray(data, dims=['cluster', 'time'], coords={'cluster': cluster_coords, 'time': time_coords})
+            for dim_name, coord_val in zip(dim_names, key, strict=False):
+                da = da.expand_dims({dim_name: [coord_val]})
+            results.append(da)
 
-        combined = xr.combine_by_coords(results) if len(results) > 1 else results[0]
-        return combined.transpose('cluster', 'time', ...).rename('timestep_duration')
+        if len(results) == 1:
+            return results[0].rename('timestep_duration')
+        combined = xr.combine_by_coords(results)
+        if isinstance(combined, xr.Dataset):
+            combined = list(combined.data_vars.values())[0]
+        return combined.transpose('cluster', 'time', *dim_names).rename('timestep_duration')
 
     def _build_clustering_metrics(
         self,
         clustering_metrics_all: dict[tuple, pd.DataFrame],
-        periods: list,
-        scenarios: list,
+        dim_names: list[str],
     ) -> xr.Dataset:
         """Build clustering metrics Dataset from per-slice DataFrames.
 
         Args:
-            clustering_metrics_all: Dict mapping (period, scenario) to metric DataFrames.
-            periods: List of period labels ([None] if no periods dimension).
-            scenarios: List of scenario labels ([None] if no scenarios dimension).
+            clustering_metrics_all: Dict mapping key tuples to metric DataFrames.
+            dim_names: Names of extra dimensions (e.g., ['period', 'scenario']).
 
         Returns:
             Dataset with RMSE, MAE, RMSE_duration metrics.
@@ -302,12 +294,9 @@ class TransformAccessor:
         if not non_empty_metrics:
             return xr.Dataset()
 
-        first_key = (periods[0], scenarios[0])
-
+        # Single slice case
         if len(clustering_metrics_all) == 1 and len(non_empty_metrics) == 1:
-            metrics_df = non_empty_metrics.get(first_key)
-            if metrics_df is None:
-                metrics_df = next(iter(non_empty_metrics.values()))
+            metrics_df = next(iter(non_empty_metrics.values()))
             return xr.Dataset(
                 {
                     col: xr.DataArray(
@@ -326,7 +315,7 @@ class TransformAccessor:
 
         for metric in metric_names:
             results = []
-            for (p, s), df in clustering_metrics_all.items():
+            for key, df in clustering_metrics_all.items():
                 if df.empty:
                     da = xr.DataArray(
                         np.full(len(sample_df.index), np.nan),
@@ -339,10 +328,17 @@ class TransformAccessor:
                         dims=['time_series'],
                         coords={'time_series': list(df.index)},
                     )
-                results.append(add_slice_dims(da, period=p, scenario=s))
+                for dim_name, coord_val in zip(dim_names, key, strict=False):
+                    da = da.expand_dims({dim_name: [coord_val]})
+                results.append(da)
 
-            combined = xr.combine_by_coords(results) if len(results) > 1 else results[0]
-            data_vars[metric] = combined.transpose('time_series', ...).rename(metric)
+            if len(results) == 1:
+                combined = results[0]
+            else:
+                combined = xr.combine_by_coords(results)
+                if isinstance(combined, xr.Dataset):
+                    combined = list(combined.data_vars.values())[0]
+            data_vars[metric] = combined.transpose('time_series', *dim_names).rename(metric)
 
         return xr.Dataset(data_vars)
 
@@ -390,23 +386,26 @@ class TransformAccessor:
         if has_scenarios:
             dim_names.append('scenario')
 
-        # Build dict keyed by (period?, scenario?) tuples (without None)
-        aggregation_results: dict[tuple, Any] = {}
-        for (p, s), result in tsam_aggregation_results.items():
-            key_parts = []
+        # Helper to convert (p, s) keys to clean keys (without None)
+        def clean_key(p, s) -> tuple:
+            parts = []
             if has_periods:
-                key_parts.append(p)
+                parts.append(p)
             if has_scenarios:
-                key_parts.append(s)
-            key = tuple(key_parts)
-            aggregation_results[key] = result
+                parts.append(s)
+            return tuple(parts)
+
+        # Convert all dicts to use clean keys
+        aggregation_results = {clean_key(p, s): v for (p, s), v in tsam_aggregation_results.items()}
+        occurrences = {clean_key(p, s): v for (p, s), v in cluster_occurrences_all.items()}
+        metrics = {clean_key(p, s): v for (p, s), v in clustering_metrics_all.items()}
 
         # Use first result for structure
         first_key = (periods[0], scenarios[0])
         first_tsam = tsam_aggregation_results[first_key]
 
         # Build metrics
-        clustering_metrics = self._build_clustering_metrics(clustering_metrics_all, periods, scenarios)
+        clustering_metrics = self._build_clustering_metrics(metrics, dim_names)
 
         n_reduced_timesteps = len(first_tsam.cluster_representatives)
         actual_n_clusters = len(first_tsam.cluster_weights)
@@ -432,9 +431,7 @@ class TransformAccessor:
             )
 
         # Build cluster_weight
-        cluster_weight = self._build_cluster_weight_da(
-            cluster_occurrences_all, actual_n_clusters, cluster_coords, periods, scenarios
-        )
+        cluster_weight = self._build_cluster_weight_da(occurrences, actual_n_clusters, cluster_coords, dim_names)
 
         # Logging
         if is_segmented:
@@ -467,14 +464,7 @@ class TransformAccessor:
         # For segmented systems, build timestep_duration from segment_durations
         if is_segmented:
             segment_durations = self._build_segment_durations_da(
-                tsam_aggregation_results,
-                actual_n_clusters,
-                n_segments,
-                cluster_coords,
-                time_coords,
-                dt,
-                periods,
-                scenarios,
+                aggregation_results, actual_n_clusters, n_segments, cluster_coords, time_coords, dt, dim_names
             )
             ds_new['timestep_duration'] = segment_durations
 
@@ -660,43 +650,6 @@ class TransformAccessor:
         new_attrs = dict(ds.attrs)
         new_attrs.pop('cluster_weight', None)
         return xr.Dataset(ds_new_vars, attrs=new_attrs)
-
-    def _build_cluster_assignments_da(
-        self,
-        cluster_assignmentss: dict[tuple, np.ndarray],
-        periods: list,
-        scenarios: list,
-    ) -> xr.DataArray:
-        """Build cluster_assignments DataArray from cluster assignments.
-
-        Args:
-            cluster_assignmentss: Dict mapping (period, scenario) to cluster assignment arrays.
-            periods: List of period labels ([None] if no periods dimension).
-            scenarios: List of scenario labels ([None] if no scenarios dimension).
-
-        Returns:
-            DataArray with dims [original_cluster] or [original_cluster, period?, scenario?].
-        """
-        results = []
-        for p in periods:
-            for s in scenarios:
-                da = xr.DataArray(cluster_assignmentss[(p, s)], dims=['original_cluster'], name='cluster_assignments')
-                results.append(add_slice_dims(da, period=p, scenario=s))
-
-        if len(results) == 1:
-            return results[0]
-
-        combined = xr.combine_by_coords(results, join='outer', fill_value=np.nan)
-        # combine_by_coords returns a Dataset when DataArrays have names, extract the DataArray
-        if isinstance(combined, xr.Dataset):
-            combined = combined['cluster_assignments']
-        # Ensure correct dimension order: original_cluster first, then period/scenario
-        dim_order = ['original_cluster']
-        if periods != [None]:
-            dim_order.append('period')
-        if scenarios != [None]:
-            dim_order.append('scenario')
-        return combined.transpose(*dim_order)
 
     def sel(
         self,
