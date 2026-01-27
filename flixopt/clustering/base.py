@@ -27,7 +27,6 @@ if TYPE_CHECKING:
     from ..plot_result import PlotResult
     from ..statistics_accessor import SelectType
 
-from ..dim_iterator import add_slice_dims
 from ..statistics_accessor import _build_color_kwargs
 
 
@@ -486,30 +485,19 @@ class ClusteringResults:
         results = []
         for key, cr in self._results.items():
             data = get_data(cr)
-            coords = base_coords if base_coords else {}
-            da = xr.DataArray(data, dims=base_dims, coords=coords, name=name)
-
-            # Extract period/scenario from key based on dim_names
-            period = None
-            scenario = None
-            for i, dim_name in enumerate(self._dim_names):
-                if dim_name == 'period':
-                    period = key[i]
-                elif dim_name == 'scenario':
-                    scenario = key[i]
-
-            results.append(add_slice_dims(da, period=period, scenario=scenario))
+            da = xr.DataArray(data, dims=base_dims, coords=base_coords or {}, name=name)
+            # Add dims from key: key[i] corresponds to dim_names[i]
+            for dim_name, coord_val in zip(self._dim_names, key, strict=False):
+                da = da.expand_dims({dim_name: [coord_val]})
+            results.append(da)
 
         if len(results) == 1:
             return results[0]
 
         combined = xr.combine_by_coords(results)
-        # combine_by_coords returns a Dataset when DataArrays have names, extract the DataArray
         if isinstance(combined, xr.Dataset):
             combined = combined[name]
-        # Ensure correct dimension order: base_dims first, then period/scenario
-        dim_order = list(base_dims) + self._dim_names
-        return combined.transpose(*dim_order)
+        return combined.transpose(*base_dims, *self._dim_names)
 
     @staticmethod
     def _key_to_str(key: tuple) -> str:
