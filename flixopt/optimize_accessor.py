@@ -18,6 +18,8 @@ from .config import CONFIG
 from .io import suppress_output
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from .flow_system import FlowSystem
     from .solvers import _Solver
 
@@ -53,17 +55,24 @@ class OptimizeAccessor:
         """
         self._fs = flow_system
 
-    def __call__(self, solver: _Solver, normalize_weights: bool | None = None) -> FlowSystem:
+    def __call__(
+        self,
+        solver: _Solver,
+        before_solve: Callable[[FlowSystem], None] | None = None,
+        normalize_weights: bool | None = None,
+    ) -> FlowSystem:
         """
         Build and solve the optimization model in one step.
 
         This is a convenience method that combines `build_model()` and `solve()`.
-        Use this for simple optimization workflows. For more control (e.g., inspecting
-        the model before solving, or adding custom constraints), use `build_model()`
-        and `solve()` separately.
+        Use the optional `before_solve` callback to add custom constraints or
+        modify the model before solving.
 
         Args:
             solver: The solver to use (e.g., HighsSolver, GurobiSolver).
+            before_solve: Optional callback function that receives the FlowSystem
+                after building the model and before solving. Use this to add custom
+                constraints via `flow_system.model.add_constraints()`.
             normalize_weights: Deprecated. Scenario weights are now always normalized in FlowSystem.
 
         Returns:
@@ -75,11 +84,25 @@ class OptimizeAccessor:
             >>> flow_system.optimize(HighsSolver())
             >>> print(flow_system.solution['Boiler(Q_th)|flow_rate'])
 
-            Access element solutions directly:
+            With custom constraints:
 
-            >>> flow_system.optimize(solver)
-            >>> boiler = flow_system.components['Boiler']
-            >>> print(boiler.solution)
+            >>> def add_constraints(fs):
+            ...     model = fs.model
+            ...     boiler = model.variables['Boiler(Q_th)|flow_rate']
+            ...     chp = model.variables['CHP(Q_th)|flow_rate']
+            ...     model.add_constraints(boiler >= chp, name='boiler_min_chp')
+            >>> flow_system.optimize(solver, before_solve=add_constraints)
+
+            Using FlowSystem context in constraints:
+
+            >>> def seasonal_constraints(fs):
+            ...     summer = fs.timesteps.month.isin([6, 7, 8])
+            ...     flow = fs.model.variables['Boiler(Q_th)|flow_rate']
+            ...     fs.model.add_constraints(
+            ...         flow.sel(time=fs.timesteps[summer]) <= 50,
+            ...         name='summer_limit',
+            ...     )
+            >>> flow_system.optimize(solver, before_solve=seasonal_constraints)
 
             Method chaining:
 
@@ -97,6 +120,8 @@ class OptimizeAccessor:
                 stacklevel=2,
             )
         self._fs.build_model()
+        if before_solve is not None:
+            before_solve(self._fs)
         self._fs.solve(solver)
         return self._fs
 
@@ -106,6 +131,7 @@ class OptimizeAccessor:
         horizon: int = 100,
         overlap: int = 0,
         nr_of_previous_values: int = 1,
+        before_solve: Callable[[FlowSystem], None] | None = None,
     ) -> list[FlowSystem]:
         """
         Solve the optimization using a rolling horizon approach.
@@ -130,6 +156,9 @@ class OptimizeAccessor:
                 improve solution quality but increase computational cost. Default: 0.
             nr_of_previous_values: Number of previous timestep values to transfer between
                 segments for initialization (e.g., for uptime/downtime tracking). Default: 1.
+            before_solve: Optional callback function that receives each segment's FlowSystem
+                after building the model and before solving. Use this to add custom
+                constraints to each segment.
 
         Returns:
             List of segment FlowSystems, each with their individual solution.
@@ -150,10 +179,12 @@ class OptimizeAccessor:
             ... )
             >>> print(flow_system.solution)  # Combined result
 
-            Inspect individual segments:
+            With custom constraints per segment:
 
-            >>> for i, seg in enumerate(segments):
-            ...     print(f'Segment {i}: {seg.solution["costs"].item():.2f}')
+            >>> def add_constraints(fs):
+            ...     flow = fs.model.variables['Boiler(Q_th)|flow_rate']
+            ...     fs.model.add_constraints(flow >= 10, name='min_boiler')
+            >>> segments = flow_system.optimize.rolling_horizon(solver, horizon=168, before_solve=add_constraints)
 
         Note:
             - InvestParameters are not supported as investment decisions require
@@ -227,6 +258,8 @@ class OptimizeAccessor:
                             segment_fs.build_model()
                             if i == 0:
                                 self._check_no_investments(segment_fs)
+                            if before_solve is not None:
+                                before_solve(segment_fs)
                             segment_fs.solve(solver)
                     finally:
                         logger.setLevel(original_level)
@@ -242,6 +275,8 @@ class OptimizeAccessor:
                     segment_fs.build_model()
                     if i == 0:
                         self._check_no_investments(segment_fs)
+                    if before_solve is not None:
+                        before_solve(segment_fs)
                     segment_fs.solve(solver)
 
                 segment_flow_systems.append(segment_fs)
