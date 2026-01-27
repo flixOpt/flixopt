@@ -1478,8 +1478,8 @@ class StatisticsPlotAccessor:
                     color = component_colors.get(flow.component)
                 else:
                     # Extract component name from label
-                    # Pattern: 'Component(flow)' → 'Component', or 'Component' → 'Component'
-                    comp_name = label.split('(')[0] if '(' in label else label
+                    # Patterns: 'Component(flow)' → 'Component', 'Component (production)' → 'Component'
+                    comp_name = label.split('(')[0].strip() if '(' in label else label
                     color = component_colors.get(comp_name)
 
             if color:
@@ -1691,10 +1691,11 @@ class StatisticsPlotAccessor:
             >>> fs.stats.plot.carrier_balance('electricity', unit='flow_hours')
 
         Notes:
-            - Inputs to carrier buses (from sources/converters) are shown as positive
-            - Outputs from carrier buses (to sinks/converters) are shown as negative
-            - Components with same carrier on both sides (e.g., transmission, storage)
-              are shown as net contribution under the component name
+            - Data is aggregated by component (not individual flows)
+            - Supply (inputs to carrier buses) shown as positive
+            - Demand (outputs from carrier buses) shown as negative
+            - Components with both supply and demand get separate entries
+              (e.g., 'Storage (supply)' and 'Storage (demand)')
         """
         self._stats._require_solution()
         carrier = carrier.lower()
@@ -1730,33 +1731,34 @@ class StatisticsPlotAccessor:
         else:
             source_ds = self._stats.flow_hours
 
-        # Find components with same carrier on both sides (e.g., transmission, storage)
-        # These get netted out to avoid visual clutter
+        # Find components with same carrier on both sides (supply and demand)
         same_carrier_components = set(component_inputs.keys()) & set(component_outputs.keys())
-        output_set = set(output_labels)
+        filtered_set = set(filtered_labels)
 
-        # Build dataset with netto logic
+        # Aggregate by component with separate supply/demand entries
         data_vars: dict[str, xr.DataArray] = {}
-        for label in filtered_labels:
-            if label not in source_ds:
-                continue
-            flow = self._fs.flows.get(label)
-            if not flow:
-                continue
 
-            sign = -1 if label in output_set else 1
-            comp_name = flow.component
+        for comp_name, labels in component_inputs.items():
+            # Filter to only included labels
+            labels = [lbl for lbl in labels if lbl in filtered_set and lbl in source_ds]
+            if not labels:
+                continue
+            # Sum all supply flows for this component
+            supply = sum(source_ds[lbl] for lbl in labels)
+            # Use suffix only if component also has demand
+            var_name = f'{comp_name} (supply)' if comp_name in same_carrier_components else comp_name
+            data_vars[var_name] = supply
 
-            if comp_name in same_carrier_components:
-                # Netto: combine into single component entry
-                val = source_ds[label] if sign == 1 else -source_ds[label]
-                if comp_name in data_vars:
-                    data_vars[comp_name] = data_vars[comp_name] + val
-                else:
-                    data_vars[comp_name] = val
-            else:
-                # Separate: keep individual flow
-                data_vars[label] = source_ds[label] if sign == 1 else -source_ds[label]
+        for comp_name, labels in component_outputs.items():
+            # Filter to only included labels
+            labels = [lbl for lbl in labels if lbl in filtered_set and lbl in source_ds]
+            if not labels:
+                continue
+            # Sum all demand flows for this component (negative)
+            demand = -sum(source_ds[lbl] for lbl in labels)
+            # Use suffix only if component also has supply
+            var_name = f'{comp_name} (demand)' if comp_name in same_carrier_components else comp_name
+            data_vars[var_name] = demand
 
         ds = xr.Dataset(data_vars)
 

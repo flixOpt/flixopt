@@ -79,6 +79,17 @@ flow_system.statistics.plot.balance('Boiler', mode='area')
 | `aggregate` | `'sum'`, `'mean'`, `'max'`, `'min'` | Aggregate over time |
 | `select` | dict | xarray-style data selection |
 
+### Carrier Balance
+
+Plot the balance of a carrier across all buses of that type:
+
+```python
+flow_system.statistics.plot.carrier_balance('heat')
+flow_system.statistics.plot.carrier_balance('electricity', unit='flow_hours')
+```
+
+Data is aggregated by component. Components with both supply and demand (e.g., storage, transmission) show separate entries like `Storage (supply)` and `Storage (demand)`.
+
 ### Storage Plot
 
 Visualize storage components with charge state and flow balance:
