@@ -1947,31 +1947,31 @@ class TransformAccessor:
             n_original_clusters - 1,
         )
 
-        # For segmented systems: build expansion divisor and identify segment total variables
-        expansion_divisor = None
-        segment_total_vars: set[str] = set()
+        # Build variable category sets for expansion handling
         variable_categories = getattr(self._fs, '_variable_categories', {})
-        if clustering.is_segmented:
-            expansion_divisor = clustering.build_expansion_divisor(original_time=original_timesteps)
-            # Build segment total vars using registry first, fall back to pattern matching
+        if variable_categories:
+            # Use registered categories
+            state_vars = {name for name, cat in variable_categories.items() if cat in EXPAND_INTERPOLATE}
+            first_timestep_vars = {name for name, cat in variable_categories.items() if cat in EXPAND_FIRST_TIMESTEP}
             segment_total_vars = {name for name, cat in variable_categories.items() if cat in EXPAND_DIVIDE}
-            # Fall back to pattern matching for backwards compatibility (old FlowSystems without categories)
-            if not segment_total_vars:
-                segment_total_vars = self._build_segment_total_varnames()
+        else:
+            # Fallback to pattern matching for old FlowSystems without categories
+            state_vars = set()  # Will use endswith('|charge_state') check
+            first_timestep_vars = set()  # Will use endswith('|startup') / endswith('|shutdown') check
+            segment_total_vars = self._build_segment_total_varnames() if clustering.is_segmented else set()
 
         def _is_state_variable(var_name: str) -> bool:
-            """Check if a variable is a state variable (should be interpolated)."""
-            if var_name in variable_categories:
-                return variable_categories[var_name] in EXPAND_INTERPOLATE
-            # Fall back to pattern matching for backwards compatibility
-            return var_name.endswith('|charge_state')
+            return var_name in state_vars or (not variable_categories and var_name.endswith('|charge_state'))
 
         def _is_first_timestep_variable(var_name: str) -> bool:
-            """Check if a variable is a binary event (should only appear at first timestep)."""
-            if var_name in variable_categories:
-                return variable_categories[var_name] in EXPAND_FIRST_TIMESTEP
-            # Fall back to pattern matching for backwards compatibility
-            return var_name.endswith('|startup') or var_name.endswith('|shutdown')
+            return var_name in first_timestep_vars or (
+                not variable_categories and (var_name.endswith('|startup') or var_name.endswith('|shutdown'))
+            )
+
+        # For segmented systems: build expansion divisor
+        expansion_divisor = None
+        if clustering.is_segmented:
+            expansion_divisor = clustering.build_expansion_divisor(original_time=original_timesteps)
 
         def _append_final_state(expanded: xr.DataArray, da: xr.DataArray) -> xr.DataArray:
             """Append final state value from original data to expanded data."""
@@ -1991,26 +1991,22 @@ class TransformAccessor:
             if 'time' not in da.dims:
                 return da.copy()
 
-            is_state = _is_state_variable(var_name) and 'cluster' in da.dims
-            is_first_timestep = _is_first_timestep_variable(var_name) and 'cluster' in da.dims
+            has_cluster_dim = 'cluster' in da.dims
+            is_state = _is_state_variable(var_name) and has_cluster_dim
+            is_first_timestep = _is_first_timestep_variable(var_name) and has_cluster_dim
+            is_segment_total = is_solution and var_name in segment_total_vars
 
-            # State variables in segmented systems: interpolate within segments
+            # Choose expansion method
             if is_state and clustering.is_segmented:
                 expanded = self._interpolate_charge_state_segmented(da, clustering, original_timesteps)
-                return _append_final_state(expanded, da)
-
-            # Binary events (startup/shutdown) in segmented systems: first timestep of each segment
-            # For non-segmented systems, timing within cluster is preserved, so normal expansion is correct
-            if is_first_timestep and is_solution and clustering.is_segmented:
+            elif is_first_timestep and is_solution and clustering.is_segmented:
                 return self._expand_first_timestep_only(da, clustering, original_timesteps)
+            else:
+                expanded = clustering.expand_data(da, original_time=original_timesteps)
+                if is_segment_total and expansion_divisor is not None:
+                    expanded = expanded / expansion_divisor
 
-            expanded = clustering.expand_data(da, original_time=original_timesteps)
-
-            # Segment totals: divide by expansion divisor
-            if is_solution and expansion_divisor is not None and var_name in segment_total_vars:
-                expanded = expanded / expansion_divisor
-
-            # State variables: append final state
+            # State variables need final state appended
             if is_state:
                 expanded = _append_final_state(expanded, da)
 
