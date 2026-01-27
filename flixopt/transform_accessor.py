@@ -190,15 +190,15 @@ class TransformAccessor:
 
     def _build_cluster_weight_da(
         self,
-        cluster_occurrences_all: dict[tuple, dict],
+        aggregation_results: dict[tuple, Any],
         n_clusters: int,
         cluster_coords: np.ndarray,
         dim_names: list[str],
     ) -> xr.DataArray:
-        """Build cluster_weight DataArray from occurrence counts.
+        """Build cluster_weight DataArray from aggregation results.
 
         Args:
-            cluster_occurrences_all: Dict mapping key tuples to {cluster_id: count}.
+            aggregation_results: Dict mapping key tuples to tsam AggregationResult.
             n_clusters: Number of clusters.
             cluster_coords: Cluster coordinate values.
             dim_names: Names of extra dimensions (e.g., ['period', 'scenario']).
@@ -207,8 +207,8 @@ class TransformAccessor:
             DataArray with dims [cluster, *dim_names].
         """
         slices = []
-        for key, occurrences in cluster_occurrences_all.items():
-            weights = np.array([occurrences.get(c, 0) for c in range(n_clusters)])
+        for key, result in aggregation_results.items():
+            weights = np.array([result.cluster_weights.get(c, 0) for c in range(n_clusters)])
             da = xr.DataArray(weights, dims=['cluster'], coords={'cluster': cluster_coords})
             slices.append(_expand_dims_for_key(da, dim_names, key))
 
@@ -296,25 +296,34 @@ class TransformAccessor:
 
     def _build_clustering_metrics(
         self,
-        clustering_metrics_all: dict[tuple, pd.DataFrame],
+        aggregation_results: dict[tuple, Any],
         dim_names: list[str],
     ) -> xr.Dataset:
-        """Build clustering metrics Dataset from per-slice DataFrames.
+        """Build clustering metrics Dataset from aggregation results.
 
         Args:
-            clustering_metrics_all: Dict mapping key tuples to metric DataFrames.
+            aggregation_results: Dict mapping key tuples to tsam AggregationResult.
             dim_names: Names of extra dimensions (e.g., ['period', 'scenario']).
 
         Returns:
             Dataset with RMSE, MAE, RMSE_duration metrics.
         """
-        non_empty_metrics = {k: v for k, v in clustering_metrics_all.items() if not v.empty}
+        # Convert accuracy to DataFrames, filtering out failures
+        metrics_dfs: dict[tuple, pd.DataFrame] = {}
+        for key, result in aggregation_results.items():
+            try:
+                metrics_dfs[key] = self._accuracy_to_dataframe(result.accuracy)
+            except Exception as e:
+                logger.warning(f'Failed to compute clustering metrics for {key}: {e}')
+                metrics_dfs[key] = pd.DataFrame()
+
+        non_empty_metrics = {k: v for k, v in metrics_dfs.items() if not v.empty}
 
         if not non_empty_metrics:
             return xr.Dataset()
 
         # Single slice case
-        if len(clustering_metrics_all) == 1 and len(non_empty_metrics) == 1:
+        if len(metrics_dfs) == 1 and len(non_empty_metrics) == 1:
             metrics_df = next(iter(non_empty_metrics.values()))
             return xr.Dataset(
                 {
@@ -333,7 +342,7 @@ class TransformAccessor:
 
         for metric in sample_df.columns:
             slices = []
-            for key, df in clustering_metrics_all.items():
+            for key, df in metrics_dfs.items():
                 values = np.full(len(sample_df.index), np.nan) if df.empty else df[metric].values
                 da = xr.DataArray(values, dims=['time_series'], coords={'time_series': list(sample_df.index)})
                 slices.append(_expand_dims_for_key(da, dim_names, key))
@@ -345,8 +354,6 @@ class TransformAccessor:
         self,
         ds: xr.Dataset,
         aggregation_results: dict[tuple, Any],
-        occurrences: dict[tuple, dict],
-        metrics: dict[tuple, pd.DataFrame],
         timesteps_per_cluster: int,
         dt: float,
         dim_names: list[str],
@@ -359,8 +366,6 @@ class TransformAccessor:
         Args:
             ds: Original dataset.
             aggregation_results: Dict mapping key tuples to tsam AggregationResult.
-            occurrences: Dict mapping key tuples to cluster occurrence counts.
-            metrics: Dict mapping key tuples to accuracy metrics.
             timesteps_per_cluster: Number of timesteps per cluster.
             dt: Hours per timestep.
             dim_names: Names of extra dimensions (e.g., ['period', 'scenario']).
@@ -375,8 +380,8 @@ class TransformAccessor:
 
         first_tsam = next(iter(aggregation_results.values()))
 
-        # Build metrics
-        clustering_metrics = self._build_clustering_metrics(metrics, dim_names)
+        # Build metrics from aggregation_results
+        clustering_metrics = self._build_clustering_metrics(aggregation_results, dim_names)
 
         n_reduced_timesteps = len(first_tsam.cluster_representatives)
         actual_n_clusters = len(first_tsam.cluster_weights)
@@ -401,8 +406,10 @@ class TransformAccessor:
                 name='time',
             )
 
-        # Build cluster_weight
-        cluster_weight = self._build_cluster_weight_da(occurrences, actual_n_clusters, cluster_coords, dim_names)
+        # Build cluster_weight from aggregation_results
+        cluster_weight = self._build_cluster_weight_da(
+            aggregation_results, actual_n_clusters, cluster_coords, dim_names
+        )
 
         # Logging
         if is_segmented:
@@ -1328,12 +1335,6 @@ class TransformAccessor:
 
         # Cluster each (period, scenario) combination using tsam directly
         tsam_aggregation_results: dict[tuple, Any] = {}  # AggregationResult objects
-        tsam_clustering_results: dict[tuple, Any] = {}  # ClusteringResult objects for persistence
-        cluster_assignmentss: dict[tuple, np.ndarray] = {}
-        cluster_occurrences_all: dict[tuple, dict] = {}
-
-        # Collect metrics per (period, scenario) slice
-        clustering_metrics_all: dict[tuple, pd.DataFrame] = {}
 
         for period_label in periods:
             for scenario_label in scenarios:
@@ -1388,34 +1389,26 @@ class TransformAccessor:
                     )
 
                 tsam_aggregation_results[key] = tsam_result
-                tsam_clustering_results[key] = tsam_result.clustering
-                cluster_assignmentss[key] = tsam_result.cluster_assignments
-                cluster_occurrences_all[key] = tsam_result.cluster_weights
-                try:
-                    clustering_metrics_all[key] = self._accuracy_to_dataframe(tsam_result.accuracy)
-                except Exception as e:
-                    logger.warning(f'Failed to compute clustering metrics for {key}: {e}')
-                    clustering_metrics_all[key] = pd.DataFrame()
 
         # If data_vars was specified, apply clustering to FULL data
         if data_vars is not None:
-            # Build ClusteringResults from subset clustering (already using clean keys)
-            clustering_results = ClusteringResults(tsam_clustering_results, dim_names)
+            # Build ClusteringResults from subset clustering (derive from aggregation results)
+            clustering_results = ClusteringResults(
+                {k: r.clustering for k, r in tsam_aggregation_results.items()},
+                dim_names,
+            )
 
             # Apply to full data - this returns AggregationResults
             agg_results = clustering_results.apply(ds)
 
-            # Update results with full data (keys already match)
+            # Update aggregation_results with full data results
             for key, result in agg_results:
                 tsam_aggregation_results[key] = result
-                cluster_occurrences_all[key] = result.cluster_weights
 
         # Build and return the reduced FlowSystem
         return self._build_reduced_flow_system(
             ds=ds,
             aggregation_results=tsam_aggregation_results,
-            occurrences=cluster_occurrences_all,
-            metrics=clustering_metrics_all,
             timesteps_per_cluster=timesteps_per_cluster,
             dt=dt,
             dim_names=dim_names,
@@ -1488,26 +1481,13 @@ class TransformAccessor:
             warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
             agg_results = clustering.results.apply(ds)
 
-        # Convert AggregationResults to the dict format expected by _build_reduced_flow_system
-        aggregation_results: dict[tuple, Any] = {}
-        occurrences: dict[tuple, dict] = {}
-        metrics: dict[tuple, pd.DataFrame] = {}
-
-        for key, result in agg_results:
-            aggregation_results[key] = result
-            occurrences[key] = result.cluster_weights
-            try:
-                metrics[key] = self._accuracy_to_dataframe(result.accuracy)
-            except Exception as e:
-                logger.warning(f'Failed to compute clustering metrics for {key}: {e}')
-                metrics[key] = pd.DataFrame()
+        # Convert AggregationResults to dict format
+        aggregation_results = dict(agg_results)
 
         # Build and return the reduced FlowSystem
         return self._build_reduced_flow_system(
             ds=ds,
             aggregation_results=aggregation_results,
-            occurrences=occurrences,
-            metrics=metrics,
             timesteps_per_cluster=timesteps_per_cluster,
             dt=dt,
             dim_names=dim_names,
