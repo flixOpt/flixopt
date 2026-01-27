@@ -28,6 +28,55 @@ if TYPE_CHECKING:
 logger = logging.getLogger('flixopt')
 
 
+def _combine_dataarray_slices(
+    slices: list[xr.DataArray],
+    base_dims: list[str],
+    extra_dims: list[str],
+    name: str | None = None,
+) -> xr.DataArray:
+    """Combine DataArray slices with extra dimensions into a single DataArray.
+
+    Args:
+        slices: List of DataArrays, each with extra dims already expanded.
+        base_dims: Base dimension names (e.g., ['cluster', 'time']).
+        extra_dims: Extra dimension names (e.g., ['period', 'scenario']).
+        name: Optional name for the result.
+
+    Returns:
+        Combined DataArray with dims [*base_dims, *extra_dims].
+    """
+    if len(slices) == 1:
+        result = slices[0]
+    else:
+        combined = xr.combine_by_coords(slices)
+        # combine_by_coords returns Dataset when DataArrays have names
+        if isinstance(combined, xr.Dataset):
+            result = list(combined.data_vars.values())[0]
+        else:
+            result = combined
+        result = result.transpose(*base_dims, *extra_dims)
+
+    if name is not None:
+        result = result.rename(name)
+    return result
+
+
+def _expand_dims_for_key(da: xr.DataArray, dim_names: list[str], key: tuple) -> xr.DataArray:
+    """Add dimensions to a DataArray based on key values.
+
+    Args:
+        da: DataArray without extra dimensions.
+        dim_names: Names of dimensions to add (e.g., ['period', 'scenario']).
+        key: Tuple of coordinate values matching dim_names.
+
+    Returns:
+        DataArray with extra dimensions added.
+    """
+    for dim_name, coord_val in zip(dim_names, key, strict=True):
+        da = da.expand_dims({dim_name: [coord_val]})
+    return da
+
+
 class TransformAccessor:
     """
     Accessor for transformation methods on FlowSystem.
@@ -157,20 +206,13 @@ class TransformAccessor:
         Returns:
             DataArray with dims [cluster, *dim_names].
         """
-        results = []
+        slices = []
         for key, occurrences in cluster_occurrences_all.items():
             weights = np.array([occurrences.get(c, 0) for c in range(n_clusters)])
             da = xr.DataArray(weights, dims=['cluster'], coords={'cluster': cluster_coords})
-            for dim_name, coord_val in zip(dim_names, key, strict=False):
-                da = da.expand_dims({dim_name: [coord_val]})
-            results.append(da)
+            slices.append(_expand_dims_for_key(da, dim_names, key))
 
-        if len(results) == 1:
-            return results[0].rename('cluster_weight')
-        combined = xr.combine_by_coords(results)
-        if isinstance(combined, xr.Dataset):
-            combined = list(combined.data_vars.values())[0]
-        return combined.transpose('cluster', *dim_names).rename('cluster_weight')
+        return _combine_dataarray_slices(slices, ['cluster'], dim_names, name='cluster_weight')
 
     def _build_typical_das(
         self,
@@ -196,50 +238,27 @@ class TransformAccessor:
         Returns:
             Dict mapping column names to combined DataArrays with dims [cluster, time, *dim_names].
         """
-        # Collect DataArrays per column, with dims already expanded
-        column_results: dict[str, list[xr.DataArray]] = {}
+        column_slices: dict[str, list[xr.DataArray]] = {}
+        base_coords = {'cluster': cluster_coords, 'time': time_coords}
 
         for key, tsam_result in aggregation_results.items():
             typical_df = tsam_result.cluster_representatives
             if is_segmented:
                 columns = typical_df.columns.tolist()
-                all_values = typical_df.values
-                reshaped = all_values.reshape(actual_n_clusters, n_time_points, -1)
-
+                reshaped = typical_df.values.reshape(actual_n_clusters, n_time_points, -1)
                 for col_idx, col in enumerate(columns):
-                    da = xr.DataArray(
-                        reshaped[:, :, col_idx],
-                        dims=['cluster', 'time'],
-                        coords={'cluster': cluster_coords, 'time': time_coords},
-                    )
-                    for dim_name, coord_val in zip(dim_names, key, strict=False):
-                        da = da.expand_dims({dim_name: [coord_val]})
-                    column_results.setdefault(col, []).append(da)
+                    da = xr.DataArray(reshaped[:, :, col_idx], dims=['cluster', 'time'], coords=base_coords)
+                    column_slices.setdefault(col, []).append(_expand_dims_for_key(da, dim_names, key))
             else:
                 for col in typical_df.columns:
-                    flat_data = typical_df[col].values
-                    reshaped = flat_data.reshape(actual_n_clusters, n_time_points)
-                    da = xr.DataArray(
-                        reshaped,
-                        dims=['cluster', 'time'],
-                        coords={'cluster': cluster_coords, 'time': time_coords},
-                    )
-                    for dim_name, coord_val in zip(dim_names, key, strict=False):
-                        da = da.expand_dims({dim_name: [coord_val]})
-                    column_results.setdefault(col, []).append(da)
+                    reshaped = typical_df[col].values.reshape(actual_n_clusters, n_time_points)
+                    da = xr.DataArray(reshaped, dims=['cluster', 'time'], coords=base_coords)
+                    column_slices.setdefault(col, []).append(_expand_dims_for_key(da, dim_names, key))
 
-        # Combine each column's DataArrays
-        typical_das: dict[str, xr.DataArray] = {}
-        for col, das in column_results.items():
-            if len(das) == 1:
-                typical_das[col] = das[0]
-            else:
-                combined = xr.combine_by_coords(das)
-                if isinstance(combined, xr.Dataset):
-                    combined = list(combined.data_vars.values())[0]
-                typical_das[col] = combined.transpose('cluster', 'time', *dim_names)
-
-        return typical_das
+        return {
+            col: _combine_dataarray_slices(slices, ['cluster', 'time'], dim_names)
+            for col, slices in column_slices.items()
+        }
 
     def _build_segment_durations_da(
         self,
@@ -265,26 +284,15 @@ class TransformAccessor:
         Returns:
             DataArray with dims [cluster, time, *dim_names].
         """
-        results = []
+        slices = []
+        base_coords = {'cluster': cluster_coords, 'time': time_coords}
         for key, tsam_result in aggregation_results.items():
             seg_durs = tsam_result.segment_durations
-            data = np.zeros((actual_n_clusters, n_segments))
-            for cluster_id in range(actual_n_clusters):
-                cluster_seg_durs = seg_durs[cluster_id]
-                for seg_id in range(n_segments):
-                    data[cluster_id, seg_id] = cluster_seg_durs[seg_id] * dt
+            data = np.array([[seg_durs[c][s] * dt for s in range(n_segments)] for c in range(actual_n_clusters)])
+            da = xr.DataArray(data, dims=['cluster', 'time'], coords=base_coords)
+            slices.append(_expand_dims_for_key(da, dim_names, key))
 
-            da = xr.DataArray(data, dims=['cluster', 'time'], coords={'cluster': cluster_coords, 'time': time_coords})
-            for dim_name, coord_val in zip(dim_names, key, strict=False):
-                da = da.expand_dims({dim_name: [coord_val]})
-            results.append(da)
-
-        if len(results) == 1:
-            return results[0].rename('timestep_duration')
-        combined = xr.combine_by_coords(results)
-        if isinstance(combined, xr.Dataset):
-            combined = list(combined.data_vars.values())[0]
-        return combined.transpose('cluster', 'time', *dim_names).rename('timestep_duration')
+        return _combine_dataarray_slices(slices, ['cluster', 'time'], dim_names, name='timestep_duration')
 
     def _build_clustering_metrics(
         self,
@@ -321,48 +329,27 @@ class TransformAccessor:
 
         # Multi-dim case
         sample_df = next(iter(non_empty_metrics.values()))
-        metric_names = list(sample_df.columns)
         data_vars = {}
 
-        for metric in metric_names:
-            results = []
+        for metric in sample_df.columns:
+            slices = []
             for key, df in clustering_metrics_all.items():
-                if df.empty:
-                    da = xr.DataArray(
-                        np.full(len(sample_df.index), np.nan),
-                        dims=['time_series'],
-                        coords={'time_series': list(sample_df.index)},
-                    )
-                else:
-                    da = xr.DataArray(
-                        df[metric].values,
-                        dims=['time_series'],
-                        coords={'time_series': list(df.index)},
-                    )
-                for dim_name, coord_val in zip(dim_names, key, strict=False):
-                    da = da.expand_dims({dim_name: [coord_val]})
-                results.append(da)
-
-            if len(results) == 1:
-                combined = results[0]
-            else:
-                combined = xr.combine_by_coords(results)
-                if isinstance(combined, xr.Dataset):
-                    combined = list(combined.data_vars.values())[0]
-            data_vars[metric] = combined.transpose('time_series', *dim_names).rename(metric)
+                values = np.full(len(sample_df.index), np.nan) if df.empty else df[metric].values
+                da = xr.DataArray(values, dims=['time_series'], coords={'time_series': list(sample_df.index)})
+                slices.append(_expand_dims_for_key(da, dim_names, key))
+            data_vars[metric] = _combine_dataarray_slices(slices, ['time_series'], dim_names, name=metric)
 
         return xr.Dataset(data_vars)
 
     def _build_reduced_flow_system(
         self,
         ds: xr.Dataset,
-        tsam_aggregation_results: dict[tuple, Any],
-        cluster_occurrences_all: dict[tuple, dict],
-        clustering_metrics_all: dict[tuple, pd.DataFrame],
+        aggregation_results: dict[tuple, Any],
+        occurrences: dict[tuple, dict],
+        metrics: dict[tuple, pd.DataFrame],
         timesteps_per_cluster: int,
         dt: float,
-        periods: list,
-        scenarios: list,
+        dim_names: list[str],
         n_clusters_requested: int | None = None,
     ) -> FlowSystem:
         """Build a reduced FlowSystem from tsam aggregation results.
@@ -371,13 +358,12 @@ class TransformAccessor:
 
         Args:
             ds: Original dataset.
-            tsam_aggregation_results: Dict mapping (period, scenario) to tsam AggregationResult.
-            cluster_occurrences_all: Dict mapping (period, scenario) to cluster occurrence counts.
-            clustering_metrics_all: Dict mapping (period, scenario) to accuracy metrics.
+            aggregation_results: Dict mapping key tuples to tsam AggregationResult.
+            occurrences: Dict mapping key tuples to cluster occurrence counts.
+            metrics: Dict mapping key tuples to accuracy metrics.
             timesteps_per_cluster: Number of timesteps per cluster.
             dt: Hours per timestep.
-            periods: List of period labels ([None] if no periods).
-            scenarios: List of scenario labels ([None] if no scenarios).
+            dim_names: Names of extra dimensions (e.g., ['period', 'scenario']).
             n_clusters_requested: Requested number of clusters (for logging). None to skip.
 
         Returns:
@@ -387,33 +373,7 @@ class TransformAccessor:
         from .core import drop_constant_arrays
         from .flow_system import FlowSystem
 
-        has_periods = periods != [None]
-        has_scenarios = scenarios != [None]
-
-        # Build dim_names for Clustering
-        dim_names = []
-        if has_periods:
-            dim_names.append('period')
-        if has_scenarios:
-            dim_names.append('scenario')
-
-        # Helper to convert (p, s) keys to clean keys (without None)
-        def clean_key(p, s) -> tuple:
-            parts = []
-            if has_periods:
-                parts.append(p)
-            if has_scenarios:
-                parts.append(s)
-            return tuple(parts)
-
-        # Convert all dicts to use clean keys
-        aggregation_results = {clean_key(p, s): v for (p, s), v in tsam_aggregation_results.items()}
-        occurrences = {clean_key(p, s): v for (p, s), v in cluster_occurrences_all.items()}
-        metrics = {clean_key(p, s): v for (p, s), v in clustering_metrics_all.items()}
-
-        # Use first result for structure
-        first_key = (periods[0], scenarios[0])
-        first_tsam = tsam_aggregation_results[first_key]
+        first_tsam = next(iter(aggregation_results.values()))
 
         # Build metrics
         clustering_metrics = self._build_clustering_metrics(metrics, dim_names)
@@ -1350,6 +1310,22 @@ class TransformAccessor:
                     f'with extreme periods while maintaining the requested n_clusters.'
                 )
 
+        # Build dim_names and clean key helper
+        dim_names: list[str] = []
+        if has_periods:
+            dim_names.append('period')
+        if has_scenarios:
+            dim_names.append('scenario')
+
+        def to_clean_key(period_label, scenario_label) -> tuple:
+            """Convert (period, scenario) to clean key based on which dims exist."""
+            key_parts = []
+            if has_periods:
+                key_parts.append(period_label)
+            if has_scenarios:
+                key_parts.append(scenario_label)
+            return tuple(key_parts)
+
         # Cluster each (period, scenario) combination using tsam directly
         tsam_aggregation_results: dict[tuple, Any] = {}  # AggregationResult objects
         tsam_clustering_results: dict[tuple, Any] = {}  # ClusteringResult objects for persistence
@@ -1361,7 +1337,7 @@ class TransformAccessor:
 
         for period_label in periods:
             for scenario_label in scenarios:
-                key = (period_label, scenario_label)
+                key = to_clean_key(period_label, scenario_label)
                 selector = {k: v for k, v in [('period', period_label), ('scenario', scenario_label)] if v is not None}
 
                 # Select data for clustering (may be subset if data_vars specified)
@@ -1423,55 +1399,26 @@ class TransformAccessor:
 
         # If data_vars was specified, apply clustering to FULL data
         if data_vars is not None:
-            # Build dim_names for ClusteringResults
-            dim_names = []
-            if has_periods:
-                dim_names.append('period')
-            if has_scenarios:
-                dim_names.append('scenario')
-
-            # Convert (period, scenario) keys to ClusteringResults format
-            def to_cr_key(p, s):
-                key_parts = []
-                if has_periods:
-                    key_parts.append(p)
-                if has_scenarios:
-                    key_parts.append(s)
-                return tuple(key_parts)
-
-            # Build ClusteringResults from subset clustering
-            clustering_results = ClusteringResults(
-                {to_cr_key(p, s): cr for (p, s), cr in tsam_clustering_results.items()},
-                dim_names,
-            )
+            # Build ClusteringResults from subset clustering (already using clean keys)
+            clustering_results = ClusteringResults(tsam_clustering_results, dim_names)
 
             # Apply to full data - this returns AggregationResults
             agg_results = clustering_results.apply(ds)
 
-            # Update tsam_aggregation_results with full data results
-            for cr_key, result in agg_results:
-                # Convert back to (period, scenario) format
-                if has_periods and has_scenarios:
-                    full_key = (cr_key[0], cr_key[1])
-                elif has_periods:
-                    full_key = (cr_key[0], None)
-                elif has_scenarios:
-                    full_key = (None, cr_key[0])
-                else:
-                    full_key = (None, None)
-                tsam_aggregation_results[full_key] = result
-                cluster_occurrences_all[full_key] = result.cluster_weights
+            # Update results with full data (keys already match)
+            for key, result in agg_results:
+                tsam_aggregation_results[key] = result
+                cluster_occurrences_all[key] = result.cluster_weights
 
         # Build and return the reduced FlowSystem
         return self._build_reduced_flow_system(
             ds=ds,
-            tsam_aggregation_results=tsam_aggregation_results,
-            cluster_occurrences_all=cluster_occurrences_all,
-            clustering_metrics_all=clustering_metrics_all,
+            aggregation_results=tsam_aggregation_results,
+            occurrences=cluster_occurrences_all,
+            metrics=clustering_metrics_all,
             timesteps_per_cluster=timesteps_per_cluster,
             dt=dt,
-            periods=periods,
-            scenarios=scenarios,
+            dim_names=dim_names,
             n_clusters_requested=n_clusters,
         )
 
@@ -1519,12 +1466,7 @@ class TransformAccessor:
 
         # Get timesteps_per_cluster from the clustering object (survives serialization)
         timesteps_per_cluster = clustering.timesteps_per_cluster
-        has_periods = self._fs.periods is not None
-        has_scenarios = self._fs.scenarios is not None
-
-        # Determine iteration dimensions
-        periods = list(self._fs.periods) if has_periods else [None]
-        scenarios = list(self._fs.scenarios) if has_scenarios else [None]
+        dim_names = clustering.results.dim_names
 
         ds = self._fs.to_dataset(include_solution=False)
 
@@ -1547,39 +1489,28 @@ class TransformAccessor:
             agg_results = clustering.results.apply(ds)
 
         # Convert AggregationResults to the dict format expected by _build_reduced_flow_system
-        tsam_aggregation_results: dict[tuple, Any] = {}
-        cluster_occurrences_all: dict[tuple, dict] = {}
-        clustering_metrics_all: dict[tuple, pd.DataFrame] = {}
+        aggregation_results: dict[tuple, Any] = {}
+        occurrences: dict[tuple, dict] = {}
+        metrics: dict[tuple, pd.DataFrame] = {}
 
-        for cr_key, result in agg_results:
-            # Convert ClusteringResults key to (period, scenario) format
-            if has_periods and has_scenarios:
-                full_key = (cr_key[0], cr_key[1])
-            elif has_periods:
-                full_key = (cr_key[0], None)
-            elif has_scenarios:
-                full_key = (None, cr_key[0])
-            else:
-                full_key = (None, None)
-
-            tsam_aggregation_results[full_key] = result
-            cluster_occurrences_all[full_key] = result.cluster_weights
+        for key, result in agg_results:
+            aggregation_results[key] = result
+            occurrences[key] = result.cluster_weights
             try:
-                clustering_metrics_all[full_key] = self._accuracy_to_dataframe(result.accuracy)
+                metrics[key] = self._accuracy_to_dataframe(result.accuracy)
             except Exception as e:
-                logger.warning(f'Failed to compute clustering metrics for {full_key}: {e}')
-                clustering_metrics_all[full_key] = pd.DataFrame()
+                logger.warning(f'Failed to compute clustering metrics for {key}: {e}')
+                metrics[key] = pd.DataFrame()
 
         # Build and return the reduced FlowSystem
         return self._build_reduced_flow_system(
             ds=ds,
-            tsam_aggregation_results=tsam_aggregation_results,
-            cluster_occurrences_all=cluster_occurrences_all,
-            clustering_metrics_all=clustering_metrics_all,
+            aggregation_results=aggregation_results,
+            occurrences=occurrences,
+            metrics=metrics,
             timesteps_per_cluster=timesteps_per_cluster,
             dt=dt,
-            periods=periods,
-            scenarios=scenarios,
+            dim_names=dim_names,
         )
 
     def _validate_for_expansion(self) -> Clustering:

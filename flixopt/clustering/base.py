@@ -482,19 +482,17 @@ class ClusteringResults:
         name: str | None = None,
     ) -> xr.DataArray:
         """Build a DataArray property, handling both single and multi-dimensional cases."""
-        results = []
+        slices = []
         for key, cr in self._results.items():
-            data = get_data(cr)
-            da = xr.DataArray(data, dims=base_dims, coords=base_coords or {}, name=name)
-            # Add dims from key: key[i] corresponds to dim_names[i]
-            for dim_name, coord_val in zip(self._dim_names, key, strict=False):
+            da = xr.DataArray(get_data(cr), dims=base_dims, coords=base_coords or {}, name=name)
+            for dim_name, coord_val in zip(self._dim_names, key, strict=True):
                 da = da.expand_dims({dim_name: [coord_val]})
-            results.append(da)
+            slices.append(da)
 
-        if len(results) == 1:
-            return results[0]
+        if len(slices) == 1:
+            return slices[0]
 
-        combined = xr.combine_by_coords(results)
+        combined = xr.combine_by_coords(slices)
         if isinstance(combined, xr.Dataset):
             combined = combined[name]
         return combined.transpose(*base_dims, *self._dim_names)
