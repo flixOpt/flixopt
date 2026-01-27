@@ -17,7 +17,7 @@ import pandas as pd
 import xarray as xr
 
 from .modeling import _scalar_safe_reduce
-from .structure import EXPAND_DIVIDE, EXPAND_INTERPOLATE, VariableCategory
+from .structure import EXPAND_DIVIDE, EXPAND_FIRST_TIMESTEP, EXPAND_INTERPOLATE, VariableCategory
 
 if TYPE_CHECKING:
     from tsam import ClusterConfig, ExtremeConfig, SegmentConfig
@@ -569,15 +569,12 @@ class TransformAccessor:
                 )
             elif set(typical_das[name].keys()) != all_keys:
                 # Partial typical slices: fill missing keys with constant values
-                time_idx = var.dims.index('time')
-                slices_list = [slice(None)] * len(var.dims)
-                slices_list[time_idx] = slice(0, n_reduced_timesteps)
-                sliced_values = var.values[tuple(slices_list)]
+                # For multi-period/scenario data, we need to select the right slice for each key
 
-                other_dims = [d for d in var.dims if d != 'time']
+                # Exclude 'period' and 'scenario' - they're handled by _combine_slices_to_dataarray_2d
+                other_dims = [d for d in var.dims if d not in ('time', 'period', 'scenario')]
                 other_shape = [var.sizes[d] for d in other_dims]
                 new_shape = [actual_n_clusters, n_time_points] + other_shape
-                reshaped_constant = sliced_values.reshape(new_shape)
 
                 new_coords = {'cluster': cluster_coords, 'time': time_coords}
                 for dim in other_dims:
@@ -590,6 +587,27 @@ class TransformAccessor:
                     if key in typical_das[name]:
                         filled_slices[key] = typical_das[name][key]
                     else:
+                        # Select the specific period/scenario slice, then reshape
+                        period_label, scenario_label = key
+                        selector = {}
+                        if period_label is not None and 'period' in var.dims:
+                            selector['period'] = period_label
+                        if scenario_label is not None and 'scenario' in var.dims:
+                            selector['scenario'] = scenario_label
+
+                        # Select per-key slice if needed, otherwise use full variable
+                        if selector:
+                            var_slice = ds[name].sel(**selector, drop=True)
+                        else:
+                            var_slice = ds[name]
+
+                        # Now slice time and reshape
+                        time_idx = var_slice.dims.index('time')
+                        slices_list = [slice(None)] * len(var_slice.dims)
+                        slices_list[time_idx] = slice(0, n_reduced_timesteps)
+                        sliced_values = var_slice.values[tuple(slices_list)]
+                        reshaped_constant = sliced_values.reshape(new_shape)
+
                         filled_slices[key] = xr.DataArray(
                             reshaped_constant,
                             dims=['cluster', 'time'] + other_dims,
@@ -1432,6 +1450,20 @@ class TransformAccessor:
                 f'Use the corresponding cluster() parameters instead.'
             )
 
+        # Validate ExtremeConfig compatibility with multi-period/scenario systems
+        # Methods 'new_cluster' and 'append' can produce different n_clusters per period,
+        # which breaks the xarray structure that requires uniform dimensions
+        is_multi_dimensional = has_periods or has_scenarios
+        if is_multi_dimensional and extremes is not None:
+            extreme_method = getattr(extremes, 'method', None)
+            if extreme_method in ('new_cluster', 'append'):
+                raise ValueError(
+                    f'ExtremeConfig with method="{extreme_method}" is not supported for multi-period '
+                    f'or multi-scenario systems because it can produce different cluster counts per '
+                    f'period/scenario. Use method="replace" instead, which replaces existing clusters '
+                    f'with extreme periods while maintaining the requested n_clusters.'
+                )
+
         # Cluster each (period, scenario) combination using tsam directly
         tsam_aggregation_results: dict[tuple, Any] = {}  # AggregationResult objects
         tsam_clustering_results: dict[tuple, Any] = {}  # ClusteringResult objects for persistence
@@ -1482,7 +1514,7 @@ class TransformAccessor:
                         df_for_clustering,
                         n_clusters=n_clusters,
                         period_duration=hours_per_cluster,
-                        timestep_duration=dt,
+                        temporal_resolution=dt,
                         cluster=cluster_config,
                         extremes=extremes,
                         segments=segments,
@@ -1986,22 +2018,37 @@ class TransformAccessor:
             Interpolated charge_state with dims (time, ...) for original timesteps.
         """
         # Get multi-dimensional properties from Clustering
-        timestep_mapping = clustering.timestep_mapping
         segment_assignments = clustering.results.segment_assignments
         segment_durations = clustering.results.segment_durations
         position_within_segment = clustering.results.position_within_segment
+        cluster_assignments = clustering.cluster_assignments
 
-        # Decode timestep_mapping into cluster and time indices
-        # timestep_mapping encodes original timestep -> (cluster, position_within_cluster)
-        # where position_within_cluster indexes into segment_assignments/position_within_segment
-        # which have shape (cluster, timesteps_per_cluster)
+        # Compute original period index and position within period directly
+        # This is more reliable than decoding from timestep_mapping, which encodes
+        # (cluster * n_segments + segment_idx) for segmented systems
+        n_original_timesteps = len(original_timesteps)
         timesteps_per_cluster = clustering.timesteps_per_cluster
-        cluster_indices = timestep_mapping // timesteps_per_cluster
-        time_indices = timestep_mapping % timesteps_per_cluster
+        n_original_clusters = clustering.n_original_clusters
+
+        # For each original timestep, compute which original period it belongs to
+        original_period_indices = np.minimum(
+            np.arange(n_original_timesteps) // timesteps_per_cluster,
+            n_original_clusters - 1,
+        )
+        # Position within the period (0 to timesteps_per_cluster-1)
+        positions_in_period = np.arange(n_original_timesteps) % timesteps_per_cluster
+
+        # Create DataArrays for indexing (with original_time dimension, coords added later)
+        original_period_da = xr.DataArray(original_period_indices, dims=['original_time'])
+        position_in_period_da = xr.DataArray(positions_in_period, dims=['original_time'])
+
+        # Map original period to cluster
+        cluster_indices = cluster_assignments.isel(original_cluster=original_period_da)
 
         # Get segment index and position for each original timestep
-        seg_indices = segment_assignments.isel(cluster=cluster_indices, time=time_indices)
-        positions = position_within_segment.isel(cluster=cluster_indices, time=time_indices)
+        # segment_assignments has shape (cluster, time) where time = timesteps_per_cluster
+        seg_indices = segment_assignments.isel(cluster=cluster_indices, time=position_in_period_da)
+        positions = position_within_segment.isel(cluster=cluster_indices, time=position_in_period_da)
         durations = segment_durations.isel(cluster=cluster_indices, segment=seg_indices)
 
         # Calculate interpolation factor: position within segment (0 to 1)
@@ -2022,6 +2069,66 @@ class TransformAccessor:
         interpolated = interpolated.rename({'original_time': 'time'}).assign_coords(time=original_timesteps)
 
         return interpolated.transpose('time', ...).assign_attrs(da.attrs)
+
+    def _expand_first_timestep_only(
+        self,
+        da: xr.DataArray,
+        clustering: Clustering,
+        original_timesteps: pd.DatetimeIndex,
+    ) -> xr.DataArray:
+        """Expand binary event variables (startup/shutdown) to first timestep of each segment.
+
+        For segmented systems, binary event variables like startup and shutdown indicate
+        that an event occurred somewhere in the segment. When expanding, we place the
+        event at the first timestep of each segment and set all other timesteps to 0.
+
+        This method is only used for segmented systems. For non-segmented systems,
+        the timing within the cluster is preserved by normal expansion.
+
+        Args:
+            da: Binary event DataArray with dims including (cluster, time).
+            clustering: Clustering object with segment info (must be segmented).
+            original_timesteps: Original timesteps to expand to.
+
+        Returns:
+            Expanded DataArray with event values only at first timestep of each segment.
+        """
+        # First expand normally (repeats values)
+        expanded = clustering.expand_data(da, original_time=original_timesteps)
+
+        # Build mask: True only at first timestep of each segment
+        n_original_timesteps = len(original_timesteps)
+        timesteps_per_cluster = clustering.timesteps_per_cluster
+        n_original_clusters = clustering.n_original_clusters
+
+        position_within_segment = clustering.results.position_within_segment
+        cluster_assignments = clustering.cluster_assignments
+
+        # Compute original period index and position within period
+        original_period_indices = np.minimum(
+            np.arange(n_original_timesteps) // timesteps_per_cluster,
+            n_original_clusters - 1,
+        )
+        positions_in_period = np.arange(n_original_timesteps) % timesteps_per_cluster
+
+        # Create DataArrays for indexing (coords added later after rename)
+        original_period_da = xr.DataArray(original_period_indices, dims=['original_time'])
+        position_in_period_da = xr.DataArray(positions_in_period, dims=['original_time'])
+
+        # Map to cluster and get position within segment
+        cluster_indices = cluster_assignments.isel(original_cluster=original_period_da)
+        pos_in_segment = position_within_segment.isel(cluster=cluster_indices, time=position_in_period_da)
+
+        # Clean up and create mask
+        pos_in_segment = pos_in_segment.drop_vars(['cluster', 'time'], errors='ignore')
+        pos_in_segment = pos_in_segment.rename({'original_time': 'time'}).assign_coords(time=original_timesteps)
+
+        # First timestep of segment has position 0
+        is_first = pos_in_segment == 0
+
+        # Apply mask: keep value at first timestep, zero elsewhere
+        result = xr.where(is_first, expanded, 0)
+        return result.assign_attrs(da.attrs)
 
     def expand(self) -> FlowSystem:
         """Expand a clustered FlowSystem back to full original timesteps.
@@ -2113,12 +2220,23 @@ class TransformAccessor:
 
             4. **Binary status variables** - Constant within segment:
 
-               These variables cannot be meaningfully interpolated. They indicate
-               the dominant state or whether an event occurred during the segment.
+               These variables cannot be meaningfully interpolated. The status
+               indicates the dominant state during the segment.
 
-               - ``{flow}|status``: On/off status (0 or 1)
-               - ``{flow}|startup``: Startup event occurred in segment
-               - ``{flow}|shutdown``: Shutdown event occurred in segment
+               - ``{flow}|status``: On/off status (0 or 1), repeated for all timesteps
+
+            5. **Binary event variables** (segmented systems only) - First timestep of segment:
+
+               For segmented systems, these variables indicate that an event occurred
+               somewhere during the segment. When expanded, the event is placed at the
+               first timestep of each segment, with zeros elsewhere. This preserves the
+               total count of events while providing a reasonable temporal placement.
+
+               For non-segmented systems, the timing within the cluster is preserved
+               by normal expansion (no special handling needed).
+
+               - ``{flow}|startup``: Startup event
+               - ``{flow}|shutdown``: Shutdown event
         """
         from .flow_system import FlowSystem
 
@@ -2162,6 +2280,13 @@ class TransformAccessor:
             # Fall back to pattern matching for backwards compatibility
             return var_name.endswith('|charge_state')
 
+        def _is_first_timestep_variable(var_name: str) -> bool:
+            """Check if a variable is a binary event (should only appear at first timestep)."""
+            if var_name in variable_categories:
+                return variable_categories[var_name] in EXPAND_FIRST_TIMESTEP
+            # Fall back to pattern matching for backwards compatibility
+            return var_name.endswith('|startup') or var_name.endswith('|shutdown')
+
         def _append_final_state(expanded: xr.DataArray, da: xr.DataArray) -> xr.DataArray:
             """Append final state value from original data to expanded data."""
             cluster_assignments = clustering.cluster_assignments
@@ -2181,11 +2306,17 @@ class TransformAccessor:
                 return da.copy()
 
             is_state = _is_state_variable(var_name) and 'cluster' in da.dims
+            is_first_timestep = _is_first_timestep_variable(var_name) and 'cluster' in da.dims
 
             # State variables in segmented systems: interpolate within segments
             if is_state and clustering.is_segmented:
                 expanded = self._interpolate_charge_state_segmented(da, clustering, original_timesteps)
                 return _append_final_state(expanded, da)
+
+            # Binary events (startup/shutdown) in segmented systems: first timestep of each segment
+            # For non-segmented systems, timing within cluster is preserved, so normal expansion is correct
+            if is_first_timestep and is_solution and clustering.is_segmented:
+                return self._expand_first_timestep_only(da, clustering, original_timesteps)
 
             expanded = clustering.expand_data(da, original_time=original_timesteps)
 
