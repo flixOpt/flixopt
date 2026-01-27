@@ -16,7 +16,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .dim_iterator import add_slice_dims
 from .modeling import _scalar_safe_reduce
 from .structure import EXPAND_DIVIDE, EXPAND_FIRST_TIMESTEP, EXPAND_INTERPOLATE, VariableCategory
 
@@ -175,59 +174,71 @@ class TransformAccessor:
 
     def _build_typical_das(
         self,
-        tsam_aggregation_results: dict[tuple, Any],
+        aggregation_results: dict[tuple, Any],
         actual_n_clusters: int,
         n_time_points: int,
         cluster_coords: np.ndarray,
         time_coords: pd.DatetimeIndex | pd.RangeIndex,
+        dim_names: list[str],
         is_segmented: bool = False,
-    ) -> dict[str, dict[tuple, xr.DataArray]]:
-        """Build typical periods DataArrays with (cluster, time) shape.
+    ) -> dict[str, xr.DataArray]:
+        """Build typical periods DataArrays with (cluster, time, *dim_names) shape.
 
         Args:
-            tsam_aggregation_results: Dict mapping (period, scenario) to tsam results.
+            aggregation_results: Dict mapping key tuples to tsam results.
             actual_n_clusters: Number of clusters.
             n_time_points: Number of time points per cluster (timesteps or segments).
             cluster_coords: Cluster coordinate values.
             time_coords: Time coordinate values.
+            dim_names: Names of extra dimensions (e.g., ['period', 'scenario']).
             is_segmented: Whether segmentation was used.
 
         Returns:
-            Nested dict: {column_name: {(period, scenario): DataArray}}.
+            Dict mapping column names to combined DataArrays with dims [cluster, time, *dim_names].
         """
-        typical_das: dict[str, dict[tuple, xr.DataArray]] = {}
-        for key, tsam_result in tsam_aggregation_results.items():
+        # Collect DataArrays per column, with dims already expanded
+        column_results: dict[str, list[xr.DataArray]] = {}
+
+        for key, tsam_result in aggregation_results.items():
             typical_df = tsam_result.cluster_representatives
             if is_segmented:
-                # Segmented data: MultiIndex with cluster as first level
-                # Each cluster has exactly n_time_points rows (segments)
-                # Extract all data at once using numpy reshape, avoiding slow .loc calls
                 columns = typical_df.columns.tolist()
-
-                # Get all values as numpy array: (n_clusters * n_time_points, n_columns)
                 all_values = typical_df.values
-
-                # Reshape to (n_clusters, n_time_points, n_columns)
                 reshaped = all_values.reshape(actual_n_clusters, n_time_points, -1)
 
                 for col_idx, col in enumerate(columns):
-                    # reshaped[:, :, col_idx] selects all clusters, all time points, single column
-                    # Result shape: (n_clusters, n_time_points)
-                    typical_das.setdefault(col, {})[key] = xr.DataArray(
+                    da = xr.DataArray(
                         reshaped[:, :, col_idx],
                         dims=['cluster', 'time'],
                         coords={'cluster': cluster_coords, 'time': time_coords},
                     )
+                    for dim_name, coord_val in zip(dim_names, key, strict=False):
+                        da = da.expand_dims({dim_name: [coord_val]})
+                    column_results.setdefault(col, []).append(da)
             else:
-                # Non-segmented: flat data that can be reshaped
                 for col in typical_df.columns:
                     flat_data = typical_df[col].values
                     reshaped = flat_data.reshape(actual_n_clusters, n_time_points)
-                    typical_das.setdefault(col, {})[key] = xr.DataArray(
+                    da = xr.DataArray(
                         reshaped,
                         dims=['cluster', 'time'],
                         coords={'cluster': cluster_coords, 'time': time_coords},
                     )
+                    for dim_name, coord_val in zip(dim_names, key, strict=False):
+                        da = da.expand_dims({dim_name: [coord_val]})
+                    column_results.setdefault(col, []).append(da)
+
+        # Combine each column's DataArrays
+        typical_das: dict[str, xr.DataArray] = {}
+        for col, das in column_results.items():
+            if len(das) == 1:
+                typical_das[col] = das[0]
+            else:
+                combined = xr.combine_by_coords(das)
+                if isinstance(combined, xr.Dataset):
+                    combined = list(combined.data_vars.values())[0]
+                typical_das[col] = combined.transpose('cluster', 'time', *dim_names)
+
         return typical_das
 
     def _build_segment_durations_da(
@@ -445,20 +456,12 @@ class TransformAccessor:
 
         # Build typical periods DataArrays with (cluster, time) shape
         typical_das = self._build_typical_das(
-            tsam_aggregation_results, actual_n_clusters, n_time_points, cluster_coords, time_coords, is_segmented
+            aggregation_results, actual_n_clusters, n_time_points, cluster_coords, time_coords, dim_names, is_segmented
         )
 
         # Build reduced dataset with (cluster, time) dimensions
         ds_new = self._build_reduced_dataset(
-            ds,
-            typical_das,
-            actual_n_clusters,
-            n_reduced_timesteps,
-            n_time_points,
-            cluster_coords,
-            time_coords,
-            periods,
-            scenarios,
+            ds, typical_das, actual_n_clusters, n_reduced_timesteps, n_time_points, cluster_coords, time_coords
         )
 
         # For segmented systems, build timestep_duration from segment_durations
@@ -493,27 +496,23 @@ class TransformAccessor:
     def _build_reduced_dataset(
         self,
         ds: xr.Dataset,
-        typical_das: dict[str, dict[tuple, xr.DataArray]],
+        typical_das: dict[str, xr.DataArray],
         actual_n_clusters: int,
         n_reduced_timesteps: int,
         n_time_points: int,
         cluster_coords: np.ndarray,
         time_coords: pd.DatetimeIndex | pd.RangeIndex,
-        periods: list,
-        scenarios: list,
     ) -> xr.Dataset:
         """Build the reduced dataset with (cluster, time) structure.
 
         Args:
             ds: Original dataset.
-            typical_das: Typical periods DataArrays from _build_typical_das().
+            typical_das: Pre-combined DataArrays from _build_typical_das().
             actual_n_clusters: Number of clusters.
             n_reduced_timesteps: Total reduced timesteps (n_clusters * n_time_points).
             n_time_points: Number of time points per cluster (timesteps or segments).
             cluster_coords: Cluster coordinate values.
             time_coords: Time coordinate values.
-            periods: List of period labels.
-            scenarios: List of scenario labels.
 
         Returns:
             Dataset with reduced timesteps and (cluster, time) structure.
@@ -521,27 +520,17 @@ class TransformAccessor:
         from .core import TimeSeriesData
 
         ds_new_vars = {}
-
-        # Use ds.variables to avoid _construct_dataarray overhead
         variables = ds.variables
         coord_cache = {k: ds.coords[k].values for k in ds.coords}
-
-        # Determine dimension order for combining
-        dim_order = ['cluster', 'time']
-        if periods != [None]:
-            dim_order.append('period')
-        if scenarios != [None]:
-            dim_order.append('scenario')
 
         for name in ds.data_vars:
             var = variables[name]
             if 'time' not in var.dims:
-                # No time dimension - wrap Variable in DataArray
+                # No time dimension - copy as-is
                 coords = {d: coord_cache[d] for d in var.dims if d in coord_cache}
                 ds_new_vars[name] = xr.DataArray(var.values, dims=var.dims, coords=coords, attrs=var.attrs, name=name)
             elif name not in typical_das:
                 # Time-dependent but constant: reshape to (cluster, time, ...)
-                # Use numpy slicing instead of .isel()
                 time_idx = var.dims.index('time')
                 slices = [slice(None)] * len(var.dims)
                 slices[time_idx] = slice(0, n_reduced_timesteps)
@@ -561,90 +550,12 @@ class TransformAccessor:
                     coords=new_coords,
                     attrs=var.attrs,
                 )
-            elif set(typical_das[name].keys()) != {(p, s) for p in periods for s in scenarios}:
-                # Partial typical slices: fill missing keys with constant values
-                # For multi-period/scenario data, we need to select the right slice for each key
-
-                # Exclude 'period' and 'scenario' - they're handled by combine
-                other_dims = [d for d in var.dims if d not in ('time', 'period', 'scenario')]
-                other_shape = [var.sizes[d] for d in other_dims]
-                new_shape = [actual_n_clusters, n_time_points] + other_shape
-
-                new_coords = {'cluster': cluster_coords, 'time': time_coords}
-                for dim in other_dims:
-                    if dim in coord_cache:
-                        new_coords[dim] = coord_cache[dim]
-
-                # Build slices: use typical where available, constant otherwise
-                results = []
-                for p in periods:
-                    for s in scenarios:
-                        key = (p, s)
-                        if key in typical_das[name]:
-                            da = typical_das[name][key]
-                        else:
-                            # Select the specific period/scenario slice, then reshape
-                            selector = {}
-                            if p is not None and 'period' in var.dims:
-                                selector['period'] = p
-                            if s is not None and 'scenario' in var.dims:
-                                selector['scenario'] = s
-
-                            # Select per-key slice if needed, otherwise use full variable
-                            var_slice = ds[name].sel(**selector, drop=True) if selector else ds[name]
-
-                            # Now slice time and reshape
-                            time_idx = var_slice.dims.index('time')
-                            slices_list = [slice(None)] * len(var_slice.dims)
-                            slices_list[time_idx] = slice(0, n_reduced_timesteps)
-                            sliced_values = var_slice.values[tuple(slices_list)]
-                            reshaped_constant = sliced_values.reshape(new_shape)
-
-                            da = xr.DataArray(
-                                reshaped_constant,
-                                dims=['cluster', 'time'] + other_dims,
-                                coords=new_coords,
-                            )
-
-                        results.append(add_slice_dims(da, period=p, scenario=s))
-
-                if len(results) == 1:
-                    combined = results[0]
-                else:
-                    combined = xr.combine_by_coords(results)
-                    # combine_by_coords returns Dataset when DataArrays have names
-                    if isinstance(combined, xr.Dataset):
-                        combined = combined[name] if name in combined else list(combined.data_vars.values())[0]
-                    # Add other_dims to dim_order for transpose
-                    full_dim_order = dim_order + other_dims
-                    combined = combined.transpose(*full_dim_order)
-
-                combined = combined.assign_attrs(var.attrs)
-                if var.attrs.get('__timeseries_data__', False):
-                    combined = TimeSeriesData.from_dataarray(combined)
-                ds_new_vars[name] = combined
             else:
-                # Time-varying: combine per-(period, scenario) slices
-                results = []
-                for (p, s), da in typical_das[name].items():
-                    results.append(add_slice_dims(da, period=p, scenario=s))
-
-                if len(results) == 1:
-                    combined = results[0]
-                else:
-                    combined = xr.combine_by_coords(results)
-                    # combine_by_coords returns Dataset when DataArrays have names
-                    if isinstance(combined, xr.Dataset):
-                        combined = combined[name] if name in combined else list(combined.data_vars.values())[0]
-                    # Add other dims from the first result for proper ordering
-                    other_dims = [d for d in results[0].dims if d not in ('cluster', 'time', 'period', 'scenario')]
-                    full_dim_order = dim_order + other_dims
-                    combined = combined.transpose(*full_dim_order)
-
-                combined = combined.assign_attrs(var.attrs)
+                # Time-varying: use pre-combined DataArray from typical_das
+                da = typical_das[name].assign_attrs(var.attrs)
                 if var.attrs.get('__timeseries_data__', False):
-                    combined = TimeSeriesData.from_dataarray(combined)
-                ds_new_vars[name] = combined
+                    da = TimeSeriesData.from_dataarray(da)
+                ds_new_vars[name] = da
 
         # Copy attrs but remove cluster_weight
         new_attrs = dict(ds.attrs)
