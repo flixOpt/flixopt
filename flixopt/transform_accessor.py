@@ -1164,8 +1164,10 @@ class TransformAccessor:
         # Validate ExtremeConfig compatibility with multi-period/scenario systems
         # Methods 'new_cluster' and 'append' can produce different n_clusters per period,
         # which breaks the xarray structure that requires uniform dimensions
-        is_multi_dimensional = dim_info.has_periods or dim_info.has_scenarios
-        if is_multi_dimensional and extremes is not None:
+        n_periods = len(dim_info.periods) if dim_info.has_periods else 1
+        n_scenarios = len(dim_info.scenarios) if dim_info.has_scenarios else 1
+        total_slices = n_periods * n_scenarios
+        if total_slices > 1 and extremes is not None:
             extreme_method = getattr(extremes, 'method', None)
             if extreme_method in ('new_cluster', 'append'):
                 raise ValueError(

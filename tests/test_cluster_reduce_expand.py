@@ -839,7 +839,12 @@ class TestPeakSelection:
         assert fs_no_peaks.solution is not None
 
     def test_extremes_new_cluster_increases_n_clusters(self, solver_fixture, timesteps_8_days):
-        """Test that method='new_cluster' correctly increases n_clusters."""
+        """Test that method='new_cluster' can increase n_clusters when extreme periods are detected.
+
+        Note: tsam's new_cluster method may or may not add clusters depending on whether
+        the extreme period is already captured by an existing cluster. The assertion
+        checks that at least the requested n_clusters is maintained.
+        """
         from tsam import ExtremeConfig
 
         fs = create_system_with_peak_demand(timesteps_8_days)
@@ -854,8 +859,7 @@ class TestPeakSelection:
             ),
         )
 
-        # n_clusters should be > 2 because extreme periods are added as new clusters
-        # The exact number depends on how many extreme periods are detected
+        # n_clusters should be >= 2 (may be higher if extreme periods are added as new clusters)
         assert fs_clustered.clustering.n_clusters >= 2
 
         # Verify optimization works with the actual cluster count
@@ -905,8 +909,8 @@ class TestPeakSelection:
         fs_clustered.optimize(solver_fixture)
         assert fs_clustered.solution is not None
 
-    def test_extremes_new_cluster_with_segments(self, solver_fixture, timesteps_8_days):
-        """Test that method='new_cluster' works correctly with segmentation."""
+    def test_extremes_append_with_segments(self, solver_fixture, timesteps_8_days):
+        """Test that method='append' works correctly with segmentation."""
         from tsam import ExtremeConfig, SegmentConfig
 
         fs = create_system_with_peak_demand(timesteps_8_days)

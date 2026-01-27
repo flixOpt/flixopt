@@ -95,8 +95,8 @@ def combine_slices_to_dataarray(
             fill_value=np.nan,
         )
 
-    # Put base dimension first (standard order)
-    result = result.transpose(base_dims[0], ...)
+    # Put all base dimensions first in order (standard order)
+    result = result.transpose(*base_dims, ...)
 
     if name is not None:
         result = result.rename(name)

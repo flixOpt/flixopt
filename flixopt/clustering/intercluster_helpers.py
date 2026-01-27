@@ -312,10 +312,12 @@ def apply_soc_decay(
 
     # Decay factor: (1 - loss)^t
     loss_value = _scalar_safe_reduce(storage.relative_loss_per_hour, 'time', 'mean')
-    if not np.any(loss_value.values > 0):
+    # Normalize to array for consistent handling (scalar_safe_reduce may return scalar or DataArray)
+    loss_arr = np.asarray(loss_value)
+    if not np.any(loss_arr > 0):
         return soc_boundary_per_timestep
 
-    decay_da = (1 - loss_value) ** time_within_period_da
+    decay_da = (1 - loss_arr) ** time_within_period_da
 
     # Handle cluster dimension if present
     if 'cluster' in decay_da.dims:
