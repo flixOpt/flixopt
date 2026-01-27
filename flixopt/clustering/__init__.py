@@ -42,10 +42,64 @@ Example usage:
     fs_expanded = fs_clustered.transform.expand()
 """
 
+from .aggregation import (
+    accuracy_to_dataframe,
+    build_cluster_assignments_dataarray,
+    build_cluster_config_with_weights,
+    build_cluster_weights,
+    build_clustering_metrics,
+    build_segment_durations,
+    build_typical_dataarrays,
+    calculate_clustering_weights,
+    combine_slices_to_dataarray,
+)
 from .base import AggregationResults, Clustering, ClusteringResults
+from .expansion import (
+    VariableExpansionHandler,
+    append_final_state,
+    build_segment_total_varnames,
+    expand_first_timestep_only,
+    interpolate_charge_state_segmented,
+)
+from .intercluster_helpers import (
+    CapacityBounds,
+    apply_soc_decay,
+    build_boundary_coords,
+    combine_intercluster_charge_states,
+    extract_capacity_bounds,
+)
+from .iteration import DimInfo, DimSliceContext, iter_dim_slices, iter_dim_slices_simple
 
 __all__ = [
+    # Base classes
     'ClusteringResults',
     'AggregationResults',
     'Clustering',
+    # Iteration utilities
+    'DimSliceContext',
+    'DimInfo',
+    'iter_dim_slices',
+    'iter_dim_slices_simple',
+    # Aggregation helpers
+    'combine_slices_to_dataarray',
+    'build_typical_dataarrays',
+    'build_segment_durations',
+    'build_cluster_weights',
+    'build_clustering_metrics',
+    'build_cluster_assignments_dataarray',
+    'calculate_clustering_weights',
+    'build_cluster_config_with_weights',
+    'accuracy_to_dataframe',
+    # Expansion helpers
+    'VariableExpansionHandler',
+    'build_segment_total_varnames',
+    'interpolate_charge_state_segmented',
+    'expand_first_timestep_only',
+    'append_final_state',
+    # Intercluster helpers
+    'CapacityBounds',
+    'extract_capacity_bounds',
+    'build_boundary_coords',
+    'combine_intercluster_charge_states',
+    'apply_soc_decay',
 ]
