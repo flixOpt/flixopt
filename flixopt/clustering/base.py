@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from ..plot_result import PlotResult
     from ..statistics_accessor import SelectType
 
-from ..dim_iterator import DimIterator
+from ..dim_iterator import add_slice_dims
 from ..statistics_accessor import _build_color_kwargs
 
 
@@ -163,14 +163,6 @@ class ClusteringResults:
             Dict mapping dimension names to lists of coordinate values.
         """
         return {dim: self._get_dim_values(dim) for dim in self._dim_names}
-
-    @functools.cached_property
-    def _iterator(self) -> DimIterator:
-        """DimIterator for this ClusteringResults (cached)."""
-        return DimIterator(
-            periods=self._get_dim_values('period'),
-            scenarios=self._get_dim_values('scenario'),
-        )
 
     def sel(self, **kwargs: Any) -> TsamClusteringResult:
         """Select result by dimension labels (xarray-like).
@@ -491,8 +483,33 @@ class ClusteringResults:
         name: str | None = None,
     ) -> xr.DataArray:
         """Build a DataArray property, handling both single and multi-dimensional cases."""
-        slices = {key: get_data(cr) for key, cr in self._results.items()}
-        return self._iterator.combine_arrays(slices, base_dims, base_coords, name)
+        results = []
+        for key, cr in self._results.items():
+            data = get_data(cr)
+            coords = base_coords if base_coords else {}
+            da = xr.DataArray(data, dims=base_dims, coords=coords, name=name)
+
+            # Extract period/scenario from key based on dim_names
+            period = None
+            scenario = None
+            for i, dim_name in enumerate(self._dim_names):
+                if dim_name == 'period':
+                    period = key[i]
+                elif dim_name == 'scenario':
+                    scenario = key[i]
+
+            results.append(add_slice_dims(da, period=period, scenario=scenario))
+
+        if len(results) == 1:
+            return results[0]
+
+        combined = xr.combine_by_coords(results)
+        # combine_by_coords returns a Dataset when DataArrays have names, extract the DataArray
+        if isinstance(combined, xr.Dataset):
+            combined = combined[name]
+        # Ensure correct dimension order: base_dims first, then period/scenario
+        dim_order = list(base_dims) + self._dim_names
+        return combined.transpose(*dim_order)
 
     @staticmethod
     def _key_to_str(key: tuple) -> str:
@@ -543,7 +560,8 @@ class ClusteringResults:
 
         results = {}
         for key, cr in self._results.items():
-            selector = self._iterator.selector_for_key(key)
+            # Build selector from key based on dim_names
+            selector = {dim_name: key[i] for i, dim_name in enumerate(self._dim_names)}
             data_slice = data.sel(**selector, drop=True) if selector else data
 
             # Drop constant arrays and convert to DataFrame
