@@ -42,7 +42,10 @@ import xarray as xr
 from ..interface import InvestParameters
 
 if TYPE_CHECKING:
+    import pandas as pd
+
     from ..flow_system import FlowSystem
+    from .base import Clustering
 
 logger = logging.getLogger('flixopt')
 
@@ -199,3 +202,136 @@ def build_boundary_coords(
         coords['scenario'] = np.array(list(flow_system.scenarios))
 
     return coords, dims
+
+
+def combine_intercluster_charge_states(
+    expanded_fs: FlowSystem,
+    reduced_solution: xr.Dataset,
+    clustering: Clustering,
+    original_timesteps_extra: pd.DatetimeIndex,
+    timesteps_per_cluster: int,
+    n_original_clusters: int,
+    soc_boundary_vars: list[str],
+) -> None:
+    """Combine charge_state with SOC_boundary for intercluster storages (in-place).
+
+    For intercluster storages, charge_state is relative (delta-E) and can be negative.
+    Per Blanke et al. (2022) Eq. 9, actual SOC at time t in period d is:
+        SOC(t) = SOC_boundary[d] * (1 - loss)^t_within_period + charge_state(t)
+    where t_within_period is hours from period start (accounts for self-discharge decay).
+
+    Args:
+        expanded_fs: The expanded FlowSystem (modified in-place).
+        reduced_solution: The original reduced solution dataset.
+        clustering: Clustering with cluster order info.
+        original_timesteps_extra: Original timesteps including the extra final timestep.
+        timesteps_per_cluster: Number of timesteps per cluster.
+        n_original_clusters: Number of original clusters before aggregation.
+        soc_boundary_vars: List of SOC_boundary variable names.
+    """
+    n_original_timesteps_extra = len(original_timesteps_extra)
+
+    for soc_boundary_name in soc_boundary_vars:
+        storage_name = soc_boundary_name.rsplit('|', 1)[0]
+        charge_state_name = f'{storage_name}|charge_state'
+        if charge_state_name not in expanded_fs._solution:
+            continue
+
+        soc_boundary = reduced_solution[soc_boundary_name]
+        expanded_charge_state = expanded_fs._solution[charge_state_name]
+
+        # Map each original timestep to its original period index
+        original_cluster_indices = np.minimum(
+            np.arange(n_original_timesteps_extra) // timesteps_per_cluster,
+            n_original_clusters - 1,
+        )
+
+        # Select SOC_boundary for each timestep
+        soc_boundary_per_timestep = soc_boundary.isel(
+            cluster_boundary=xr.DataArray(original_cluster_indices, dims=['time'])
+        ).assign_coords(time=original_timesteps_extra)
+
+        # Apply self-discharge decay
+        soc_boundary_per_timestep = apply_soc_decay(
+            soc_boundary_per_timestep,
+            storage_name,
+            expanded_fs,
+            clustering,
+            original_timesteps_extra,
+            original_cluster_indices,
+            timesteps_per_cluster,
+        )
+
+        # Combine and clip to non-negative
+        combined = (expanded_charge_state + soc_boundary_per_timestep).clip(min=0)
+        expanded_fs._solution[charge_state_name] = combined.assign_attrs(expanded_charge_state.attrs)
+
+    # Clean up SOC_boundary variables and orphaned coordinates
+    for soc_boundary_name in soc_boundary_vars:
+        if soc_boundary_name in expanded_fs._solution:
+            del expanded_fs._solution[soc_boundary_name]
+    if 'cluster_boundary' in expanded_fs._solution.coords:
+        expanded_fs._solution = expanded_fs._solution.drop_vars('cluster_boundary')
+
+
+def apply_soc_decay(
+    soc_boundary_per_timestep: xr.DataArray,
+    storage_name: str,
+    flow_system: FlowSystem,
+    clustering: Clustering,
+    original_timesteps_extra: pd.DatetimeIndex,
+    original_cluster_indices: np.ndarray,
+    timesteps_per_cluster: int,
+) -> xr.DataArray:
+    """Apply self-discharge decay to SOC_boundary values.
+
+    Args:
+        soc_boundary_per_timestep: SOC boundary values mapped to each timestep.
+        storage_name: Name of the storage component.
+        flow_system: The FlowSystem containing the storage.
+        clustering: Clustering with cluster order info.
+        original_timesteps_extra: Original timesteps including final extra timestep.
+        original_cluster_indices: Mapping of timesteps to original cluster indices.
+        timesteps_per_cluster: Number of timesteps per cluster.
+
+    Returns:
+        SOC boundary values with decay applied.
+    """
+    from ..modeling import _scalar_safe_reduce
+
+    storage = flow_system.storages.get(storage_name)
+    if storage is None:
+        return soc_boundary_per_timestep
+
+    n_timesteps = len(original_timesteps_extra)
+
+    # Time within period for each timestep (0, 1, 2, ..., T-1, 0, 1, ...)
+    time_within_period = np.arange(n_timesteps) % timesteps_per_cluster
+    time_within_period[-1] = timesteps_per_cluster  # Extra timestep gets full decay
+    time_within_period_da = xr.DataArray(time_within_period, dims=['time'], coords={'time': original_timesteps_extra})
+
+    # Decay factor: (1 - loss)^t
+    loss_value = _scalar_safe_reduce(storage.relative_loss_per_hour, 'time', 'mean')
+    # Normalize to array for consistent handling (scalar_safe_reduce may return scalar or DataArray)
+    loss_arr = np.asarray(loss_value)
+    if not np.any(loss_arr > 0):
+        return soc_boundary_per_timestep
+
+    decay_da = (1 - loss_arr) ** time_within_period_da
+
+    # Handle cluster dimension if present
+    if 'cluster' in decay_da.dims:
+        cluster_assignments = clustering.cluster_assignments
+        if cluster_assignments.ndim == 1:
+            cluster_per_timestep = xr.DataArray(
+                cluster_assignments.values[original_cluster_indices],
+                dims=['time'],
+                coords={'time': original_timesteps_extra},
+            )
+        else:
+            cluster_per_timestep = cluster_assignments.isel(
+                original_cluster=xr.DataArray(original_cluster_indices, dims=['time'])
+            ).assign_coords(time=original_timesteps_extra)
+        decay_da = decay_da.isel(cluster=cluster_per_timestep).drop_vars('cluster', errors='ignore')
+
+    return soc_boundary_per_timestep * decay_da

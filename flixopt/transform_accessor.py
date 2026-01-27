@@ -16,8 +16,25 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .modeling import _scalar_safe_reduce
-from .structure import EXPAND_DIVIDE, EXPAND_FIRST_TIMESTEP, EXPAND_INTERPOLATE, VariableCategory
+from .clustering.aggregation import (
+    accuracy_to_dataframe,
+    build_cluster_config_with_weights,
+    build_cluster_weights,
+    build_clustering_metrics,
+    build_segment_durations,
+    build_typical_dataarrays,
+    calculate_clustering_weights,
+    combine_slices_to_dataarray,
+)
+from .clustering.expansion import (
+    VariableExpansionHandler,
+    append_final_state,
+    expand_first_timestep_only,
+    interpolate_charge_state_segmented,
+)
+from .clustering.intercluster_helpers import combine_intercluster_charge_states
+from .clustering.iteration import DimInfo, iter_dim_slices
+from .structure import VariableCategory
 
 if TYPE_CHECKING:
     from tsam import ClusterConfig, ExtremeConfig, SegmentConfig
@@ -57,296 +74,16 @@ class TransformAccessor:
         """
         self._fs = flow_system
 
-    @staticmethod
-    def _calculate_clustering_weights(ds) -> dict[str, float]:
-        """Calculate weights for clustering based on dataset attributes."""
-        from collections import Counter
+    # Note: Static methods _calculate_clustering_weights, _build_cluster_config_with_weights,
+    # and _accuracy_to_dataframe have been moved to flixopt/clustering/aggregation.py
+    # for better modularity. They are imported at the top of this module.
 
-        import numpy as np
-
-        groups = [da.attrs.get('clustering_group') for da in ds.data_vars.values() if 'clustering_group' in da.attrs]
-        group_counts = Counter(groups)
-
-        # Calculate weight for each group (1/count)
-        group_weights = {group: 1 / count for group, count in group_counts.items()}
-
-        weights = {}
-        variables = ds.variables
-        for name in ds.data_vars:
-            var_attrs = variables[name].attrs
-            clustering_group = var_attrs.get('clustering_group')
-            group_weight = group_weights.get(clustering_group)
-            if group_weight is not None:
-                weights[name] = group_weight
-            else:
-                weights[name] = var_attrs.get('clustering_weight', 1)
-
-        if np.all(np.isclose(list(weights.values()), 1, atol=1e-6)):
-            logger.debug('All Clustering weights were set to 1')
-
-        return weights
-
-    @staticmethod
-    def _build_cluster_config_with_weights(
-        cluster: ClusterConfig | None,
-        auto_weights: dict[str, float],
-    ) -> ClusterConfig:
-        """Merge auto-calculated weights into ClusterConfig.
-
-        Args:
-            cluster: Optional user-provided ClusterConfig.
-            auto_weights: Automatically calculated weights based on data variance.
-
-        Returns:
-            ClusterConfig with weights set (either user-provided or auto-calculated).
-        """
-        from tsam import ClusterConfig
-
-        # User provided ClusterConfig with weights - use as-is
-        if cluster is not None and cluster.weights is not None:
-            return cluster
-
-        # No ClusterConfig provided - use defaults with auto-calculated weights
-        if cluster is None:
-            return ClusterConfig(weights=auto_weights)
-
-        # ClusterConfig provided without weights - add auto-calculated weights
-        return ClusterConfig(
-            method=cluster.method,
-            representation=cluster.representation,
-            weights=auto_weights,
-            normalize_column_means=cluster.normalize_column_means,
-            use_duration_curves=cluster.use_duration_curves,
-            include_period_sums=cluster.include_period_sums,
-            solver=cluster.solver,
-        )
-
-    @staticmethod
-    def _accuracy_to_dataframe(accuracy) -> pd.DataFrame:
-        """Convert tsam AccuracyMetrics to DataFrame.
-
-        Args:
-            accuracy: tsam AccuracyMetrics object.
-
-        Returns:
-            DataFrame with RMSE, MAE, and RMSE_duration columns.
-        """
-        return pd.DataFrame(
-            {
-                'RMSE': accuracy.rmse,
-                'MAE': accuracy.mae,
-                'RMSE_duration': accuracy.rmse_duration,
-            }
-        )
-
-    def _build_cluster_weight_da(
-        self,
-        cluster_occurrences_all: dict[tuple, dict],
-        n_clusters: int,
-        cluster_coords: np.ndarray,
-        periods: list,
-        scenarios: list,
-    ) -> xr.DataArray:
-        """Build cluster_weight DataArray from occurrence counts.
-
-        Args:
-            cluster_occurrences_all: Dict mapping (period, scenario) tuples to
-                dicts of {cluster_id: occurrence_count}.
-            n_clusters: Number of clusters.
-            cluster_coords: Cluster coordinate values.
-            periods: List of period labels ([None] if no periods dimension).
-            scenarios: List of scenario labels ([None] if no scenarios dimension).
-
-        Returns:
-            DataArray with dims [cluster] or [cluster, period?, scenario?].
-        """
-
-        def _weight_for_key(key: tuple) -> xr.DataArray:
-            occurrences = cluster_occurrences_all[key]
-            # Missing clusters contribute zero weight (not 1)
-            weights = np.array([occurrences.get(c, 0) for c in range(n_clusters)])
-            return xr.DataArray(weights, dims=['cluster'], coords={'cluster': cluster_coords})
-
-        weight_slices = {key: _weight_for_key(key) for key in cluster_occurrences_all}
-        return self._combine_slices_to_dataarray_generic(
-            weight_slices, ['cluster'], periods, scenarios, 'cluster_weight'
-        )
-
-    def _build_typical_das(
-        self,
-        tsam_aggregation_results: dict[tuple, Any],
-        actual_n_clusters: int,
-        n_time_points: int,
-        cluster_coords: np.ndarray,
-        time_coords: pd.DatetimeIndex | pd.RangeIndex,
-        is_segmented: bool = False,
-    ) -> dict[str, dict[tuple, xr.DataArray]]:
-        """Build typical periods DataArrays with (cluster, time) shape.
-
-        Args:
-            tsam_aggregation_results: Dict mapping (period, scenario) to tsam results.
-            actual_n_clusters: Number of clusters.
-            n_time_points: Number of time points per cluster (timesteps or segments).
-            cluster_coords: Cluster coordinate values.
-            time_coords: Time coordinate values.
-            is_segmented: Whether segmentation was used.
-
-        Returns:
-            Nested dict: {column_name: {(period, scenario): DataArray}}.
-        """
-        typical_das: dict[str, dict[tuple, xr.DataArray]] = {}
-        for key, tsam_result in tsam_aggregation_results.items():
-            typical_df = tsam_result.cluster_representatives
-            if is_segmented:
-                # Segmented data: MultiIndex with cluster as first level
-                # Each cluster has exactly n_time_points rows (segments)
-                # Extract all data at once using numpy reshape, avoiding slow .loc calls
-                columns = typical_df.columns.tolist()
-
-                # Get all values as numpy array: (n_clusters * n_time_points, n_columns)
-                all_values = typical_df.values
-
-                # Reshape to (n_clusters, n_time_points, n_columns)
-                reshaped = all_values.reshape(actual_n_clusters, n_time_points, -1)
-
-                for col_idx, col in enumerate(columns):
-                    # reshaped[:, :, col_idx] selects all clusters, all time points, single column
-                    # Result shape: (n_clusters, n_time_points)
-                    typical_das.setdefault(col, {})[key] = xr.DataArray(
-                        reshaped[:, :, col_idx],
-                        dims=['cluster', 'time'],
-                        coords={'cluster': cluster_coords, 'time': time_coords},
-                    )
-            else:
-                # Non-segmented: flat data that can be reshaped
-                for col in typical_df.columns:
-                    flat_data = typical_df[col].values
-                    reshaped = flat_data.reshape(actual_n_clusters, n_time_points)
-                    typical_das.setdefault(col, {})[key] = xr.DataArray(
-                        reshaped,
-                        dims=['cluster', 'time'],
-                        coords={'cluster': cluster_coords, 'time': time_coords},
-                    )
-        return typical_das
-
-    def _build_segment_durations_da(
-        self,
-        tsam_aggregation_results: dict[tuple, Any],
-        actual_n_clusters: int,
-        n_segments: int,
-        cluster_coords: np.ndarray,
-        time_coords: pd.RangeIndex,
-        dt: float,
-        periods: list,
-        scenarios: list,
-    ) -> xr.DataArray:
-        """Build timestep_duration DataArray from segment durations.
-
-        For segmented systems, each segment represents multiple original timesteps.
-        The duration is segment_duration_in_original_timesteps * dt (hours per original timestep).
-
-        Args:
-            tsam_aggregation_results: Dict mapping (period, scenario) to tsam results.
-            actual_n_clusters: Number of clusters.
-            n_segments: Number of segments per cluster.
-            cluster_coords: Cluster coordinate values.
-            time_coords: Time coordinate values (RangeIndex for segments).
-            dt: Hours per original timestep.
-            periods: List of period labels ([None] if no periods dimension).
-            scenarios: List of scenario labels ([None] if no scenarios dimension).
-
-        Returns:
-            DataArray with dims [cluster, time] or [cluster, time, period?, scenario?]
-            containing duration in hours for each segment.
-        """
-        segment_duration_slices: dict[tuple, xr.DataArray] = {}
-
-        for key, tsam_result in tsam_aggregation_results.items():
-            # segment_durations is tuple of tuples: ((dur1, dur2, ...), (dur1, dur2, ...), ...)
-            # Each inner tuple is durations for one cluster
-            seg_durs = tsam_result.segment_durations
-
-            # Build 2D array (cluster, segment) of durations in hours
-            data = np.zeros((actual_n_clusters, n_segments))
-            for cluster_id in range(actual_n_clusters):
-                cluster_seg_durs = seg_durs[cluster_id]
-                for seg_id in range(n_segments):
-                    # Duration in hours = number of original timesteps * dt
-                    data[cluster_id, seg_id] = cluster_seg_durs[seg_id] * dt
-
-            segment_duration_slices[key] = xr.DataArray(
-                data,
-                dims=['cluster', 'time'],
-                coords={'cluster': cluster_coords, 'time': time_coords},
-            )
-
-        return self._combine_slices_to_dataarray_generic(
-            segment_duration_slices, ['cluster', 'time'], periods, scenarios, 'timestep_duration'
-        )
-
-    def _build_clustering_metrics(
-        self,
-        clustering_metrics_all: dict[tuple, pd.DataFrame],
-        periods: list,
-        scenarios: list,
-    ) -> xr.Dataset:
-        """Build clustering metrics Dataset from per-slice DataFrames.
-
-        Args:
-            clustering_metrics_all: Dict mapping (period, scenario) to metric DataFrames.
-            periods: List of period labels ([None] if no periods dimension).
-            scenarios: List of scenario labels ([None] if no scenarios dimension).
-
-        Returns:
-            Dataset with RMSE, MAE, RMSE_duration metrics.
-        """
-        non_empty_metrics = {k: v for k, v in clustering_metrics_all.items() if not v.empty}
-
-        if not non_empty_metrics:
-            return xr.Dataset()
-
-        first_key = (periods[0], scenarios[0])
-
-        if len(clustering_metrics_all) == 1 and len(non_empty_metrics) == 1:
-            metrics_df = non_empty_metrics.get(first_key)
-            if metrics_df is None:
-                metrics_df = next(iter(non_empty_metrics.values()))
-            return xr.Dataset(
-                {
-                    col: xr.DataArray(
-                        metrics_df[col].values,
-                        dims=['time_series'],
-                        coords={'time_series': metrics_df.index},
-                    )
-                    for col in metrics_df.columns
-                }
-            )
-
-        # Multi-dim case
-        sample_df = next(iter(non_empty_metrics.values()))
-        metric_names = list(sample_df.columns)
-        data_vars = {}
-
-        for metric in metric_names:
-            slices = {}
-            for (p, s), df in clustering_metrics_all.items():
-                if df.empty:
-                    slices[(p, s)] = xr.DataArray(
-                        np.full(len(sample_df.index), np.nan),
-                        dims=['time_series'],
-                        coords={'time_series': list(sample_df.index)},
-                    )
-                else:
-                    slices[(p, s)] = xr.DataArray(
-                        df[metric].values,
-                        dims=['time_series'],
-                        coords={'time_series': list(df.index)},
-                    )
-            data_vars[metric] = self._combine_slices_to_dataarray_generic(
-                slices, ['time_series'], periods, scenarios, metric
-            )
-
-        return xr.Dataset(data_vars)
+    # Note: The following methods have been moved to flixopt/clustering/aggregation.py:
+    # - _build_cluster_weight_da -> build_cluster_weights()
+    # - _build_typical_das -> build_typical_dataarrays()
+    # - _build_segment_durations_da -> build_segment_durations()
+    # - _build_clustering_metrics -> build_clustering_metrics()
+    # They are imported and used directly from the clustering module.
 
     def _build_reduced_flow_system(
         self,
@@ -356,8 +93,7 @@ class TransformAccessor:
         clustering_metrics_all: dict[tuple, pd.DataFrame],
         timesteps_per_cluster: int,
         dt: float,
-        periods: list,
-        scenarios: list,
+        dim_info: DimInfo,
         n_clusters_requested: int | None = None,
     ) -> FlowSystem:
         """Build a reduced FlowSystem from tsam aggregation results.
@@ -371,8 +107,7 @@ class TransformAccessor:
             clustering_metrics_all: Dict mapping (period, scenario) to accuracy metrics.
             timesteps_per_cluster: Number of timesteps per cluster.
             dt: Hours per timestep.
-            periods: List of period labels ([None] if no periods).
-            scenarios: List of scenario labels ([None] if no scenarios).
+            dim_info: DimInfo with period/scenario information.
             n_clusters_requested: Requested number of clusters (for logging). None to skip.
 
         Returns:
@@ -382,33 +117,18 @@ class TransformAccessor:
         from .core import drop_constant_arrays
         from .flow_system import FlowSystem
 
-        has_periods = periods != [None]
-        has_scenarios = scenarios != [None]
-
-        # Build dim_names for Clustering
-        dim_names = []
-        if has_periods:
-            dim_names.append('period')
-        if has_scenarios:
-            dim_names.append('scenario')
-
-        # Build dict keyed by (period?, scenario?) tuples (without None)
+        # Build dict keyed by ClusteringResults format (without None)
         aggregation_results: dict[tuple, Any] = {}
         for (p, s), result in tsam_aggregation_results.items():
-            key_parts = []
-            if has_periods:
-                key_parts.append(p)
-            if has_scenarios:
-                key_parts.append(s)
-            key = tuple(key_parts)
+            key = dim_info.to_clustering_key(p, s)
             aggregation_results[key] = result
 
         # Use first result for structure
-        first_key = (periods[0], scenarios[0])
+        first_key = (dim_info.periods[0], dim_info.scenarios[0])
         first_tsam = tsam_aggregation_results[first_key]
 
-        # Build metrics
-        clustering_metrics = self._build_clustering_metrics(clustering_metrics_all, periods, scenarios)
+        # Build metrics using extracted helper
+        clustering_metrics = build_clustering_metrics(clustering_metrics_all, dim_info)
 
         n_reduced_timesteps = len(first_tsam.cluster_representatives)
         actual_n_clusters = len(first_tsam.cluster_weights)
@@ -433,10 +153,8 @@ class TransformAccessor:
                 name='time',
             )
 
-        # Build cluster_weight
-        cluster_weight = self._build_cluster_weight_da(
-            cluster_occurrences_all, actual_n_clusters, cluster_coords, periods, scenarios
-        )
+        # Build cluster_weight using extracted helper
+        cluster_weight = build_cluster_weights(cluster_occurrences_all, actual_n_clusters, cluster_coords, dim_info)
 
         # Logging
         if is_segmented:
@@ -449,7 +167,7 @@ class TransformAccessor:
             )
 
         # Build typical periods DataArrays with (cluster, time) shape
-        typical_das = self._build_typical_das(
+        typical_das = build_typical_dataarrays(
             tsam_aggregation_results, actual_n_clusters, n_time_points, cluster_coords, time_coords, is_segmented
         )
 
@@ -462,23 +180,21 @@ class TransformAccessor:
             n_time_points,
             cluster_coords,
             time_coords,
-            periods,
-            scenarios,
+            dim_info,
         )
 
         # For segmented systems, build timestep_duration from segment_durations
         if is_segmented:
-            segment_durations = self._build_segment_durations_da(
+            segment_durations_da = build_segment_durations(
                 tsam_aggregation_results,
                 actual_n_clusters,
                 n_segments,
                 cluster_coords,
                 time_coords,
                 dt,
-                periods,
-                scenarios,
+                dim_info,
             )
-            ds_new['timestep_duration'] = segment_durations
+            ds_new['timestep_duration'] = segment_durations_da
 
         reduced_fs = FlowSystem.from_dataset(ds_new)
         reduced_fs.cluster_weight = cluster_weight
@@ -497,7 +213,7 @@ class TransformAccessor:
             aggregated_data=drop_constant_arrays(ds_new, dim='time'),
             _metrics=clustering_metrics if clustering_metrics.data_vars else None,
             _aggregation_results=aggregation_results,
-            _dim_names=dim_names,
+            _dim_names=dim_info.dim_names,
         )
 
         return reduced_fs
@@ -511,28 +227,26 @@ class TransformAccessor:
         n_time_points: int,
         cluster_coords: np.ndarray,
         time_coords: pd.DatetimeIndex | pd.RangeIndex,
-        periods: list,
-        scenarios: list,
+        dim_info: DimInfo,
     ) -> xr.Dataset:
         """Build the reduced dataset with (cluster, time) structure.
 
         Args:
             ds: Original dataset.
-            typical_das: Typical periods DataArrays from _build_typical_das().
+            typical_das: Typical periods DataArrays from build_typical_dataarrays().
             actual_n_clusters: Number of clusters.
             n_reduced_timesteps: Total reduced timesteps (n_clusters * n_time_points).
             n_time_points: Number of time points per cluster (timesteps or segments).
             cluster_coords: Cluster coordinate values.
             time_coords: Time coordinate values.
-            periods: List of period labels.
-            scenarios: List of scenario labels.
+            dim_info: DimInfo with period/scenario information.
 
         Returns:
             Dataset with reduced timesteps and (cluster, time) structure.
         """
         from .core import TimeSeriesData
 
-        all_keys = {(p, s) for p in periods for s in scenarios}
+        all_keys = {(p, s) for p in dim_info.periods for s in dim_info.scenarios}
         ds_new_vars = {}
 
         # Use ds.variables to avoid _construct_dataarray overhead
@@ -571,7 +285,7 @@ class TransformAccessor:
                 # Partial typical slices: fill missing keys with constant values
                 # For multi-period/scenario data, we need to select the right slice for each key
 
-                # Exclude 'period' and 'scenario' - they're handled by _combine_slices_to_dataarray_2d
+                # Exclude 'period' and 'scenario' - they're handled by combine_slices_to_dataarray
                 other_dims = [d for d in var.dims if d not in ('time', 'period', 'scenario')]
                 other_shape = [var.sizes[d] for d in other_dims]
                 new_shape = [actual_n_clusters, n_time_points] + other_shape
@@ -614,22 +328,22 @@ class TransformAccessor:
                             coords=new_coords,
                         )
 
-                da = self._combine_slices_to_dataarray_2d(
+                da = combine_slices_to_dataarray(
                     slices=filled_slices,
+                    dim_info=dim_info,
+                    base_dims=['cluster', 'time'],
                     attrs=var.attrs,
-                    periods=periods,
-                    scenarios=scenarios,
                 )
                 if var.attrs.get('__timeseries_data__', False):
                     da = TimeSeriesData.from_dataarray(da.assign_attrs(var.attrs))
                 ds_new_vars[name] = da
             else:
                 # Time-varying: combine per-(period, scenario) slices
-                da = self._combine_slices_to_dataarray_2d(
+                da = combine_slices_to_dataarray(
                     slices=typical_das[name],
+                    dim_info=dim_info,
+                    base_dims=['cluster', 'time'],
                     attrs=var.attrs,
-                    periods=periods,
-                    scenarios=scenarios,
                 )
                 if var.attrs.get('__timeseries_data__', False):
                     da = TimeSeriesData.from_dataarray(da.assign_attrs(var.attrs))
@@ -1409,12 +1123,9 @@ class TransformAccessor:
             raise ValueError(f'cluster_duration={hours_per_cluster}h must be a multiple of timestep size ({dt}h).')
 
         timesteps_per_cluster = int(round(hours_per_cluster / dt))
-        has_periods = self._fs.periods is not None
-        has_scenarios = self._fs.scenarios is not None
 
-        # Determine iteration dimensions
-        periods = list(self._fs.periods) if has_periods else [None]
-        scenarios = list(self._fs.scenarios) if has_scenarios else [None]
+        # Build DimInfo for standardized iteration
+        dim_info = DimInfo.from_flow_system(self._fs)
 
         ds = self._fs.to_dataset(include_solution=False)
 
@@ -1453,8 +1164,10 @@ class TransformAccessor:
         # Validate ExtremeConfig compatibility with multi-period/scenario systems
         # Methods 'new_cluster' and 'append' can produce different n_clusters per period,
         # which breaks the xarray structure that requires uniform dimensions
-        is_multi_dimensional = has_periods or has_scenarios
-        if is_multi_dimensional and extremes is not None:
+        n_periods = len(dim_info.periods) if dim_info.has_periods else 1
+        n_scenarios = len(dim_info.scenarios) if dim_info.has_scenarios else 1
+        total_slices = n_periods * n_scenarios
+        if total_slices > 1 and extremes is not None:
             extreme_method = getattr(extremes, 'method', None)
             if extreme_method in ('new_cluster', 'append'):
                 raise ValueError(
@@ -1473,90 +1186,70 @@ class TransformAccessor:
         # Collect metrics per (period, scenario) slice
         clustering_metrics_all: dict[tuple, pd.DataFrame] = {}
 
-        for period_label in periods:
-            for scenario_label in scenarios:
-                key = (period_label, scenario_label)
-                selector = {k: v for k, v in [('period', period_label), ('scenario', scenario_label)] if v is not None}
+        for ctx in iter_dim_slices(dim_info):
+            # Select data for clustering (may be subset if data_vars specified)
+            ds_slice_for_clustering = (
+                ds_for_clustering.sel(**ctx.selector, drop=True) if ctx.selector else ds_for_clustering
+            )
+            temporaly_changing_ds_for_clustering = drop_constant_arrays(ds_slice_for_clustering, dim='time')
 
-                # Select data for clustering (may be subset if data_vars specified)
-                ds_slice_for_clustering = (
-                    ds_for_clustering.sel(**selector, drop=True) if selector else ds_for_clustering
+            # Guard against empty dataset after removing constant arrays
+            if not temporaly_changing_ds_for_clustering.data_vars:
+                filter_info = f'data_vars={data_vars}' if data_vars else 'all variables'
+                selector_info = f', selector={ctx.selector}' if ctx.selector else ''
+                raise ValueError(
+                    f'No time-varying data found for clustering ({filter_info}{selector_info}). '
+                    f'All variables are constant over time. Check your data_vars filter or input data.'
                 )
-                temporaly_changing_ds_for_clustering = drop_constant_arrays(ds_slice_for_clustering, dim='time')
 
-                # Guard against empty dataset after removing constant arrays
-                if not temporaly_changing_ds_for_clustering.data_vars:
-                    filter_info = f'data_vars={data_vars}' if data_vars else 'all variables'
-                    selector_info = f', selector={selector}' if selector else ''
-                    raise ValueError(
-                        f'No time-varying data found for clustering ({filter_info}{selector_info}). '
-                        f'All variables are constant over time. Check your data_vars filter or input data.'
-                    )
+            df_for_clustering = temporaly_changing_ds_for_clustering.to_dataframe()
 
-                df_for_clustering = temporaly_changing_ds_for_clustering.to_dataframe()
+            if ctx.selector:
+                logger.info(f'Clustering {", ".join(f"{k}={v}" for k, v in ctx.selector.items())}...')
 
-                if selector:
-                    logger.info(f'Clustering {", ".join(f"{k}={v}" for k, v in selector.items())}...')
+            # Suppress tsam warning about minimal value constraints (informational, not actionable)
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
 
-                # Suppress tsam warning about minimal value constraints (informational, not actionable)
-                with warnings.catch_warnings():
-                    warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
+                # Build ClusterConfig with auto-calculated weights
+                clustering_weights = calculate_clustering_weights(temporaly_changing_ds_for_clustering)
+                filtered_weights = {
+                    name: w for name, w in clustering_weights.items() if name in df_for_clustering.columns
+                }
+                cluster_config = build_cluster_config_with_weights(cluster, filtered_weights)
 
-                    # Build ClusterConfig with auto-calculated weights
-                    clustering_weights = self._calculate_clustering_weights(temporaly_changing_ds_for_clustering)
-                    filtered_weights = {
-                        name: w for name, w in clustering_weights.items() if name in df_for_clustering.columns
-                    }
-                    cluster_config = self._build_cluster_config_with_weights(cluster, filtered_weights)
+                # Perform clustering based on selected data_vars (or all if not specified)
+                tsam_result = tsam.aggregate(
+                    df_for_clustering,
+                    n_clusters=n_clusters,
+                    period_duration=hours_per_cluster,
+                    temporal_resolution=dt,
+                    cluster=cluster_config,
+                    extremes=extremes,
+                    segments=segments,
+                    preserve_column_means=preserve_column_means,
+                    rescale_exclude_columns=rescale_exclude_columns,
+                    round_decimals=round_decimals,
+                    numerical_tolerance=numerical_tolerance,
+                    **tsam_kwargs,
+                )
 
-                    # Perform clustering based on selected data_vars (or all if not specified)
-                    tsam_result = tsam.aggregate(
-                        df_for_clustering,
-                        n_clusters=n_clusters,
-                        period_duration=hours_per_cluster,
-                        temporal_resolution=dt,
-                        cluster=cluster_config,
-                        extremes=extremes,
-                        segments=segments,
-                        preserve_column_means=preserve_column_means,
-                        rescale_exclude_columns=rescale_exclude_columns,
-                        round_decimals=round_decimals,
-                        numerical_tolerance=numerical_tolerance,
-                        **tsam_kwargs,
-                    )
-
-                tsam_aggregation_results[key] = tsam_result
-                tsam_clustering_results[key] = tsam_result.clustering
-                cluster_assignmentss[key] = tsam_result.cluster_assignments
-                cluster_occurrences_all[key] = tsam_result.cluster_weights
-                try:
-                    clustering_metrics_all[key] = self._accuracy_to_dataframe(tsam_result.accuracy)
-                except Exception as e:
-                    logger.warning(f'Failed to compute clustering metrics for {key}: {e}')
-                    clustering_metrics_all[key] = pd.DataFrame()
+            tsam_aggregation_results[ctx.key] = tsam_result
+            tsam_clustering_results[ctx.key] = tsam_result.clustering
+            cluster_assignmentss[ctx.key] = tsam_result.cluster_assignments
+            cluster_occurrences_all[ctx.key] = tsam_result.cluster_weights
+            try:
+                clustering_metrics_all[ctx.key] = accuracy_to_dataframe(tsam_result.accuracy)
+            except Exception as e:
+                logger.warning(f'Failed to compute clustering metrics for {ctx.key}: {e}')
+                clustering_metrics_all[ctx.key] = pd.DataFrame()
 
         # If data_vars was specified, apply clustering to FULL data
         if data_vars is not None:
-            # Build dim_names for ClusteringResults
-            dim_names = []
-            if has_periods:
-                dim_names.append('period')
-            if has_scenarios:
-                dim_names.append('scenario')
-
-            # Convert (period, scenario) keys to ClusteringResults format
-            def to_cr_key(p, s):
-                key_parts = []
-                if has_periods:
-                    key_parts.append(p)
-                if has_scenarios:
-                    key_parts.append(s)
-                return tuple(key_parts)
-
             # Build ClusteringResults from subset clustering
             clustering_results = ClusteringResults(
-                {to_cr_key(p, s): cr for (p, s), cr in tsam_clustering_results.items()},
-                dim_names,
+                {dim_info.to_clustering_key(p, s): cr for (p, s), cr in tsam_clustering_results.items()},
+                dim_info.dim_names,
             )
 
             # Apply to full data - this returns AggregationResults
@@ -1565,14 +1258,7 @@ class TransformAccessor:
             # Update tsam_aggregation_results with full data results
             for cr_key, result in agg_results:
                 # Convert back to (period, scenario) format
-                if has_periods and has_scenarios:
-                    full_key = (cr_key[0], cr_key[1])
-                elif has_periods:
-                    full_key = (cr_key[0], None)
-                elif has_scenarios:
-                    full_key = (None, cr_key[0])
-                else:
-                    full_key = (None, None)
+                full_key = dim_info.from_clustering_key(cr_key)
                 tsam_aggregation_results[full_key] = result
                 cluster_occurrences_all[full_key] = result.cluster_weights
 
@@ -1584,8 +1270,7 @@ class TransformAccessor:
             clustering_metrics_all=clustering_metrics_all,
             timesteps_per_cluster=timesteps_per_cluster,
             dt=dt,
-            periods=periods,
-            scenarios=scenarios,
+            dim_info=dim_info,
             n_clusters_requested=n_clusters,
         )
 
@@ -1633,12 +1318,9 @@ class TransformAccessor:
 
         # Get timesteps_per_cluster from the clustering object (survives serialization)
         timesteps_per_cluster = clustering.timesteps_per_cluster
-        has_periods = self._fs.periods is not None
-        has_scenarios = self._fs.scenarios is not None
 
-        # Determine iteration dimensions
-        periods = list(self._fs.periods) if has_periods else [None]
-        scenarios = list(self._fs.scenarios) if has_scenarios else [None]
+        # Build DimInfo for standardized iteration
+        dim_info = DimInfo.from_flow_system(self._fs)
 
         ds = self._fs.to_dataset(include_solution=False)
 
@@ -1667,19 +1349,12 @@ class TransformAccessor:
 
         for cr_key, result in agg_results:
             # Convert ClusteringResults key to (period, scenario) format
-            if has_periods and has_scenarios:
-                full_key = (cr_key[0], cr_key[1])
-            elif has_periods:
-                full_key = (cr_key[0], None)
-            elif has_scenarios:
-                full_key = (None, cr_key[0])
-            else:
-                full_key = (None, None)
+            full_key = dim_info.from_clustering_key(cr_key)
 
             tsam_aggregation_results[full_key] = result
             cluster_occurrences_all[full_key] = result.cluster_weights
             try:
-                clustering_metrics_all[full_key] = self._accuracy_to_dataframe(result.accuracy)
+                clustering_metrics_all[full_key] = accuracy_to_dataframe(result.accuracy)
             except Exception as e:
                 logger.warning(f'Failed to compute clustering metrics for {full_key}: {e}')
                 clustering_metrics_all[full_key] = pd.DataFrame()
@@ -1692,117 +1367,11 @@ class TransformAccessor:
             clustering_metrics_all=clustering_metrics_all,
             timesteps_per_cluster=timesteps_per_cluster,
             dt=dt,
-            periods=periods,
-            scenarios=scenarios,
+            dim_info=dim_info,
         )
 
-    @staticmethod
-    def _combine_slices_to_dataarray_generic(
-        slices: dict[tuple, xr.DataArray],
-        base_dims: list[str],
-        periods: list,
-        scenarios: list,
-        name: str,
-    ) -> xr.DataArray:
-        """Combine per-(period, scenario) slices into a multi-dimensional DataArray.
-
-        Generic version that works with any base dimension (not just 'time').
-
-        Args:
-            slices: Dict mapping (period, scenario) tuples to DataArrays.
-            base_dims: Base dimensions of each slice (e.g., ['original_cluster'] or ['original_time']).
-            periods: List of period labels ([None] if no periods dimension).
-            scenarios: List of scenario labels ([None] if no scenarios dimension).
-            name: Name for the resulting DataArray.
-
-        Returns:
-            DataArray with dimensions [base_dims..., period?, scenario?].
-        """
-        first_key = (periods[0], scenarios[0])
-        has_periods = periods != [None]
-        has_scenarios = scenarios != [None]
-
-        # Simple case: no period/scenario dimensions
-        if not has_periods and not has_scenarios:
-            return slices[first_key].rename(name)
-
-        # Multi-dimensional: use xr.concat to stack along period/scenario dims
-        # Use join='outer' to handle cases where different periods/scenarios have different
-        # coordinate values (e.g., different time_series after drop_constant_arrays)
-        if has_periods and has_scenarios:
-            # Stack scenarios first, then periods
-            period_arrays = []
-            for p in periods:
-                scenario_arrays = [slices[(p, s)] for s in scenarios]
-                period_arrays.append(
-                    xr.concat(
-                        scenario_arrays, dim=pd.Index(scenarios, name='scenario'), join='outer', fill_value=np.nan
-                    )
-                )
-            result = xr.concat(period_arrays, dim=pd.Index(periods, name='period'), join='outer', fill_value=np.nan)
-        elif has_periods:
-            result = xr.concat(
-                [slices[(p, None)] for p in periods],
-                dim=pd.Index(periods, name='period'),
-                join='outer',
-                fill_value=np.nan,
-            )
-        else:
-            result = xr.concat(
-                [slices[(None, s)] for s in scenarios],
-                dim=pd.Index(scenarios, name='scenario'),
-                join='outer',
-                fill_value=np.nan,
-            )
-
-        # Put base dimension first (standard order)
-        result = result.transpose(base_dims[0], ...)
-
-        return result.rename(name)
-
-    @staticmethod
-    def _combine_slices_to_dataarray_2d(
-        slices: dict[tuple, xr.DataArray],
-        attrs: dict,
-        periods: list,
-        scenarios: list,
-    ) -> xr.DataArray:
-        """Combine per-(period, scenario) slices into a multi-dimensional DataArray with (cluster, time) dims.
-
-        Args:
-            slices: Dict mapping (period, scenario) tuples to DataArrays with (cluster, time) dims.
-            attrs: Attributes to assign to the result.
-            periods: List of period labels ([None] if no periods dimension).
-            scenarios: List of scenario labels ([None] if no scenarios dimension).
-
-        Returns:
-            DataArray with dimensions (cluster, time, period?, scenario?).
-        """
-        first_key = (periods[0], scenarios[0])
-        has_periods = periods != [None]
-        has_scenarios = scenarios != [None]
-
-        # Simple case: no period/scenario dimensions
-        if not has_periods and not has_scenarios:
-            return slices[first_key].assign_attrs(attrs)
-
-        # Multi-dimensional: use xr.concat to stack along period/scenario dims
-        if has_periods and has_scenarios:
-            # Stack scenarios first, then periods
-            period_arrays = []
-            for p in periods:
-                scenario_arrays = [slices[(p, s)] for s in scenarios]
-                period_arrays.append(xr.concat(scenario_arrays, dim=pd.Index(scenarios, name='scenario')))
-            result = xr.concat(period_arrays, dim=pd.Index(periods, name='period'))
-        elif has_periods:
-            result = xr.concat([slices[(p, None)] for p in periods], dim=pd.Index(periods, name='period'))
-        else:
-            result = xr.concat([slices[(None, s)] for s in scenarios], dim=pd.Index(scenarios, name='scenario'))
-
-        # Put cluster and time first (standard order for clustered data)
-        result = result.transpose('cluster', 'time', ...)
-
-        return result.assign_attrs(attrs)
+    # Note: _combine_slices_to_dataarray_generic and _combine_slices_to_dataarray_2d
+    # have been unified into combine_slices_to_dataarray() in flixopt/clustering/aggregation.py
 
     def _validate_for_expansion(self) -> Clustering:
         """Validate FlowSystem can be expanded and return clustering info.
@@ -1823,312 +1392,10 @@ class TransformAccessor:
 
         return self._fs.clustering
 
-    def _combine_intercluster_charge_states(
-        self,
-        expanded_fs: FlowSystem,
-        reduced_solution: xr.Dataset,
-        clustering: Clustering,
-        original_timesteps_extra: pd.DatetimeIndex,
-        timesteps_per_cluster: int,
-        n_original_clusters: int,
-    ) -> None:
-        """Combine charge_state with SOC_boundary for intercluster storages (in-place).
-
-        For intercluster storages, charge_state is relative (delta-E) and can be negative.
-        Per Blanke et al. (2022) Eq. 9, actual SOC at time t in period d is:
-            SOC(t) = SOC_boundary[d] * (1 - loss)^t_within_period + charge_state(t)
-        where t_within_period is hours from period start (accounts for self-discharge decay).
-
-        Args:
-            expanded_fs: The expanded FlowSystem (modified in-place).
-            reduced_solution: The original reduced solution dataset.
-            clustering: Clustering with cluster order info.
-            original_timesteps_extra: Original timesteps including the extra final timestep.
-            timesteps_per_cluster: Number of timesteps per cluster.
-            n_original_clusters: Number of original clusters before aggregation.
-        """
-        n_original_timesteps_extra = len(original_timesteps_extra)
-        soc_boundary_vars = self._fs.get_variables_by_category(VariableCategory.SOC_BOUNDARY)
-
-        for soc_boundary_name in soc_boundary_vars:
-            storage_name = soc_boundary_name.rsplit('|', 1)[0]
-            charge_state_name = f'{storage_name}|charge_state'
-            if charge_state_name not in expanded_fs._solution:
-                continue
-
-            soc_boundary = reduced_solution[soc_boundary_name]
-            expanded_charge_state = expanded_fs._solution[charge_state_name]
-
-            # Map each original timestep to its original period index
-            original_cluster_indices = np.minimum(
-                np.arange(n_original_timesteps_extra) // timesteps_per_cluster,
-                n_original_clusters - 1,
-            )
-
-            # Select SOC_boundary for each timestep
-            soc_boundary_per_timestep = soc_boundary.isel(
-                cluster_boundary=xr.DataArray(original_cluster_indices, dims=['time'])
-            ).assign_coords(time=original_timesteps_extra)
-
-            # Apply self-discharge decay
-            soc_boundary_per_timestep = self._apply_soc_decay(
-                soc_boundary_per_timestep,
-                storage_name,
-                clustering,
-                original_timesteps_extra,
-                original_cluster_indices,
-                timesteps_per_cluster,
-            )
-
-            # Combine and clip to non-negative
-            combined = (expanded_charge_state + soc_boundary_per_timestep).clip(min=0)
-            expanded_fs._solution[charge_state_name] = combined.assign_attrs(expanded_charge_state.attrs)
-
-        # Clean up SOC_boundary variables and orphaned coordinates
-        for soc_boundary_name in soc_boundary_vars:
-            if soc_boundary_name in expanded_fs._solution:
-                del expanded_fs._solution[soc_boundary_name]
-        if 'cluster_boundary' in expanded_fs._solution.coords:
-            expanded_fs._solution = expanded_fs._solution.drop_vars('cluster_boundary')
-
-    def _apply_soc_decay(
-        self,
-        soc_boundary_per_timestep: xr.DataArray,
-        storage_name: str,
-        clustering: Clustering,
-        original_timesteps_extra: pd.DatetimeIndex,
-        original_cluster_indices: np.ndarray,
-        timesteps_per_cluster: int,
-    ) -> xr.DataArray:
-        """Apply self-discharge decay to SOC_boundary values.
-
-        Args:
-            soc_boundary_per_timestep: SOC boundary values mapped to each timestep.
-            storage_name: Name of the storage component.
-            clustering: Clustering with cluster order info.
-            original_timesteps_extra: Original timesteps including final extra timestep.
-            original_cluster_indices: Mapping of timesteps to original cluster indices.
-            timesteps_per_cluster: Number of timesteps per cluster.
-
-        Returns:
-            SOC boundary values with decay applied.
-        """
-        storage = self._fs.storages.get(storage_name)
-        if storage is None:
-            return soc_boundary_per_timestep
-
-        n_timesteps = len(original_timesteps_extra)
-
-        # Time within period for each timestep (0, 1, 2, ..., T-1, 0, 1, ...)
-        time_within_period = np.arange(n_timesteps) % timesteps_per_cluster
-        time_within_period[-1] = timesteps_per_cluster  # Extra timestep gets full decay
-        time_within_period_da = xr.DataArray(
-            time_within_period, dims=['time'], coords={'time': original_timesteps_extra}
-        )
-
-        # Decay factor: (1 - loss)^t
-        loss_value = _scalar_safe_reduce(storage.relative_loss_per_hour, 'time', 'mean')
-        if not np.any(loss_value.values > 0):
-            return soc_boundary_per_timestep
-
-        decay_da = (1 - loss_value) ** time_within_period_da
-
-        # Handle cluster dimension if present
-        if 'cluster' in decay_da.dims:
-            cluster_assignments = clustering.cluster_assignments
-            if cluster_assignments.ndim == 1:
-                cluster_per_timestep = xr.DataArray(
-                    cluster_assignments.values[original_cluster_indices],
-                    dims=['time'],
-                    coords={'time': original_timesteps_extra},
-                )
-            else:
-                cluster_per_timestep = cluster_assignments.isel(
-                    original_cluster=xr.DataArray(original_cluster_indices, dims=['time'])
-                ).assign_coords(time=original_timesteps_extra)
-            decay_da = decay_da.isel(cluster=cluster_per_timestep).drop_vars('cluster', errors='ignore')
-
-        return soc_boundary_per_timestep * decay_da
-
-    def _build_segment_total_varnames(self) -> set[str]:
-        """Build segment total variable names - BACKWARDS COMPATIBILITY FALLBACK.
-
-        This method is only used when variable_categories is empty (old FlowSystems
-        saved before category registration was implemented). New FlowSystems use
-        the VariableCategory registry with EXPAND_DIVIDE categories (PER_TIMESTEP, SHARE).
-
-        For segmented systems, these variables contain values that are summed over
-        segments. When expanded to hourly resolution, they need to be divided by
-        segment duration to get correct hourly rates.
-
-        Returns:
-            Set of variable names that should be divided by expansion divisor.
-        """
-        segment_total_vars: set[str] = set()
-
-        # Get all effect names
-        effect_names = list(self._fs.effects.keys())
-
-        # 1. Per-timestep totals for each effect: {effect}(temporal)|per_timestep
-        for effect in effect_names:
-            segment_total_vars.add(f'{effect}(temporal)|per_timestep')
-
-        # 2. Flow contributions to effects: {flow}->{effect}(temporal)
-        #    (from effects_per_flow_hour on Flow elements)
-        for flow_label in self._fs.flows:
-            for effect in effect_names:
-                segment_total_vars.add(f'{flow_label}->{effect}(temporal)')
-
-        # 3. Component contributions to effects: {component}->{effect}(temporal)
-        #    (from effects_per_startup, effects_per_active_hour on OnOffParameters)
-        for component_label in self._fs.components:
-            for effect in effect_names:
-                segment_total_vars.add(f'{component_label}->{effect}(temporal)')
-
-        # 4. Effect-to-effect contributions (from share_from_temporal)
-        #    {source_effect}(temporal)->{target_effect}(temporal)
-        for target_effect_name, target_effect in self._fs.effects.items():
-            if target_effect.share_from_temporal:
-                for source_effect_name in target_effect.share_from_temporal:
-                    segment_total_vars.add(f'{source_effect_name}(temporal)->{target_effect_name}(temporal)')
-
-        return segment_total_vars
-
-    def _interpolate_charge_state_segmented(
-        self,
-        da: xr.DataArray,
-        clustering: Clustering,
-        original_timesteps: pd.DatetimeIndex,
-    ) -> xr.DataArray:
-        """Interpolate charge_state values within segments for segmented systems.
-
-        For segmented systems, charge_state has values at segment boundaries (n_segments+1).
-        Instead of repeating the start boundary value for all timesteps in a segment,
-        this method interpolates between start and end boundary values to show the
-        actual charge trajectory as the storage charges/discharges.
-
-        Uses vectorized xarray operations via Clustering class properties.
-
-        Args:
-            da: charge_state DataArray with dims (cluster, time) where time has n_segments+1 entries.
-            clustering: Clustering object with segment info.
-            original_timesteps: Original timesteps to expand to.
-
-        Returns:
-            Interpolated charge_state with dims (time, ...) for original timesteps.
-        """
-        # Get multi-dimensional properties from Clustering
-        segment_assignments = clustering.results.segment_assignments
-        segment_durations = clustering.results.segment_durations
-        position_within_segment = clustering.results.position_within_segment
-        cluster_assignments = clustering.cluster_assignments
-
-        # Compute original period index and position within period directly
-        # This is more reliable than decoding from timestep_mapping, which encodes
-        # (cluster * n_segments + segment_idx) for segmented systems
-        n_original_timesteps = len(original_timesteps)
-        timesteps_per_cluster = clustering.timesteps_per_cluster
-        n_original_clusters = clustering.n_original_clusters
-
-        # For each original timestep, compute which original period it belongs to
-        original_period_indices = np.minimum(
-            np.arange(n_original_timesteps) // timesteps_per_cluster,
-            n_original_clusters - 1,
-        )
-        # Position within the period (0 to timesteps_per_cluster-1)
-        positions_in_period = np.arange(n_original_timesteps) % timesteps_per_cluster
-
-        # Create DataArrays for indexing (with original_time dimension, coords added later)
-        original_period_da = xr.DataArray(original_period_indices, dims=['original_time'])
-        position_in_period_da = xr.DataArray(positions_in_period, dims=['original_time'])
-
-        # Map original period to cluster
-        cluster_indices = cluster_assignments.isel(original_cluster=original_period_da)
-
-        # Get segment index and position for each original timestep
-        # segment_assignments has shape (cluster, time) where time = timesteps_per_cluster
-        seg_indices = segment_assignments.isel(cluster=cluster_indices, time=position_in_period_da)
-        positions = position_within_segment.isel(cluster=cluster_indices, time=position_in_period_da)
-        durations = segment_durations.isel(cluster=cluster_indices, segment=seg_indices)
-
-        # Calculate interpolation factor: position within segment (0 to 1)
-        # At position=0, factor=0.5/duration (start of segment)
-        # At position=duration-1, factor approaches 1 (end of segment)
-        factor = xr.where(durations > 1, (positions + 0.5) / durations, 0.5)
-
-        # Get start and end boundary values from charge_state
-        # charge_state has dims (cluster, time) where time = segment boundaries (n_segments+1)
-        start_vals = da.isel(cluster=cluster_indices, time=seg_indices)
-        end_vals = da.isel(cluster=cluster_indices, time=seg_indices + 1)
-
-        # Linear interpolation
-        interpolated = start_vals + (end_vals - start_vals) * factor
-
-        # Clean up coordinate artifacts and rename
-        interpolated = interpolated.drop_vars(['cluster', 'time', 'segment'], errors='ignore')
-        interpolated = interpolated.rename({'original_time': 'time'}).assign_coords(time=original_timesteps)
-
-        return interpolated.transpose('time', ...).assign_attrs(da.attrs)
-
-    def _expand_first_timestep_only(
-        self,
-        da: xr.DataArray,
-        clustering: Clustering,
-        original_timesteps: pd.DatetimeIndex,
-    ) -> xr.DataArray:
-        """Expand binary event variables (startup/shutdown) to first timestep of each segment.
-
-        For segmented systems, binary event variables like startup and shutdown indicate
-        that an event occurred somewhere in the segment. When expanding, we place the
-        event at the first timestep of each segment and set all other timesteps to 0.
-
-        This method is only used for segmented systems. For non-segmented systems,
-        the timing within the cluster is preserved by normal expansion.
-
-        Args:
-            da: Binary event DataArray with dims including (cluster, time).
-            clustering: Clustering object with segment info (must be segmented).
-            original_timesteps: Original timesteps to expand to.
-
-        Returns:
-            Expanded DataArray with event values only at first timestep of each segment.
-        """
-        # First expand normally (repeats values)
-        expanded = clustering.expand_data(da, original_time=original_timesteps)
-
-        # Build mask: True only at first timestep of each segment
-        n_original_timesteps = len(original_timesteps)
-        timesteps_per_cluster = clustering.timesteps_per_cluster
-        n_original_clusters = clustering.n_original_clusters
-
-        position_within_segment = clustering.results.position_within_segment
-        cluster_assignments = clustering.cluster_assignments
-
-        # Compute original period index and position within period
-        original_period_indices = np.minimum(
-            np.arange(n_original_timesteps) // timesteps_per_cluster,
-            n_original_clusters - 1,
-        )
-        positions_in_period = np.arange(n_original_timesteps) % timesteps_per_cluster
-
-        # Create DataArrays for indexing (coords added later after rename)
-        original_period_da = xr.DataArray(original_period_indices, dims=['original_time'])
-        position_in_period_da = xr.DataArray(positions_in_period, dims=['original_time'])
-
-        # Map to cluster and get position within segment
-        cluster_indices = cluster_assignments.isel(original_cluster=original_period_da)
-        pos_in_segment = position_within_segment.isel(cluster=cluster_indices, time=position_in_period_da)
-
-        # Clean up and create mask
-        pos_in_segment = pos_in_segment.drop_vars(['cluster', 'time'], errors='ignore')
-        pos_in_segment = pos_in_segment.rename({'original_time': 'time'}).assign_coords(time=original_timesteps)
-
-        # First timestep of segment has position 0
-        is_first = pos_in_segment == 0
-
-        # Apply mask: keep value at first timestep, zero elsewhere
-        result = xr.where(is_first, expanded, 0)
-        return result.assign_attrs(da.attrs)
+    # Note: _combine_intercluster_charge_states, _apply_soc_decay, _build_segment_total_varnames,
+    # _interpolate_charge_state_segmented, and _expand_first_timestep_only have been moved to:
+    # - flixopt/clustering/intercluster_helpers.py (combine_intercluster_charge_states, apply_soc_decay)
+    # - flixopt/clustering/expansion.py (interpolate_charge_state_segmented, expand_first_timestep_only, build_segment_total_varnames)
 
     def expand(self) -> FlowSystem:
         """Expand a clustered FlowSystem back to full original timesteps.
@@ -2255,78 +1522,37 @@ class TransformAccessor:
         n_original_timesteps = len(original_timesteps)
         original_timesteps_extra = FlowSystem._create_timesteps_with_extra(original_timesteps, None)
 
-        # For charge_state expansion: index of last valid original cluster
-        last_original_cluster_idx = min(
-            (n_original_timesteps - 1) // timesteps_per_cluster,
-            n_original_clusters - 1,
-        )
-
-        # For segmented systems: build expansion divisor and identify segment total variables
-        expansion_divisor = None
-        segment_total_vars: set[str] = set()
+        # Create expansion handler for variable-specific expansion logic
         variable_categories = getattr(self._fs, '_variable_categories', {})
-        if clustering.is_segmented:
-            expansion_divisor = clustering.build_expansion_divisor(original_time=original_timesteps)
-            # Build segment total vars using registry first, fall back to pattern matching
-            segment_total_vars = {name for name, cat in variable_categories.items() if cat in EXPAND_DIVIDE}
-            # Fall back to pattern matching for backwards compatibility (old FlowSystems without categories)
-            if not segment_total_vars:
-                segment_total_vars = self._build_segment_total_varnames()
-
-        def _is_state_variable(var_name: str) -> bool:
-            """Check if a variable is a state variable (should be interpolated)."""
-            if var_name in variable_categories:
-                return variable_categories[var_name] in EXPAND_INTERPOLATE
-            # Fall back to pattern matching for backwards compatibility
-            return var_name.endswith('|charge_state')
-
-        def _is_first_timestep_variable(var_name: str) -> bool:
-            """Check if a variable is a binary event (should only appear at first timestep)."""
-            if var_name in variable_categories:
-                return variable_categories[var_name] in EXPAND_FIRST_TIMESTEP
-            # Fall back to pattern matching for backwards compatibility
-            return var_name.endswith('|startup') or var_name.endswith('|shutdown')
-
-        def _append_final_state(expanded: xr.DataArray, da: xr.DataArray) -> xr.DataArray:
-            """Append final state value from original data to expanded data."""
-            cluster_assignments = clustering.cluster_assignments
-            if cluster_assignments.ndim == 1:
-                last_cluster = int(cluster_assignments.values[last_original_cluster_idx])
-                extra_val = da.isel(cluster=last_cluster, time=-1)
-            else:
-                last_clusters = cluster_assignments.isel(original_cluster=last_original_cluster_idx)
-                extra_val = da.isel(cluster=last_clusters, time=-1)
-            extra_val = extra_val.drop_vars(['cluster', 'time'], errors='ignore')
-            extra_val = extra_val.expand_dims(time=[original_timesteps_extra[-1]])
-            return xr.concat([expanded, extra_val], dim='time')
+        handler = VariableExpansionHandler(variable_categories, clustering, self._fs)
 
         def expand_da(da: xr.DataArray, var_name: str = '', is_solution: bool = False) -> xr.DataArray:
             """Expand a DataArray from clustered to original timesteps."""
             if 'time' not in da.dims:
                 return da.copy()
 
-            is_state = _is_state_variable(var_name) and 'cluster' in da.dims
-            is_first_timestep = _is_first_timestep_variable(var_name) and 'cluster' in da.dims
+            is_state = handler.is_state_variable(var_name) and 'cluster' in da.dims
+            is_first_timestep = handler.is_first_timestep_variable(var_name) and 'cluster' in da.dims
 
             # State variables in segmented systems: interpolate within segments
             if is_state and clustering.is_segmented:
-                expanded = self._interpolate_charge_state_segmented(da, clustering, original_timesteps)
-                return _append_final_state(expanded, da)
+                expanded = interpolate_charge_state_segmented(da, clustering, original_timesteps)
+                return append_final_state(expanded, da, clustering, original_timesteps_extra)
 
             # Binary events (startup/shutdown) in segmented systems: first timestep of each segment
             # For non-segmented systems, timing within cluster is preserved, so normal expansion is correct
             if is_first_timestep and is_solution and clustering.is_segmented:
-                return self._expand_first_timestep_only(da, clustering, original_timesteps)
+                return expand_first_timestep_only(da, clustering, original_timesteps)
 
             expanded = clustering.expand_data(da, original_time=original_timesteps)
 
             # Segment totals: divide by expansion divisor
-            if is_solution and expansion_divisor is not None and var_name in segment_total_vars:
-                expanded = expanded / expansion_divisor
+            if is_solution and handler.expansion_divisor is not None and handler.is_segment_total_variable(var_name):
+                expanded = expanded / handler.expansion_divisor
 
             # State variables: append final state
             if is_state:
-                expanded = _append_final_state(expanded, da)
+                expanded = append_final_state(expanded, da, clustering, original_timesteps_extra)
 
             return expanded
 
@@ -2378,13 +1604,15 @@ class TransformAccessor:
         expanded_fs._solution = expanded_fs._solution.reindex(time=original_timesteps_extra)
 
         # 3. Combine charge_state with SOC_boundary for intercluster storages
-        self._combine_intercluster_charge_states(
+        soc_boundary_vars = self._fs.get_variables_by_category(VariableCategory.SOC_BOUNDARY)
+        combine_intercluster_charge_states(
             expanded_fs,
             reduced_solution,
             clustering,
             original_timesteps_extra,
             timesteps_per_cluster,
             n_original_clusters,
+            soc_boundary_vars,
         )
 
         # Log expansion info
