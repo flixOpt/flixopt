@@ -279,6 +279,25 @@ def _sort_dataset(ds: xr.Dataset) -> xr.Dataset:
     return ds[sorted_vars]
 
 
+def _filter_small_variables(ds: xr.Dataset, threshold: float | None) -> xr.Dataset:
+    """Remove variables where max absolute value is below threshold.
+
+    Useful for filtering out solver noise or non-invested components.
+
+    Args:
+        ds: Dataset to filter.
+        threshold: Minimum max absolute value to keep. If None, no filtering.
+
+    Returns:
+        Filtered dataset.
+    """
+    if threshold is None or not ds.data_vars:
+        return ds
+    max_vals = abs(ds).max()  # Single computation for all variables
+    keep = [v for v in ds.data_vars if float(max_vals.variables[v].values) >= threshold]
+    return ds[keep] if keep else ds
+
+
 def add_line_overlay(
     fig: go.Figure,
     da: xr.DataArray,
@@ -1557,6 +1576,7 @@ class StatisticsPlotAccessor:
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
         round_decimals: int | None = 6,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -1572,6 +1592,8 @@ class StatisticsPlotAccessor:
             colors: Color specification (colorscale name, color list, or label-to-color dict).
             round_decimals: Round values to this many decimal places to avoid numerical noise
                 (e.g., tiny negative values from solver precision). Set to None to disable.
+            threshold: Filter out variables where max absolute value is below this.
+                Useful for removing solver noise. Set to None to disable.
             show: Whether to display the plot.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to the plotly accessor (e.g.,
@@ -1626,6 +1648,9 @@ class StatisticsPlotAccessor:
         if round_decimals is not None:
             ds = ds.round(round_decimals)
 
+        # Filter out variables below threshold
+        ds = _filter_small_variables(ds, threshold)
+
         # Sort for consistent plotting order
         ds = _sort_dataset(ds)
 
@@ -1660,6 +1685,7 @@ class StatisticsPlotAccessor:
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
         round_decimals: int | None = 6,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -1678,6 +1704,8 @@ class StatisticsPlotAccessor:
             colors: Color specification (colorscale name, color list, or label-to-color dict).
             round_decimals: Round values to this many decimal places to avoid numerical noise
                 (e.g., tiny negative values from solver precision). Set to None to disable.
+            threshold: Filter out variables where max absolute value is below this.
+                Useful for removing solver noise. Set to None to disable.
             show: Whether to display the plot.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to the plotly accessor (e.g.,
@@ -1775,6 +1803,9 @@ class StatisticsPlotAccessor:
         if round_decimals is not None:
             ds = ds.round(round_decimals)
 
+        # Filter out variables below threshold
+        ds = _filter_small_variables(ds, threshold)
+
         # Sort for consistent plotting order
         ds = _sort_dataset(ds)
 
@@ -1806,6 +1837,7 @@ class StatisticsPlotAccessor:
         select: SelectType | None = None,
         reshape: tuple[str, str] | Literal['auto'] | None = ('D', 'h'),
         colors: str | list[str] | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -1828,6 +1860,8 @@ class StatisticsPlotAccessor:
                 data dimensions directly.
             colors: Colorscale name (str) or list of colors for heatmap coloring.
                 Dicts are not supported for heatmaps (use str or list[str]).
+            threshold: Filter out variables where max absolute value is below this.
+                Useful for removing solver noise. Set to None to disable.
             show: Whether to display the figure.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to plotly accessor (e.g.,
@@ -1843,6 +1877,7 @@ class StatisticsPlotAccessor:
         # Resolve, select, and stack into single DataArray
         resolved = self._resolve_variable_names(variables, solution)
         ds = _apply_selection(solution[resolved], select)
+        ds = _filter_small_variables(ds, threshold)
         ds = _sort_dataset(ds)  # Sort for consistent plotting order
         da = xr.concat([ds[v] for v in ds.data_vars], dim=pd.Index(list(ds.data_vars), name='variable'))
 
@@ -1874,6 +1909,7 @@ class StatisticsPlotAccessor:
         select: SelectType | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -1887,6 +1923,8 @@ class StatisticsPlotAccessor:
             select: xarray-style selection.
             unit: 'flow_rate' or 'flow_hours'.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
+            threshold: Filter out variables where max absolute value is below this.
+                Useful for removing solver noise. Set to None to disable.
             show: Whether to display.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to the plotly accessor (e.g.,
@@ -1937,6 +1975,9 @@ class StatisticsPlotAccessor:
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
 
+        # Filter out variables below threshold
+        ds = _filter_small_variables(ds, threshold)
+
         # Sort for consistent plotting order
         ds = _sort_dataset(ds)
 
@@ -1969,6 +2010,7 @@ class StatisticsPlotAccessor:
         max_size: float | None = 1e6,
         select: SelectType | None = None,
         colors: ColorType | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -1979,6 +2021,8 @@ class StatisticsPlotAccessor:
             max_size: Maximum size to include (filters defaults).
             select: xarray-style selection.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
+            threshold: Filter out variables where max absolute value is below this.
+                Useful for removing non-invested components. Set to None to disable.
             show: Whether to display.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to the plotly accessor (e.g.,
@@ -1999,6 +2043,9 @@ class StatisticsPlotAccessor:
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
+
+        # Filter out variables below threshold
+        ds = _filter_small_variables(ds, threshold)
 
         if not ds.data_vars:
             fig = go.Figure()
@@ -2029,6 +2076,7 @@ class StatisticsPlotAccessor:
         select: SelectType | None = None,
         normalize: bool = False,
         colors: ColorType | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -2043,6 +2091,8 @@ class StatisticsPlotAccessor:
             select: xarray-style selection.
             normalize: If True, normalize x-axis to 0-100%.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
+            threshold: Filter out variables where max absolute value is below this.
+                Useful for removing solver noise. Set to None to disable.
             show: Whether to display.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to the plotly accessor (e.g.,
@@ -2089,6 +2139,9 @@ class StatisticsPlotAccessor:
         if data_only:
             return PlotResult(data=result_ds, figure=go.Figure())
 
+        # Filter out variables below threshold
+        result_ds = _filter_small_variables(result_ds, threshold)
+
         # Sort for consistent plotting order
         result_ds = _sort_dataset(result_ds)
 
@@ -2127,6 +2180,7 @@ class StatisticsPlotAccessor:
         by: Literal['component', 'contributor', 'time'] | None = None,
         select: SelectType | None = None,
         colors: ColorType | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -2141,6 +2195,8 @@ class StatisticsPlotAccessor:
                 or None to show aggregated totals per effect.
             select: xarray-style selection.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
+            threshold: Filter out variables where max absolute value is below this.
+                Useful for removing solver noise. Set to None to disable.
             show: Whether to display.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to the plotly accessor (e.g.,
@@ -2212,6 +2268,9 @@ class StatisticsPlotAccessor:
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
 
+        # Filter out variables below threshold
+        ds = _filter_small_variables(ds, threshold)
+
         # Sort for consistent plotting order
         ds = _sort_dataset(ds)
 
@@ -2256,6 +2315,7 @@ class StatisticsPlotAccessor:
         *,
         select: SelectType | None = None,
         colors: ColorType | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -2266,6 +2326,8 @@ class StatisticsPlotAccessor:
             storages: Storage label(s) to plot. If None, plots all storages.
             select: xarray-style selection.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
+            threshold: Filter out variables where max absolute value is below this.
+                Useful for removing non-invested storages. Set to None to disable.
             show: Whether to display.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to the plotly accessor (e.g.,
@@ -2287,6 +2349,9 @@ class StatisticsPlotAccessor:
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
+
+        # Filter out variables below threshold
+        ds = _filter_small_variables(ds, threshold)
 
         # Sort for consistent plotting order
         ds = _sort_dataset(ds)
@@ -2318,6 +2383,7 @@ class StatisticsPlotAccessor:
         colors: ColorType | None = None,
         charge_state_color: str = 'black',
         round_decimals: int | None = 6,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -2336,6 +2402,8 @@ class StatisticsPlotAccessor:
             charge_state_color: Color for the charge state line overlay.
             round_decimals: Round values to this many decimal places to avoid numerical noise
                 (e.g., tiny negative values from solver precision). Set to None to disable.
+            threshold: Filter out flow variables where max absolute value is below this.
+                Useful for removing solver noise. Set to None to disable.
             show: Whether to display.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to the plotly accessor (e.g.,
@@ -2395,6 +2463,9 @@ class StatisticsPlotAccessor:
         # Round to avoid numerical noise (tiny negative values from solver precision)
         if round_decimals is not None:
             flow_ds = flow_ds.round(round_decimals)
+
+        # Filter out flow variables below threshold
+        flow_ds = _filter_small_variables(flow_ds, threshold)
 
         # Sort for consistent plotting order
         flow_ds = _sort_dataset(flow_ds)
