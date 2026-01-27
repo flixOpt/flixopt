@@ -1334,7 +1334,7 @@ class TransformAccessor:
             return tuple(key_parts)
 
         # Cluster each (period, scenario) combination using tsam directly
-        tsam_aggregation_results: dict[tuple, Any] = {}  # AggregationResult objects
+        aggregation_results: dict[tuple, Any] = {}
 
         for period_label in periods:
             for scenario_label in scenarios:
@@ -1373,7 +1373,7 @@ class TransformAccessor:
                     cluster_config = self._build_cluster_config_with_weights(cluster, filtered_weights)
 
                     # Perform clustering based on selected data_vars (or all if not specified)
-                    tsam_result = tsam.aggregate(
+                    aggregation_results[key] = tsam.aggregate(
                         df_for_clustering,
                         n_clusters=n_clusters,
                         period_duration=hours_per_cluster,
@@ -1388,27 +1388,20 @@ class TransformAccessor:
                         **tsam_kwargs,
                     )
 
-                tsam_aggregation_results[key] = tsam_result
-
         # If data_vars was specified, apply clustering to FULL data
         if data_vars is not None:
-            # Build ClusteringResults from subset clustering (derive from aggregation results)
+            # Build ClusteringResults from subset clustering
             clustering_results = ClusteringResults(
-                {k: r.clustering for k, r in tsam_aggregation_results.items()},
+                {k: r.clustering for k, r in aggregation_results.items()},
                 dim_names,
             )
-
-            # Apply to full data - this returns AggregationResults
-            agg_results = clustering_results.apply(ds)
-
-            # Update aggregation_results with full data results
-            for key, result in agg_results:
-                tsam_aggregation_results[key] = result
+            # Apply to full data and replace results
+            aggregation_results = dict(clustering_results.apply(ds))
 
         # Build and return the reduced FlowSystem
         return self._build_reduced_flow_system(
             ds=ds,
-            aggregation_results=tsam_aggregation_results,
+            aggregation_results=aggregation_results,
             timesteps_per_cluster=timesteps_per_cluster,
             dt=dt,
             dim_names=dim_names,
