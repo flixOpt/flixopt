@@ -1552,6 +1552,13 @@ class StatisticsPlotAccessor:
 
         ds = _apply_selection(ds, select)
 
+        # Round to avoid numerical noise (tiny negative values from solver precision)
+        if round_decimals is not None:
+            ds = ds.round(round_decimals)
+
+        # Filter out variables below threshold
+        ds = _filter_small_variables(ds, threshold)
+
         # Build color kwargs: bus balance → component colors, component balance → carrier colors
         color_by: Literal['component', 'carrier'] = 'component' if is_bus else 'carrier'
         color_kwargs = self._build_color_kwargs(colors, list(ds.data_vars), color_by)
@@ -1559,13 +1566,6 @@ class StatisticsPlotAccessor:
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
-
-        # Round to avoid numerical noise (tiny negative values from solver precision)
-        if round_decimals is not None:
-            ds = ds.round(round_decimals)
-
-        # Filter out variables below threshold
-        ds = _filter_small_variables(ds, threshold)
 
         # Sort for consistent plotting order
         ds = _sort_dataset(ds)
@@ -1708,19 +1708,19 @@ class StatisticsPlotAccessor:
 
         ds = _apply_selection(ds, select)
 
-        # Build color kwargs with component colors (flows colored by their parent component)
-        color_kwargs = self._build_color_kwargs(colors, list(ds.data_vars), color_by='component')
-
-        # Early return for data_only mode (skip figure creation for performance)
-        if data_only:
-            return PlotResult(data=ds, figure=go.Figure())
-
         # Round to avoid numerical noise (tiny negative values from solver precision)
         if round_decimals is not None:
             ds = ds.round(round_decimals)
 
         # Filter out variables below threshold
         ds = _filter_small_variables(ds, threshold)
+
+        # Build color kwargs with component colors (flows colored by their parent component)
+        color_kwargs = self._build_color_kwargs(colors, list(ds.data_vars), color_by='component')
+
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            return PlotResult(data=ds, figure=go.Figure())
 
         # Sort for consistent plotting order
         ds = _sort_dataset(ds)
@@ -1887,12 +1887,12 @@ class StatisticsPlotAccessor:
 
         ds = _apply_selection(ds, select)
 
+        # Filter out variables below threshold
+        ds = _filter_small_variables(ds, threshold)
+
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
-
-        # Filter out variables below threshold
-        ds = _filter_small_variables(ds, threshold)
 
         # Sort for consistent plotting order
         ds = _sort_dataset(ds)
@@ -1956,12 +1956,12 @@ class StatisticsPlotAccessor:
             valid_labels = [lbl for lbl in ds.data_vars if float(ds[lbl].max()) < max_size]
             ds = ds[valid_labels]
 
+        # Filter out variables below threshold
+        ds = _filter_small_variables(ds, threshold)
+
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
-
-        # Filter out variables below threshold
-        ds = _filter_small_variables(ds, threshold)
 
         if not ds.data_vars:
             fig = go.Figure()
@@ -2051,12 +2051,12 @@ class StatisticsPlotAccessor:
 
         result_ds = ds.fxstats.to_duration_curve(normalize=normalize)
 
+        # Filter out variables below threshold
+        result_ds = _filter_small_variables(result_ds, threshold)
+
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
             return PlotResult(data=result_ds, figure=go.Figure())
-
-        # Filter out variables below threshold
-        result_ds = _filter_small_variables(result_ds, threshold)
 
         # Sort for consistent plotting order
         result_ds = _sort_dataset(result_ds)
@@ -2180,12 +2180,12 @@ class StatisticsPlotAccessor:
         else:
             raise ValueError(f"'by' must be one of 'component', 'contributor', 'time', or None, got {by!r}")
 
+        # Filter out variables below threshold
+        ds = _filter_small_variables(ds, threshold)
+
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
-
-        # Filter out variables below threshold
-        ds = _filter_small_variables(ds, threshold)
 
         # Sort for consistent plotting order
         ds = _sort_dataset(ds)
@@ -2262,12 +2262,12 @@ class StatisticsPlotAccessor:
 
         ds = _apply_selection(ds, select)
 
+        # Filter out variables below threshold
+        ds = _filter_small_variables(ds, threshold)
+
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
-
-        # Filter out variables below threshold
-        ds = _filter_small_variables(ds, threshold)
 
         # Sort for consistent plotting order
         ds = _sort_dataset(ds)
@@ -2367,10 +2367,6 @@ class StatisticsPlotAccessor:
         # Apply selection
         ds = _apply_selection(ds, select)
 
-        # Early return for data_only mode (skip figure creation for performance)
-        if data_only:
-            return PlotResult(data=ds, figure=go.Figure())
-
         # Separate flow data from charge_state
         flow_labels = [lbl for lbl in ds.data_vars if lbl != 'charge_state']
         flow_ds = ds[flow_labels]
@@ -2382,6 +2378,12 @@ class StatisticsPlotAccessor:
 
         # Filter out flow variables below threshold
         flow_ds = _filter_small_variables(flow_ds, threshold)
+
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            result_ds = flow_ds.copy()
+            result_ds['charge_state'] = charge_da
+            return PlotResult(data=result_ds, figure=go.Figure())
 
         # Sort for consistent plotting order
         flow_ds = _sort_dataset(flow_ds)
