@@ -27,7 +27,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import xarray as xr
-from xarray_plotly.figures import update_traces
+from xarray_plotly.figures import add_secondary_y, update_traces
 
 from .color_processing import ColorType, hex_to_rgba, process_colors
 from .config import CONFIG
@@ -63,6 +63,7 @@ _SLOT_DEFAULTS: dict[str, dict[str, str | None]] = {
     'flows': {'x': 'time', 'color': 'variable', 'symbol': None},
     'charge_states': {'x': 'time', 'color': 'variable', 'symbol': None},
     'storage': {'x': 'time', 'color': 'variable', 'pattern_shape': None},
+    'storage_line': {'x': 'time', 'color': None, 'line_dash': None, 'symbol': None},
     'sizes': {'x': 'variable', 'color': 'variable'},
     'duration_curve': {'symbol': None},  # x is computed dynamically
     'effects': {},  # x is computed dynamically
@@ -296,102 +297,6 @@ def _filter_small_variables(ds: xr.Dataset, threshold: float | None) -> xr.Datas
     max_vals = abs(ds).max()  # Single computation for all variables
     keep = [v for v in ds.data_vars if float(max_vals.variables[v].values) >= threshold]
     return ds[keep] if keep else ds
-
-
-def add_line_overlay(
-    fig: go.Figure,
-    da: xr.DataArray,
-    *,
-    x: str | None = None,
-    facet_col: str | None = None,
-    facet_row: str | None = None,
-    animation_frame: str | None = None,
-    color: str | None = None,
-    line_color: str = 'black',
-    name: str | None = None,
-    secondary_y: bool = False,
-    y_title: str | None = None,
-    showlegend: bool = True,
-) -> None:
-    """Add line traces on top of existing figure, optionally on secondary y-axis.
-
-    This function creates line traces from a DataArray and adds them to an existing
-    figure. When using secondary_y=True, it correctly handles faceted figures by
-    creating matching secondary axes for each primary axis.
-
-    Args:
-        fig: Plotly figure to add traces to.
-        da: DataArray to plot as lines.
-        x: Dimension to use for x-axis. If None, auto-detects 'time' or first dim.
-        facet_col: Dimension for column facets (must match primary figure).
-        facet_row: Dimension for row facets (must match primary figure).
-        animation_frame: Dimension for animation slider (must match primary figure).
-        color: Dimension to color by (creates multiple lines).
-        line_color: Color for lines when color is None.
-        name: Legend name for the traces.
-        secondary_y: If True, plot on secondary y-axis.
-        y_title: Title for the y-axis (secondary if secondary_y=True).
-        showlegend: Whether to show legend entries.
-    """
-    if da.size == 0:
-        return
-
-    # Auto-detect x dimension if not specified
-    if x is None:
-        x = 'time' if 'time' in da.dims else da.dims[0]
-
-    # Build kwargs for line plot, only passing facet params if specified
-    line_kwargs: dict[str, Any] = {'x': x}
-    if color is not None:
-        line_kwargs['color'] = color
-    if facet_col is not None:
-        line_kwargs['facet_col'] = facet_col
-    if facet_row is not None:
-        line_kwargs['facet_row'] = facet_row
-    if animation_frame is not None:
-        line_kwargs['animation_frame'] = animation_frame
-
-    # Create line figure with same facets
-    line_fig = da.plotly.line(**line_kwargs)
-
-    if secondary_y:
-        # Get the primary y-axes from the bar figure to create matching secondary axes
-        primary_yaxes = [key for key in fig.layout if key.startswith('yaxis')]
-
-        # For each primary y-axis, create a secondary y-axis.
-        # Secondary axis numbering strategy:
-        # - Primary axes are named 'yaxis', 'yaxis2', 'yaxis3', etc.
-        # - We use +100 offset (yaxis101, yaxis102, ...) to avoid conflicts
-        # - Each secondary axis 'overlays' its corresponding primary axis
-        for i, primary_key in enumerate(sorted(primary_yaxes, key=lambda x: int(x[5:]) if x[5:] else 0)):
-            primary_num = primary_key[5:] if primary_key[5:] else '1'
-            secondary_num = int(primary_num) + 100
-            secondary_key = f'yaxis{secondary_num}'
-            secondary_anchor = f'x{primary_num}' if primary_num != '1' else 'x'
-
-            fig.layout[secondary_key] = dict(
-                overlaying=f'y{primary_num}' if primary_num != '1' else 'y',
-                side='right',
-                showgrid=False,
-                title=y_title if i == len(primary_yaxes) - 1 else None,
-                anchor=secondary_anchor,
-            )
-
-    # Add line traces with correct axis assignments
-    for i, trace in enumerate(line_fig.data):
-        if name is not None:
-            trace.name = name
-        if color is None:
-            trace.line = dict(color=line_color, width=2)
-
-        if secondary_y:
-            primary_num = i + 1 if i > 0 else 1
-            trace.yaxis = f'y{primary_num + 100}'
-
-        trace.showlegend = showlegend and (i == 0)
-        if name is not None:
-            trace.legendgroup = name
-        fig.add_trace(trace)
 
 
 def _filter_by_carrier(ds: xr.Dataset, carrier: str | list[str] | None) -> xr.Dataset:
@@ -2489,19 +2394,22 @@ class StatisticsPlotAccessor:
         _apply_unified_hover(fig, unit=unit_label)
 
         # Add charge state as line on secondary y-axis
-        # Only pass faceting kwargs that add_line_overlay accepts
-        overlay_kwargs = {
-            k: v for k, v in plotly_kwargs.items() if k in ('x', 'facet_col', 'facet_row', 'animation_frame')
-        }
-        add_line_overlay(
-            fig,
-            charge_da,
-            line_color=charge_state_color,
+        # Filter out bar-only kwargs, then apply line-specific defaults
+        line_kwargs = {k: v for k, v in plotly_kwargs.items() if k not in ('pattern_shape', 'color')}
+        _apply_slot_defaults(line_kwargs, 'storage_line')
+        line_fig = charge_da.plotly.line(**line_kwargs)
+        # Style all traces including animation frames
+        update_traces(
+            line_fig,
+            line=dict(color=charge_state_color, width=2),
             name='charge_state',
-            secondary_y=True,
-            y_title='Charge State',
-            **overlay_kwargs,
+            legendgroup='charge_state',
+            showlegend=False,
         )
+        if line_fig.data:
+            line_fig.data[0].showlegend = True
+        # Combine using xarray_plotly's add_secondary_y which handles facets correctly
+        fig = add_secondary_y(fig, line_fig, secondary_y_title='Charge State')
 
         if show is None:
             show = CONFIG.Plotting.default_show

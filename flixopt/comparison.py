@@ -7,14 +7,15 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import xarray as xr
 from xarray_plotly import SLOT_ORDERS
+from xarray_plotly.figures import add_secondary_y
 
 from .config import CONFIG
 from .plot_result import PlotResult
 from .statistics_accessor import (
+    _SLOT_DEFAULTS,
     ColorType,
     SelectType,
     _build_color_kwargs,
-    add_line_overlay,
 )
 
 if TYPE_CHECKING:
@@ -615,19 +616,11 @@ class ComparisonStatisticsPlot:
 
         # Add charge state as line overlay on secondary y-axis
         if 'charge_state' in ds:
-            # Only pass faceting kwargs that add_line_overlay accepts
-            overlay_kwargs = {
-                k: v for k, v in plotly_kwargs.items() if k in ('x', 'facet_col', 'facet_row', 'animation_frame')
-            }
-            add_line_overlay(
-                fig,
-                ds['charge_state'],
-                color='case',
-                name='charge_state',
-                secondary_y=True,
-                y_title='Charge State',
-                **overlay_kwargs,
-            )
+            # Filter out bar-only kwargs, apply line defaults, override color for comparison
+            line_kwargs = {k: v for k, v in plotly_kwargs.items() if k not in ('pattern_shape', 'color')}
+            _apply_slot_defaults(line_kwargs, {**_SLOT_DEFAULTS['storage_line'], 'color': 'case'})
+            line_fig = ds['charge_state'].plotly.line(**line_kwargs)
+            fig = add_secondary_y(fig, line_fig, secondary_y_title='Charge State')
 
         return self._finalize(ds, fig, show)
 
