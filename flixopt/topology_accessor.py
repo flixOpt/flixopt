@@ -145,6 +145,7 @@ class TopologyAccessor:
         # Cached color mappings (lazily initialized)
         self._carrier_colors: dict[str, str] | None = None
         self._component_colors: dict[str, str] | None = None
+        self._flow_colors: dict[str, str] | None = None
         self._bus_colors: dict[str, str] | None = None
 
         # Cached unit mappings (lazily initialized)
@@ -182,6 +183,28 @@ class TopologyAccessor:
         if self._component_colors is None:
             self._component_colors = {label: comp.color for label, comp in self._fs.components.items() if comp.color}
         return self._component_colors
+
+    @property
+    def flow_colors(self) -> dict[str, str]:
+        """Cached mapping of flow label_full to hex color (from parent component).
+
+        Flow colors are derived from their parent component's color.
+
+        Returns:
+            Dict mapping flow labels (e.g., 'Boiler(Q_th)') to hex color strings.
+            Only flows whose parent component has a color defined are included.
+
+        Examples:
+            >>> fs.topology.flow_colors
+            {'Boiler(Q_th)': '#1f77b4', 'Boiler(Q_fu)': '#1f77b4', 'CHP(Q_th)': '#ff7f0e'}
+        """
+        if self._flow_colors is None:
+            component_colors = self.component_colors
+            self._flow_colors = {}
+            for flow in self._fs.flows.values():
+                if flow.component in component_colors:
+                    self._flow_colors[flow.label_full] = component_colors[flow.component]
+        return self._flow_colors
 
     @property
     def bus_colors(self) -> dict[str, str]:
@@ -243,6 +266,7 @@ class TopologyAccessor:
         """Reset all color caches so they are rebuilt on next access."""
         self._carrier_colors = None
         self._component_colors = None
+        self._flow_colors = None
         self._bus_colors = None
 
     def set_component_color(self, label: str, color: str) -> None:

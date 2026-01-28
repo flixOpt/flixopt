@@ -355,6 +355,7 @@ class ComparisonStatistics:
         # Caches for dict properties
         self._carrier_colors: dict[str, str] | None = None
         self._component_colors: dict[str, str] | None = None
+        self._flow_colors: dict[str, str] | None = None
         self._bus_colors: dict[str, str] | None = None
         self._carrier_units: dict[str, str] | None = None
         self._effect_units: dict[str, str] | None = None
@@ -458,6 +459,13 @@ class ComparisonStatistics:
         if self._component_colors is None:
             self._component_colors = self._merge_dict_property('component_colors')
         return self._component_colors
+
+    @property
+    def flow_colors(self) -> dict[str, str]:
+        """Merged flow colors from all cases (derived from parent components)."""
+        if self._flow_colors is None:
+            self._flow_colors = self._merge_dict_property('flow_colors')
+        return self._flow_colors
 
     @property
     def bus_colors(self) -> dict[str, str]:

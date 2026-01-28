@@ -470,6 +470,17 @@ class StatisticsAccessor:
         return self._fs.topology.component_colors
 
     @property
+    def flow_colors(self) -> dict[str, str]:
+        """Cached mapping of flow label_full to color (from parent component).
+
+        Delegates to topology accessor for centralized color caching.
+
+        Returns:
+            Dict mapping flow labels (e.g., 'Boiler(Q_th)') to hex color strings.
+        """
+        return self._fs.topology.flow_colors
+
+    @property
     def bus_colors(self) -> dict[str, str]:
         """Cached mapping of bus label to color (from carrier).
 
