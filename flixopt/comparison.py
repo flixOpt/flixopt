@@ -549,7 +549,9 @@ class ComparisonStatisticsPlot:
         exclude: str | list[str] | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot node balance comparison across cases.
@@ -561,15 +563,19 @@ class ComparisonStatisticsPlot:
             exclude: Filter to exclude matching flow labels.
             unit: 'flow_rate' or 'flow_hours'.
             colors: Color specification (dict, list, or colorscale name).
+            threshold: Filter out variables where max absolute value is below this.
             show: Whether to display the figure.
+            data_only: If True, skip figure creation and return only data.
             **plotly_kwargs: Additional arguments passed to plotly.
 
         Returns:
             PlotResult with combined balance data and figure.
         """
-        ds, _ = self._combine_data('balance', node, select=select, include=include, exclude=exclude, unit=unit)
-        if not ds.data_vars:
-            return self._finalize(ds, None, show)
+        ds, _ = self._combine_data(
+            'balance', node, select=select, include=include, exclude=exclude, unit=unit, threshold=threshold
+        )
+        if not ds.data_vars or data_only:
+            return self._finalize(ds, None, show if not data_only else False)
 
         defaults = {'x': 'time', 'color': 'variable', 'pattern_shape': None, 'facet_col': 'case'}
         _apply_slot_defaults(plotly_kwargs, defaults)
@@ -592,7 +598,9 @@ class ComparisonStatisticsPlot:
         exclude: str | list[str] | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot carrier balance comparison across cases.
@@ -604,17 +612,19 @@ class ComparisonStatisticsPlot:
             exclude: Filter to exclude matching flow labels.
             unit: 'flow_rate' or 'flow_hours'.
             colors: Color specification (dict, list, or colorscale name).
+            threshold: Filter out variables where max absolute value is below this.
             show: Whether to display the figure.
+            data_only: If True, skip figure creation and return only data.
             **plotly_kwargs: Additional arguments passed to plotly.
 
         Returns:
             PlotResult with combined carrier balance data and figure.
         """
         ds, _ = self._combine_data(
-            'carrier_balance', carrier, select=select, include=include, exclude=exclude, unit=unit
+            'carrier_balance', carrier, select=select, include=include, exclude=exclude, unit=unit, threshold=threshold
         )
-        if not ds.data_vars:
-            return self._finalize(ds, None, show)
+        if not ds.data_vars or data_only:
+            return self._finalize(ds, None, show if not data_only else False)
 
         defaults = {'x': 'time', 'color': 'variable', 'pattern_shape': None, 'facet_col': 'case'}
         _apply_slot_defaults(plotly_kwargs, defaults)
@@ -637,7 +647,9 @@ class ComparisonStatisticsPlot:
         select: SelectType | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot flows comparison across cases.
@@ -649,15 +661,19 @@ class ComparisonStatisticsPlot:
             select: xarray-style selection.
             unit: 'flow_rate' or 'flow_hours'.
             colors: Color specification (dict, list, or colorscale name).
+            threshold: Filter out variables where max absolute value is below this.
             show: Whether to display the figure.
+            data_only: If True, skip figure creation and return only data.
             **plotly_kwargs: Additional arguments passed to plotly.
 
         Returns:
             PlotResult with combined flows data and figure.
         """
-        ds, _ = self._combine_data('flows', start=start, end=end, component=component, select=select, unit=unit)
-        if not ds.data_vars:
-            return self._finalize(ds, None, show)
+        ds, _ = self._combine_data(
+            'flows', start=start, end=end, component=component, select=select, unit=unit, threshold=threshold
+        )
+        if not ds.data_vars or data_only:
+            return self._finalize(ds, None, show if not data_only else False)
 
         defaults = {'x': 'time', 'color': 'variable', 'symbol': None, 'line_dash': 'case'}
         _apply_slot_defaults(plotly_kwargs, defaults)
@@ -676,7 +692,9 @@ class ComparisonStatisticsPlot:
         select: SelectType | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot storage operation comparison across cases.
@@ -686,15 +704,17 @@ class ComparisonStatisticsPlot:
             select: xarray-style selection.
             unit: 'flow_rate' or 'flow_hours'.
             colors: Color specification for flow bars.
+            threshold: Filter out variables where max absolute value is below this.
             show: Whether to display the figure.
+            data_only: If True, skip figure creation and return only data.
             **plotly_kwargs: Additional arguments passed to plotly.
 
         Returns:
             PlotResult with combined storage operation data and figure.
         """
-        ds, _ = self._combine_data('storage', storage, select=select, unit=unit)
-        if not ds.data_vars:
-            return self._finalize(ds, None, show)
+        ds, _ = self._combine_data('storage', storage, select=select, unit=unit, threshold=threshold)
+        if not ds.data_vars or data_only:
+            return self._finalize(ds, None, show if not data_only else False)
 
         # Separate flows from charge_state
         flow_vars = [v for v in ds.data_vars if v != 'charge_state']
@@ -727,7 +747,9 @@ class ComparisonStatisticsPlot:
         *,
         select: SelectType | None = None,
         colors: ColorType | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot charge states comparison across cases.
@@ -736,15 +758,17 @@ class ComparisonStatisticsPlot:
             storages: Storage label(s) to plot. If None, plots all.
             select: xarray-style selection.
             colors: Color specification (dict, list, or colorscale name).
+            threshold: Filter out variables where max absolute value is below this.
             show: Whether to display the figure.
+            data_only: If True, skip figure creation and return only data.
             **plotly_kwargs: Additional arguments passed to plotly.
 
         Returns:
             PlotResult with combined charge state data and figure.
         """
-        ds, _ = self._combine_data('charge_states', storages, select=select)
-        if not ds.data_vars:
-            return self._finalize(ds, None, show)
+        ds, _ = self._combine_data('charge_states', storages, select=select, threshold=threshold)
+        if not ds.data_vars or data_only:
+            return self._finalize(ds, None, show if not data_only else False)
 
         defaults = {'x': 'time', 'color': 'variable', 'symbol': None, 'line_dash': 'case'}
         _apply_slot_defaults(plotly_kwargs, defaults)
@@ -763,7 +787,9 @@ class ComparisonStatisticsPlot:
         select: SelectType | None = None,
         normalize: bool = False,
         colors: ColorType | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot duration curves comparison across cases.
@@ -773,15 +799,17 @@ class ComparisonStatisticsPlot:
             select: xarray-style selection.
             normalize: If True, normalize x-axis to 0-100%.
             colors: Color specification (dict, list, or colorscale name).
+            threshold: Filter out variables where max absolute value is below this.
             show: Whether to display the figure.
+            data_only: If True, skip figure creation and return only data.
             **plotly_kwargs: Additional arguments passed to plotly.
 
         Returns:
             PlotResult with combined duration curve data and figure.
         """
-        ds, _ = self._combine_data('duration_curve', variables, select=select, normalize=normalize)
-        if not ds.data_vars:
-            return self._finalize(ds, None, show)
+        ds, _ = self._combine_data('duration_curve', variables, select=select, normalize=normalize, threshold=threshold)
+        if not ds.data_vars or data_only:
+            return self._finalize(ds, None, show if not data_only else False)
 
         defaults = {
             'x': 'duration_pct' if normalize else 'duration',
@@ -804,7 +832,9 @@ class ComparisonStatisticsPlot:
         max_size: float | None = 1e6,
         select: SelectType | None = None,
         colors: ColorType | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot investment sizes comparison across cases.
@@ -813,15 +843,17 @@ class ComparisonStatisticsPlot:
             max_size: Maximum size to include (filters defaults).
             select: xarray-style selection.
             colors: Color specification (dict, list, or colorscale name).
+            threshold: Filter out variables where max absolute value is below this.
             show: Whether to display the figure.
+            data_only: If True, skip figure creation and return only data.
             **plotly_kwargs: Additional arguments passed to plotly.
 
         Returns:
             PlotResult with combined sizes data and figure.
         """
-        ds, _ = self._combine_data('sizes', max_size=max_size, select=select)
-        if not ds.data_vars:
-            return self._finalize(ds, None, show)
+        ds, _ = self._combine_data('sizes', max_size=max_size, select=select, threshold=threshold)
+        if not ds.data_vars or data_only:
+            return self._finalize(ds, None, show if not data_only else False)
 
         defaults = {'x': 'variable', 'color': 'case'}
         _apply_slot_defaults(plotly_kwargs, defaults)
@@ -843,7 +875,9 @@ class ComparisonStatisticsPlot:
         by: Literal['component', 'contributor', 'time'] | None = None,
         select: SelectType | None = None,
         colors: ColorType | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot effects comparison across cases.
@@ -854,15 +888,17 @@ class ComparisonStatisticsPlot:
             by: Group by 'component', 'contributor', or 'time'.
             select: xarray-style selection.
             colors: Color specification (dict, list, or colorscale name).
+            threshold: Filter out variables where max absolute value is below this.
             show: Whether to display the figure.
+            data_only: If True, skip figure creation and return only data.
             **plotly_kwargs: Additional arguments passed to plotly.
 
         Returns:
             PlotResult with combined effects data and figure.
         """
-        ds, _ = self._combine_data('effects', aspect, effect=effect, by=by, select=select)
-        if not ds.data_vars:
-            return self._finalize(ds, None, show)
+        ds, _ = self._combine_data('effects', aspect, effect=effect, by=by, select=select, threshold=threshold)
+        if not ds.data_vars or data_only:
+            return self._finalize(ds, None, show if not data_only else False)
 
         defaults = {'x': by if by else 'variable', 'color': 'case'}
         _apply_slot_defaults(plotly_kwargs, defaults)
@@ -884,7 +920,9 @@ class ComparisonStatisticsPlot:
         select: SelectType | None = None,
         reshape: tuple[str, str] | Literal['auto'] | None = 'auto',
         colors: str | list[str] | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
+        data_only: bool = False,
         **plotly_kwargs: Any,
     ) -> PlotResult:
         """Plot heatmap comparison across cases.
@@ -894,15 +932,17 @@ class ComparisonStatisticsPlot:
             select: xarray-style selection.
             reshape: Time reshape frequencies, 'auto', or None.
             colors: Colorscale name or list of colors.
+            threshold: Filter out variables where max absolute value is below this.
             show: Whether to display the figure.
+            data_only: If True, skip figure creation and return only data.
             **plotly_kwargs: Additional arguments passed to plotly.
 
         Returns:
             PlotResult with combined heatmap data and figure.
         """
-        ds, _ = self._combine_data('heatmap', variables, select=select, reshape=reshape)
-        if not ds.data_vars:
-            return self._finalize(ds, None, show)
+        ds, _ = self._combine_data('heatmap', variables, select=select, reshape=reshape, threshold=threshold)
+        if not ds.data_vars or data_only:
+            return self._finalize(ds, None, show if not data_only else False)
 
         da = ds[next(iter(ds.data_vars))]
 
