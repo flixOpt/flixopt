@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 import xarray as xr
 from xarray_plotly import SLOT_ORDERS
@@ -19,6 +19,8 @@ from .statistics_accessor import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from .flow_system import FlowSystem
 
 __all__ = ['Comparison']
@@ -110,6 +112,93 @@ class Comparison:
         self._solution: xr.Dataset | None = None
         self._statistics: ComparisonStatistics | None = None
         self._inputs: xr.Dataset | None = None
+
+    def __repr__(self) -> str:
+        """Return a detailed string representation."""
+        lines = ['Comparison', '=' * 10]
+
+        # Case info with optimization status
+        lines.append(f'Cases ({len(self._names)}):')
+        for name, fs in zip(self._names, self._systems, strict=True):
+            status = '✓' if fs.solution is not None else '○'
+            lines.append(f'  {status} {name}')
+
+        # Shared dimensions
+        shared_dims = self.dims
+        if shared_dims:
+            dims_str = ', '.join(f'{k}: {v}' for k, v in shared_dims.items())
+            lines.append(f'Shared dims: {dims_str}')
+
+        return '\n'.join(lines)
+
+    def __len__(self) -> int:
+        """Return number of cases."""
+        return len(self._systems)
+
+    @overload
+    def __getitem__(self, key: int) -> FlowSystem: ...
+    @overload
+    def __getitem__(self, key: str) -> FlowSystem: ...
+
+    def __getitem__(self, key: int | str) -> FlowSystem:
+        """Access FlowSystem by name or index.
+
+        Args:
+            key: Case name (str) or index (int).
+
+        Returns:
+            The FlowSystem for that case.
+
+        Raises:
+            KeyError: If name not found.
+            IndexError: If index out of range.
+        """
+        if isinstance(key, int):
+            return self._systems[key]
+        if key in self._names:
+            idx = self._names.index(key)
+            return self._systems[idx]
+        raise KeyError(f"Case '{key}' not found. Available: {self._names}")
+
+    def __iter__(self) -> Iterator[tuple[str, FlowSystem]]:
+        """Iterate over (name, FlowSystem) pairs."""
+        yield from zip(self._names, self._systems, strict=True)
+
+    def __contains__(self, key: str) -> bool:
+        """Check if a case name exists."""
+        return key in self._names
+
+    @property
+    def flow_systems(self) -> dict[str, FlowSystem]:
+        """Access underlying FlowSystems as a dict mapping name → FlowSystem."""
+        return dict(zip(self._names, self._systems, strict=True))
+
+    @property
+    def is_optimized(self) -> bool:
+        """Check if all FlowSystems have been optimized."""
+        return all(fs.solution is not None for fs in self._systems)
+
+    @property
+    def dims(self) -> dict[str, int]:
+        """Shared dimensions across all FlowSystems.
+
+        Returns dimensions that exist in all systems with matching sizes.
+        """
+        if not self._systems:
+            return {}
+
+        # Start with first system's dims
+        ref_dims = dict(self._systems[0].solution.sizes) if self._systems[0].solution else {}
+        if not ref_dims:
+            return {}
+
+        # Keep only dims that match across all systems
+        shared = {}
+        for dim, size in ref_dims.items():
+            if all(fs.solution is not None and fs.solution.sizes.get(dim) == size for fs in self._systems[1:]):
+                shared[dim] = size
+
+        return shared
 
     # Core dimensions that must match across FlowSystems
     # Note: 'cluster' and 'cluster_boundary' are auxiliary dimensions from clustering
