@@ -63,6 +63,7 @@ _SLOT_DEFAULTS: dict[str, dict[str, str | None]] = {
     'flows': {'x': 'time', 'color': 'variable', 'symbol': None},
     'charge_states': {'x': 'time', 'color': 'variable', 'symbol': None},
     'storage': {'x': 'time', 'color': 'variable', 'pattern_shape': None},
+    'storage_line': {'x': 'time', 'color': None, 'line_dash': None, 'symbol': None},
     'sizes': {'x': 'variable', 'color': 'variable'},
     'duration_curve': {'symbol': None},  # x is computed dynamically
     'effects': {},  # x is computed dynamically
@@ -2393,17 +2394,20 @@ class StatisticsPlotAccessor:
         _apply_unified_hover(fig, unit=unit_label)
 
         # Add charge state as line on secondary y-axis
-        # Build line figure with same faceting kwargs
-        line_kwargs = {
-            k: v for k, v in plotly_kwargs.items() if k in ('x', 'facet_col', 'facet_row', 'animation_frame')
-        }
-        line_fig = charge_da.plotly.line(color=None, **line_kwargs)
-        # Style the line traces
-        for trace in line_fig.data:
-            trace.name = 'charge_state'
-            trace.line = dict(color=charge_state_color, width=2)
-            trace.showlegend = trace == line_fig.data[0]  # Only first trace in legend
-            trace.legendgroup = 'charge_state'
+        # Filter out bar-only kwargs, then apply line-specific defaults
+        line_kwargs = {k: v for k, v in plotly_kwargs.items() if k not in ('pattern_shape', 'color')}
+        _apply_slot_defaults(line_kwargs, 'storage_line')
+        line_fig = charge_da.plotly.line(**line_kwargs)
+        # Style all traces including animation frames
+        update_traces(
+            line_fig,
+            line=dict(color=charge_state_color, width=2),
+            name='charge_state',
+            legendgroup='charge_state',
+            showlegend=False,
+        )
+        if line_fig.data:
+            line_fig.data[0].showlegend = True
         # Combine using xarray_plotly's add_secondary_y which handles facets correctly
         fig = add_secondary_y(fig, line_fig, secondary_y_title='Charge State')
 

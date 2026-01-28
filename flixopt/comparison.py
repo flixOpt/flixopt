@@ -12,6 +12,7 @@ from xarray_plotly.figures import add_secondary_y
 from .config import CONFIG
 from .plot_result import PlotResult
 from .statistics_accessor import (
+    _SLOT_DEFAULTS,
     ColorType,
     SelectType,
     _build_color_kwargs,
@@ -615,15 +616,10 @@ class ComparisonStatisticsPlot:
 
         # Add charge state as line overlay on secondary y-axis
         if 'charge_state' in ds:
-            # Build line figure with same faceting kwargs, colored by case
-            line_kwargs = {
-                k: v for k, v in plotly_kwargs.items() if k in ('x', 'facet_col', 'facet_row', 'animation_frame')
-            }
-            line_fig = ds['charge_state'].plotly.line(color='case', **line_kwargs)
-            # Update legend group for charge_state traces
-            for trace in line_fig.data:
-                trace.legendgroup = f'charge_state_{trace.name}'
-            # Combine using xarray_plotly's add_secondary_y which handles facets correctly
+            # Filter out bar-only kwargs, apply line defaults, override color for comparison
+            line_kwargs = {k: v for k, v in plotly_kwargs.items() if k not in ('pattern_shape', 'color')}
+            _apply_slot_defaults(line_kwargs, {**_SLOT_DEFAULTS['storage_line'], 'color': 'case'})
+            line_fig = ds['charge_state'].plotly.line(**line_kwargs)
             fig = add_secondary_y(fig, line_fig, secondary_y_title='Charge State')
 
         return self._finalize(ds, fig, show)
