@@ -10,8 +10,10 @@ from typing import TYPE_CHECKING
 import linopy
 import numpy as np
 
+from .config import CONFIG
 from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
 from .structure import FlowSystemModel, Submodel
+from .interface import InvestParameters
 
 if TYPE_CHECKING:
     from collections.abc import Collection
@@ -21,6 +23,164 @@ if TYPE_CHECKING:
     from .core import FlowSystemDimensions
     from .interface import InvestParameters, Piecewise, StatusParameters
     from .types import Numeric_PS, Numeric_TPS
+
+
+class GradientModel(Submodel):
+    """
+    Limit increasing/decreasing gradients (ramps) of a defining variable over time.
+
+    This is a feature model intended e.g. for Flow.flow_rate.
+    It supports optional relaxation on startup/shutdown using a big-M term
+    (if startup/shutdown variables are provided).
+
+    Constraints (for t>0):
+        increase:  var[t] - var[t-1] <= max_inc * hours[t] + M * startup[t]
+        decrease:  var[t-1] - var[t] <= max_dec * hours[t] + M * shutdown[t]
+
+    Optionally adds initial constraints if previous_value is provided:
+        var[0] - previous <= max_inc * hours[0] + M * startup[0]
+        previous - var[0] <= max_dec * hours[0] + M * shutdown[0]
+    """
+
+    def __init__(
+        self,
+        model: FlowSystemModel,
+        label_of_element: str,
+        label_of_model: str,
+        variable: linopy.Variable,
+        max_increasing_gradient_abs=None,
+        max_decreasing_gradient_abs=None,
+        previous_value=None,
+        startup: linopy.Variable | None = None,
+        shutdown: linopy.Variable | None = None,
+        relax_on_startup: bool = True,
+        relax_on_shutdown: bool = True,
+        relax_on_startup_to_min_rate: bool = False,
+        relax_on_shutdown_to_min_rate: bool = False,
+        relative_minimum: Numeric_TPS = 0,
+        size: linopy.Variable | Numeric_PS | None = None,
+        big_m: float = CONFIG.Modeling.big,
+    ):
+        self.variable = variable
+        self.max_increasing_gradient_abs = max_increasing_gradient_abs
+        self.max_decreasing_gradient_abs = max_decreasing_gradient_abs
+        self.previous_value = previous_value
+
+        self.startup = startup
+        self.shutdown = shutdown
+        self.relax_on_startup = relax_on_startup
+        self.relax_on_shutdown = relax_on_shutdown
+        self.relax_on_startup_to_min_rate = relax_on_startup_to_min_rate
+        self.relax_on_shutdown_to_min_rate = relax_on_shutdown_to_min_rate
+        self.relative_minimum = relative_minimum
+        self.size = size
+        self.big_m = big_m
+
+        super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
+
+    def _do_modeling(self):
+        super()._do_modeling()
+
+        hours = self._model.hours_per_step  # DataArray with dim 'time'
+        var = self.variable
+
+        if self.max_increasing_gradient_abs is not None:
+            self._add_increasing_constraints(var, hours)
+
+        if self.max_decreasing_gradient_abs is not None:
+            self._add_decreasing_constraints(var, hours)
+
+    def _add_increasing_constraints(self, var: linopy.Variable, hours):
+        # t>0: var[t] - var[t-1] <= max_inc * hours[t] (+ M*startup[t])
+        lhs = var.isel(time=slice(1, None)) - var.isel(time=slice(None, -1))
+        rhs = self.max_increasing_gradient_abs * hours.isel(time=slice(1, None))
+
+        # Promote rhs to a linopy expression to avoid xarray<->linopy mixed ops issues
+        rhs = 0 * var.isel(time=slice(1, None)) + rhs
+        
+        if self.startup is not None:
+            if self.relax_on_startup:
+                rhs = rhs + self.big_m * self.startup.isel(time=slice(1, None))
+            
+            elif self.relax_on_startup_to_min_rate and not isinstance(self.size, InvestParameters):
+                # relax to min rate:
+                # var[t] - var[t-1] <= max_inc * hours[t] + (relative_minimum * size) * startup[t]
+                #rhs = rhs + (max(0,self.relative_minimum * self.size - self.max_increasing_gradient_abs)) * self.startup.isel(time=slice(1, None))
+                extra_on_startup = np.maximum(
+                    0,
+                    self.relative_minimum * self.size - self.max_increasing_gradient_abs,
+                )
+                rhs = rhs + extra_on_startup * self.startup.isel(time=slice(1, None))
+
+            elif self.relax_on_startup_to_min_rate and isinstance(self.size, InvestParameters):
+                pass
+
+        self.add_constraints(lhs <= rhs, short_name='max_increasing_gradient_abs')
+
+        # initial: var[0] - previous <= max_inc * hours[0] (+ M*startup[0])
+        if self.previous_value is not None:
+            lhs0 = var.isel(time=0) - self.previous_value
+            rhs0 = self.max_increasing_gradient_abs * hours.isel(time=0)
+
+            # Promote rhs0 to a linopy expression (scalar time-slice) as well
+            rhs0 = 0 * var.isel(time=0) + rhs0
+
+            if self.startup is not None:
+                if self.relax_on_startup:
+                    rhs0 = rhs0 + self.big_m * self.startup.isel(time=0)
+                elif self.relax_on_startup_to_min_rate and not isinstance(self.size, InvestParameters):
+                   # rhs0 = rhs0 + (max(0,self.relative_minimum * self.size - self.max_increasing_gradient_abs)) * self.startup.isel(time=0)
+                    extra_on_startup = np.maximum(
+                        0,
+                        self.relative_minimum * self.size - self.max_increasing_gradient_abs,
+                    )
+                    rhs0 = rhs0 + extra_on_startup * self.startup.isel(time=0)
+                elif self.relax_on_startup_to_min_rate and isinstance(self.size, InvestParameters):
+                    pass
+            self.add_constraints(lhs0 <= rhs0, short_name='max_increasing_gradient_abs_initial')
+
+    def _add_decreasing_constraints(self, var: linopy.Variable, hours):
+        # t>0: var[t-1] - var[t] <= max_dec * hours[t] (+ M*shutdown[t])
+        lhs = var.isel(time=slice(None, -1)) - var.isel(time=slice(1, None))
+        rhs = self.max_decreasing_gradient_abs * hours.isel(time=slice(1, None))
+
+        # Promote rhs to a linopy expression to avoid xarray<->linopy mixed ops issues
+        rhs = 0 * var.isel(time=slice(1, None)) + rhs
+
+        if self.shutdown is not None:
+            if self.relax_on_shutdown:
+                rhs = rhs + self.big_m * self.shutdown.isel(time=slice(1, None))
+            elif self.relax_on_shutdown_to_min_rate and not isinstance(self.size, InvestParameters):
+                # Make shutdown-relaxation symmetric to startup-relaxation:
+                extra_on_shutdown = np.maximum(
+                    0,
+                    self.relative_minimum * self.size - self.max_decreasing_gradient_abs,
+                )
+                rhs = rhs + extra_on_shutdown * self.shutdown.isel(time=slice(1, None))
+            elif self.relax_on_shutdown_to_min_rate and isinstance(self.size, InvestParameters):
+                pass
+        self.add_constraints(lhs <= rhs, short_name='max_decreasing_gradient_abs')
+
+        # initial: previous - var[0] <= max_dec * hours[0] (+ M*shutdown[0])
+        if self.previous_value is not None:
+            lhs0 = self.previous_value - var.isel(time=0)
+            rhs0 = self.max_decreasing_gradient_abs * hours.isel(time=0)
+
+            # Promote rhs0 to a linopy expression (scalar time-slice) as well
+            rhs0 = 0 * var.isel(time=0) + rhs0
+
+            if self.shutdown is not None:
+                if self.relax_on_shutdown:
+                    rhs0 = rhs0 + self.big_m * self.shutdown.isel(time=0)
+                elif self.relax_on_shutdown_to_min_rate and not isinstance(self.size, InvestParameters):
+                    extra_on_shutdown = np.maximum(
+                        0,
+                        self.relative_minimum * self.size - self.max_decreasing_gradient_abs,
+                    )
+                    rhs0 = rhs0 + extra_on_shutdown * self.shutdown.isel(time=0)
+                elif self.relax_on_shutdown_to_min_rate and isinstance(self.size, InvestParameters):
+                    pass
+            self.add_constraints(lhs0 <= rhs0, short_name='max_decreasing_gradient_abs_initial')
 
 
 class InvestmentModel(Submodel):

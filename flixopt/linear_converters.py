@@ -12,10 +12,8 @@ import numpy as np
 from .components import LinearConverter
 from .structure import register_class_for_io
 
-if TYPE_CHECKING:
-    from .elements import Flow
-    from .interface import StatusParameters
-    from .types import Numeric_TPS
+from .interface import Piece, Piecewise, PiecewiseConversion, StatusParameters, InvestParameters
+from .types import Numeric_TPS
 
 logger = logging.getLogger('flixopt')
 
@@ -398,6 +396,140 @@ class CoolingTower(LinearConverter):
 
 
 @register_class_for_io
+class GUD(LinearConverter):
+    """
+    A specialized LinearConverter representing a Gas and Steam Turbine (GUD) or similar unit
+    with piecewise linear conversion behavior.
+
+    The GUD unit models the relationships between fuel input, electrical output, and
+    thermal output using two linear equations:
+    1. P = power_fuel_intercept + power_fuel_slope * Fuel  (Power from Fuel)
+    2. P = power_heat_intercept + power_heat_slope * Q     (Power from Heat)
+
+    The operational range is defined by specifying min/max bounds for at least one
+    of the flows (Fuel, Power, or Heat).
+
+    Args:
+        label: The label of the Element.
+        power_fuel_intercept: Intercept for Power-Fuel relationship.
+        power_fuel_slope: Slope for Power-Fuel relationship.
+        power_heat_intercept: Intercept for Power-Heat relationship.
+        power_heat_slope: Slope for Power-Heat relationship.
+        defining_flow: base flow for Piece computation
+        fuel_flow: Input flow for fuel.
+        electrical_flow: Output flow for electricity.
+        thermal_flow: Output flow for heat.
+        status_parameters: Parameters for status, startup/shutdown.
+        meta_data: Additional metadata.
+    """
+
+    def __init__(
+        self,
+        label: str,
+        power_fuel_intercept: float,
+        power_fuel_slope: float,
+        power_heat_intercept: float,
+        power_heat_slope: float,
+        fuel_flow: Flow,
+        electrical_flow: Flow,
+        thermal_flow: Flow,
+        defining_flow: Flow,
+        status_parameters: StatusParameters | None = None,
+        meta_data: dict | None = None,
+    ):
+        def extract_min_max(flow):
+            """
+            Extracts minimum and maximum absolute values for a given flow.
+            """
+            f_max = None
+            # Case 1: Fixed size (numeric)
+            if flow.size is not None and not isinstance(flow.size, InvestParameters):
+                f_max = flow.size
+            # Case 2: Investment size
+            elif isinstance(flow.size, InvestParameters):
+                f_max = flow.size.maximum_or_fixed_size
+            else:
+                raise ValueError(
+                    f"'{label}': Size of defining flow must be defined"
+                )
+
+            f_min = 0
+            # Apply relative minimum if defined
+            if f_max is not None and flow.relative_minimum is not None:
+                rel_min = flow.relative_minimum
+                # Handle potential time series (numpy array or similar)
+                if isinstance(flow.size, InvestParameters):
+                    if isinstance(rel_min, (np.ndarray, list)):
+                        f_min = flow.size.minimmum_or_fixed_size * np.min(rel_min)
+                    else:
+                        f_min = flow.size.minimmum_or_fixed_size * rel_min
+                else:
+                    if isinstance(rel_min, (np.ndarray, list)):
+                        f_min = f_max * np.min(rel_min)
+                    else:
+                        f_min = f_max * rel_min
+            return f_min, f_max
+
+        # Extract operational bounds based on the defining flow
+        # Relationship: P = intercept + slope * F  (Power-Fuel)
+        # Relationship: P = intercept + slope * Q  (Power-Heat)
+
+        # 1. Fuel flow is defining
+        if defining_flow == fuel_flow:
+            fuel_min, fuel_max = extract_min_max(fuel_flow)
+            f_min, f_max = fuel_min, fuel_max
+            p_min, p_max = power_fuel_intercept + power_fuel_slope * f_min, power_fuel_intercept + power_fuel_slope * f_max
+            q_min, q_max = (p_min - power_heat_intercept) / power_heat_slope, (p_max - power_heat_intercept) / power_heat_slope
+            if electrical_flow.size is None: electrical_flow.size = p_max
+            if thermal_flow.size is None: thermal_flow.size = q_max
+
+        # 2. Electrical flow is defining
+        elif defining_flow == electrical_flow:
+            elec_min, elec_max = extract_min_max(electrical_flow)
+            p_min, p_max = elec_min, elec_max
+            f_min, f_max = (p_min - power_fuel_intercept) / power_fuel_slope, (p_max - power_fuel_intercept) / power_fuel_slope
+            q_min, q_max = (p_min - power_heat_intercept) / power_heat_slope, (p_max - power_heat_intercept) / power_heat_slope
+            if fuel_flow.size is None: fuel_flow.size = f_max
+            if thermal_flow.size is None: thermal_flow.size = q_max
+
+        # 3. Thermal flow is defining
+        elif defining_flow == thermal_flow:
+            therm_min, therm_max = extract_min_max(thermal_flow)
+            q_min, q_max = therm_min, therm_max
+            p_min, p_max = power_heat_intercept + power_heat_slope * q_min, power_heat_intercept + power_heat_slope * q_max
+            f_min, f_max = (p_min - power_fuel_intercept) / power_fuel_slope, (p_max - power_fuel_intercept) / power_fuel_slope
+            if electrical_flow.size is None: electrical_flow.size = p_max
+            if fuel_flow.size is None: fuel_flow.size = f_max
+
+        else:
+            raise ValueError(
+                f"'{label}': At least one pair of bounds (fuel, thermal, or electrical) must be fully defined (either via arguments or via Flow.size and Flow.relative_minimum)."
+            )
+
+        # Define the piecewise linear points for all three flows
+        piecewise_conversion = PiecewiseConversion(
+            {
+                fuel_flow.label: Piecewise([Piece(start=f_min, end=f_max)]),
+                electrical_flow.label: Piecewise([Piece(start=p_min, end=p_max)]),
+                thermal_flow.label: Piecewise([Piece(start=q_min, end=q_max)]),
+            }
+        )
+
+        super().__init__(
+            label,
+            inputs=[fuel_flow],
+            outputs=[electrical_flow, thermal_flow],
+            piecewise_conversion=piecewise_conversion,
+            status_parameters=status_parameters,
+            meta_data=meta_data,
+        )
+        self.fuel_flow = fuel_flow
+        self.electrical_flow = electrical_flow
+        self.thermal_flow = thermal_flow
+        self.power_fuel_intercept, self.power_fuel_slope, self.power_heat_intercept, self.power_heat_slope = power_fuel_intercept, power_fuel_slope, power_heat_intercept, power_heat_slope
+        self.defining_flow = defining_flow
+
+@register_class_for_io
 class CHP(LinearConverter):
     """
     A specialized LinearConverter representing a Combined Heat and Power (CHP) unit.
@@ -525,6 +657,7 @@ class CHP(LinearConverter):
     def electrical_efficiency(self, value):
         check_bounds(value, 'electrical_efficiency', self.label_full, 0, 1)
         self.conversion_factors[1] = {self.fuel_flow.label: value, self.electrical_flow.label: 1}
+
 
 
 @register_class_for_io

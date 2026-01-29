@@ -371,6 +371,12 @@ class Flow(Element):
             Weighted by FlowSystem period weights.
         fixed_relative_profile: Predetermined pattern as fraction of size.
             Flow rate = size × fixed_relative_profile(t).
+        max_increasing_gradient_abs: max. Zunahme pro Stunde
+        max_decreasing_gradient_abs: max. Abnahme pro Stunde
+        relax_on_startup: fully relaxes gradient restriction on startup, Default: True,
+        relax_on_shutdown: fully relaxes gradient restriction on shutdown, Default: True,
+        relax_on_startup_to_min_rate: relaxes gradient restriction on startup such that startup is at least possible, Default: False,
+        relax_on_shutdown_to_min_rate: relaxes gradient restriction on shutdown such that shutdown is at least possible, Default: False,
         previous_flow_rate: Initial flow state for active/inactive status at model start. Default: None (inactive).
         meta_data: Additional info stored in results. Python native types only.
 
@@ -484,6 +490,12 @@ class Flow(Element):
         flow_hours_min_over_periods: Numeric_S | None = None,
         load_factor_min: Numeric_PS | None = None,
         load_factor_max: Numeric_PS | None = None,
+        max_increasing_gradient_abs: Numeric_TPS | None = None,
+        max_decreasing_gradient_abs: Numeric_TPS | None = None,
+        relax_on_startup: bool = True,
+        relax_on_shutdown: bool = True,
+        relax_on_startup_to_min_rate: bool = False,
+        relax_on_shutdown_to_min_rate: bool = False,
         previous_flow_rate: Scalar | list[Scalar] | None = None,
         meta_data: dict | None = None,
     ):
@@ -495,6 +507,13 @@ class Flow(Element):
 
         self.load_factor_min = load_factor_min
         self.load_factor_max = load_factor_max
+
+        self.max_increasing_gradient_abs = max_increasing_gradient_abs
+        self.max_decreasing_gradient_abs = max_decreasing_gradient_abs
+        self.relax_on_startup = relax_on_startup
+        self.relax_on_shutdown = relax_on_shutdown
+        self.relax_on_startup_to_min_rate = relax_on_startup_to_min_rate
+        self.relax_on_shutdown_to_min_rate = relax_on_shutdown_to_min_rate
 
         # self.positive_gradient = TimeSeries('positive_gradient', positive_gradient, self)
         self.effects_per_flow_hour = effects_per_flow_hour if effects_per_flow_hour is not None else {}
@@ -555,6 +574,13 @@ class Flow(Element):
         )
         self.load_factor_min = self._fit_coords(
             f'{self.prefix}|load_factor_min', self.load_factor_min, dims=['period', 'scenario']
+        )
+
+        self.max_increasing_gradient_abs = self._fit_coords(
+            f'{self.prefix}|max_increasing_gradient_abs', self.max_increasing_gradient_abs
+        )
+        self.max_decreasing_gradient_abs = self._fit_coords(
+            f'{self.prefix}|max_decreasing_gradient_abs', self.max_decreasing_gradient_abs
         )
 
         if self.status_parameters is not None:
@@ -632,6 +658,32 @@ class Flow(Element):
                     f'previous_flow_rate must be None, a scalar, a list of scalars or a 1D-numpy-array. Got {type(self.previous_flow_rate)}. '
                     f'Different values in different periods or scenarios are not yet supported.'
                 )
+
+        # Gradients are "per hour" and must be non-negative
+        if self.max_increasing_gradient_abs is not None:
+            try:
+                if (self.max_increasing_gradient_abs < 0).any():
+                    raise PlausibilityError(
+                        f'Flow "{self.label_full}" has max_increasing_gradient_abs < 0. Use non-negative values.'
+                    )
+            except AttributeError:
+                # Fallback for pure scalars/lists (before transform_data)
+                if np.any(np.asarray(self.max_increasing_gradient_abs) < 0):
+                    raise PlausibilityError(
+                        f'Flow "{self.label_full}" has max_increasing_gradient_abs < 0. Use non-negative values.'
+                    )
+
+        if self.max_decreasing_gradient_abs is not None:
+            try:
+                if (self.max_decreasing_gradient_abs < 0).any():
+                    raise PlausibilityError(
+                        f'Flow "{self.label_full}" has max_decreasing_gradient_abs < 0. Use non-negative values.'
+                    )
+            except AttributeError:
+                if np.any(np.asarray(self.max_decreasing_gradient_abs) < 0):
+                    raise PlausibilityError(
+                        f'Flow "{self.label_full}" has max_decreasing_gradient_abs < 0. Use non-negative values.'
+                    )
 
     @property
     def label_full(self) -> str:
@@ -724,6 +776,45 @@ class FlowModel(ElementModel):
 
         # Effects
         self._create_shares()
+
+        # --- Gradient feature (NEW) ---
+        # We read optional attributes via getattr so this stays backward compatible
+        max_inc = getattr(self.element, 'max_increasing_gradient_abs', None)
+        max_dec = getattr(self.element, 'max_decreasing_gradient_abs', None)
+        if max_inc is not None or max_dec is not None:
+            from .features import GradientModel  # local import to avoid circular imports
+
+            startup = None
+            shutdown = None
+            if self.status is not None:
+                startup = self.status.startup
+                shutdown = self.status.shutdown
+
+            size_val = self.investment.size if self.with_investment else self.element.size
+
+            self.add_submodels(
+                GradientModel(
+                    model=self._model,
+                    label_of_element=self.label_of_element,
+                    label_of_model=f'{self.label_of_element}|Gradient',
+                    variable=self.flow_rate,
+                    max_increasing_gradient_abs=max_inc,
+                    max_decreasing_gradient_abs=max_dec,
+                    previous_value=self.element.previous_flow_rate,
+                    startup=startup,
+                    shutdown=shutdown,
+                    relax_on_startup=self.element.relax_on_startup,
+                    relax_on_shutdown=self.element.relax_on_shutdown,
+                    relax_on_startup_to_min_rate=self.element.relax_on_startup_to_min_rate,
+                    relax_on_shutdown_to_min_rate=self.element.relax_on_shutdown_to_min_rate,
+                    relative_minimum=self.element.relative_minimum,
+                    size=size_val,
+                    big_m=1e6,
+                ),
+                short_name='gradient',
+            )
+
+
 
     def _create_status_model(self):
         status = self.add_variables(binary=True, short_name='status', coords=self._model.get_coords())
