@@ -79,6 +79,7 @@ def create_polygon_model(P_points, Q_points, p_demand, q_demand, costs=1.0, a=0.
     # 2. Variablen definieren
     P = m.add_variables(lower=0, coords=[time], name='x')
     Q = m.add_variables(lower=0, coords=[time], name='y')
+    is_on = m.add_variables(binary=True, coords=[time], name='is_on')
     p_external = m.add_variables(lower=0, upper=100, coords=[time], name='p_external')
     p_export = m.add_variables(lower=0, upper=100, coords=[time], name='p_export')
     
@@ -91,15 +92,14 @@ def create_polygon_model(P_points, Q_points, p_demand, q_demand, costs=1.0, a=0.
     Q_i = xr.DataArray(Q_points, coords=[point])
 
     # 4. Bedingungen hinzufügen
-    # Formulierung der Nebenbdingung für das PQ-Diagramm: sum((x_i - x1) * lambda_i) - (x - x1) == 0
-    # Wir nehmen x1 und y1 als die Werte des ersten Punktes
-    P1_val = P_points[0]
-    Q1_val = Q_points[0]
-    m.add_constraints(((P_i - P1_val) * lambdas).sum('point') - (P - P1_val) == 0, name='eq_x')
-    m.add_constraints(((Q_i - Q1_val) * lambdas).sum('point') - (Q - Q1_val) == 0, name='eq_y')
-    m.add_constraints(lambdas.sum('point') <= 1, name='sum_lambda')
+    # P und Q als gewichtete Summe der Eckpunkte
+    m.add_constraints((P_i * lambdas).sum('point') == P, name='eq_x')
+    m.add_constraints((Q_i * lambdas).sum('point') == Q, name='eq_y')
+    
+    # Die Summe der Lambdas muss dem Einschaltzustand entsprechen
+    m.add_constraints(lambdas.sum('point') == is_on, name='sum_lambda')
 
-    # BEMERKUNG: Modellierung des Zustands "AUS" durch bereits bestehende Logik in Flow
+    # BEMERKUNG: Modellierung des Zustands "AUS" durch Binärvariable is_on
 
     # ZUR BEISPIELHAFTEN ANWENDUNG
     # Bedarfswerte
@@ -111,8 +111,8 @@ def create_polygon_model(P_points, Q_points, p_demand, q_demand, costs=1.0, a=0.
     # STROMBEDARF
     # x + p_external - p_export == p_req
     m.add_constraints(P + p_external - p_export == p_req, name='demand_p')
-    # Zielfunktion
-    objective = (costs * (b * P + c * Q)).sum() + (costs_import * p_external).sum() + (costs_export * p_export).sum()
+    # Zielfunktion (Fixkosten a fallen nur an, wenn die Anlage AN ist)
+    objective = (costs * (a * is_on + b * P + c * Q)).sum() + (costs_import * p_external).sum() + (costs_export * p_export).sum()
     m.add_objective(objective, sense='min')
     
     return m
@@ -124,8 +124,8 @@ if __name__ == '__main__':
     Q_turbine = [10, 100, 100, 50, 10]
 
     # gegebene Testwerte zum Betrieb
-    p_demand = [35, 60, 60, 80, 90, 70, 20, 50, 95, 95]
-    q_demand = [40, 50, 80, 90, 100, 100, 80, 10, 80, 20]
+    p_demand = [35, 60, 60, 80, 90, 70, 20, 50, 95, 95, 0 ]
+    q_demand = [40, 50, 80, 90, 100, 100, 80, 10, 80, 20, 0]
     
     costs_fuel = 1.0
 
@@ -157,18 +157,20 @@ if __name__ == '__main__':
     
     if model.status == 'ok':
         n_t = len(p_demand)
-        total_costs = n_t * costs_fuel * a_val + model.objective.value
+        total_costs = model.objective.value
         print(f"Optimierung erfolgreich. Gesamtkosten: {total_costs:.2f}")
         
         P_sol = model.variables['x'].solution
         Q_sol = model.variables['y'].solution
+        is_on_sol = model.variables['is_on'].solution
         p_ext_sol = model.variables['p_external'].solution
         p_exp_sol = model.variables['p_export'].solution
 
-        print("t | P_Bedarf | P_Turbine | P_Extern | P_Export | Q_Turbine | Q_Bedarf")
+        print("t | P_Bedarf | P_Turbine | P_Extern | P_Export | Q_Turbine | Q_Bedarf | Status")
         for t in range(n_t):
+            status = "AN" if is_on_sol[t] > 0.5 else "AUS"
             print(
-                f"{t} | {p_demand[t]:8.2f} | {P_sol[t]:9.2f} | {p_ext_sol[t]:8.2f} | {p_exp_sol[t]:8.2f} | {Q_sol[t]:9.2f} | {q_demand[t]:8.2f}"
+                f"{t} | {p_demand[t]:8.2f} | {P_sol[t]:9.2f} | {p_ext_sol[t]:8.2f} | {p_exp_sol[t]:8.2f} | {Q_sol[t]:9.2f} | {q_demand[t]:8.2f} | {status}"
             )
 
         # Grafik anzeigen
