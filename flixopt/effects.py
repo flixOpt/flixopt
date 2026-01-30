@@ -352,42 +352,25 @@ class EffectsModel:
         # Each entry: a defining_expr with 'contributor' dim
         self._temporal_share_defs: list[linopy.LinearExpression] = []
         self._periodic_share_defs: list[linopy.LinearExpression] = []
-        # Extra contributions that don't go through share variables (status effects, invested, constants)
-        self._temporal_contributions: list = []
-        self._periodic_contributions: list = []
 
     @property
     def effect_index(self):
         """Public access to the effect index for type models."""
         return self._effect_index
 
-    def register_temporal_share(self, defining_expr) -> None:
+    def add_temporal_contribution(self, defining_expr) -> None:
         """Register contributors for the share|temporal variable.
 
         The defining_expr must have a 'contributor' dimension.
         """
         self._temporal_share_defs.append(defining_expr)
 
-    def register_periodic_share(self, defining_expr) -> None:
+    def add_periodic_contribution(self, defining_expr) -> None:
         """Register contributors for the share|periodic variable.
 
         The defining_expr must have a 'contributor' dimension.
         """
         self._periodic_share_defs.append(defining_expr)
-
-    def add_temporal_contribution(self, expr) -> None:
-        """Register a temporal effect contribution expression (not via share variable).
-
-        For contributions like status effects that bypass the share variable.
-        """
-        self._temporal_contributions.append(expr)
-
-    def add_periodic_contribution(self, expr) -> None:
-        """Register a periodic effect contribution expression (not via share variable).
-
-        For contributions like invested-based effects that bypass the share variable.
-        """
-        self._periodic_contributions.append(expr)
 
     def _stack_bounds(self, attr_name: str, default: float = np.inf) -> xr.DataArray:
         """Stack per-effect bounds into a single DataArray with effect dimension."""
@@ -558,7 +541,7 @@ class EffectsModel:
         """Collect effect contributions from type models (push-based).
 
         Each type model (FlowsModel, StoragesModel) registers its share definitions
-        via register_temporal_share() / register_periodic_share(). This method
+        via add_temporal_contribution() / add_periodic_contribution(). This method
         creates the two share variables (share|temporal, share|periodic) with a
         unified 'contributor' dimension, then applies all contributions.
         """
@@ -576,14 +559,6 @@ class EffectsModel:
         if self._periodic_share_defs:
             self.share_periodic = self._create_share_var(self._periodic_share_defs, 'share|periodic', temporal=False)
             self._eq_periodic.lhs -= self.share_periodic.sum('contributor').reindex({'effect': self._effect_index})
-
-        # Apply extra temporal contributions (status effects, etc.)
-        if self._temporal_contributions:
-            self._eq_per_timestep.lhs -= sum(self._temporal_contributions)
-
-        # Apply extra periodic contributions (invested-based effects, etc.)
-        for expr in self._periodic_contributions:
-            self._eq_periodic.lhs -= expr.reindex({'effect': self._effect_index})
 
     def _share_coords(self, element_dim: str, element_index, temporal: bool = True) -> xr.Coordinates:
         """Build coordinates for share variables: (element, effect) + time/period/scenario."""

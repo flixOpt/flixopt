@@ -898,15 +898,19 @@ class StoragesModel(TypeModel):
         if inv.effects_per_size is not None:
             factors = inv.effects_per_size
             size = self._variables['size'].sel({dim: factors.coords[dim].values})
-            effects_model.register_periodic_share((size * factors).rename(rename))
+            effects_model.add_periodic_contribution((size * factors).rename(rename))
 
-            # Investment/retirement effects (bypass share variable)
+            # Investment/retirement effects
             invested = self._variables.get('invested')
             if invested is not None:
                 if (f := inv.effects_of_investment) is not None:
-                    effects_model.add_periodic_contribution((invested.sel({dim: f.coords[dim].values}) * f).sum(dim))
+                    effects_model.add_periodic_contribution(
+                        (invested.sel({dim: f.coords[dim].values}) * f).rename(rename)
+                    )
                 if (f := inv.effects_of_retirement) is not None:
-                    effects_model.add_periodic_contribution((invested.sel({dim: f.coords[dim].values}) * (-f)).sum(dim))
+                    effects_model.add_periodic_contribution(
+                        (invested.sel({dim: f.coords[dim].values}) * (-f)).rename(rename)
+                    )
 
         # === Constants: mandatory fixed + retirement ===
         for element_id, effects_dict in inv.effects_of_investment_mandatory:
