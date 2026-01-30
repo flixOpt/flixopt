@@ -721,4 +721,4 @@ class TestMultiDimensionalClusteringIO:
 
         # Solution should be expanded
         assert fs_expanded.solution is not None
-        assert 'source(out)|flow_rate' in fs_expanded.solution
+        assert 'source(out)' in fs_expanded.solution['flow|rate'].coords['flow'].values

@@ -760,7 +760,7 @@ class TestV4APIConversion:
 
         # Get new objective effect total (sum for multi-scenario)
         new_objective = float(fs.solution['objective'].item())
-        new_effect_total = float(fs.solution[objective_effect_label].sum().item())
+        new_effect_total = float(fs.solution['effect|total'].sel(effect=objective_effect_label).sum().item())
 
         # Skip comparison for scenarios test case - scenario weights are now always normalized,
         # which changes the objective value when loading old results with non-normalized weights

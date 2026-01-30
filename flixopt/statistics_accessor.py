@@ -20,7 +20,6 @@ Example:
 from __future__ import annotations
 
 import logging
-import re
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -32,7 +31,6 @@ from xarray_plotly.figures import update_traces
 from .color_processing import ColorType, hex_to_rgba, process_colors
 from .config import CONFIG
 from .plot_result import PlotResult
-from .structure import VariableCategory
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
@@ -550,18 +548,18 @@ class StatisticsAccessor:
         """
         self._require_solution()
         if self._flow_rates is None:
-            flow_rate_vars = self._fs.get_variables_by_category(VariableCategory.FLOW_RATE)
+            solution = self._fs.solution
             flow_carriers = self._fs.flow_carriers  # Cached lookup
             carrier_units = self.carrier_units  # Cached lookup
             data_vars = {}
-            for v in flow_rate_vars:
-                flow_label = v.rsplit('|', 1)[0]  # Extract label from 'label|flow_rate'
-                da = self._fs.solution[v].copy()
-                # Add carrier and unit as attributes
-                carrier = flow_carriers.get(flow_label)
-                da.attrs['carrier'] = carrier
-                da.attrs['unit'] = carrier_units.get(carrier, '') if carrier else ''
-                data_vars[flow_label] = da
+            if 'flow|rate' in solution:
+                rate_var = solution['flow|rate']
+                for flow_label in rate_var.coords['flow'].values:
+                    da = rate_var.sel(flow=flow_label, drop=True).copy()
+                    carrier = flow_carriers.get(flow_label)
+                    da.attrs['carrier'] = carrier
+                    da.attrs['unit'] = carrier_units.get(carrier, '') if carrier else ''
+                    data_vars[flow_label] = da
             self._flow_rates = xr.Dataset(data_vars)
         return self._flow_rates
 
@@ -594,8 +592,17 @@ class StatisticsAccessor:
         """Flow sizes as a Dataset with flow labels as variable names."""
         self._require_solution()
         if self._flow_sizes is None:
-            flow_size_vars = self._fs.get_variables_by_category(VariableCategory.FLOW_SIZE)
-            self._flow_sizes = xr.Dataset({v.rsplit('|', 1)[0]: self._fs.solution[v] for v in flow_size_vars})
+            solution = self._fs.solution
+            data_vars = {}
+            if 'flow|size' in solution:
+                size_var = solution['flow|size']
+                from .interface import InvestParameters
+
+                for flow_label in size_var.coords['flow'].values:
+                    flow = self._fs.flows.get(flow_label)
+                    if flow is not None and isinstance(flow.size, InvestParameters):
+                        data_vars[flow_label] = size_var.sel(flow=flow_label, drop=True)
+            self._flow_sizes = xr.Dataset(data_vars)
         return self._flow_sizes
 
     @property
@@ -603,8 +610,13 @@ class StatisticsAccessor:
         """Storage capacity sizes as a Dataset with storage labels as variable names."""
         self._require_solution()
         if self._storage_sizes is None:
-            storage_size_vars = self._fs.get_variables_by_category(VariableCategory.STORAGE_SIZE)
-            self._storage_sizes = xr.Dataset({v.rsplit('|', 1)[0]: self._fs.solution[v] for v in storage_size_vars})
+            solution = self._fs.solution
+            data_vars = {}
+            if 'storage|size' in solution:
+                size_var = solution['storage|size']
+                for storage_label in size_var.coords['storage'].values:
+                    data_vars[storage_label] = size_var.sel(storage=storage_label, drop=True)
+            self._storage_sizes = xr.Dataset(data_vars)
         return self._storage_sizes
 
     @property
@@ -619,8 +631,13 @@ class StatisticsAccessor:
         """All storage charge states as a Dataset with storage labels as variable names."""
         self._require_solution()
         if self._charge_states is None:
-            charge_vars = self._fs.get_variables_by_category(VariableCategory.CHARGE_STATE)
-            self._charge_states = xr.Dataset({v.rsplit('|', 1)[0]: self._fs.solution[v] for v in charge_vars})
+            solution = self._fs.solution
+            data_vars = {}
+            if 'storage|charge' in solution:
+                charge_var = solution['storage|charge']
+                for storage_label in charge_var.coords['storage'].values:
+                    data_vars[storage_label] = charge_var.sel(storage=storage_label, drop=True)
+            self._charge_states = xr.Dataset(data_vars)
         return self._charge_states
 
     @property
@@ -771,9 +788,20 @@ class StatisticsAccessor:
             raise ValueError(f'Mode {mode} is not available. Choose between "temporal" and "periodic".')
 
         ds = xr.Dataset()
-        label = f'{element}->{effect}({mode})'
-        if label in self._fs.solution:
-            ds = xr.Dataset({label: self._fs.solution[label]})
+        share_var_name = f'share|{mode}'
+        if share_var_name in self._fs.solution:
+            share_var = self._fs.solution[share_var_name]
+            # Find the contributor dimension
+            contributor_dim = None
+            for dim in ['contributor', 'flow', 'storage', 'component', 'source']:
+                if dim in share_var.dims:
+                    contributor_dim = dim
+                    break
+            if contributor_dim is not None and element in share_var.coords[contributor_dim].values:
+                if effect in share_var.coords['effect'].values:
+                    selected = share_var.sel({contributor_dim: element, 'effect': effect}, drop=True)
+                    label = f'{element}->{effect}({mode})'
+                    ds = xr.Dataset({label: selected})
 
         if include_flows:
             if element not in self._fs.components:
@@ -814,27 +842,30 @@ class StatisticsAccessor:
     def _create_effects_dataset(self, mode: Literal['temporal', 'periodic', 'total']) -> xr.Dataset:
         """Create dataset containing effect totals for all contributors.
 
-        Detects contributors (flows, components, etc.) from solution data variables.
+        Detects contributors from batched share variables (share|temporal, share|periodic).
         Excludes effect-to-effect shares which are intermediate conversions.
         Provides component and component_type coordinates for flexible groupby operations.
         """
         solution = self._fs.solution
         template = self._create_template_for_mode(mode)
 
-        # Detect contributors from solution data variables
-        # Pattern: {contributor}->{effect}(temporal) or {contributor}->{effect}(periodic)
-        contributor_pattern = re.compile(r'^(.+)->(.+)\((temporal|periodic)\)$')
         effect_labels = set(self._fs.effects.keys())
 
+        # Detect contributors from batched share variables
         detected_contributors: set[str] = set()
-        for var in solution.data_vars:
-            match = contributor_pattern.match(str(var))
-            if match:
-                contributor = match.group(1)
-                # Exclude effect-to-effect shares (e.g., costs(temporal) -> Effect1(temporal))
-                base_name = contributor.split('(')[0] if '(' in contributor else contributor
-                if base_name not in effect_labels:
-                    detected_contributors.add(contributor)
+        for share_mode in ['temporal', 'periodic'] if mode == 'total' else [mode]:
+            share_var_name = f'share|{share_mode}'
+            if share_var_name in solution:
+                share_var = solution[share_var_name]
+                # Find the contributor dimension
+                for dim in ['contributor', 'flow', 'storage', 'component', 'source']:
+                    if dim in share_var.dims:
+                        for contributor_id in share_var.coords[dim].values:
+                            # Exclude effect-to-effect shares
+                            base_name = contributor_id.split('(')[0] if '(' in contributor_id else contributor_id
+                            if base_name not in effect_labels:
+                                detected_contributors.add(str(contributor_id))
+                        break
 
         contributors = sorted(detected_contributors)
 
@@ -879,20 +910,33 @@ class StatisticsAccessor:
                     }
                     conversion_factors[effect] = 1  # Direct contribution
 
+                    share_var_name = f'share|{current_mode}'
+                    if share_var_name not in solution:
+                        continue
+                    share_var = solution[share_var_name]
+                    # Find the contributor dimension
+                    contributor_dim = None
+                    for dim in ['contributor', 'flow', 'storage', 'component', 'source']:
+                        if dim in share_var.dims:
+                            contributor_dim = dim
+                            break
+                    if contributor_dim is None or contributor not in share_var.coords[contributor_dim].values:
+                        continue
+
                     for source_effect, factor in conversion_factors.items():
-                        label = f'{contributor}->{source_effect}({current_mode})'
-                        if label in solution:
-                            da = solution[label] * factor
-                            # For total mode, sum temporal over time (apply cluster_weight for proper weighting)
-                            # Sum over all temporal dimensions (time, and cluster if present)
-                            if mode == 'total' and current_mode == 'temporal' and 'time' in da.dims:
-                                weighted = da * self._fs.weights.get('cluster', 1.0)
-                                temporal_dims = [d for d in weighted.dims if d not in ('period', 'scenario')]
-                                da = weighted.sum(temporal_dims)
-                            if share_total is None:
-                                share_total = da
-                            else:
-                                share_total = share_total + da
+                        if source_effect not in share_var.coords['effect'].values:
+                            continue
+                        da = share_var.sel({contributor_dim: contributor, 'effect': source_effect}, drop=True) * factor
+                        # For total mode, sum temporal over time (apply cluster_weight for proper weighting)
+                        # Sum over all temporal dimensions (time, and cluster if present)
+                        if mode == 'total' and current_mode == 'temporal' and 'time' in da.dims:
+                            weighted = da * self._fs.weights.get('cluster', 1.0)
+                            temporal_dims = [d for d in weighted.dims if d not in ('period', 'scenario')]
+                            da = weighted.sum(temporal_dims)
+                        if share_total is None:
+                            share_total = da
+                        else:
+                            share_total = share_total + da
 
                 # If no share found, use NaN template
                 if share_total is None:
@@ -913,16 +957,17 @@ class StatisticsAccessor:
         )
 
         # Validation: check totals match solution
-        suffix_map = {'temporal': '(temporal)|per_timestep', 'periodic': '(periodic)', 'total': ''}
-        for effect in self._fs.effects:
-            label = f'{effect}{suffix_map[mode]}'
-            if label in solution:
-                computed = ds[effect].sum('contributor')
-                found = solution[label]
-                if not np.allclose(computed.fillna(0).values, found.fillna(0).values, equal_nan=True):
-                    logger.critical(
-                        f'Results for {effect}({mode}) in effects_dataset doesnt match {label}\n{computed=}\n, {found=}'
-                    )
+        batched_var_map = {'temporal': 'effect|per_timestep', 'periodic': 'effect|periodic', 'total': 'effect|total'}
+        batched_var = batched_var_map[mode]
+        if batched_var in solution and 'effect' in solution[batched_var].dims:
+            for effect in self._fs.effects:
+                if effect in solution[batched_var].coords['effect'].values:
+                    computed = ds[effect].sum('contributor')
+                    found = solution[batched_var].sel(effect=effect, drop=True)
+                    if not np.allclose(computed.fillna(0).values, found.fillna(0).values, equal_nan=True):
+                        logger.critical(
+                            f'Results for {effect}({mode}) in effects_dataset doesnt match {batched_var}\n{computed=}\n, {found=}'
+                        )
 
         return ds
 

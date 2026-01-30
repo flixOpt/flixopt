@@ -7,6 +7,7 @@ This module tests the direct solution storage on FlowSystem and Element classes:
 - Serialization/deserialization of solution with FlowSystem
 """
 
+import numpy as np
 import pytest
 import xarray as xr
 
@@ -62,9 +63,9 @@ class TestSolutionOnFlowSystem:
 
         # Check that known variables are present (from the simple flow system)
         solution_vars = set(simple_flow_system.solution.data_vars.keys())
-        # Should have flow rates, costs, etc.
-        assert any('flow_rate' in v for v in solution_vars)
-        assert any('costs' in v for v in solution_vars)
+        # Should have flow rates, effects, etc.
+        assert any('flow|rate' in v for v in solution_vars)
+        assert 'effect|total' in solution_vars
 
 
 class TestSolutionOnElement:
@@ -95,30 +96,31 @@ class TestSolutionOnElement:
         assert isinstance(solution, xr.Dataset)
 
     def test_element_solution_contains_element_variables(self, simple_flow_system, highs_solver):
-        """Element.solution should contain only that element's variables."""
+        """Element.solution should contain batched variables with element's data selected."""
         simple_flow_system.optimize(highs_solver)
 
         boiler = simple_flow_system.components['Boiler']
         boiler_solution = boiler.solution
 
-        # All variables in element solution should start with element's label
-        for var_name in boiler_solution.data_vars:
-            assert var_name.startswith(boiler.label_full), f'{var_name} does not start with {boiler.label_full}'
+        # With batched variables, element solution contains type-level variables (e.g. flow|rate)
+        # where the element's data has been selected from the appropriate dimension
+        assert len(boiler_solution.data_vars) > 0, 'Element solution should have variables'
+        assert 'flow|rate' in boiler_solution.data_vars, 'Boiler solution should contain flow|rate'
 
     def test_different_elements_have_different_solutions(self, simple_flow_system, highs_solver):
-        """Different elements should have different solution subsets."""
+        """Different elements should have different solution data (even if variable names overlap)."""
         simple_flow_system.optimize(highs_solver)
 
         boiler = simple_flow_system.components['Boiler']
         chp = simple_flow_system.components['CHP_unit']
 
-        boiler_vars = set(boiler.solution.data_vars.keys())
-        chp_vars = set(chp.solution.data_vars.keys())
-
-        # They should have different variables
-        assert boiler_vars != chp_vars
-        # And they shouldn't overlap
-        assert len(boiler_vars & chp_vars) == 0
+        # With batched variables, both may have the same variable names (e.g. flow|rate)
+        # but the data should be different (selected from different coordinate values)
+        assert len(boiler.solution.data_vars) > 0
+        assert len(chp.solution.data_vars) > 0
+        # The flow|rate data should differ between boiler and CHP
+        if 'flow|rate' in boiler.solution and 'flow|rate' in chp.solution:
+            assert not np.array_equal(boiler.solution['flow|rate'].values, chp.solution['flow|rate'].values)
 
 
 class TestVariableNamesPopulation:
@@ -461,9 +463,7 @@ class TestFlowSystemDirectMethods:
         boiler_solution = boiler.solution
 
         assert isinstance(boiler_solution, xr.Dataset)
-        # All variables should belong to boiler
-        for var_name in boiler_solution.data_vars:
-            assert var_name.startswith(boiler.label_full)
+        assert len(boiler_solution.data_vars) > 0
 
     def test_repeated_optimization_produces_consistent_results(self, simple_flow_system, highs_solver):
         """Repeated optimization should produce consistent results."""

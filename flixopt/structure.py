@@ -913,37 +913,11 @@ class FlowSystemModel(linopy.Model):
     def _populate_names_from_type_level_models(self):
         """Populate element variable/constraint names from type-level models."""
 
-        # Suffix mappings for unrolling (must match _unroll_batched_solution)
-        flow_suffix_map = {
-            'status': 'status',
-            'active_hours': 'active_hours',
-            'uptime': 'uptime',
-            'downtime': 'downtime',
-            'startup': 'startup',
-            'shutdown': 'shutdown',
-            'inactive': 'inactive',
-            'startup_count': 'startup_count',
-            'size': 'size',
-            'invested': 'invested',
-            'hours': 'hours',
-        }
-
-        # Storage suffixes: batched variable suffix -> unrolled variable suffix
-        # Must match _unroll_batched_solution's mapping
-        storage_suffix_map = {
-            'charge': 'charge_state',  # storage|charge -> Speicher|charge_state
-            'netto': 'netto_discharge',  # storage|netto -> Speicher|netto_discharge
-            'size': 'size',
-            'invested': 'invested',
-        }
-
-        # Helper to find variables/constraints that contain a specific element ID in a dimension
-        # Returns UNROLLED variable names (e.g., 'Element|flow_rate' not 'flow|rate')
+        # Helper to find batched variables that contain a specific element ID in a dimension
         def _find_vars_for_element(element_id: str, dim_name: str) -> list[str]:
-            """Find all variable names that have this element in their dimension.
+            """Find all batched variable names that have this element in their dimension.
 
-            Returns the unrolled variable names that will exist in the solution after
-            _unroll_batched_solution is called.
+            Returns the batched variable names (e.g., 'flow|rate', 'storage|charge').
             """
             var_names = []
             for var_name in self.variables:
@@ -951,28 +925,7 @@ class FlowSystemModel(linopy.Model):
                 if dim_name in var.dims:
                     try:
                         if element_id in var.coords[dim_name].values:
-                            # Determine the unrolled name based on the batched variable pattern
-                            if dim_name == 'flow' and var_name.startswith('flow|'):
-                                suffix = var_name[5:]  # Remove 'flow|' prefix
-                                mapped_suffix = flow_suffix_map.get(suffix, f'flow_{suffix}')
-                                unrolled_name = f'{element_id}|{mapped_suffix}'
-                                var_names.append(unrolled_name)
-                            elif dim_name == 'storage' and var_name.startswith('storage|'):
-                                suffix = var_name[8:]  # Remove 'storage|' prefix
-                                mapped_suffix = storage_suffix_map.get(suffix, suffix)
-                                unrolled_name = f'{element_id}|{mapped_suffix}'
-                                var_names.append(unrolled_name)
-                            elif dim_name == 'bus' and var_name.startswith('bus|'):
-                                suffix = var_name[4:]  # Remove 'bus|' prefix
-                                unrolled_name = f'{element_id}|{suffix}'
-                                var_names.append(unrolled_name)
-                            elif dim_name == 'effect' and var_name.startswith('effect|'):
-                                suffix = var_name[7:]  # Remove 'effect|' prefix
-                                unrolled_name = f'{element_id}|{suffix}'
-                                var_names.append(unrolled_name)
-                            else:
-                                # Fallback - use original name
-                                var_names.append(var_name)
+                            var_names.append(var_name)
                     except (KeyError, AttributeError):
                         pass
             return var_names
@@ -1458,9 +1411,6 @@ class FlowSystemModel(linopy.Model):
             solution = super().solution
         solution['objective'] = self.objective.value
 
-        # Unroll batched variables into individual element variables
-        solution = self._unroll_batched_solution(solution)
-
         # Store attrs as JSON strings for netCDF compatibility
         # Use _build_results_structure to build from type-level models
         results_structure = self._build_results_structure()
@@ -1475,145 +1425,6 @@ class FlowSystemModel(linopy.Model):
         if 'time' in solution.coords:
             if not solution.indexes['time'].equals(self.flow_system.timesteps_extra):
                 solution = solution.reindex(time=self.flow_system.timesteps_extra)
-        return solution
-
-    def _unroll_batched_solution(self, solution: xr.Dataset) -> xr.Dataset:
-        """Unroll batched variables into individual element variables.
-
-        Transforms batched variables like 'flow|rate' with flow dimension
-        into individual variables like 'Boiler(Q_th)|flow_rate'.
-
-        Args:
-            solution: Raw solution with batched variables.
-
-        Returns:
-            Solution with both batched and individual element variables.
-        """
-        new_vars = {}
-
-        for var_name in list(solution.data_vars):
-            var = solution[var_name]
-
-            # Handle flow variables: flow|X -> Label|flow_X (with suffix mapping for backward compatibility)
-            if 'flow' in var.dims and var_name.startswith('flow|'):
-                suffix = var_name[5:]  # Remove 'flow|' prefix
-                # Map flow suffixes to expected names for backward compatibility
-                # Old naming: status, active_hours; New batched naming: flow_status, flow_active_hours
-                flow_suffix_map = {
-                    'status': 'status',  # Keep as-is (not flow_status)
-                    'active_hours': 'active_hours',  # Keep as-is
-                    'uptime': 'uptime',
-                    'downtime': 'downtime',
-                    'startup': 'startup',
-                    'shutdown': 'shutdown',
-                    'inactive': 'inactive',
-                    'startup_count': 'startup_count',
-                    'size': 'size',  # Investment variable
-                    'invested': 'invested',  # Investment variable
-                    'hours': 'hours',  # Flow hours tracking
-                }
-                for flow_id in var.coords['flow'].values:
-                    element_var = var.sel(flow=flow_id, drop=True)
-                    # Use mapped suffix or default to flow_{suffix}
-                    mapped_suffix = flow_suffix_map.get(suffix, f'flow_{suffix}')
-                    new_var_name = f'{flow_id}|{mapped_suffix}'
-                    new_vars[new_var_name] = element_var
-
-            # Handle storage variables: storage|X -> Label|X
-            elif 'storage' in var.dims and var_name.startswith('storage|'):
-                suffix = var_name[8:]  # Remove 'storage|' prefix
-                # Map storage suffixes to expected names
-                suffix_map = {'charge': 'charge_state', 'netto': 'netto_discharge'}
-                new_suffix = suffix_map.get(suffix, suffix)
-                for storage_id in var.coords['storage'].values:
-                    element_var = var.sel(storage=storage_id, drop=True)
-                    new_var_name = f'{storage_id}|{new_suffix}'
-                    new_vars[new_var_name] = element_var
-
-            # Handle intercluster storage variables: intercluster_storage|X -> Label|X
-            elif 'intercluster_storage' in var.dims and var_name.startswith('intercluster_storage|'):
-                suffix = var_name[21:]  # Remove 'intercluster_storage|' prefix
-                for storage_id in var.coords['intercluster_storage'].values:
-                    element_var = var.sel(intercluster_storage=storage_id, drop=True)
-                    new_var_name = f'{storage_id}|{suffix}'
-                    new_vars[new_var_name] = element_var
-
-            # Handle bus variables: bus|X -> Label|X
-            elif 'bus' in var.dims and var_name.startswith('bus|'):
-                suffix = var_name[4:]  # Remove 'bus|' prefix
-                for bus_id in var.coords['bus'].values:
-                    element_var = var.sel(bus=bus_id, drop=True)
-                    new_var_name = f'{bus_id}|{suffix}'
-                    new_vars[new_var_name] = element_var
-
-            # Handle component variables: component|X -> Label|X
-            elif 'component' in var.dims and var_name.startswith('component|'):
-                suffix = var_name[10:]  # Remove 'component|' prefix
-                for comp_id in var.coords['component'].values:
-                    element_var = var.sel(component=comp_id, drop=True)
-                    new_var_name = f'{comp_id}|{suffix}'
-                    new_vars[new_var_name] = element_var
-
-            # Handle effect variables with special naming conventions:
-            # - effect|total -> effect_name (just the effect name)
-            # - effect|periodic -> effect_name(periodic) (for non-objective effects)
-            # - effect|temporal -> effect_name(temporal)
-            # - effect|per_timestep -> effect_name(temporal)|per_timestep
-            elif 'effect' in var.dims and var_name.startswith('effect|'):
-                suffix = var_name[7:]  # Remove 'effect|' prefix
-                for effect_id in var.coords['effect'].values:
-                    element_var = var.sel(effect=effect_id, drop=True)
-                    if suffix == 'total':
-                        new_var_name = effect_id
-                    elif suffix == 'temporal':
-                        new_var_name = f'{effect_id}(temporal)'
-                    elif suffix == 'periodic':
-                        new_var_name = f'{effect_id}(periodic)'
-                    elif suffix == 'per_timestep':
-                        new_var_name = f'{effect_id}(temporal)|per_timestep'
-                    elif suffix == 'total_over_periods':
-                        new_var_name = f'{effect_id}(total_over_periods)'
-                    else:
-                        new_var_name = f'{effect_id}|{suffix}'
-                    new_vars[new_var_name] = element_var
-
-        # Handle share variables with flow/source dimensions
-        # share|temporal -> source->effect(temporal)
-        # share|periodic -> source->effect(periodic)
-        for var_name in list(solution.data_vars):
-            var = solution[var_name]
-            if var_name.startswith('share|'):
-                suffix = var_name[6:]  # Remove 'share|' prefix
-                # Determine share type (temporal or periodic)
-                if 'temporal' in suffix:
-                    share_type = 'temporal'
-                elif 'periodic' in suffix:
-                    share_type = 'periodic'
-                else:
-                    share_type = suffix
-
-                # Find source dimension (contributor, or legacy flow/storage/component/source)
-                source_dim = None
-                for dim in ['contributor', 'flow', 'storage', 'component', 'source']:
-                    if dim in var.dims:
-                        source_dim = dim
-                        break
-
-                if source_dim is not None and 'effect' in var.dims:
-                    for source_id in var.coords[source_dim].values:
-                        for effect_id in var.coords['effect'].values:
-                            share_var = var.sel({source_dim: source_id, 'effect': effect_id}, drop=True)
-                            # Skip all-zero shares
-                            if hasattr(share_var, 'sum') and share_var.sum().item() == 0:
-                                continue
-                            # Format: source->effect(temporal) or source(temporal)->effect(temporal)
-                            new_var_name = f'{source_id}->{effect_id}({share_type})'
-                            new_vars[new_var_name] = share_var
-
-        # Add unrolled variables to solution
-        for name, var in new_vars.items():
-            solution[name] = var
-
         return solution
 
     @property
@@ -2569,7 +2380,8 @@ class Element(Interface):
     def solution(self) -> xr.Dataset:
         """Solution data for this element's variables.
 
-        Returns a view into FlowSystem.solution containing only this element's variables.
+        Returns a Dataset built by selecting this element from batched variables
+        in FlowSystem.solution.
 
         Raises:
             ValueError: If no solution is available (optimization not run or not solved).
@@ -2580,7 +2392,21 @@ class Element(Interface):
             raise ValueError(f'No solution available for "{self.label}". Run optimization first or load results.')
         if not self._variable_names:
             raise ValueError(f'No variable names available for "{self.label}". Element may not have been modeled yet.')
-        return self._flow_system.solution[self._variable_names]
+        full_solution = self._flow_system.solution
+        data_vars = {}
+        for var_name in self._variable_names:
+            if var_name not in full_solution:
+                continue
+            var = full_solution[var_name]
+            # Select this element from the appropriate dimension
+            for dim in var.dims:
+                if dim in ('time', 'period', 'scenario', 'cluster'):
+                    continue
+                if self.label_full in var.coords[dim].values:
+                    var = var.sel({dim: self.label_full}, drop=True)
+                    break
+            data_vars[var_name] = var
+        return xr.Dataset(data_vars)
 
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """

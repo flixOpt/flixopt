@@ -793,9 +793,20 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
         ds = xr.Dataset()
 
-        label = f'{element}->{effect}({mode})'
-        if label in self.solution:
-            ds = xr.Dataset({label: self.solution[label]})
+        share_var_name = f'share|{mode}'
+        if share_var_name in self.solution:
+            share_var = self.solution[share_var_name]
+            # Find the contributor dimension
+            contributor_dim = None
+            for dim in ['contributor', 'flow', 'storage', 'component', 'source']:
+                if dim in share_var.dims:
+                    contributor_dim = dim
+                    break
+            if contributor_dim is not None and element in share_var.coords[contributor_dim].values:
+                if effect in share_var.coords['effect'].values:
+                    selected = share_var.sel({contributor_dim: element, 'effect': effect}, drop=True)
+                    label = f'{element}->{effect}({mode})'
+                    ds = xr.Dataset({label: selected})
 
         if include_flows:
             if element not in self.components:
@@ -869,12 +880,30 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         }
         relevant_conversion_factors[effect] = 1  # Share to itself is 1
 
-        for target_effect, conversion_factor in relevant_conversion_factors.items():
-            label = f'{element}->{target_effect}({mode})'
-            if label in self.solution:
-                share_exists = True
-                da = self.solution[label]
-                total = da * conversion_factor + total
+        share_var_name = f'share|{mode}'
+        if share_var_name in self.solution:
+            share_var = self.solution[share_var_name]
+            # Find the contributor dimension
+            contributor_dim = None
+            for dim in ['contributor', 'flow', 'storage', 'component', 'source']:
+                if dim in share_var.dims:
+                    contributor_dim = dim
+                    break
+
+            def _add_share(elem: str) -> None:
+                nonlocal total, share_exists
+                if contributor_dim is None:
+                    return
+                if elem not in share_var.coords[contributor_dim].values:
+                    return
+                for target_effect, conversion_factor in relevant_conversion_factors.items():
+                    if target_effect not in share_var.coords['effect'].values:
+                        continue
+                    da = share_var.sel({contributor_dim: elem, 'effect': target_effect}, drop=True)
+                    share_exists = True
+                    total = da * conversion_factor + total
+
+            _add_share(element)
 
             if include_flows:
                 if element not in self.components:
@@ -883,11 +912,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
                     label.split('|')[0] for label in self.components[element].inputs + self.components[element].outputs
                 ]
                 for flow in flows:
-                    label = f'{flow}->{target_effect}({mode})'
-                    if label in self.solution:
-                        share_exists = True
-                        da = self.solution[label]
-                        total = da * conversion_factor + total
+                    _add_share(flow)
         if not share_exists:
             total = xr.DataArray(np.nan)
         return total.rename(f'{element}->{effect}({mode})')
@@ -956,20 +981,18 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
             ds[effect] = xr.concat(component_arrays, dim='component', coords='minimal', join='outer').rename(effect)
 
-        # For now include a test to ensure correctness
-        suffix = {
-            'temporal': '(temporal)|per_timestep',
-            'periodic': '(periodic)',
-            'total': '',
-        }
-        for effect in self.effects:
-            label = f'{effect}{suffix[mode]}'
-            computed = ds[effect].sum('component')
-            found = self.solution[label]
-            if not np.allclose(computed.values, found.fillna(0).values):
-                logger.critical(
-                    f'Results for {effect}({mode}) in effects_dataset doesnt match {label}\n{computed=}\n, {found=}'
-                )
+        # Validation: check totals match solution
+        batched_var_map = {'temporal': 'effect|per_timestep', 'periodic': 'effect|periodic', 'total': 'effect|total'}
+        batched_var = batched_var_map[mode]
+        if batched_var in self.solution and 'effect' in self.solution[batched_var].dims:
+            for effect in self.effects:
+                if effect in self.solution[batched_var].coords['effect'].values:
+                    computed = ds[effect].sum('component')
+                    found = self.solution[batched_var].sel(effect=effect, drop=True)
+                    if not np.allclose(computed.values, found.fillna(0).values):
+                        logger.critical(
+                            f'Results for {effect}({mode}) in effects_dataset doesnt match {batched_var}\n{computed=}\n, {found=}'
+                        )
 
         return ds
 

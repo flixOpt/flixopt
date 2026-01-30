@@ -383,8 +383,8 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
     np.testing.assert_allclose(
         flow_system.solution['objective'].item(),
         (
-            (flow_system.solution['costs'] * flow_system.scenario_weights).sum()
-            + (flow_system.solution['Penalty'] * flow_system.scenario_weights).sum()
+            (flow_system.solution['effect|total'].sel(effect='costs') * flow_system.scenario_weights).sum()
+            + (flow_system.solution['effect|total'].sel(effect='Penalty') * flow_system.scenario_weights).sum()
         ).item(),
     )  ## Account for rounding errors
 

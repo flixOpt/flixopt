@@ -68,7 +68,7 @@ def test_flow_system_file_io(flow_system, highs_solver, request):
     )
 
     assert_almost_equal_numeric(
-        calculation_0.results.solution['costs'].values,
-        calculation_1.results.solution['costs'].values,
+        calculation_0.results.solution['effect|total'].sel(effect='costs').values,
+        calculation_1.results.solution['effect|total'].sel(effect='costs').values,
         'costs doesnt match expected value',
     )

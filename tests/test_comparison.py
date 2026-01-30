@@ -202,17 +202,17 @@ class TestComparisonSolution:
         solution = comp.solution
 
         # Variables from base system
-        assert 'Boiler(Q_th)|flow_rate' in solution
+        assert 'Boiler(Q_th)' in solution['flow|rate'].coords['flow'].values
 
         # Variables only in CHP system should also be present
-        assert 'CHP(Q_th_chp)|flow_rate' in solution
+        assert 'CHP(Q_th_chp)' in solution['flow|rate'].coords['flow'].values
 
     def test_solution_fills_missing_with_nan(self, optimized_base, optimized_with_chp):
         """Variables not in all systems are filled with NaN."""
         comp = fx.Comparison([optimized_base, optimized_with_chp])
 
         # CHP variable should be NaN for base system
-        chp_flow = comp.solution['CHP(Q_th_chp)|flow_rate']
+        chp_flow = comp.solution['flow|rate'].sel(flow='CHP(Q_th_chp)')
         base_values = chp_flow.sel(case='Base')
         assert np.all(np.isnan(base_values.values))
 

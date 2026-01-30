@@ -239,64 +239,64 @@ class TestEffectResults:
         # Temporal effects checks using new API
         xr.testing.assert_allclose(
             statistics.temporal_effects['costs'].sum('contributor'),
-            flow_system.solution['costs(temporal)|per_timestep'].fillna(0),
+            flow_system.solution['effect|per_timestep'].sel(effect='costs', drop=True).fillna(0),
         )
 
         xr.testing.assert_allclose(
             statistics.temporal_effects['Effect1'].sum('contributor'),
-            flow_system.solution['Effect1(temporal)|per_timestep'].fillna(0),
+            flow_system.solution['effect|per_timestep'].sel(effect='Effect1', drop=True).fillna(0),
         )
 
         xr.testing.assert_allclose(
             statistics.temporal_effects['Effect2'].sum('contributor'),
-            flow_system.solution['Effect2(temporal)|per_timestep'].fillna(0),
+            flow_system.solution['effect|per_timestep'].sel(effect='Effect2', drop=True).fillna(0),
         )
 
         xr.testing.assert_allclose(
             statistics.temporal_effects['Effect3'].sum('contributor'),
-            flow_system.solution['Effect3(temporal)|per_timestep'].fillna(0),
+            flow_system.solution['effect|per_timestep'].sel(effect='Effect3', drop=True).fillna(0),
         )
 
         # Periodic effects checks using new API
         xr.testing.assert_allclose(
             statistics.periodic_effects['costs'].sum('contributor'),
-            flow_system.solution['costs(periodic)'],
+            flow_system.solution['effect|periodic'].sel(effect='costs', drop=True),
         )
 
         xr.testing.assert_allclose(
             statistics.periodic_effects['Effect1'].sum('contributor'),
-            flow_system.solution['Effect1(periodic)'],
+            flow_system.solution['effect|periodic'].sel(effect='Effect1', drop=True),
         )
 
         xr.testing.assert_allclose(
             statistics.periodic_effects['Effect2'].sum('contributor'),
-            flow_system.solution['Effect2(periodic)'],
+            flow_system.solution['effect|periodic'].sel(effect='Effect2', drop=True),
         )
 
         xr.testing.assert_allclose(
             statistics.periodic_effects['Effect3'].sum('contributor'),
-            flow_system.solution['Effect3(periodic)'],
+            flow_system.solution['effect|periodic'].sel(effect='Effect3', drop=True),
         )
 
         # Total effects checks using new API
         xr.testing.assert_allclose(
             statistics.total_effects['costs'].sum('contributor'),
-            flow_system.solution['costs'],
+            flow_system.solution['effect|total'].sel(effect='costs', drop=True),
         )
 
         xr.testing.assert_allclose(
             statistics.total_effects['Effect1'].sum('contributor'),
-            flow_system.solution['Effect1'],
+            flow_system.solution['effect|total'].sel(effect='Effect1', drop=True),
         )
 
         xr.testing.assert_allclose(
             statistics.total_effects['Effect2'].sum('contributor'),
-            flow_system.solution['Effect2'],
+            flow_system.solution['effect|total'].sel(effect='Effect2', drop=True),
         )
 
         xr.testing.assert_allclose(
             statistics.total_effects['Effect3'].sum('contributor'),
-            flow_system.solution['Effect3'],
+            flow_system.solution['effect|total'].sel(effect='Effect3', drop=True),
         )
 
 

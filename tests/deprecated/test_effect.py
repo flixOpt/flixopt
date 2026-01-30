@@ -285,64 +285,64 @@ class TestEffectResults:
 
         xr.testing.assert_allclose(
             results.effects_per_component['temporal'].sum('component').sel(effect='costs', drop=True),
-            results.solution['costs(temporal)|per_timestep'].fillna(0),
+            results.solution['effect|per_timestep'].sel(effect='costs').fillna(0),
         )
 
         xr.testing.assert_allclose(
             results.effects_per_component['temporal'].sum('component').sel(effect='Effect1', drop=True),
-            results.solution['Effect1(temporal)|per_timestep'].fillna(0),
+            results.solution['effect|per_timestep'].sel(effect='Effect1').fillna(0),
         )
 
         xr.testing.assert_allclose(
             results.effects_per_component['temporal'].sum('component').sel(effect='Effect2', drop=True),
-            results.solution['Effect2(temporal)|per_timestep'].fillna(0),
+            results.solution['effect|per_timestep'].sel(effect='Effect2').fillna(0),
         )
 
         xr.testing.assert_allclose(
             results.effects_per_component['temporal'].sum('component').sel(effect='Effect3', drop=True),
-            results.solution['Effect3(temporal)|per_timestep'].fillna(0),
+            results.solution['effect|per_timestep'].sel(effect='Effect3').fillna(0),
         )
 
         # periodic mode checks
         xr.testing.assert_allclose(
             results.effects_per_component['periodic'].sum('component').sel(effect='costs', drop=True),
-            results.solution['costs(periodic)'],
+            results.solution['effect|periodic'].sel(effect='costs'),
         )
 
         xr.testing.assert_allclose(
             results.effects_per_component['periodic'].sum('component').sel(effect='Effect1', drop=True),
-            results.solution['Effect1(periodic)'],
+            results.solution['effect|periodic'].sel(effect='Effect1'),
         )
 
         xr.testing.assert_allclose(
             results.effects_per_component['periodic'].sum('component').sel(effect='Effect2', drop=True),
-            results.solution['Effect2(periodic)'],
+            results.solution['effect|periodic'].sel(effect='Effect2'),
         )
 
         xr.testing.assert_allclose(
             results.effects_per_component['periodic'].sum('component').sel(effect='Effect3', drop=True),
-            results.solution['Effect3(periodic)'],
+            results.solution['effect|periodic'].sel(effect='Effect3'),
         )
 
         # Total mode checks
         xr.testing.assert_allclose(
             results.effects_per_component['total'].sum('component').sel(effect='costs', drop=True),
-            results.solution['costs'],
+            results.solution['effect|total'].sel(effect='costs'),
         )
 
         xr.testing.assert_allclose(
             results.effects_per_component['total'].sum('component').sel(effect='Effect1', drop=True),
-            results.solution['Effect1'],
+            results.solution['effect|total'].sel(effect='Effect1'),
         )
 
         xr.testing.assert_allclose(
             results.effects_per_component['total'].sum('component').sel(effect='Effect2', drop=True),
-            results.solution['Effect2'],
+            results.solution['effect|total'].sel(effect='Effect2'),
         )
 
         xr.testing.assert_allclose(
             results.effects_per_component['total'].sum('component').sel(effect='Effect3', drop=True),
-            results.solution['Effect3'],
+            results.solution['effect|total'].sel(effect='Effect3'),
         )
 
 

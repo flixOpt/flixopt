@@ -70,11 +70,13 @@ class TestFlowSystem:
 
         # Verify key variables from loaded results
         assert_almost_equal_numeric(
-            results.solution['costs'].values,
+            results.solution['effect|total'].sel(effect='costs').values,
             81.88394666666667,
             'costs doesnt match expected value',
         )
-        assert_almost_equal_numeric(results.solution['CO2'].values, 255.09184, 'CO2 doesnt match expected value')
+        assert_almost_equal_numeric(
+            results.solution['effect|total'].sel(effect='CO2').values, 255.09184, 'CO2 doesnt match expected value'
+        )
 
 
 class TestComplex:

@@ -1937,31 +1937,9 @@ class TransformAccessor:
         """
         segment_total_vars: set[str] = set()
 
-        # Get all effect names
-        effect_names = list(self._fs.effects.keys())
-
-        # 1. Per-timestep totals for each effect: {effect}(temporal)|per_timestep
-        for effect in effect_names:
-            segment_total_vars.add(f'{effect}(temporal)|per_timestep')
-
-        # 2. Flow contributions to effects: {flow}->{effect}(temporal)
-        #    (from effects_per_flow_hour on Flow elements)
-        for flow_label in self._fs.flows:
-            for effect in effect_names:
-                segment_total_vars.add(f'{flow_label}->{effect}(temporal)')
-
-        # 3. Component contributions to effects: {component}->{effect}(temporal)
-        #    (from effects_per_startup, effects_per_active_hour on OnOffParameters)
-        for component_label in self._fs.components:
-            for effect in effect_names:
-                segment_total_vars.add(f'{component_label}->{effect}(temporal)')
-
-        # 4. Effect-to-effect contributions (from share_from_temporal)
-        #    {source_effect}(temporal)->{target_effect}(temporal)
-        for target_effect_name, target_effect in self._fs.effects.items():
-            if target_effect.share_from_temporal:
-                for source_effect_name in target_effect.share_from_temporal:
-                    segment_total_vars.add(f'{source_effect_name}(temporal)->{target_effect_name}(temporal)')
+        # Batched variables that contain segment totals (need division by segment duration)
+        segment_total_vars.add('effect|per_timestep')
+        segment_total_vars.add('share|temporal')
 
         return segment_total_vars
 

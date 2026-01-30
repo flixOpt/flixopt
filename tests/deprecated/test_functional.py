@@ -113,17 +113,17 @@ def test_solve_and_load(solver_fixture, time_steps_fixture):
 def test_minimal_model(solver_fixture, time_steps_fixture):
     flow_system = solve_and_load(flow_system_minimal(time_steps_fixture), solver_fixture)
 
-    assert_allclose(flow_system.solution['costs'].values, 80, rtol=1e-5, atol=1e-10)
+    assert_allclose(flow_system.solution['effect|total'].sel(effect='costs').values, 80, rtol=1e-5, atol=1e-10)
 
     # Use assert_almost_equal_numeric to handle extra timestep with NaN
     assert_almost_equal_numeric(
-        flow_system.solution['Boiler(Q_th)|flow_rate'].values,
+        flow_system.solution['flow|rate'].sel(flow='Boiler(Q_th)').values,
         [-0.0, 10.0, 20.0, -0.0, 10.0],
         'Boiler flow_rate doesnt match expected value',
     )
 
     assert_almost_equal_numeric(
-        flow_system.solution['costs(temporal)|per_timestep'].values,
+        flow_system.solution['effect|per_timestep'].sel(effect='costs').values,
         [-0.0, 20.0, 40.0, -0.0, 20.0],
         'costs per_timestep doesnt match expected value',
     )

@@ -1501,7 +1501,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return self._variable_categories
 
     def get_variables_by_category(self, *categories: VariableCategory, from_solution: bool = True) -> list[str]:
-        """Get variable names matching any of the specified categories.
+        """Get batched variable names matching any of the specified categories.
 
         Args:
             *categories: One or more VariableCategory values to filter by.
@@ -1509,91 +1509,21 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 If False, return all registered variables matching categories.
 
         Returns:
-            List of variable names matching any of the specified categories.
+            List of batched variable names matching any of the specified categories.
 
         Example:
             >>> fs.get_variables_by_category(VariableCategory.FLOW_RATE)
-            ['Boiler(Q_th)|flow_rate', 'CHP(Q_th)|flow_rate', ...]
+            ['flow|rate']
             >>> fs.get_variables_by_category(VariableCategory.SIZE, VariableCategory.INVESTED)
-            ['Boiler(Q_th)|size', 'Boiler(Q_th)|invested', ...]
+            ['flow|size', 'flow|invested', 'storage|size', 'storage|invested']
         """
         category_set = set(categories)
 
-        # Prefixes for batched type-level variables that should be expanded to individual elements
-        batched_prefixes = ('flow|', 'storage|', 'bus|', 'effect|', 'share|', 'converter|', 'transmission|')
-
-        if self._variable_categories and self._solution is not None:
-            # Use registered categories, but handle batched variables that were unrolled
-            # Categories may have batched names (e.g., 'flow|rate') but solution has
-            # unrolled names (e.g., 'Boiler(Q_th)|flow_rate')
-            solution_vars = set(self._solution.data_vars)
-            matching = []
-            for name, cat in self._variable_categories.items():
-                if cat in category_set:
-                    is_batched = any(name.startswith(prefix) for prefix in batched_prefixes)
-                    if is_batched:
-                        # Batched variables should be expanded to unrolled element names
-                        # Handle size categories specially - they use |size suffix but different labels
-                        if cat == VariableCategory.FLOW_SIZE:
-                            # Only return flows that have investment parameters (not fixed sizes)
-                            from .interface import InvestParameters
-
-                            invest_flow_labels = {
-                                label for label, flow in self.flows.items() if isinstance(flow.size, InvestParameters)
-                            }
-                            matching.extend(
-                                v
-                                for v in solution_vars
-                                if v.endswith('|size') and v.rsplit('|', 1)[0] in invest_flow_labels
-                            )
-                        elif cat == VariableCategory.STORAGE_SIZE:
-                            storage_labels = set(self.storages.keys())
-                            matching.extend(
-                                v
-                                for v in solution_vars
-                                if v.endswith('|size') and v.rsplit('|', 1)[0] in storage_labels
-                            )
-                        else:
-                            suffix = f'|{cat.value}'
-                            matching.extend(v for v in solution_vars if v.endswith(suffix))
-                    elif name in solution_vars:
-                        # Non-batched variable - direct match
-                        matching.append(name)
+        if self._variable_categories:
+            matching = [name for name, cat in self._variable_categories.items() if cat in category_set]
             # Remove duplicates while preserving order
             seen = set()
             matching = [v for v in matching if not (v in seen or seen.add(v))]
-        elif self._variable_categories:
-            # No solution - return registered batched names
-            matching = [name for name, cat in self._variable_categories.items() if cat in category_set]
-        elif self._solution is not None:
-            # Fallback for old files without categories: match by suffix pattern
-            # Category values match the variable suffix (e.g., FLOW_RATE.value = 'flow_rate')
-            matching = []
-            for cat in category_set:
-                # Handle new sub-categories that map to old |size suffix
-                if cat == VariableCategory.FLOW_SIZE:
-                    # Only return flows that have investment parameters (not fixed sizes)
-                    from .interface import InvestParameters
-
-                    invest_flow_labels = {
-                        label for label, flow in self.flows.items() if isinstance(flow.size, InvestParameters)
-                    }
-                    matching.extend(
-                        v
-                        for v in self._solution.data_vars
-                        if v.endswith('|size') and v.rsplit('|', 1)[0] in invest_flow_labels
-                    )
-                elif cat == VariableCategory.STORAGE_SIZE:
-                    storage_labels = set(self.storages.keys())
-                    matching.extend(
-                        v
-                        for v in self._solution.data_vars
-                        if v.endswith('|size') and v.rsplit('|', 1)[0] in storage_labels
-                    )
-                else:
-                    # Standard suffix matching
-                    suffix = f'|{cat.value}'
-                    matching.extend(v for v in self._solution.data_vars if v.endswith(suffix))
         else:
             matching = []
 

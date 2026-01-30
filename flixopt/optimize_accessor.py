@@ -351,7 +351,6 @@ class OptimizeAccessor:
         if not segment_flow_systems:
             raise ValueError('No segments to combine.')
 
-        effect_labels = set(self._fs.effects.keys())
         combined_vars: dict[str, xr.DataArray] = {}
         first_solution = segment_flow_systems[0].solution
         first_variables = first_solution.variables
@@ -370,11 +369,10 @@ class OptimizeAccessor:
                 combined_vars[var_name] = xr.DataArray(float('nan'))
 
         # Step 2: Recompute effect totals from per-timestep values
-        for effect in effect_labels:
-            per_ts = f'{effect}(temporal)|per_timestep'
-            if per_ts in combined_vars:
-                temporal_sum = combined_vars[per_ts].sum(dim='time', skipna=True)
-                combined_vars[f'{effect}(temporal)'] = temporal_sum
-                combined_vars[effect] = temporal_sum  # Total = temporal (periodic is NaN/unsupported)
+        if 'effect|per_timestep' in combined_vars:
+            per_ts = combined_vars['effect|per_timestep']
+            temporal_sum = per_ts.sum(dim='time', skipna=True)
+            combined_vars['effect|temporal'] = temporal_sum
+            combined_vars['effect|total'] = temporal_sum  # Total = temporal (periodic is NaN/unsupported)
 
         return xr.Dataset(combined_vars)
