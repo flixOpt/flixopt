@@ -2023,6 +2023,19 @@ class ComponentsModel:
         return result
 
     @cached_property
+    def _status_data(self):
+        """StatusData instance for component status."""
+        from .batched import StatusData
+
+        return StatusData(
+            params=self._status_params,
+            dim_name=self.dim_name,
+            effect_ids=list(self.model.flow_system.effects.keys()),
+            timestep_duration=self.model.timestep_duration,
+            previous_states=self._previous_status_dict,
+        )
+
+    @cached_property
     def _flow_mask(self) -> xr.DataArray:
         """(component, flow) mask: 1 if flow belongs to component."""
         membership = MaskHelpers.build_flow_membership(
@@ -2189,14 +2202,12 @@ class ComponentsModel:
 
         from .features import StatusHelpers
 
-        # Use helper to create all status features with cached properties
+        # Use helper to create all status features with StatusData
         status_vars = StatusHelpers.create_status_features(
             model=self.model,
             status=self._variables['status'],
-            params=self._status_params,
-            dim_name=self.dim_name,
+            status_data=self._status_data,
             var_names=ComponentVarName,
-            previous_status=self._previous_status_dict,
             has_clusters=self.model.flow_system.clusters is not None,
         )
 

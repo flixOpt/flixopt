@@ -13,9 +13,9 @@ import xarray as xr
 if TYPE_CHECKING:
     import linopy
 
+    from .batched import StatusData
     from .interface import (
         InvestParameters,
-        StatusParameters,
     )
     from .structure import FlowSystemModel
 
@@ -474,10 +474,8 @@ class StatusHelpers:
     def create_status_features(
         model: FlowSystemModel,
         status: linopy.Variable,
-        params: dict[str, StatusParameters],
-        dim_name: str,
+        status_data: StatusData,
         var_names,  # FlowVarName or ComponentVarName class
-        previous_status: dict[str, xr.DataArray] | None = None,
         has_clusters: bool = False,
     ) -> dict[str, linopy.Variable]:
         """Create all status-derived variables and constraints.
@@ -504,10 +502,8 @@ class StatusHelpers:
         Args:
             model: The FlowSystemModel to add variables/constraints to.
             status: Batched binary status variable with (element_dim, time) dims.
-            params: Dict mapping element_id -> StatusParameters.
-            dim_name: Element dimension name (e.g., 'flow', 'component').
+            status_data: StatusData instance with categorizations, bounds, and effects.
             var_names: Class with variable/constraint name constants (e.g., FlowVarName).
-            previous_status: Optional dict mapping element_id -> previous status DataArray.
             has_clusters: Whether to check for cluster cyclic constraints.
 
         Returns:
@@ -515,31 +511,17 @@ class StatusHelpers:
         """
         import pandas as pd
 
-        if previous_status is None:
-            previous_status = {}
-
-        element_ids = list(params.keys())
+        params = status_data._params
+        dim_name = status_data._dim
+        element_ids = status_data.ids
+        previous_status = status_data._previous_states
         variables: dict[str, linopy.Variable] = {}
 
-        # === Compute category lists ===
-        startup_tracking_ids = [
-            eid
-            for eid in element_ids
-            if (
-                params[eid].effects_per_startup
-                or params[eid].min_uptime is not None
-                or params[eid].max_uptime is not None
-                or params[eid].startup_limit is not None
-                or params[eid].force_startup_tracking
-            )
-        ]
-        downtime_tracking_ids = [
-            eid for eid in element_ids if params[eid].min_downtime is not None or params[eid].max_downtime is not None
-        ]
-        uptime_tracking_ids = [
-            eid for eid in element_ids if params[eid].min_uptime is not None or params[eid].max_uptime is not None
-        ]
-        startup_limit_ids = [eid for eid in element_ids if params[eid].startup_limit is not None]
+        # === Use StatusData categorizations ===
+        startup_tracking_ids = status_data.with_startup_tracking
+        downtime_tracking_ids = status_data.with_downtime_tracking
+        uptime_tracking_ids = status_data.with_uptime_tracking
+        startup_limit_ids = status_data.with_startup_limit
 
         # === Get coords ===
         base_coords = model.get_coords(['period', 'scenario'])
@@ -588,8 +570,7 @@ class StatusHelpers:
 
         # startup_count: For elements with startup limit
         if startup_limit_ids:
-            startup_limit_vals = [params[eid].startup_limit for eid in startup_limit_ids]
-            startup_limit = xr.DataArray(startup_limit_vals, dims=[dim_name], coords={dim_name: startup_limit_ids})
+            startup_limit = status_data.startup_limit
             startup_count_coords = xr.Coordinates(
                 {dim_name: pd.Index(startup_limit_ids, name=dim_name), **base_coords_dict}
             )
@@ -651,31 +632,9 @@ class StatusHelpers:
                 startup_count == startup.sum(startup_temporal_dims), name=var_names.Constraint.STARTUP_COUNT
             )
 
-        # Uptime tracking (batched)
+        # Uptime tracking (batched) - use StatusData bounds and previous durations
         if uptime_tracking_ids:
-            min_uptime = xr.DataArray(
-                [params[eid].min_uptime or np.nan for eid in uptime_tracking_ids],
-                dims=[dim_name],
-                coords={dim_name: uptime_tracking_ids},
-            )
-            max_uptime = xr.DataArray(
-                [params[eid].max_uptime or np.nan for eid in uptime_tracking_ids],
-                dims=[dim_name],
-                coords={dim_name: uptime_tracking_ids},
-            )
-            # Build previous uptime DataArray
-            previous_uptime_values = []
-            for eid in uptime_tracking_ids:
-                if eid in previous_status and params[eid].min_uptime is not None:
-                    prev = StatusHelpers.compute_previous_duration(
-                        previous_status[eid], target_state=1, timestep_duration=timestep_duration
-                    )
-                    previous_uptime_values.append(prev)
-                else:
-                    previous_uptime_values.append(np.nan)
-            previous_uptime = xr.DataArray(
-                previous_uptime_values, dims=[dim_name], coords={dim_name: uptime_tracking_ids}
-            )
+            previous_uptime = status_data.previous_uptime
 
             variables['uptime'] = StatusHelpers.add_batched_duration_tracking(
                 model=model,
@@ -683,36 +642,16 @@ class StatusHelpers:
                 name=var_names.UPTIME,
                 dim_name=dim_name,
                 timestep_duration=timestep_duration,
-                minimum_duration=min_uptime,
-                maximum_duration=max_uptime,
-                previous_duration=previous_uptime if fast_notnull(previous_uptime).any() else None,
+                minimum_duration=status_data.min_uptime,
+                maximum_duration=status_data.max_uptime,
+                previous_duration=previous_uptime
+                if previous_uptime is not None and fast_notnull(previous_uptime).any()
+                else None,
             )
 
-        # Downtime tracking (batched)
+        # Downtime tracking (batched) - use StatusData bounds and previous durations
         if downtime_tracking_ids:
-            min_downtime = xr.DataArray(
-                [params[eid].min_downtime or np.nan for eid in downtime_tracking_ids],
-                dims=[dim_name],
-                coords={dim_name: downtime_tracking_ids},
-            )
-            max_downtime = xr.DataArray(
-                [params[eid].max_downtime or np.nan for eid in downtime_tracking_ids],
-                dims=[dim_name],
-                coords={dim_name: downtime_tracking_ids},
-            )
-            # Build previous downtime DataArray
-            previous_downtime_values = []
-            for eid in downtime_tracking_ids:
-                if eid in previous_status and params[eid].min_downtime is not None:
-                    prev = StatusHelpers.compute_previous_duration(
-                        previous_status[eid], target_state=0, timestep_duration=timestep_duration
-                    )
-                    previous_downtime_values.append(prev)
-                else:
-                    previous_downtime_values.append(np.nan)
-            previous_downtime = xr.DataArray(
-                previous_downtime_values, dims=[dim_name], coords={dim_name: downtime_tracking_ids}
-            )
+            previous_downtime = status_data.previous_downtime
 
             variables['downtime'] = StatusHelpers.add_batched_duration_tracking(
                 model=model,
@@ -720,9 +659,11 @@ class StatusHelpers:
                 name=var_names.DOWNTIME,
                 dim_name=dim_name,
                 timestep_duration=timestep_duration,
-                minimum_duration=min_downtime,
-                maximum_duration=max_downtime,
-                previous_duration=previous_downtime if fast_notnull(previous_downtime).any() else None,
+                minimum_duration=status_data.min_downtime,
+                maximum_duration=status_data.max_downtime,
+                previous_duration=previous_downtime
+                if previous_downtime is not None and fast_notnull(previous_downtime).any()
+                else None,
             )
 
         # Cluster cyclic constraints
