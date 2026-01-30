@@ -1073,78 +1073,17 @@ class FlowSystemModel(linopy.Model):
 
         record('start')
 
-        # Create effect models first
+        # Create effect models (validation + penalty already done in connect_and_transform)
         from .batched import EffectsData
         from .effects import EffectsModel
 
-        effect_collection = self.flow_system.effects
-        effect_collection._plausibility_checks()
-        if effect_collection._penalty_effect is None:
-            penalty = effect_collection._create_penalty_effect()
-            if penalty._flow_system is None:
-                penalty.link_to_flow_system(self.flow_system)
-        data = EffectsData(effect_collection)
+        data = EffectsData(self.flow_system.effects)
         self.effects = EffectsModel(self, data)
         self.effects.create_variables()
         self.effects._add_share_between_effects()
         self.effects._set_objective()
 
         record('effects')
-
-        # Propagate component status_parameters to flows BEFORE collecting them
-        # This matches the behavior in ComponentModel._do_modeling() but happens earlier
-        # so FlowsModel knows which flows need status variables
-        from .components import Transmission
-        from .interface import StatusParameters
-
-        for component in self.flow_system.components.values():
-            if component.status_parameters:
-                for flow in component.inputs + component.outputs:
-                    if flow.status_parameters is None:
-                        flow.status_parameters = StatusParameters()
-                        flow.status_parameters.link_to_flow_system(
-                            self.flow_system, f'{flow.label_full}|status_parameters'
-                        )
-            if component.prevent_simultaneous_flows:
-                for flow in component.prevent_simultaneous_flows:
-                    if flow.status_parameters is None:
-                        flow.status_parameters = StatusParameters()
-                        flow.status_parameters.link_to_flow_system(
-                            self.flow_system, f'{flow.label_full}|status_parameters'
-                        )
-            # Transmissions with absolute_losses need status variables on their flows
-            # Also need relative_minimum > 0 to link status to flow rate properly
-            if isinstance(component, Transmission):
-                if component.absolute_losses is not None and np.any(component.absolute_losses != 0):
-                    # Only input flows need status for absolute_losses constraint
-                    input_flows = [component.in1]
-                    if component.in2 is not None:
-                        input_flows.append(component.in2)
-                    for flow in input_flows:
-                        if flow.status_parameters is None:
-                            flow.status_parameters = StatusParameters()
-                            flow.status_parameters.link_to_flow_system(
-                                self.flow_system, f'{flow.label_full}|status_parameters'
-                            )
-                        # Ensure relative_minimum is positive so status links to rate
-                        # Handle scalar, numpy array, and xarray DataArray
-                        rel_min = flow.relative_minimum
-                        needs_update = (
-                            rel_min is None
-                            or (np.isscalar(rel_min) and rel_min <= 0)
-                            or (isinstance(rel_min, np.ndarray) and np.all(rel_min <= 0))
-                            or (isinstance(rel_min, xr.DataArray) and np.all(rel_min.values <= 0))
-                        )
-                        if needs_update:
-                            from .config import CONFIG
-
-                            epsilon = CONFIG.Modeling.epsilon
-                            # If relative_minimum is already a DataArray, replace with
-                            # epsilon while preserving shape (but ensure float dtype)
-                            if isinstance(rel_min, xr.DataArray):
-                                flow.relative_minimum = xr.full_like(rel_min, epsilon, dtype=float)
-                            else:
-                                flow.relative_minimum = epsilon
 
         # Use flow_system.flows (sorted, deduplicated) — same order as FlowsData
         all_flows = list(self.flow_system.flows.values())

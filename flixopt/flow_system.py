@@ -1136,11 +1136,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._register_missing_carriers()
         self._assign_element_colors()
 
+        # Propagate status parameters and prepare effects BEFORE transform_data,
+        # so newly created StatusParameters and the penalty Effect get transformed too
+        self._propagate_status_parameters()
+        self._prepare_effects()
+
         for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
             element.transform_data()
 
         # Validate cross-element references immediately after transformation
         self._validate_system_integrity()
+        self._run_plausibility_checks()
 
         self._connected_and_transformed = True
 
@@ -1865,6 +1871,66 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 f'To use this element in multiple systems, create a copy: '
                 f'flow_system.add_elements(element.copy())'
             )
+
+    def _propagate_status_parameters(self) -> None:
+        """Propagate component status parameters to flows that need them.
+
+        Components with status_parameters, prevent_simultaneous_flows, or
+        Transmissions with absolute_losses require their flows to have
+        StatusParameters. This creates them before transform_data() runs,
+        so they get properly transformed.
+        """
+        from .components import Transmission
+        from .interface import StatusParameters
+
+        for component in self.components.values():
+            if component.status_parameters:
+                for flow in component.inputs + component.outputs:
+                    if flow.status_parameters is None:
+                        flow.status_parameters = StatusParameters()
+                        flow.status_parameters.link_to_flow_system(self, f'{flow.label_full}|status_parameters')
+            if component.prevent_simultaneous_flows:
+                for flow in component.prevent_simultaneous_flows:
+                    if flow.status_parameters is None:
+                        flow.status_parameters = StatusParameters()
+                        flow.status_parameters.link_to_flow_system(self, f'{flow.label_full}|status_parameters')
+            # Transmissions with absolute_losses need status variables on input flows
+            # Also need relative_minimum > 0 to link status to flow rate properly
+            if isinstance(component, Transmission):
+                if component.absolute_losses is not None and np.any(component.absolute_losses != 0):
+                    input_flows = [component.in1]
+                    if component.in2 is not None:
+                        input_flows.append(component.in2)
+                    for flow in input_flows:
+                        if flow.status_parameters is None:
+                            flow.status_parameters = StatusParameters()
+                            flow.status_parameters.link_to_flow_system(self, f'{flow.label_full}|status_parameters')
+                        # Ensure relative_minimum is positive so status links to rate
+                        rel_min = flow.relative_minimum
+                        needs_update = (
+                            rel_min is None
+                            or (np.isscalar(rel_min) and rel_min <= 0)
+                            or (isinstance(rel_min, np.ndarray) and np.all(rel_min <= 0))
+                            or (isinstance(rel_min, xr.DataArray) and np.all(rel_min.values <= 0))
+                        )
+                        if needs_update:
+                            flow.relative_minimum = CONFIG.Modeling.epsilon
+
+    def _prepare_effects(self) -> None:
+        """Validate effect collection and create the penalty effect if needed.
+
+        Called before transform_data() so the penalty effect gets transformed.
+        """
+        self.effects._plausibility_checks()
+        if self.effects._penalty_effect is None:
+            penalty = self.effects._create_penalty_effect()
+            if penalty._flow_system is None:
+                penalty.link_to_flow_system(self)
+
+    def _run_plausibility_checks(self) -> None:
+        """Run plausibility checks on all elements after data transformation."""
+        for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
+            element._plausibility_checks()
 
     def _validate_system_integrity(self) -> None:
         """
