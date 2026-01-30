@@ -197,6 +197,8 @@ class VariableType(Enum):
 
     # === Investment ===
     SIZE = 'size'  # Investment size
+    FLOW_SIZE = 'flow_size'  # Flow investment size
+    STORAGE_SIZE = 'storage_size'  # Storage capacity size
     INVESTED = 'invested'  # Invested yes/no binary
 
     # === Piecewise linearization ===
@@ -255,6 +257,8 @@ VARIABLE_TYPE_TO_EXPANSION: dict[VariableType, ExpansionCategory] = {
     VariableType.TOTAL: VariableCategory.TOTAL,
     VariableType.TOTAL_OVER_PERIODS: VariableCategory.TOTAL_OVER_PERIODS,
     VariableType.SIZE: VariableCategory.SIZE,
+    VariableType.FLOW_SIZE: VariableCategory.FLOW_SIZE,
+    VariableType.STORAGE_SIZE: VariableCategory.STORAGE_SIZE,
     VariableType.INVESTED: VariableCategory.INVESTED,
     VariableType.INSIDE_PIECE: VariableCategory.INSIDE_PIECE,
     VariableType.LAMBDA: VariableCategory.LAMBDA0,  # Maps to LAMBDA0 for expansion
@@ -570,6 +574,7 @@ class TypeModel(ABC):
         upper: xr.DataArray | float = np.inf,
         dims: tuple[str, ...] | None = ('time',),
         element_ids: list[str] | None = None,
+        mask: xr.DataArray | None = None,
         **kwargs,
     ) -> linopy.Variable:
         """Create a batched variable with element dimension.
@@ -581,12 +586,23 @@ class TypeModel(ABC):
             upper: Upper bounds (scalar or per-element DataArray).
             dims: Dimensions beyond 'element'. None means ALL model dimensions.
             element_ids: Subset of element IDs. None means all elements.
+            mask: Optional boolean mask. If provided, automatically reindexed and broadcast
+                to match the built coords. True = create variable, False = skip.
             **kwargs: Additional arguments passed to model.add_variables().
 
         Returns:
             The created linopy Variable with element dimension.
         """
         coords = self._build_coords(dims, element_ids=element_ids)
+
+        # Broadcast mask to match coords if needed
+        if mask is not None:
+            mask = mask.reindex({self.dim_name: coords[self.dim_name]})
+            dim_order = list(coords.keys())
+            for dim in dim_order:
+                if dim not in mask.dims:
+                    mask = mask.expand_dims({dim: coords[dim]})
+            kwargs['mask'] = mask.transpose(*dim_order)
 
         full_name = f'{self.element_type.value}|{name}'
         variable = self.model.add_variables(
