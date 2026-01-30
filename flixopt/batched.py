@@ -477,6 +477,94 @@ class InvestmentData:
         ids = [eid for eid in self.with_optional if self._params[eid].effects_of_retirement]
         return self._build_effects('effects_of_retirement', ids)
 
+    # === Piecewise Effects Data ===
+
+    @cached_property
+    def _piecewise_raw(self) -> dict:
+        """Compute all piecewise data in one pass. Returns dict with all arrays or empty dict."""
+        from .features import PiecewiseHelpers
+
+        ids = self.with_piecewise_effects
+        if not ids:
+            return {}
+
+        dim = self._dim
+        params = self._params
+
+        # Segment counts and mask
+        segment_counts = {eid: len(params[eid].piecewise_effects_of_investment.piecewise_origin) for eid in ids}
+        max_segments, segment_mask = PiecewiseHelpers.collect_segment_info(ids, segment_counts, dim)
+
+        # Origin breakpoints (for size coupling)
+        origin_breakpoints = {}
+        for eid in ids:
+            pieces = params[eid].piecewise_effects_of_investment.piecewise_origin
+            origin_breakpoints[eid] = ([p.start for p in pieces], [p.end for p in pieces])
+        origin_starts, origin_ends = PiecewiseHelpers.pad_breakpoints(ids, origin_breakpoints, max_segments, dim)
+
+        # Effect breakpoints as (dim, segment, effect)
+        all_effect_names: set[str] = set()
+        for eid in ids:
+            all_effect_names.update(params[eid].piecewise_effects_of_investment.piecewise_shares.keys())
+        effect_names = sorted(all_effect_names)
+
+        effect_starts_list, effect_ends_list = [], []
+        for effect_name in effect_names:
+            breakpoints = {}
+            for eid in ids:
+                shares = params[eid].piecewise_effects_of_investment.piecewise_shares
+                if effect_name in shares:
+                    piecewise = shares[effect_name]
+                    breakpoints[eid] = ([p.start for p in piecewise], [p.end for p in piecewise])
+                else:
+                    breakpoints[eid] = ([0.0] * segment_counts[eid], [0.0] * segment_counts[eid])
+            s, e = PiecewiseHelpers.pad_breakpoints(ids, breakpoints, max_segments, dim)
+            effect_starts_list.append(s.expand_dims(effect=[effect_name]))
+            effect_ends_list.append(e.expand_dims(effect=[effect_name]))
+
+        return {
+            'element_ids': ids,
+            'max_segments': max_segments,
+            'segment_mask': segment_mask,
+            'origin_starts': origin_starts,
+            'origin_ends': origin_ends,
+            'effect_starts': xr.concat(effect_starts_list, dim='effect'),
+            'effect_ends': xr.concat(effect_ends_list, dim='effect'),
+            'effect_names': effect_names,
+        }
+
+    @cached_property
+    def piecewise_element_ids(self) -> list[str]:
+        return self._piecewise_raw.get('element_ids', [])
+
+    @cached_property
+    def piecewise_max_segments(self) -> int:
+        return self._piecewise_raw.get('max_segments', 0)
+
+    @cached_property
+    def piecewise_segment_mask(self) -> xr.DataArray | None:
+        return self._piecewise_raw.get('segment_mask')
+
+    @cached_property
+    def piecewise_origin_starts(self) -> xr.DataArray | None:
+        return self._piecewise_raw.get('origin_starts')
+
+    @cached_property
+    def piecewise_origin_ends(self) -> xr.DataArray | None:
+        return self._piecewise_raw.get('origin_ends')
+
+    @cached_property
+    def piecewise_effect_starts(self) -> xr.DataArray | None:
+        return self._piecewise_raw.get('effect_starts')
+
+    @cached_property
+    def piecewise_effect_ends(self) -> xr.DataArray | None:
+        return self._piecewise_raw.get('effect_ends')
+
+    @cached_property
+    def piecewise_effect_names(self) -> list[str]:
+        return self._piecewise_raw.get('effect_names', [])
+
 
 class FlowsData:
     """Batched data container for all flows with indexed access.

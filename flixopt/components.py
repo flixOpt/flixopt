@@ -1526,71 +1526,22 @@ class StoragesModel(TypeModel):
         if size_var is None:
             return
 
-        # Find storages with piecewise effects
-        storages_with_piecewise = [
-            s
-            for s in self.storages_with_investment
-            if s.capacity_in_flow_hours.piecewise_effects_of_investment is not None
-        ]
-
-        if not storages_with_piecewise:
+        inv = self._investment_data
+        if inv is None or not inv.piecewise_element_ids:
             return
 
-        element_ids = [s.label_full for s in storages_with_piecewise]
-
-        # Collect segment counts
-        segment_counts = {
-            s.label_full: len(self.invest_params[s.label_full].piecewise_effects_of_investment.piecewise_origin)
-            for s in storages_with_piecewise
-        }
-
-        # Build segment mask
-        max_segments, segment_mask = PiecewiseHelpers.collect_segment_info(element_ids, segment_counts, dim)
-
-        # Collect origin breakpoints (for size)
-        origin_breakpoints = {}
-        for s in storages_with_piecewise:
-            sid = s.label_full
-            piecewise_origin = self.invest_params[sid].piecewise_effects_of_investment.piecewise_origin
-            starts = [p.start for p in piecewise_origin]
-            ends = [p.end for p in piecewise_origin]
-            origin_breakpoints[sid] = (starts, ends)
-
-        origin_starts, origin_ends = PiecewiseHelpers.pad_breakpoints(
-            element_ids, origin_breakpoints, max_segments, dim
-        )
-
-        # Collect effect breakpoints as (dim, segment, effect) arrays
-        all_effect_names: set[str] = set()
-        for s in storages_with_piecewise:
-            sid = s.label_full
-            shares = self.invest_params[sid].piecewise_effects_of_investment.piecewise_shares
-            all_effect_names.update(shares.keys())
-        effect_names = sorted(all_effect_names)
-
-        effect_starts_list, effect_ends_list = [], []
-        for effect_name in effect_names:
-            breakpoints = {}
-            for s in storages_with_piecewise:
-                sid = s.label_full
-                shares = self.invest_params[sid].piecewise_effects_of_investment.piecewise_shares
-                if effect_name in shares:
-                    piecewise = shares[effect_name]
-                    breakpoints[sid] = ([p.start for p in piecewise], [p.end for p in piecewise])
-                else:
-                    zeros = [0.0] * segment_counts[sid]
-                    breakpoints[sid] = (zeros, zeros)
-
-            s, e = PiecewiseHelpers.pad_breakpoints(element_ids, breakpoints, max_segments, dim)
-            effect_starts_list.append(s.expand_dims(effect=[effect_name]))
-            effect_ends_list.append(e.expand_dims(effect=[effect_name]))
-
-        effect_starts = xr.concat(effect_starts_list, dim='effect')
-        effect_ends = xr.concat(effect_ends_list, dim='effect')
+        element_ids = inv.piecewise_element_ids
+        segment_mask = inv.piecewise_segment_mask
+        origin_starts = inv.piecewise_origin_starts
+        origin_ends = inv.piecewise_origin_ends
+        effect_starts = inv.piecewise_effect_starts
+        effect_ends = inv.piecewise_effect_ends
+        effect_names = inv.piecewise_effect_names
+        max_segments = inv.piecewise_max_segments
 
         # Create batched piecewise variables
         base_coords = self.model.get_coords(['period', 'scenario'])
-        name_prefix = f'{dim}|piecewise_effects'  # Tied to element type (storage)
+        name_prefix = f'{dim}|piecewise_effects'
         piecewise_vars = PiecewiseHelpers.create_piecewise_variables(
             self.model,
             element_ids,

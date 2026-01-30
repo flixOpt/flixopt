@@ -1050,66 +1050,22 @@ class FlowsModel(TypeModel):
         if size_var is None:
             return
 
-        # Find flows with piecewise effects
-        invest_params = self.data.invest_params
-        with_piecewise = [
-            fid for fid in self.data.with_investment if invest_params[fid].piecewise_effects_of_investment is not None
-        ]
-
-        if not with_piecewise:
+        inv = self.data._investment_data
+        if inv is None or not inv.piecewise_element_ids:
             return
 
-        element_ids = with_piecewise
-
-        # Collect segment counts
-        segment_counts = {
-            fid: len(invest_params[fid].piecewise_effects_of_investment.piecewise_origin) for fid in with_piecewise
-        }
-
-        # Build segment mask
-        max_segments, segment_mask = PiecewiseHelpers.collect_segment_info(element_ids, segment_counts, dim)
-
-        # Collect origin breakpoints (for size)
-        origin_breakpoints = {}
-        for fid in with_piecewise:
-            piecewise_origin = invest_params[fid].piecewise_effects_of_investment.piecewise_origin
-            starts = [p.start for p in piecewise_origin]
-            ends = [p.end for p in piecewise_origin]
-            origin_breakpoints[fid] = (starts, ends)
-
-        origin_starts, origin_ends = PiecewiseHelpers.pad_breakpoints(
-            element_ids, origin_breakpoints, max_segments, dim
-        )
-
-        # Collect effect breakpoints as (dim, segment, effect) arrays
-        all_effect_names: set[str] = set()
-        for fid in with_piecewise:
-            shares = invest_params[fid].piecewise_effects_of_investment.piecewise_shares
-            all_effect_names.update(shares.keys())
-        effect_names = sorted(all_effect_names)
-
-        effect_starts_list, effect_ends_list = [], []
-        for effect_name in effect_names:
-            breakpoints = {}
-            for fid in with_piecewise:
-                shares = invest_params[fid].piecewise_effects_of_investment.piecewise_shares
-                if effect_name in shares:
-                    piecewise = shares[effect_name]
-                    breakpoints[fid] = ([p.start for p in piecewise], [p.end for p in piecewise])
-                else:
-                    zeros = [0.0] * segment_counts[fid]
-                    breakpoints[fid] = (zeros, zeros)
-
-            s, e = PiecewiseHelpers.pad_breakpoints(element_ids, breakpoints, max_segments, dim)
-            effect_starts_list.append(s.expand_dims(effect=[effect_name]))
-            effect_ends_list.append(e.expand_dims(effect=[effect_name]))
-
-        effect_starts = xr.concat(effect_starts_list, dim='effect')
-        effect_ends = xr.concat(effect_ends_list, dim='effect')
+        element_ids = inv.piecewise_element_ids
+        segment_mask = inv.piecewise_segment_mask
+        origin_starts = inv.piecewise_origin_starts
+        origin_ends = inv.piecewise_origin_ends
+        effect_starts = inv.piecewise_effect_starts
+        effect_ends = inv.piecewise_effect_ends
+        effect_names = inv.piecewise_effect_names
+        max_segments = inv.piecewise_max_segments
 
         # Create batched piecewise variables
         base_coords = self.model.get_coords(['period', 'scenario'])
-        name_prefix = f'{dim}|piecewise_effects'  # Tied to element type (flow)
+        name_prefix = f'{dim}|piecewise_effects'
         piecewise_vars = PiecewiseHelpers.create_piecewise_variables(
             self.model,
             element_ids,
@@ -1121,11 +1077,11 @@ class FlowsModel(TypeModel):
         )
 
         # Build zero_point array if any flows are non-mandatory
+        invest_params = self.data.invest_params
         zero_point = None
         if invested_var is not None:
             non_mandatory_ids = [fid for fid in element_ids if not invest_params[fid].mandatory]
             if non_mandatory_ids:
-                # Select invested for non-mandatory flows in this batch
                 available_ids = [fid for fid in non_mandatory_ids if fid in invested_var.coords.get(dim, [])]
                 if available_ids:
                     zero_point = invested_var.sel({dim: element_ids})
