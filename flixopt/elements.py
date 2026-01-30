@@ -945,24 +945,11 @@ class FlowsModel(TypeModel):
 
     def constraint_rate_bounds(self) -> None:
         """Create flow rate bounding constraints based on status/investment configuration."""
-        # Group flow IDs by their constraint type
-        status_set = set(self.data.with_status)
-        investment_set = set(self.data.with_investment)
-        without_size_set = set(self.data.without_size)
-
-        # 1. Status only (no investment) - exclude flows with size=None (bounds come from converter)
-        status_only_ids = list(status_set - investment_set - without_size_set)
-        if status_only_ids:
+        if self.data.with_status_only:
             self._constraint_status_bounds()
-
-        # 2. Investment only (no status)
-        invest_only_ids = [fid for fid in self.data.with_investment if fid not in status_set]
-        if invest_only_ids:
+        if self.data.with_investment_only:
             self._constraint_investment_bounds()
-
-        # 3. Both status and investment
-        both_ids = [fid for fid in self.data.with_status if fid in investment_set]
-        if both_ids:
+        if self.data.with_status_and_investment:
             self._constraint_status_investment_bounds()
 
     def _constraint_investment_bounds(self) -> None:
@@ -973,9 +960,7 @@ class FlowsModel(TypeModel):
         Uses mask-based constraint creation - creates constraints for all flows but
         masks out non-investment flows.
         """
-        # Build mask: True for investment flows without status
-        invest_only_ids = set(self.data.with_investment) - set(self.data.with_status)
-        mask = self._build_constraint_mask(invest_only_ids, self.rate)
+        mask = self._build_constraint_mask(self.data.with_investment_only, self.rate)
 
         if not mask.any():
             return
@@ -998,9 +983,7 @@ class FlowsModel(TypeModel):
         """
         Case: With status, without investment.
         rate <= status * size * relative_max, rate >= status * epsilon."""
-        flow_ids = sorted(
-            [fid for fid in set(self.data.with_status) - set(self.data.with_investment) - set(self.data.without_size)]
-        )
+        flow_ids = self.data.with_status_only
         dim = self.dim_name
         flow_rate = self.rate.sel({dim: flow_ids})
         status = self.status.sel({dim: flow_ids})
@@ -1026,7 +1009,7 @@ class FlowsModel(TypeModel):
         2. rate <= size * rel_max: limits rate by actual invested size
         3. rate >= (status - 1) * M + size * rel_min: enforces minimum when status=1
         """
-        flow_ids = sorted([fid for fid in set(self.data.with_investment) & set(self.data.with_status)])
+        flow_ids = self.data.with_status_and_investment
         dim = self.dim_name
         flow_rate = self.rate.sel({dim: flow_ids})
         size = self.size.sel({dim: flow_ids})

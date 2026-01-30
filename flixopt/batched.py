@@ -695,6 +695,21 @@ class FlowsData:
         return self._investment_data.with_mandatory if self._investment_data else []
 
     @cached_property
+    def with_status_only(self) -> list[str]:
+        """IDs of flows with status but no investment and a fixed size."""
+        return sorted(set(self.with_status) - set(self.with_investment) - set(self.without_size))
+
+    @cached_property
+    def with_investment_only(self) -> list[str]:
+        """IDs of flows with investment but no status."""
+        return sorted(set(self.with_investment) - set(self.with_status))
+
+    @cached_property
+    def with_status_and_investment(self) -> list[str]:
+        """IDs of flows with both status and investment."""
+        return sorted(set(self.with_status) & set(self.with_investment))
+
+    @cached_property
     def with_flow_hours_min(self) -> list[str]:
         """IDs of flows with explicit flow_hours_min constraint."""
         return self._categorize(lambda f: f.flow_hours_min is not None)
