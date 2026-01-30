@@ -1687,7 +1687,7 @@ class BusesModel(TypeModel):
     def create_effect_shares(self) -> None:
         """Create penalty effect shares for buses with imbalance.
 
-        Collects specs and delegates to EffectCollectionModel for application.
+        Collects specs and delegates to EffectsModel for application.
         """
         penalty_specs = self.collect_penalty_share_specs()
         if penalty_specs:

@@ -322,12 +322,13 @@ class EffectsModel:
         2. Call finalize_shares() to add share expressions to effect constraints
     """
 
-    def __init__(self, model: FlowSystemModel, effects: list[Effect]):
+    def __init__(self, model: FlowSystemModel, effect_collection: EffectCollection):
         import pandas as pd
 
         self.model = model
-        self.effects = effects
-        self.effect_ids = [e.label for e in effects]
+        self._effect_collection = effect_collection
+        self.effects = list(effect_collection.values())
+        self.effect_ids = [e.label for e in self.effects]
         self._effect_index = pd.Index(self.effect_ids, name='effect')
 
         # Variables (set during create_variables)
@@ -613,6 +614,136 @@ class EffectsModel:
         """Get total variable for a specific effect."""
         return self.total.sel(effect=effect_id)
 
+    def add_share_to_effects(
+        self,
+        name: str,
+        expressions: EffectExpr,
+        target: Literal['temporal', 'periodic'],
+    ) -> None:
+        """Add effect shares using batched variables.
+
+        Builds a single expression with 'effect' dimension from the per-effect dict,
+        then adds it to the appropriate constraint in one call.
+        """
+        if not expressions:
+            return
+
+        # Separate linopy expressions from plain constants (scalars/DataArrays)
+        linopy_exprs = {}
+        constant_exprs = {}
+        for effect, expression in expressions.items():
+            effect_id = self._effect_collection[effect].label
+            if isinstance(expression, (linopy.LinearExpression, linopy.Variable)):
+                linopy_exprs[effect_id] = self._as_expression(expression)
+            else:
+                constant_exprs[effect_id] = expression
+
+        # Constants: build DataArray with effect dim, subtract directly
+        if constant_exprs:
+            const_da = xr.concat(
+                [xr.DataArray(v).expand_dims(effect=[eid]) for eid, v in constant_exprs.items()],
+                dim='effect',
+                coords='minimal',
+            ).reindex(effect=self.effect_ids, fill_value=0)
+            eq = self._eq_per_timestep if target == 'temporal' else self._eq_periodic
+            eq.lhs -= const_da
+
+        # Linopy expressions: concat with effect dim
+        if not linopy_exprs:
+            return
+        combined = xr.concat(
+            [expr.data.expand_dims(effect=[eid]) for eid, expr in linopy_exprs.items()],
+            dim='effect',
+        )
+        combined_expr = linopy.LinearExpression(combined, self.model)
+
+        if target == 'temporal':
+            self.add_share_temporal(combined_expr)
+        elif target == 'periodic':
+            self.add_share_periodic(combined_expr)
+        else:
+            raise ValueError(f'Target {target} not supported!')
+
+    def _add_share_between_effects(self):
+        """Add cross-effect shares between effects."""
+        for target_effect in self._effect_collection.values():
+            target_id = target_effect.label
+            # 1. temporal: <- receiving temporal shares from other effects
+            for source_effect, time_series in target_effect.share_from_temporal.items():
+                source_id = self._effect_collection[source_effect].label
+                source_per_timestep = self.get_per_timestep(source_id)
+                expr = (source_per_timestep * time_series).expand_dims(effect=[target_id])
+                self.add_share_temporal(expr)
+            # 2. periodic: <- receiving periodic shares from other effects
+            for source_effect, factor in target_effect.share_from_periodic.items():
+                source_id = self._effect_collection[source_effect].label
+                source_periodic = self.get_periodic(source_id)
+                expr = (source_periodic * factor).expand_dims(effect=[target_id])
+                self.add_share_periodic(expr)
+
+    def _set_objective(self):
+        """Set the optimization objective function."""
+        obj_id = self._effect_collection.objective_effect.label
+        pen_id = self._effect_collection.penalty_effect.label
+        self.model.add_objective(
+            (self.total.sel(effect=obj_id) * self.model.objective_weights).sum()
+            + (self.total.sel(effect=pen_id) * self.model.objective_weights).sum()
+        )
+
+    def apply_batched_flow_effect_shares(
+        self,
+        flow_rate: linopy.Variable,
+        effect_specs: dict[str, list[tuple[str, float | xr.DataArray]]],
+    ) -> None:
+        """Apply batched effect shares for flows to all relevant effects.
+
+        Args:
+            flow_rate: The batched flow_rate variable with flow dimension.
+            effect_specs: Dict mapping effect_name to list of (element_id, factor) tuples.
+        """
+        # Detect the element dimension name from flow_rate (e.g., 'flow')
+        flow_rate_dims = [d for d in flow_rate.dims if d not in ('time', 'period', 'scenario', '_term')]
+        dim = flow_rate_dims[0] if flow_rate_dims else 'flow'
+
+        for effect_name, element_factors in effect_specs.items():
+            if effect_name not in self._effect_collection:
+                logger.warning(f'Effect {effect_name} not found, skipping shares')
+                continue
+
+            element_ids = [eid for eid, _ in element_factors]
+            factors = [factor for _, factor in element_factors]
+
+            factors_da = xr.concat(
+                [xr.DataArray(f) if not isinstance(f, xr.DataArray) else f for f in factors],
+                dim=dim,
+                coords='minimal',
+            ).assign_coords({dim: element_ids})
+
+            flow_rate_subset = flow_rate.sel({dim: element_ids})
+            expression_all = flow_rate_subset * self.model.timestep_duration * factors_da
+            share_sum = expression_all.sum(dim).expand_dims(effect=[effect_name])
+            self.add_share_temporal(share_sum)
+
+    def apply_batched_penalty_shares(
+        self,
+        penalty_expressions: list[tuple[str, linopy.LinearExpression]],
+    ) -> None:
+        """Apply batched penalty effect shares.
+
+        Args:
+            penalty_expressions: List of (element_label, penalty_expression) tuples.
+        """
+        for element_label, expression in penalty_expressions:
+            share_var = self.model.add_variables(
+                coords=self.model.get_coords(self.model.temporal_dims),
+                name=f'{element_label}->Penalty(temporal)',
+            )
+            self.model.add_constraints(
+                share_var == expression,
+                name=f'{element_label}->Penalty(temporal)',
+            )
+            self.add_share_temporal(share_var.expand_dims(effect=[PENALTY_EFFECT_LABEL]))
+
 
 EffectExpr = dict[str, linopy.LinearExpression]  # Used to create Shares
 
@@ -637,11 +768,17 @@ class EffectCollection(ElementContainer[Effect]):
 
         self.add_effects(*effects)
 
-    def create_model(self, model: FlowSystemModel) -> EffectCollectionModel:
+    def create_model(self, model: FlowSystemModel) -> EffectsModel:
         self._plausibility_checks()
-        effects_model = EffectCollectionModel(model, self)
-        effects_model.do_modeling()
-        return effects_model
+        if self._penalty_effect is None:
+            penalty = self._create_penalty_effect()
+            if penalty._flow_system is None:
+                penalty.link_to_flow_system(model.flow_system)
+        em = EffectsModel(model=model, effect_collection=self)
+        em.create_variables()
+        em._add_share_between_effects()
+        em._set_objective()
+        return em
 
     def _create_penalty_effect(self) -> Effect:
         """
@@ -846,191 +983,6 @@ class EffectCollection(ElementContainer[Effect]):
         shares_temporal = calculate_all_conversion_paths(shares_temporal)
 
         return shares_temporal, shares_periodic
-
-
-class EffectCollectionModel:
-    """
-    Handling all Effects using type-level (batched) modeling.
-    """
-
-    def __init__(self, model: FlowSystemModel, effects: EffectCollection):
-        self.effects = effects
-        self._model = model
-        self._batched_model: EffectsModel | None = None
-
-    def add_share_to_effects(
-        self,
-        name: str,
-        expressions: EffectExpr,
-        target: Literal['temporal', 'periodic'],
-    ) -> None:
-        """Add effect shares using batched EffectsModel.
-
-        Builds a single expression with 'effect' dimension from the per-effect dict,
-        then adds it to the appropriate constraint in one call.
-        """
-        if self._batched_model is None:
-            raise RuntimeError('EffectsModel not initialized. Call do_modeling() first.')
-        if not expressions:
-            return
-
-        # Separate linopy expressions from plain constants (scalars/DataArrays)
-        linopy_exprs = {}
-        constant_exprs = {}
-        for effect, expression in expressions.items():
-            effect_id = self.effects[effect].label
-            if isinstance(expression, (linopy.LinearExpression, linopy.Variable)):
-                linopy_exprs[effect_id] = self._batched_model._as_expression(expression)
-            else:
-                constant_exprs[effect_id] = expression
-
-        # Constants: build DataArray with effect dim, subtract directly
-        if constant_exprs:
-            const_da = xr.concat(
-                [xr.DataArray(v).expand_dims(effect=[eid]) for eid, v in constant_exprs.items()],
-                dim='effect',
-            ).reindex(effect=self._batched_model.effect_ids, fill_value=0)
-            eq = self._batched_model._eq_per_timestep if target == 'temporal' else self._batched_model._eq_periodic
-            eq.lhs -= const_da
-
-        # Linopy expressions: concat with effect dim
-        if not linopy_exprs:
-            return
-        combined = xr.concat(
-            [expr.data.expand_dims(effect=[eid]) for eid, expr in linopy_exprs.items()],
-            dim='effect',
-        )
-        combined_expr = linopy.LinearExpression(combined, self._batched_model.model)
-
-        if target == 'temporal':
-            self._batched_model.add_share_temporal(combined_expr)
-        elif target == 'periodic':
-            self._batched_model.add_share_periodic(combined_expr)
-        else:
-            raise ValueError(f'Target {target} not supported!')
-
-    def do_modeling(self):
-        """Create variables and constraints using batched EffectsModel."""
-        # Ensure penalty effect exists (auto-create if user hasn't defined one)
-        if self.effects._penalty_effect is None:
-            penalty_effect = self.effects._create_penalty_effect()
-            # Link to FlowSystem (should already be linked, but ensure it)
-            if penalty_effect._flow_system is None:
-                penalty_effect.link_to_flow_system(self._model.flow_system)
-
-        # Create batched EffectsModel
-        self._batched_model = EffectsModel(
-            model=self._model,
-            effects=list(self.effects.values()),
-        )
-        self._batched_model.create_variables()
-
-        # Add cross-effect shares
-        self._add_share_between_effects()
-
-        # Objective: sum over effect dim for objective and penalty effects
-        obj_id = self.effects.objective_effect.label
-        pen_id = self.effects.penalty_effect.label
-        self._model.add_objective(
-            (self._batched_model.total.sel(effect=obj_id) * self._model.objective_weights).sum()
-            + (self._batched_model.total.sel(effect=pen_id) * self._model.objective_weights).sum()
-        )
-
-    def _add_share_between_effects(self):
-        """Type-level mode: Add cross-effect shares using batched EffectsModel."""
-        for target_effect in self.effects.values():
-            target_id = target_effect.label
-            # 1. temporal: <- receiving temporal shares from other effects
-            for source_effect, time_series in target_effect.share_from_temporal.items():
-                source_id = self.effects[source_effect].label
-                source_per_timestep = self._batched_model.get_per_timestep(source_id)
-                expr = (source_per_timestep * time_series).expand_dims(effect=[target_id])
-                self._batched_model.add_share_temporal(expr)
-            # 2. periodic: <- receiving periodic shares from other effects
-            for source_effect, factor in target_effect.share_from_periodic.items():
-                source_id = self.effects[source_effect].label
-                source_periodic = self._batched_model.get_periodic(source_id)
-                expr = (source_periodic * factor).expand_dims(effect=[target_id])
-                self._batched_model.add_share_periodic(expr)
-
-    def apply_batched_flow_effect_shares(
-        self,
-        flow_rate: linopy.Variable,
-        effect_specs: dict[str, list[tuple[str, float | xr.DataArray]]],
-    ) -> None:
-        """Apply batched effect shares for flows to all relevant effects.
-
-        This method receives pre-grouped effect specifications and applies them
-        efficiently using vectorized operations.
-
-        In type_level mode:
-            - Tracks contributions for unified share variable creation
-            - Adds sum of shares to effect's per_timestep constraint
-
-        In traditional mode:
-            - Creates per-effect share variables
-            - Adds sum to effect's total_per_timestep
-
-        Args:
-            flow_rate: The batched flow_rate variable with flow dimension.
-            effect_specs: Dict mapping effect_name to list of (element_id, factor) tuples.
-                Example: {'costs': [('Boiler(gas_in)', 0.05), ('HP(elec_in)', 0.1)]}
-        """
-
-        # Detect the element dimension name from flow_rate (e.g., 'flow')
-        flow_rate_dims = [d for d in flow_rate.dims if d not in ('time', 'period', 'scenario', '_term')]
-        dim = flow_rate_dims[0] if flow_rate_dims else 'flow'
-
-        for effect_name, element_factors in effect_specs.items():
-            if effect_name not in self.effects:
-                logger.warning(f'Effect {effect_name} not found, skipping shares')
-                continue
-
-            element_ids = [eid for eid, _ in element_factors]
-            factors = [factor for _, factor in element_factors]
-
-            # Build factors array with element dimension
-            # Use coords='minimal' since factors may have different dimensions (e.g., some have period, others don't)
-            factors_da = xr.concat(
-                [xr.DataArray(f) if not isinstance(f, xr.DataArray) else f for f in factors],
-                dim=dim,
-                coords='minimal',
-            ).assign_coords({dim: element_ids})
-
-            # Select relevant flow rates and compute expression per element
-            flow_rate_subset = flow_rate.sel({dim: element_ids})
-
-            # Add sum of shares to effect's per_timestep constraint
-            expression_all = flow_rate_subset * self._model.timestep_duration * factors_da
-            share_sum = expression_all.sum(dim).expand_dims(effect=[effect_name])
-            self._batched_model.add_share_temporal(share_sum)
-
-    def apply_batched_penalty_shares(
-        self,
-        penalty_expressions: list[tuple[str, linopy.LinearExpression]],
-    ) -> None:
-        """Apply batched penalty effect shares.
-
-        Creates individual share variables to preserve per-element contribution info.
-
-        Args:
-            penalty_expressions: List of (element_label, penalty_expression) tuples.
-        """
-        for element_label, expression in penalty_expressions:
-            # Create share variable for this element (preserves per-element info in results)
-            share_var = self._model.add_variables(
-                coords=self._model.get_coords(self._model.temporal_dims),
-                name=f'{element_label}->Penalty(temporal)',
-            )
-
-            # Constraint: share_var == penalty_expression
-            self._model.add_constraints(
-                share_var == expression,
-                name=f'{element_label}->Penalty(temporal)',
-            )
-
-            # Add to Penalty effect's per_timestep constraint
-            self._batched_model.add_share_temporal(share_var.expand_dims(effect=[PENALTY_EFFECT_LABEL]))
 
 
 def calculate_all_conversion_paths(

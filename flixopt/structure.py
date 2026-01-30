@@ -35,7 +35,7 @@ from .core import FlowSystemDimensions, TimeSeriesData, get_dataarray_stats
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from collections.abc import Collection
 
-    from .effects import EffectCollectionModel
+    from .effects import EffectsModel
     from .flow_system import FlowSystem
     from .types import Effect_TPS, Numeric_TPS, NumericOrBool
 
@@ -866,7 +866,7 @@ class FlowSystemModel(linopy.Model):
     def __init__(self, flow_system: FlowSystem):
         super().__init__(force_dim_names=True)
         self.flow_system = flow_system
-        self.effects: EffectCollectionModel | None = None
+        self.effects: EffectsModel | None = None
         self.variable_categories: dict[str, VariableCategory] = {}
         self._flows_model: TypeModel | None = None  # Reference to FlowsModel
         self._buses_model: TypeModel | None = None  # Reference to BusesModel
@@ -1297,8 +1297,7 @@ class FlowSystemModel(linopy.Model):
         self._populate_element_variable_names()
 
         # Finalize effect shares (creates share variables and adds to effect constraints)
-        if self.effects._batched_model is not None:
-            self.effects._batched_model.finalize_shares()
+        self.effects.finalize_shares()
 
         record('end')
 

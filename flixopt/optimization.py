@@ -285,7 +285,7 @@ class Optimization:
             raise RuntimeError('Optimization has not been solved yet. Call solve() before accessing main_results.')
 
         # Access effects from type-level model
-        effects_model = self.model.effects._batched_model
+        effects_model = self.model.effects
 
         try:
             penalty_effect_id = PENALTY_EFFECT_LABEL
