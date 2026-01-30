@@ -1180,11 +1180,8 @@ class FlowSystemModel(linopy.Model):
                             else:
                                 flow.relative_minimum = epsilon
 
-        # Collect all flows from all components
-        all_flows = []
-        for component in self.flow_system.components.values():
-            all_flows.extend(component.inputs)
-            all_flows.extend(component.outputs)
+        # Use flow_system.flows (sorted, deduplicated) — same order as FlowsData
+        all_flows = list(self.flow_system.flows.values())
 
         record('collect_flows')
 

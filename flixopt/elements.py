@@ -717,11 +717,13 @@ class FlowsModel(TypeModel):
     @cached_property
     def rate(self) -> linopy.Variable:
         """(flow, time, ...) - flow rate variable for ALL flows."""
-        # Reindex bounds to match coords flow order (FlowsData uses sorted order, TypeModel uses insertion order)
-        flow_order = self._build_coords(dims=None)[self.dim_name]
-        lower = self.data.absolute_lower_bounds.reindex({self.dim_name: flow_order})
-        upper = self.data.absolute_upper_bounds.reindex({self.dim_name: flow_order})
-        return self.add_variables('rate', VariableType.FLOW_RATE, lower=lower, upper=upper, dims=None)
+        return self.add_variables(
+            'rate',
+            VariableType.FLOW_RATE,
+            lower=self.data.absolute_lower_bounds,
+            upper=self.data.absolute_upper_bounds,
+            dims=None,
+        )
 
     @cached_property
     def status(self) -> linopy.Variable | None:
@@ -741,15 +743,11 @@ class FlowsModel(TypeModel):
         """(flow, period, scenario) - size variable, masked to flows with investment."""
         if not self.data.with_investment:
             return None
-        # Reindex bounds to match TypeModel's flow order (FlowsData uses sorted order)
-        flow_order = self._build_coords(dims=('period', 'scenario'))[self.dim_name]
-        lower = self.data.size_minimum_all.reindex({self.dim_name: flow_order})
-        upper = self.data.size_maximum_all.reindex({self.dim_name: flow_order})
         return self.add_variables(
             'size',
             VariableType.FLOW_SIZE,
-            lower=lower,
-            upper=upper,
+            lower=self.data.size_minimum_all,
+            upper=self.data.size_maximum_all,
             dims=('period', 'scenario'),
             mask=self.data.has_investment,
         )
@@ -975,9 +973,6 @@ class FlowsModel(TypeModel):
         Uses mask-based constraint creation - creates constraints for all flows but
         masks out non-investment flows.
         """
-        dim = self.dim_name
-        flow_ids = self.element_ids
-
         # Build mask: True for investment flows without status
         invest_only_ids = set(self.data.with_investment) - set(self.data.with_status)
         mask = self._build_constraint_mask(invest_only_ids, self.rate)
@@ -985,21 +980,17 @@ class FlowsModel(TypeModel):
         if not mask.any():
             return
 
-        # Reindex data to match flow_ids order (FlowsData uses sorted order)
-        rel_max = self.data.effective_relative_maximum.reindex({dim: flow_ids})
-        rel_min = self.data.effective_relative_minimum.reindex({dim: flow_ids})
-
         # Upper bound: rate <= size * relative_max
         self.model.add_constraints(
-            self.rate <= self.size * rel_max,
-            name=f'{dim}|invest_ub',
+            self.rate <= self.size * self.data.effective_relative_maximum,
+            name=f'{self.dim_name}|invest_ub',
             mask=mask,
         )
 
         # Lower bound: rate >= size * relative_min
         self.model.add_constraints(
-            self.rate >= self.size * rel_min,
-            name=f'{dim}|invest_lb',
+            self.rate >= self.size * self.data.effective_relative_minimum,
+            name=f'{self.dim_name}|invest_lb',
             mask=mask,
         )
 
