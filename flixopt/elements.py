@@ -1188,47 +1188,78 @@ class FlowsModel(TypeModel):
 
         logger.debug(f'Created batched piecewise effects for {len(element_ids)} flows')
 
-    # === Effect properties (used by EffectsModel) ===
-    # Investment effect properties are defined below, delegating to data._investment_data
-
-    @property
-    def effects_per_active_hour(self) -> xr.DataArray | None:
-        """Combined effects_per_active_hour with (flow, effect) dims."""
-        return self.data.effects_per_active_hour
-
-    @property
-    def effects_per_startup(self) -> xr.DataArray | None:
-        """Combined effects_per_startup with (flow, effect) dims."""
-        return self.data.effects_per_startup
-
     def add_effect_contributions(self, effects_model) -> None:
-        """Register effect contributions with EffectsModel.
+        """Push ALL effect contributions from flows to EffectsModel.
 
-        Called by EffectsModel.finalize_shares() to collect contributions from FlowsModel.
-        Adds temporal contributions (status effects) to effect|per_timestep constraint.
+        Called by EffectsModel.finalize_shares(). Pushes:
+        - Temporal share: rate × effects_per_flow_hour × dt
+        - Status effects: status × effects_per_active_hour × dt, startup × effects_per_startup
+        - Periodic share: size × effects_per_size
+        - Investment/retirement: invested × factor
+        - Constants: mandatory fixed + retirement constants
 
         Args:
             effects_model: The EffectsModel to register contributions with.
         """
-        if self.status is None:
-            return
-
         dim = self.dim_name
         dt = self.model.timestep_duration
 
-        # Effects per active hour: status * factor * dt
-        factor = self.data.effects_per_active_hour
-        if factor is not None:
-            flow_ids = factor.coords[dim].values
-            status_subset = self.status.sel({dim: flow_ids})
-            effects_model.add_temporal_contribution((status_subset * factor * dt).sum(dim))
+        # === Temporal: rate * effects_per_flow_hour * dt ===
+        factors = self.data.effects_per_flow_hour
+        if factors is not None:
+            rate = self.rate.sel({dim: factors.coords[dim].values})
+            share_var = effects_model.create_share_variable(
+                'share|temporal', dim, factors.coords[dim], rate * factors * dt, temporal=True
+            )
+            effects_model.share_temporal = share_var
+            effects_model.add_temporal_contribution(share_var.sum(dim))
 
-        # Effects per startup: startup * factor
-        factor = self.data.effects_per_startup
-        if self.startup is not None and factor is not None:
-            flow_ids = factor.coords[dim].values
-            startup_subset = self.startup.sel({dim: flow_ids})
-            effects_model.add_temporal_contribution((startup_subset * factor).sum(dim))
+        # === Temporal: status effects ===
+        if self.status is not None:
+            factor = self.data.effects_per_active_hour
+            if factor is not None:
+                flow_ids = factor.coords[dim].values
+                status_subset = self.status.sel({dim: flow_ids})
+                effects_model.add_temporal_contribution((status_subset * factor * dt).sum(dim))
+
+            factor = self.data.effects_per_startup
+            if self.startup is not None and factor is not None:
+                flow_ids = factor.coords[dim].values
+                startup_subset = self.startup.sel({dim: flow_ids})
+                effects_model.add_temporal_contribution((startup_subset * factor).sum(dim))
+
+        # === Periodic: size * effects_per_size ===
+        inv = self.data._investment_data
+        if inv is not None and inv.effects_per_size is not None:
+            factors = inv.effects_per_size
+            size = self.size.sel({dim: factors.coords[dim].values})
+            share_var = effects_model.create_share_variable(
+                'share|periodic', dim, factors.coords[dim], size * factors, temporal=False
+            )
+            effects_model.share_periodic = share_var
+            effects_model.add_periodic_contribution(share_var.sum(dim))
+
+            # Investment/retirement effects (invested-based)
+            if self.invested is not None:
+                if (f := inv.effects_of_investment) is not None:
+                    effects_model.add_periodic_contribution(
+                        (self.invested.sel({dim: f.coords[dim].values}) * f).sum(dim)
+                    )
+                if (f := inv.effects_of_retirement) is not None:
+                    effects_model.add_periodic_contribution(
+                        (self.invested.sel({dim: f.coords[dim].values}) * (-f)).sum(dim)
+                    )
+
+        # === Constants: mandatory fixed + retirement ===
+        if inv is not None:
+            for element_id, effects_dict in inv.effects_of_investment_mandatory:
+                self.model.effects.add_share_to_effects(
+                    name=f'{element_id}|effects_fix', expressions=effects_dict, target='periodic'
+                )
+            for element_id, effects_dict in inv.effects_of_retirement_constant:
+                self.model.effects.add_share_to_effects(
+                    name=f'{element_id}|effects_retire_const', expressions=effects_dict, target='periodic'
+                )
 
     # === Status Variables (cached_property) ===
 
@@ -1463,43 +1494,6 @@ class FlowsModel(TypeModel):
         self.constraint_switch_initial()
         self.constraint_startup_count()
         self.constraint_cluster_cyclic()
-
-    @property
-    def effects_per_flow_hour(self) -> xr.DataArray | None:
-        """Combined effect factors with (flow, effect, ...) dims."""
-        return self.data.effects_per_flow_hour
-
-    # --- Investment Effect Properties (delegating to _investment_data) ---
-
-    @property
-    def effects_per_size(self) -> xr.DataArray | None:
-        """(flow, effect) - effects per unit size."""
-        inv = self.data._investment_data
-        return inv.effects_per_size if inv else None
-
-    @property
-    def effects_of_investment(self) -> xr.DataArray | None:
-        """(flow, effect) - fixed effects of investment (optional only)."""
-        inv = self.data._investment_data
-        return inv.effects_of_investment if inv else None
-
-    @property
-    def effects_of_retirement(self) -> xr.DataArray | None:
-        """(flow, effect) - effects of retirement (optional only)."""
-        inv = self.data._investment_data
-        return inv.effects_of_retirement if inv else None
-
-    @property
-    def effects_of_investment_mandatory(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
-        """List of (element_id, effects_dict) for mandatory investments with fixed effects."""
-        inv = self.data._investment_data
-        return inv.effects_of_investment_mandatory if inv else []
-
-    @property
-    def effects_of_retirement_constant(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
-        """List of (element_id, effects_dict) for retirement constant parts."""
-        inv = self.data._investment_data
-        return inv.effects_of_retirement_constant if inv else []
 
     @property
     def investment_ids(self) -> list[str]:

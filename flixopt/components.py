@@ -876,35 +876,49 @@ class StoragesModel(TypeModel):
             effect_ids=list(self.model.flow_system.effects.keys()),
         )
 
-    @property
-    def effects_per_size(self) -> xr.DataArray | None:
-        """(storage, effect) - effects per unit size."""
-        inv = self._investment_data
-        return inv.effects_per_size if inv else None
+    def add_effect_contributions(self, effects_model) -> None:
+        """Push ALL effect contributions from storages to EffectsModel.
 
-    @property
-    def effects_of_investment(self) -> xr.DataArray | None:
-        """(storage, effect) - fixed effects of investment (optional only)."""
-        inv = self._investment_data
-        return inv.effects_of_investment if inv else None
+        Called by EffectsModel.finalize_shares(). Pushes:
+        - Periodic share: size × effects_per_size
+        - Investment/retirement: invested × factor
+        - Constants: mandatory fixed + retirement constants
 
-    @property
-    def effects_of_retirement(self) -> xr.DataArray | None:
-        """(storage, effect) - effects of retirement (optional only)."""
+        Args:
+            effects_model: The EffectsModel to register contributions with.
+        """
         inv = self._investment_data
-        return inv.effects_of_retirement if inv else None
+        if inv is None:
+            return
 
-    @property
-    def effects_of_investment_mandatory(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
-        """List of (element_id, effects_dict) for mandatory investments with fixed effects."""
-        inv = self._investment_data
-        return inv.effects_of_investment_mandatory if inv else []
+        dim = self.dim_name
 
-    @property
-    def effects_of_retirement_constant(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
-        """List of (element_id, effects_dict) for retirement constant parts."""
-        inv = self._investment_data
-        return inv.effects_of_retirement_constant if inv else []
+        # === Periodic: size * effects_per_size ===
+        if inv.effects_per_size is not None:
+            factors = inv.effects_per_size
+            size = self._variables['size'].sel({dim: factors.coords[dim].values})
+            share_var = effects_model.create_share_variable(
+                f'share|periodic_{dim}', dim, factors.coords[dim], size * factors, temporal=False
+            )
+            effects_model.add_periodic_contribution(share_var.sum(dim))
+
+            # Investment/retirement effects (invested-based)
+            invested = self._variables.get('invested')
+            if invested is not None:
+                if (f := inv.effects_of_investment) is not None:
+                    effects_model.add_periodic_contribution((invested.sel({dim: f.coords[dim].values}) * f).sum(dim))
+                if (f := inv.effects_of_retirement) is not None:
+                    effects_model.add_periodic_contribution((invested.sel({dim: f.coords[dim].values}) * (-f)).sum(dim))
+
+        # === Constants: mandatory fixed + retirement ===
+        for element_id, effects_dict in inv.effects_of_investment_mandatory:
+            self.model.effects.add_share_to_effects(
+                name=f'{element_id}|effects_fix', expressions=effects_dict, target='periodic'
+            )
+        for element_id, effects_dict in inv.effects_of_retirement_constant:
+            self.model.effects.add_share_to_effects(
+                name=f'{element_id}|effects_retire_const', expressions=effects_dict, target='periodic'
+            )
 
     # --- Investment Cached Properties ---
 

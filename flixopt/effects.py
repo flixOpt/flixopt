@@ -352,6 +352,11 @@ class EffectsModel:
         self._temporal_contributions: list = []
         self._periodic_contributions: list = []
 
+    @property
+    def effect_index(self):
+        """Public access to the effect index for type models."""
+        return self._effect_index
+
     def add_temporal_contribution(self, expr) -> None:
         """Register a temporal effect contribution expression.
 
@@ -367,6 +372,24 @@ class EffectsModel:
         Expressions are summed and subtracted from effect|periodic constraint.
         """
         self._periodic_contributions.append(expr)
+
+    def create_share_variable(self, name: str, dim: str, element_index, defining_expr, temporal: bool = True):
+        """Create a share variable with a defining constraint, return the variable.
+
+        Args:
+            name: Variable/constraint name.
+            dim: Element dimension name (e.g., 'flow', 'storage').
+            element_index: Index for the element dimension.
+            defining_expr: Expression that defines the variable (var == defining_expr).
+            temporal: If True, include temporal dims; if False, use period/scenario only.
+
+        Returns:
+            The created linopy Variable.
+        """
+        coords = self._share_coords(dim, element_index, temporal=temporal)
+        var = self.model.add_variables(lower=-np.inf, upper=np.inf, coords=coords, name=name)
+        self.model.add_constraints(var == defining_expr, name=name)
+        return var
 
     def _stack_bounds(self, attr_name: str, default: float = np.inf) -> xr.DataArray:
         """Stack per-effect bounds into a single DataArray with effect dimension."""
@@ -556,30 +579,24 @@ class EffectsModel:
         self._eq_per_timestep.lhs -= expression * effect_mask
 
     def finalize_shares(self) -> None:
-        """Build share variables and add their sums to effect constraints.
+        """Collect effect contributions from type models (push-based).
 
-        Creates batched share variables with (element, effect, time/period) dimensions,
-        then adds sum(share) to the corresponding effect constraint.
-
-        Temporal shares (per timestep):
-            share_temporal[flow, effect, time] = rate * effects_per_flow_hour * dt
-            effect|per_timestep += sum(share_temporal, dim='flow')
-
-        Periodic shares:
-            share_periodic[investment, effect, period] = size * effects_per_size
-            effect|periodic += sum(share_periodic, dim='investment')
+        Each type model (FlowsModel, StoragesModel) pushes its own contributions
+        via add_effect_contributions(). This method orchestrates the collection
+        and applies accumulated contributions to the effect constraints.
         """
-        flows_model = self.model._flows_model
-        if flows_model is None:
-            return
+        if (fm := self.model._flows_model) is not None:
+            fm.add_effect_contributions(self)
+        if (sm := self.model._storages_model) is not None:
+            sm.add_effect_contributions(self)
 
-        dt = self.model.timestep_duration
+        # Apply accumulated temporal contributions
+        if self._temporal_contributions:
+            self._eq_per_timestep.lhs -= sum(self._temporal_contributions)
 
-        # === Temporal shares (from flows) ===
-        self._create_temporal_shares(flows_model, dt)
-
-        # === Periodic shares (from flows and storages) ===
-        self._create_periodic_shares(flows_model)
+        # Apply accumulated periodic contributions
+        for expr in self._periodic_contributions:
+            self._eq_periodic.lhs -= expr.reindex({'effect': self._effect_index})
 
     def _share_coords(self, element_dim: str, element_index, temporal: bool = True) -> xr.Coordinates:
         """Build coordinates for share variables: (element, effect) + time/period/scenario."""
@@ -591,132 +608,6 @@ class EffectsModel:
                 **{k: v for k, v in (self.model.get_coords(base_dims) or {}).items()},
             }
         )
-
-    def _create_temporal_shares(self, flows_model, dt: xr.DataArray) -> None:
-        """Create share|temporal and add all temporal contributions to effect|per_timestep."""
-        factors = flows_model.effects_per_flow_hour
-        if factors is None:
-            # Still need to collect status effects even without flow hour effects
-            flows_model.add_effect_contributions(self)
-            if self._temporal_contributions:
-                self._eq_per_timestep.lhs -= sum(self._temporal_contributions)
-            return
-
-        dim = flows_model.dim_name
-        rate = flows_model.rate.sel({dim: factors.coords[dim].values})
-
-        # share|temporal: rate * effects_per_flow_hour * dt
-        self.share_temporal = self.model.add_variables(
-            lower=-np.inf,
-            upper=np.inf,
-            coords=self._share_coords(dim, factors.coords[dim], temporal=True),
-            name='share|temporal',
-        )
-        self.model.add_constraints(
-            self.share_temporal == rate * factors * dt,
-            name='share|temporal',
-        )
-
-        # Collect contributions: share|temporal + registered contributions
-        exprs = [self.share_temporal.sum(dim)]
-
-        # Let FlowsModel register its status effect contributions
-        flows_model.add_effect_contributions(self)
-        exprs.extend(self._temporal_contributions)
-
-        self._eq_per_timestep.lhs -= sum(exprs)
-
-    def _create_periodic_shares(self, flows_model) -> None:
-        """Create share|periodic and add all periodic contributions to effect|periodic.
-
-        Collects investment effects from both flows and storages into a unified share.
-        """
-        # Collect all models with investment effects
-        models_with_effects = []
-
-        # Add flows model if it has effects
-        if flows_model.effects_per_size is not None:
-            models_with_effects.append(flows_model)
-
-        # Add storages model if it exists and has effects
-        storages_model = self.model._storages_model
-        if storages_model is not None and storages_model.effects_per_size is not None:
-            models_with_effects.append(storages_model)
-
-        if not models_with_effects:
-            # No share variable needed, just add constant effects
-            self._add_constant_effects(flows_model)
-            if storages_model is not None:
-                self._add_constant_effects(storages_model)
-            return
-
-        # Create share|periodic for each model with effects_per_size
-        all_exprs = []
-        for i, type_model in enumerate(models_with_effects):
-            factors = type_model.effects_per_size
-            dim = type_model.dim_name
-            size = type_model.size.sel({dim: factors.coords[dim].values})
-
-            # Create share variable for this model
-            var_name = 'share|periodic' if i == 0 else f'share|periodic_{dim}'
-            share_var = self.model.add_variables(
-                lower=-np.inf,
-                upper=np.inf,
-                coords=self._share_coords(dim, factors.coords[dim], temporal=False),
-                name=var_name,
-            )
-            self.model.add_constraints(share_var == size * factors, name=var_name)
-
-            # Store first share_periodic for backwards compatibility
-            if i == 0:
-                self.share_periodic = share_var
-
-            # Add to expressions
-            all_exprs.append(share_var.sum(dim))
-
-            # Add invested-based effects
-            if type_model.invested is not None:
-                if (f := type_model.effects_of_investment) is not None:
-                    all_exprs.append((type_model.invested.sel({dim: f.coords[dim].values}) * f).sum(dim))
-                if (f := type_model.effects_of_retirement) is not None:
-                    all_exprs.append((type_model.invested.sel({dim: f.coords[dim].values}) * (-f)).sum(dim))
-
-        # Add all expressions to periodic constraint
-        # NOTE: Reindex each expression to match _effect_index to ensure proper coordinate alignment.
-        # This is necessary because linopy/xarray may reorder coordinates during arithmetic operations.
-        for expr in all_exprs:
-            reindexed = expr.reindex({'effect': self._effect_index})
-            self._eq_periodic.lhs -= reindexed
-
-        # Add constant effects for all models
-        self._add_constant_effects(flows_model)
-        if storages_model is not None:
-            self._add_constant_effects(storages_model)
-
-    def _add_constant_effects(self, type_model) -> None:
-        """Add constant (non-variable) investment effects directly to effect constraints.
-
-        This handles:
-        - Mandatory fixed effects (always incurred, not dependent on invested variable)
-        - Retirement constant parts (the +factor in -invested*factor + factor)
-
-        Works with both FlowsModel and StoragesModel.
-        """
-        # Mandatory fixed effects
-        for element_id, effects_dict in type_model.effects_of_investment_mandatory:
-            self.model.effects.add_share_to_effects(
-                name=f'{element_id}|effects_fix',
-                expressions=effects_dict,
-                target='periodic',
-            )
-
-        # Retirement constant parts
-        for element_id, effects_dict in type_model.effects_of_retirement_constant:
-            self.model.effects.add_share_to_effects(
-                name=f'{element_id}|effects_retire_const',
-                expressions=effects_dict,
-                target='periodic',
-            )
 
     def get_periodic(self, effect_id: str) -> linopy.Variable:
         """Get periodic variable for a specific effect."""
