@@ -103,6 +103,40 @@ def stack_and_broadcast(
     return xr.DataArray(data, coords=full_coords, dims=full_dims)
 
 
+def build_effects_array(
+    params: dict[str, Any],
+    attr: str,
+    ids: list[str],
+    effect_ids: list[str],
+    dim_name: str,
+) -> xr.DataArray | None:
+    """Build effect factors array from per-element effect dicts.
+
+    Args:
+        params: Dict mapping element_id -> parameter object with effect attributes.
+        attr: Attribute name on the parameter object (e.g., 'effects_per_startup').
+        ids: Element IDs to include (must have truthy attr values).
+        effect_ids: List of effect IDs for the effect dimension.
+        dim_name: Element dimension name ('flow', 'storage', etc.).
+
+    Returns:
+        DataArray with (dim_name, effect, ...) or None if ids or effect_ids empty.
+    """
+    if not ids or not effect_ids:
+        return None
+
+    factors = [
+        xr.concat(
+            [xr.DataArray(getattr(params[eid], attr).get(eff, 0.0)) for eff in effect_ids],
+            dim='effect',
+            coords='minimal',
+        ).assign_coords(effect=effect_ids)
+        for eid in ids
+    ]
+
+    return concat_with_coords(factors, dim_name, ids)
+
+
 class StatusData:
     """Batched access to StatusParameters for a group of elements.
 
@@ -139,53 +173,47 @@ class StatusData:
 
     # === Categorizations ===
 
+    def _categorize(self, condition) -> list[str]:
+        """Return IDs where condition(params) is True."""
+        return [eid for eid in self._ids if condition(self._params[eid])]
+
     @cached_property
     def with_startup_tracking(self) -> list[str]:
         """IDs needing startup/shutdown tracking."""
-        return [
-            eid
-            for eid in self._ids
-            if (
-                self._params[eid].effects_per_startup
-                or self._params[eid].min_uptime is not None
-                or self._params[eid].max_uptime is not None
-                or self._params[eid].startup_limit is not None
-                or self._params[eid].force_startup_tracking
+        return self._categorize(
+            lambda p: (
+                p.effects_per_startup
+                or p.min_uptime is not None
+                or p.max_uptime is not None
+                or p.startup_limit is not None
+                or p.force_startup_tracking
             )
-        ]
+        )
 
     @cached_property
     def with_downtime_tracking(self) -> list[str]:
         """IDs needing downtime (inactive) tracking."""
-        return [
-            eid
-            for eid in self._ids
-            if self._params[eid].min_downtime is not None or self._params[eid].max_downtime is not None
-        ]
+        return self._categorize(lambda p: p.min_downtime is not None or p.max_downtime is not None)
 
     @cached_property
     def with_uptime_tracking(self) -> list[str]:
         """IDs needing uptime duration tracking."""
-        return [
-            eid
-            for eid in self._ids
-            if self._params[eid].min_uptime is not None or self._params[eid].max_uptime is not None
-        ]
+        return self._categorize(lambda p: p.min_uptime is not None or p.max_uptime is not None)
 
     @cached_property
     def with_startup_limit(self) -> list[str]:
         """IDs with startup limit."""
-        return [eid for eid in self._ids if self._params[eid].startup_limit is not None]
+        return self._categorize(lambda p: p.startup_limit is not None)
 
     @cached_property
     def with_effects_per_active_hour(self) -> list[str]:
         """IDs with effects_per_active_hour defined."""
-        return [eid for eid in self._ids if self._params[eid].effects_per_active_hour]
+        return self._categorize(lambda p: p.effects_per_active_hour)
 
     @cached_property
     def with_effects_per_startup(self) -> list[str]:
         """IDs with effects_per_startup defined."""
-        return [eid for eid in self._ids if self._params[eid].effects_per_startup]
+        return self._categorize(lambda p: p.effects_per_startup)
 
     # === Bounds (combined min/max in single pass) ===
 
@@ -286,20 +314,8 @@ class StatusData:
 
     def _build_effects(self, attr: str) -> xr.DataArray | None:
         """Build effect factors array for a status effect attribute."""
-        ids = [eid for eid in self._ids if getattr(self._params[eid], attr)]
-        if not ids or not self._effect_ids:
-            return None
-
-        flow_factors = [
-            xr.concat(
-                [xr.DataArray(getattr(self._params[eid], attr).get(eff, 0.0)) for eff in self._effect_ids],
-                dim='effect',
-                coords='minimal',
-            ).assign_coords(effect=self._effect_ids)
-            for eid in ids
-        ]
-
-        return concat_with_coords(flow_factors, self._dim, ids)
+        ids = self._categorize(lambda p: getattr(p, attr))
+        return build_effects_array(self._params, attr, ids, self._effect_ids, self._dim)
 
     @cached_property
     def effects_per_active_hour(self) -> xr.DataArray | None:
@@ -342,20 +358,24 @@ class InvestmentData:
 
     # === Categorizations ===
 
+    def _categorize(self, condition) -> list[str]:
+        """Return IDs where condition(params) is True."""
+        return [eid for eid in self._ids if condition(self._params[eid])]
+
     @cached_property
     def with_optional(self) -> list[str]:
         """IDs with optional (non-mandatory) investment."""
-        return [eid for eid in self._ids if not self._params[eid].mandatory]
+        return self._categorize(lambda p: not p.mandatory)
 
     @cached_property
     def with_mandatory(self) -> list[str]:
         """IDs with mandatory investment."""
-        return [eid for eid in self._ids if self._params[eid].mandatory]
+        return self._categorize(lambda p: p.mandatory)
 
     @cached_property
     def with_effects_per_size(self) -> list[str]:
         """IDs with effects_of_investment_per_size defined."""
-        return [eid for eid in self._ids if self._params[eid].effects_of_investment_per_size]
+        return self._categorize(lambda p: p.effects_of_investment_per_size)
 
     @cached_property
     def with_effects_of_investment(self) -> list[str]:
@@ -370,12 +390,12 @@ class InvestmentData:
     @cached_property
     def with_linked_periods(self) -> list[str]:
         """IDs with linked_periods defined."""
-        return [eid for eid in self._ids if self._params[eid].linked_periods is not None]
+        return self._categorize(lambda p: p.linked_periods is not None)
 
     @cached_property
     def with_piecewise_effects(self) -> list[str]:
         """IDs with piecewise_effects_of_investment defined."""
-        return [eid for eid in self._ids if self._params[eid].piecewise_effects_of_investment is not None]
+        return self._categorize(lambda p: p.piecewise_effects_of_investment is not None)
 
     # === Size Bounds ===
 
@@ -427,20 +447,8 @@ class InvestmentData:
     def _build_effects(self, attr: str, ids: list[str] | None = None) -> xr.DataArray | None:
         """Build effect factors array for an investment effect attribute."""
         if ids is None:
-            ids = [eid for eid in self._ids if getattr(self._params[eid], attr)]
-        if not ids or not self._effect_ids:
-            return None
-
-        factors = [
-            xr.concat(
-                [xr.DataArray(getattr(self._params[eid], attr).get(eff, 0.0)) for eff in self._effect_ids],
-                dim='effect',
-                coords='minimal',
-            ).assign_coords(effect=self._effect_ids)
-            for eid in ids
-        ]
-
-        return concat_with_coords(factors, self._dim, ids)
+            ids = self._categorize(lambda p: getattr(p, attr))
+        return build_effects_array(self._params, attr, ids, self._effect_ids, self._dim)
 
     @cached_property
     def effects_per_size(self) -> xr.DataArray | None:
@@ -532,13 +540,25 @@ class FlowsData:
         """Cached pd.Index of flow IDs for fast DataArray creation."""
         return pd.Index(self.ids)
 
+    def _categorize(self, condition) -> list[str]:
+        """Return IDs of flows matching condition(flow) -> bool."""
+        return [f.label_full for f in self.elements.values() if condition(f)]
+
+    def _mask(self, condition) -> xr.DataArray:
+        """Return boolean DataArray mask for condition(flow) -> bool."""
+        return xr.DataArray(
+            [condition(f) for f in self.elements.values()],
+            dims=['flow'],
+            coords={'flow': self._ids_index},
+        )
+
     # === Flow Categorizations ===
     # All return list[str] of label_full IDs.
 
     @cached_property
     def with_status(self) -> list[str]:
         """IDs of flows with status parameters."""
-        return [f.label_full for f in self.elements.values() if f.status_parameters is not None]
+        return self._categorize(lambda f: f.status_parameters is not None)
 
     # === Boolean Masks (PyPSA-style) ===
     # These enable efficient batched constraint creation using linopy's mask= parameter.
@@ -546,101 +566,57 @@ class FlowsData:
     @cached_property
     def has_status(self) -> xr.DataArray:
         """(flow,) - boolean mask for flows with status parameters."""
-        return xr.DataArray(
-            [f.status_parameters is not None for f in self.elements.values()],
-            dims=['flow'],
-            coords={'flow': self._ids_index},
-        )
+        return self._mask(lambda f: f.status_parameters is not None)
 
     @cached_property
     def has_investment(self) -> xr.DataArray:
         """(flow,) - boolean mask for flows with investment parameters."""
-        return xr.DataArray(
-            [isinstance(f.size, InvestParameters) for f in self.elements.values()],
-            dims=['flow'],
-            coords={'flow': self._ids_index},
-        )
+        return self._mask(lambda f: isinstance(f.size, InvestParameters))
 
     @cached_property
     def has_optional_investment(self) -> xr.DataArray:
         """(flow,) - boolean mask for flows with optional (non-mandatory) investment."""
-        return xr.DataArray(
-            [isinstance(f.size, InvestParameters) and not f.size.mandatory for f in self.elements.values()],
-            dims=['flow'],
-            coords={'flow': self._ids_index},
-        )
+        return self._mask(lambda f: isinstance(f.size, InvestParameters) and not f.size.mandatory)
 
     @cached_property
     def has_mandatory_investment(self) -> xr.DataArray:
         """(flow,) - boolean mask for flows with mandatory investment."""
-        return xr.DataArray(
-            [isinstance(f.size, InvestParameters) and f.size.mandatory for f in self.elements.values()],
-            dims=['flow'],
-            coords={'flow': self._ids_index},
-        )
+        return self._mask(lambda f: isinstance(f.size, InvestParameters) and f.size.mandatory)
 
     @cached_property
     def has_fixed_size(self) -> xr.DataArray:
         """(flow,) - boolean mask for flows with fixed (non-investment) size."""
-        return xr.DataArray(
-            [f.size is not None and not isinstance(f.size, InvestParameters) for f in self.elements.values()],
-            dims=['flow'],
-            coords={'flow': self._ids_index},
-        )
+        return self._mask(lambda f: f.size is not None and not isinstance(f.size, InvestParameters))
 
     @cached_property
     def has_size(self) -> xr.DataArray:
         """(flow,) - boolean mask for flows with any size (fixed or investment)."""
-        return xr.DataArray(
-            [f.size is not None for f in self.elements.values()],
-            dims=['flow'],
-            coords={'flow': self._ids_index},
-        )
+        return self._mask(lambda f: f.size is not None)
 
     @cached_property
     def has_effects(self) -> xr.DataArray:
         """(flow,) - boolean mask for flows with effects_per_flow_hour."""
-        return xr.DataArray(
-            [bool(f.effects_per_flow_hour) for f in self.elements.values()],
-            dims=['flow'],
-            coords={'flow': self._ids_index},
-        )
+        return self._mask(lambda f: bool(f.effects_per_flow_hour))
 
     @cached_property
     def has_flow_hours_min(self) -> xr.DataArray:
         """(flow,) - boolean mask for flows with flow_hours_min constraint."""
-        return xr.DataArray(
-            [f.flow_hours_min is not None for f in self.elements.values()],
-            dims=['flow'],
-            coords={'flow': self._ids_index},
-        )
+        return self._mask(lambda f: f.flow_hours_min is not None)
 
     @cached_property
     def has_flow_hours_max(self) -> xr.DataArray:
         """(flow,) - boolean mask for flows with flow_hours_max constraint."""
-        return xr.DataArray(
-            [f.flow_hours_max is not None for f in self.elements.values()],
-            dims=['flow'],
-            coords={'flow': self._ids_index},
-        )
+        return self._mask(lambda f: f.flow_hours_max is not None)
 
     @cached_property
     def has_load_factor_min(self) -> xr.DataArray:
         """(flow,) - boolean mask for flows with load_factor_min constraint."""
-        return xr.DataArray(
-            [f.load_factor_min is not None for f in self.elements.values()],
-            dims=['flow'],
-            coords={'flow': self._ids_index},
-        )
+        return self._mask(lambda f: f.load_factor_min is not None)
 
     @cached_property
     def has_load_factor_max(self) -> xr.DataArray:
         """(flow,) - boolean mask for flows with load_factor_max constraint."""
-        return xr.DataArray(
-            [f.load_factor_max is not None for f in self.elements.values()],
-            dims=['flow'],
-            coords={'flow': self._ids_index},
-        )
+        return self._mask(lambda f: f.load_factor_max is not None)
 
     @cached_property
     def has_startup_tracking(self) -> xr.DataArray:
@@ -700,13 +676,13 @@ class FlowsData:
 
     @cached_property
     def without_size(self) -> list[str]:
-        """IDs of flows with status parameters."""
-        return [f.label_full for f in self.elements.values() if f.size is None]
+        """IDs of flows without size."""
+        return self._categorize(lambda f: f.size is None)
 
     @cached_property
     def with_investment(self) -> list[str]:
         """IDs of flows with investment parameters."""
-        return [f.label_full for f in self.elements.values() if isinstance(f.size, InvestParameters)]
+        return self._categorize(lambda f: isinstance(f.size, InvestParameters))
 
     @property
     def with_optional_investment(self) -> list[str]:
@@ -721,42 +697,42 @@ class FlowsData:
     @cached_property
     def with_flow_hours_min(self) -> list[str]:
         """IDs of flows with explicit flow_hours_min constraint."""
-        return [f.label_full for f in self.elements.values() if f.flow_hours_min is not None]
+        return self._categorize(lambda f: f.flow_hours_min is not None)
 
     @cached_property
     def with_flow_hours_max(self) -> list[str]:
         """IDs of flows with explicit flow_hours_max constraint."""
-        return [f.label_full for f in self.elements.values() if f.flow_hours_max is not None]
+        return self._categorize(lambda f: f.flow_hours_max is not None)
 
     @cached_property
     def with_flow_hours_over_periods_min(self) -> list[str]:
         """IDs of flows with explicit flow_hours_min_over_periods constraint."""
-        return [f.label_full for f in self.elements.values() if f.flow_hours_min_over_periods is not None]
+        return self._categorize(lambda f: f.flow_hours_min_over_periods is not None)
 
     @cached_property
     def with_flow_hours_over_periods_max(self) -> list[str]:
         """IDs of flows with explicit flow_hours_max_over_periods constraint."""
-        return [f.label_full for f in self.elements.values() if f.flow_hours_max_over_periods is not None]
+        return self._categorize(lambda f: f.flow_hours_max_over_periods is not None)
 
     @cached_property
     def with_load_factor_min(self) -> list[str]:
         """IDs of flows with explicit load_factor_min constraint."""
-        return [f.label_full for f in self.elements.values() if f.load_factor_min is not None]
+        return self._categorize(lambda f: f.load_factor_min is not None)
 
     @cached_property
     def with_load_factor_max(self) -> list[str]:
         """IDs of flows with explicit load_factor_max constraint."""
-        return [f.label_full for f in self.elements.values() if f.load_factor_max is not None]
+        return self._categorize(lambda f: f.load_factor_max is not None)
 
     @cached_property
     def with_effects(self) -> list[str]:
         """IDs of flows with effects_per_flow_hour defined."""
-        return [f.label_full for f in self.elements.values() if f.effects_per_flow_hour]
+        return self._categorize(lambda f: f.effects_per_flow_hour)
 
     @cached_property
     def with_previous_flow_rate(self) -> list[str]:
         """IDs of flows with previous_flow_rate defined (for startup/shutdown tracking)."""
-        return [f.label_full for f in self.elements.values() if f.previous_flow_rate is not None]
+        return self._categorize(lambda f: f.previous_flow_rate is not None)
 
     # === Parameter Dicts ===
 
@@ -800,62 +776,36 @@ class FlowsData:
     @cached_property
     def flow_hours_minimum(self) -> xr.DataArray | None:
         """(flow, period, scenario) - minimum total flow hours for flows with explicit min."""
-        flow_ids = self.with_flow_hours_min
-        if not flow_ids:
-            return None
-        values = [self[fid].flow_hours_min for fid in flow_ids]
-        arr = stack_and_broadcast(values, flow_ids, 'flow', self._model_coords(['period', 'scenario']))
-        return self._ensure_canonical_order(arr)
+        return self._batched_parameter(self.with_flow_hours_min, 'flow_hours_min', ['period', 'scenario'])
 
     @cached_property
     def flow_hours_maximum(self) -> xr.DataArray | None:
         """(flow, period, scenario) - maximum total flow hours for flows with explicit max."""
-        flow_ids = self.with_flow_hours_max
-        if not flow_ids:
-            return None
-        values = [self[fid].flow_hours_max for fid in flow_ids]
-        arr = stack_and_broadcast(values, flow_ids, 'flow', self._model_coords(['period', 'scenario']))
-        return self._ensure_canonical_order(arr)
+        return self._batched_parameter(self.with_flow_hours_max, 'flow_hours_max', ['period', 'scenario'])
 
     @cached_property
     def flow_hours_minimum_over_periods(self) -> xr.DataArray | None:
         """(flow, scenario) - minimum flow hours over all periods for flows with explicit min."""
-        flow_ids = self.with_flow_hours_over_periods_min
-        if not flow_ids:
-            return None
-        values = [self[fid].flow_hours_min_over_periods for fid in flow_ids]
-        arr = stack_and_broadcast(values, flow_ids, 'flow', self._model_coords(['scenario']))
-        return self._ensure_canonical_order(arr)
+        return self._batched_parameter(
+            self.with_flow_hours_over_periods_min, 'flow_hours_min_over_periods', ['scenario']
+        )
 
     @cached_property
     def flow_hours_maximum_over_periods(self) -> xr.DataArray | None:
         """(flow, scenario) - maximum flow hours over all periods for flows with explicit max."""
-        flow_ids = self.with_flow_hours_over_periods_max
-        if not flow_ids:
-            return None
-        values = [self[fid].flow_hours_max_over_periods for fid in flow_ids]
-        arr = stack_and_broadcast(values, flow_ids, 'flow', self._model_coords(['scenario']))
-        return self._ensure_canonical_order(arr)
+        return self._batched_parameter(
+            self.with_flow_hours_over_periods_max, 'flow_hours_max_over_periods', ['scenario']
+        )
 
     @cached_property
     def load_factor_minimum(self) -> xr.DataArray | None:
         """(flow, period, scenario) - minimum load factor for flows with explicit min."""
-        flow_ids = self.with_load_factor_min
-        if not flow_ids:
-            return None
-        values = [self[fid].load_factor_min for fid in flow_ids]
-        arr = stack_and_broadcast(values, flow_ids, 'flow', self._model_coords(['period', 'scenario']))
-        return self._ensure_canonical_order(arr)
+        return self._batched_parameter(self.with_load_factor_min, 'load_factor_min', ['period', 'scenario'])
 
     @cached_property
     def load_factor_maximum(self) -> xr.DataArray | None:
         """(flow, period, scenario) - maximum load factor for flows with explicit max."""
-        flow_ids = self.with_load_factor_max
-        if not flow_ids:
-            return None
-        values = [self[fid].load_factor_max for fid in flow_ids]
-        arr = stack_and_broadcast(values, flow_ids, 'flow', self._model_coords(['period', 'scenario']))
-        return self._ensure_canonical_order(arr)
+        return self._batched_parameter(self.with_load_factor_max, 'load_factor_max', ['period', 'scenario'])
 
     @cached_property
     def relative_minimum(self) -> xr.DataArray:
@@ -1205,6 +1155,28 @@ class FlowsData:
         return self._status_data.previous_downtime if self._status_data else None
 
     # === Helper Methods ===
+
+    def _batched_parameter(
+        self,
+        ids: list[str],
+        attr: str,
+        dims: list[str] | None,
+    ) -> xr.DataArray | None:
+        """Build a batched parameter array from per-flow attributes.
+
+        Args:
+            ids: Flow IDs to include (typically from a with_* property).
+            attr: Attribute name to extract from each Flow.
+            dims: Model dimensions to broadcast to (e.g., ['period', 'scenario']).
+
+        Returns:
+            DataArray with (flow, *dims) or None if ids is empty.
+        """
+        if not ids:
+            return None
+        values = [getattr(self[fid], attr) for fid in ids]
+        arr = stack_and_broadcast(values, ids, 'flow', self._model_coords(dims))
+        return self._ensure_canonical_order(arr)
 
     def _model_coords(self, dims: list[str] | None = None) -> dict[str, pd.Index | np.ndarray]:
         """Get model coordinates for broadcasting.
