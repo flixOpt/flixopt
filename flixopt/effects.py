@@ -604,18 +604,19 @@ class EffectsModel:
     ) -> linopy.Variable:
         """Create a share variable from registered contributor definitions.
 
-        Concatenates all contributor expressions along a unified 'contributor' dimension,
-        creates one variable and one defining constraint.
+        Aligns all contributor expressions (outer join on contributor dimension),
+        then sums them to produce a single expression with the full contributor dimension.
         """
         import pandas as pd
 
-        # Concatenate defining expressions along contributor dim
-        expr_datasets = [expr.data for expr in share_defs]
-        combined_data = xr.concat(expr_datasets, dim='contributor')
-        combined_expr = linopy.LinearExpression(combined_data, self.model)
+        # Align all expressions: expands each to the union of all contributor values
+        aligned = linopy.align(*share_defs, join='outer')
+        combined_expr = aligned[0]
+        for expr in aligned[1:]:
+            combined_expr = combined_expr + expr
 
-        # Extract contributor IDs from the concatenated expression
-        all_ids = [str(cid) for cid in combined_data.coords['contributor'].values]
+        # Extract contributor IDs from the combined expression
+        all_ids = [str(cid) for cid in combined_expr.data.coords['contributor'].values]
         contributor_index = pd.Index(all_ids, name='contributor')
         coords = self._share_coords('contributor', contributor_index, temporal=temporal)
         var = self.model.add_variables(lower=-np.inf, upper=np.inf, coords=coords, name=name)
