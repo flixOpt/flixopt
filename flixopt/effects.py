@@ -611,9 +611,7 @@ class EffectsModel:
 
         # Align all expressions: expands each to the union of all contributor values
         aligned = linopy.align(*share_defs, join='outer', fill_value=0)
-        combined_expr = aligned[0]
-        for expr in aligned[1:]:
-            combined_expr = combined_expr + expr
+        combined_expr = sum(aligned[1:], start=aligned[0])
 
         # Extract contributor IDs from the combined expression
         all_ids = [str(cid) for cid in combined_expr.data.coords['contributor'].values]
