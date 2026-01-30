@@ -194,7 +194,7 @@ class Optimization:
         self.flow_system.connect_and_transform()
 
         self.model = self.flow_system.create_model()
-        self.model.do_modeling()
+        self.model.build_model()
 
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
         return self

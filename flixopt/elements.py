@@ -790,13 +790,6 @@ class FlowsModel(TypeModel):
             binary=True,
         )
 
-    def build_model(self):
-        """Build all flow variables, status model, and constraints."""
-        self.create_variables()
-        self.create_status_model()
-        self.create_constraints()
-        return self
-
     def create_variables(self) -> None:
         """Create all batched variables for flows.
 
@@ -941,6 +934,10 @@ class FlowsModel(TypeModel):
         # Set reference on each flow element for element access pattern
         for flow in elements:
             flow.set_flows_model(self)
+
+        self.create_variables()
+        self.create_status_model()
+        self.create_constraints()
 
     @property
     def _previous_status(self) -> dict[str, xr.DataArray]:
@@ -1552,12 +1549,9 @@ class BusesModel(TypeModel):
         for bus in elements:
             bus._buses_model = self
 
-    def build_model(self):
-        """Build all bus variables, constraints, and effect shares."""
         self.create_variables()
         self.create_constraints()
         self.create_effect_shares()
-        return self
 
     def create_variables(self) -> None:
         """Create all batched variables for buses.
@@ -1726,6 +1720,10 @@ class ComponentsModel(TypeModel):
         self._logger = logging.getLogger('flixopt')
         self._flows_model = flows_model
         self._logger.debug(f'ComponentsModel initialized: {len(components_with_status)} with status')
+        self.create_variables()
+        self.create_constraints()
+        self.create_status_features()
+        self.create_effect_shares()
 
     @property
     def components(self) -> list[Component]:
@@ -1786,14 +1784,6 @@ class ComponentsModel(TypeModel):
             dims=['component'],
             coords={'component': self.element_ids},
         )
-
-    def build_model(self):
-        """Build component status variables, constraints, features, and effect shares."""
-        self.create_variables()
-        self.create_constraints()
-        self.create_status_features()
-        self.create_effect_shares()
-        return self
 
     def create_variables(self) -> None:
         """Create batched component status variable with component dimension."""
@@ -2222,6 +2212,9 @@ class ConvertersModel:
             f'ConvertersModel initialized: {len(converters_with_factors)} with factors, '
             f'{len(converters_with_piecewise)} with piecewise'
         )
+        self.create_linear_constraints()
+        self.create_piecewise_variables()
+        self.create_piecewise_constraints()
 
     # === Linear Conversion Properties (from LinearConvertersModel) ===
 
@@ -2361,13 +2354,6 @@ class ConvertersModel:
             full_coords.update(extra_coords)
 
             return xr.DataArray(data, dims=full_dims, coords=full_coords)
-
-    def build_model(self):
-        """Build linear and piecewise conversion constraints."""
-        self.create_linear_constraints()
-        self.create_piecewise_variables()
-        self.create_piecewise_constraints()
-        return self
 
     def create_linear_constraints(self) -> None:
         """Create batched linear conversion factor constraints.
@@ -2674,6 +2660,7 @@ class TransmissionsModel:
         self.dim_name = 'transmission'
 
         self._logger.debug(f'TransmissionsModel initialized: {len(transmissions)} transmissions')
+        self.create_constraints()
 
     # === Flow Mapping Properties ===
 
@@ -2804,11 +2791,6 @@ class TransmissionsModel:
 
         return xr.concat(arrays, dim=self.dim_name)
 
-    def build_model(self):
-        """Build transmission constraints."""
-        self.create_constraints()
-        return self
-
     def create_constraints(self) -> None:
         """Create batched transmission efficiency constraints.
 
@@ -2919,6 +2901,7 @@ class PreventSimultaneousFlowsModel:
         self._flows_model = flows_model
 
         self._logger.debug(f'PreventSimultaneousFlowsModel initialized: {len(components)} components')
+        self.create_constraints()
 
     @cached_property
     def _flow_mask(self) -> xr.DataArray:
@@ -2934,11 +2917,6 @@ class PreventSimultaneousFlowsModel:
             col_ids=self._flows_model.element_ids,
             membership=membership,
         )
-
-    def build_model(self):
-        """Build prevent-simultaneous-flows constraints."""
-        self.create_constraints()
-        return self
 
     def create_constraints(self) -> None:
         """Create batched mutual exclusivity constraints.

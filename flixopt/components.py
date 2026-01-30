@@ -832,6 +832,11 @@ class StoragesModel(TypeModel):
         for storage in elements:
             storage._storages_model = self
 
+        self.create_variables()
+        self.create_constraints()
+        self.create_investment_model()
+        self.create_investment_constraints()
+
     def storage(self, label: str) -> Storage:
         """Get a storage by its label_full."""
         return self.elements[label]
@@ -1019,14 +1024,6 @@ class StoragesModel(TypeModel):
             col_ids=self._flows_model.element_ids,
             membership=membership,
         )
-
-    def build_model(self):
-        """Build all storage variables, constraints, and investment model."""
-        self.create_variables()
-        self.create_constraints()
-        self.create_investment_model()
-        self.create_investment_constraints()
-        return self
 
     def create_variables(self) -> None:
         """Create batched variables for all storages.
@@ -1697,6 +1694,12 @@ class InterclusterStoragesModel:
         if self.clustering is None:
             raise ValueError('InterclusterStoragesModel requires a clustered FlowSystem')
 
+        self.create_variables()
+        self.create_constraints()
+        self.create_investment_model()
+        self.create_investment_constraints()
+        self.create_effect_shares()
+
     @property
     def dim_name(self) -> str:
         """Dimension name for intercluster storage elements."""
@@ -1739,15 +1742,6 @@ class InterclusterStoragesModel:
     # =========================================================================
     # Variable Creation
     # =========================================================================
-
-    def build_model(self):
-        """Build all intercluster storage variables, constraints, investment, and effect shares."""
-        self.create_variables()
-        self.create_constraints()
-        self.create_investment_model()
-        self.create_investment_constraints()
-        self.create_effect_shares()
-        return self
 
     def create_variables(self) -> None:
         """Create batched variables for all intercluster storages."""

@@ -1410,7 +1410,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             )
         self.connect_and_transform()
         self.create_model()
-        self.model.do_modeling()
+        self.model.build_model()
         return self
 
     def solve(self, solver: _Solver) -> FlowSystem:

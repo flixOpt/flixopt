@@ -1043,7 +1043,7 @@ class FlowSystemModel(linopy.Model):
 
         return results
 
-    def do_modeling(self, timing: bool = False):
+    def build_model(self, timing: bool = False):
         """Build the model using type-level models (one model per element TYPE).
 
         Uses TypeModel classes (e.g., FlowsModel, BusesModel) which handle ALL
@@ -1054,6 +1054,18 @@ class FlowSystemModel(linopy.Model):
         """
         import time
 
+        from .batched import EffectsData
+        from .components import InterclusterStoragesModel, LinearConverter, Storage, StoragesModel, Transmission
+        from .effects import EffectsModel
+        from .elements import (
+            BusesModel,
+            ComponentsModel,
+            ConvertersModel,
+            FlowsModel,
+            PreventSimultaneousFlowsModel,
+            TransmissionsModel,
+        )
+
         timings = {}
 
         def record(name):
@@ -1061,34 +1073,63 @@ class FlowSystemModel(linopy.Model):
 
         record('start')
 
-        self._create_effects_model()
+        self.effects = EffectsModel(self, EffectsData(self.flow_system.effects))
         record('effects')
 
-        self._create_flows_model()
+        self._flows_model = FlowsModel(self, list(self.flow_system.flows.values()))
         record('flows')
 
-        self._create_buses_model()
+        self._buses_model = BusesModel(self, list(self.flow_system.buses.values()), self._flows_model)
         record('buses')
 
-        self._create_storages_model()
+        basic_storages = [
+            c
+            for c in self.flow_system.components.values()
+            if isinstance(c, Storage) and not self._is_intercluster_storage(c)
+        ]
+        self._storages_model = StoragesModel(self, basic_storages, self._flows_model)
         record('storages')
 
-        self._create_intercluster_storages_model()
+        intercluster_storages = [
+            c
+            for c in self.flow_system.components.values()
+            if isinstance(c, Storage) and self._is_intercluster_storage(c)
+        ]
+        self._intercluster_storages_model: InterclusterStoragesModel | None = None
+        if intercluster_storages:
+            self._intercluster_storages_model = InterclusterStoragesModel(
+                self, intercluster_storages, self._flows_model
+            )
         record('intercluster_storages')
 
-        self._create_components_model()
+        components_with_status = [c for c in self.flow_system.components.values() if c.status_parameters is not None]
+        self._components_model = ComponentsModel(self, components_with_status, self._flows_model)
         record('components')
 
-        self._create_converters_model()
+        converters_with_factors = [
+            c for c in self.flow_system.components.values() if isinstance(c, LinearConverter) and c.conversion_factors
+        ]
+        converters_with_piecewise = [
+            c for c in self.flow_system.components.values() if isinstance(c, LinearConverter) and c.piecewise_conversion
+        ]
+        self._converters_model = ConvertersModel(
+            self, converters_with_factors, converters_with_piecewise, self._flows_model
+        )
         record('converters')
 
-        self._create_transmissions_model()
+        transmissions = [c for c in self.flow_system.components.values() if isinstance(c, Transmission)]
+        self._transmissions_model = TransmissionsModel(self, transmissions, self._flows_model)
         record('transmissions')
 
-        self._create_prevent_simultaneous_model()
+        components_with_prevent = [c for c in self.flow_system.components.values() if c.prevent_simultaneous_flows]
+        self._prevent_simultaneous_model = PreventSimultaneousFlowsModel(
+            self, components_with_prevent, self._flows_model
+        )
         record('prevent_simultaneous')
 
-        self._finalize_model()
+        self._add_scenario_equality_constraints()
+        self._populate_element_variable_names()
+        self.effects.finalize_shares()
         record('end')
 
         if timing:
@@ -1103,86 +1144,6 @@ class FlowSystemModel(linopy.Model):
         logger.info(
             f'Type-level modeling complete: {len(self.variables)} variables, {len(self.constraints)} constraints'
         )
-
-    def _create_effects_model(self) -> None:
-        from .batched import EffectsData
-        from .effects import EffectsModel
-
-        self.effects = EffectsModel(self, EffectsData(self.flow_system.effects)).build_model()
-
-    def _create_flows_model(self) -> None:
-        from .elements import FlowsModel
-
-        self._flows_model = FlowsModel(self, list(self.flow_system.flows.values())).build_model()
-
-    def _create_buses_model(self) -> None:
-        from .elements import BusesModel
-
-        self._buses_model = BusesModel(self, list(self.flow_system.buses.values()), self._flows_model).build_model()
-
-    def _create_storages_model(self) -> None:
-        from .components import Storage, StoragesModel
-
-        basic_storages = [
-            c
-            for c in self.flow_system.components.values()
-            if isinstance(c, Storage) and not self._is_intercluster_storage(c)
-        ]
-        self._storages_model = StoragesModel(self, basic_storages, self._flows_model).build_model()
-
-    def _create_intercluster_storages_model(self) -> None:
-        from .components import InterclusterStoragesModel, Storage
-
-        intercluster_storages = [
-            c
-            for c in self.flow_system.components.values()
-            if isinstance(c, Storage) and self._is_intercluster_storage(c)
-        ]
-        self._intercluster_storages_model: InterclusterStoragesModel | None = None
-        if intercluster_storages:
-            self._intercluster_storages_model = InterclusterStoragesModel(
-                self, intercluster_storages, self._flows_model
-            ).build_model()
-
-    def _create_components_model(self) -> None:
-        from .elements import ComponentsModel
-
-        components_with_status = [c for c in self.flow_system.components.values() if c.status_parameters is not None]
-        self._components_model = ComponentsModel(self, components_with_status, self._flows_model).build_model()
-
-    def _create_converters_model(self) -> None:
-        from .components import LinearConverter
-        from .elements import ConvertersModel
-
-        converters_with_factors = [
-            c for c in self.flow_system.components.values() if isinstance(c, LinearConverter) and c.conversion_factors
-        ]
-        converters_with_piecewise = [
-            c for c in self.flow_system.components.values() if isinstance(c, LinearConverter) and c.piecewise_conversion
-        ]
-        self._converters_model = ConvertersModel(
-            self, converters_with_factors, converters_with_piecewise, self._flows_model
-        ).build_model()
-
-    def _create_transmissions_model(self) -> None:
-        from .components import Transmission
-        from .elements import TransmissionsModel
-
-        transmissions = [c for c in self.flow_system.components.values() if isinstance(c, Transmission)]
-        self._transmissions_model = TransmissionsModel(self, transmissions, self._flows_model).build_model()
-
-    def _create_prevent_simultaneous_model(self) -> None:
-        from .elements import PreventSimultaneousFlowsModel
-
-        components = [c for c in self.flow_system.components.values() if c.prevent_simultaneous_flows]
-        self._prevent_simultaneous_model = PreventSimultaneousFlowsModel(
-            self, components, self._flows_model
-        ).build_model()
-
-    def _finalize_model(self) -> None:
-        self._add_scenario_equality_constraints()
-        self._populate_element_variable_names()
-        self.effects.finalize_shares()
 
     def _is_intercluster_storage(self, component) -> bool:
         clustering = self.flow_system.clustering
