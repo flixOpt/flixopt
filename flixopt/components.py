@@ -815,27 +815,42 @@ class StoragesModel(TypeModel):
     def __init__(
         self,
         model: FlowSystemModel,
-        elements: list[Storage],
+        all_components: list,
         flows_model,  # FlowsModel - avoid circular import
     ):
         """Initialize the type-level model for basic storages.
 
         Args:
             model: The FlowSystemModel to create variables/constraints in.
-            elements: List of basic (non-intercluster) Storage elements.
+            all_components: List of all components (basic storages are filtered internally).
             flows_model: The FlowsModel containing flow_rate variables.
         """
-        super().__init__(model, elements)
+        clustering = model.flow_system.clustering
+        basic_storages = [
+            c
+            for c in all_components
+            if isinstance(c, Storage)
+            and not (clustering is not None and c.cluster_mode in ('intercluster', 'intercluster_cyclic'))
+        ]
+        super().__init__(model, basic_storages)
         self._flows_model = flows_model
 
         # Set reference on each storage element
-        for storage in elements:
+        for storage in basic_storages:
             storage._storages_model = self
 
         self.create_variables()
         self.create_constraints()
         self.create_investment_model()
         self.create_investment_constraints()
+        self._create_prevent_simultaneous_constraints()
+
+    def _create_prevent_simultaneous_constraints(self) -> None:
+        from .elements import _add_prevent_simultaneous_constraints
+
+        _add_prevent_simultaneous_constraints(
+            list(self.elements.values()), self._flows_model, self.model, 'storage|prevent_simultaneous'
+        )
 
     def storage(self, label: str) -> Storage:
         """Get a storage by its label_full."""
@@ -1658,17 +1673,26 @@ class InterclusterStoragesModel:
     def __init__(
         self,
         model: FlowSystemModel,
-        elements: list[Storage],
+        all_components: list,
         flows_model,  # FlowsModel - avoid circular import
     ):
         """Initialize the batched model for intercluster storages.
 
         Args:
             model: The FlowSystemModel to create variables/constraints in.
-            elements: List of intercluster Storage elements.
+            all_components: List of all components (intercluster storages are filtered internally).
             flows_model: The FlowsModel containing flow_rate variables.
         """
         from .features import InvestmentHelpers
+
+        clustering = model.flow_system.clustering
+        elements = [
+            c
+            for c in all_components
+            if isinstance(c, Storage)
+            and clustering is not None
+            and c.cluster_mode in ('intercluster', 'intercluster_cyclic')
+        ]
 
         self.model = model
         self.elements = elements
@@ -1690,7 +1714,10 @@ class InterclusterStoragesModel:
         self.optional_investment_ids: list[str] = [s.label_full for s in self.storages_with_optional_investment]
 
         # Clustering info (required for intercluster)
-        self.clustering = model.flow_system.clustering
+        self.clustering = clustering
+        if not elements:
+            return  # Nothing to model
+
         if self.clustering is None:
             raise ValueError('InterclusterStoragesModel requires a clustered FlowSystem')
 

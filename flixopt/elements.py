@@ -46,6 +46,46 @@ if TYPE_CHECKING:
 logger = logging.getLogger('flixopt')
 
 
+def _add_prevent_simultaneous_constraints(
+    components: list,
+    flows_model,
+    model,
+    constraint_name: str,
+) -> None:
+    """Add prevent_simultaneous_flows constraints for the given components.
+
+    For each component with prevent_simultaneous_flows set, adds:
+        sum(flow_statuses) <= 1
+
+    Args:
+        components: Components to check for prevent_simultaneous_flows.
+        flows_model: FlowsModel that owns flow status variables.
+        model: The FlowSystemModel to add constraints to.
+        constraint_name: Name for the constraint.
+    """
+    with_prevent = [c for c in components if c.prevent_simultaneous_flows]
+    if not with_prevent:
+        return
+
+    membership = MaskHelpers.build_flow_membership(
+        with_prevent,
+        lambda c: c.prevent_simultaneous_flows,
+    )
+    mask = MaskHelpers.build_mask(
+        row_dim='component',
+        row_ids=[c.label for c in with_prevent],
+        col_dim='flow',
+        col_ids=flows_model.element_ids,
+        membership=membership,
+    )
+
+    status = flows_model._variables['status']
+    model.add_constraints(
+        (status * mask).sum('flow') <= 1,
+        name=constraint_name,
+    )
+
+
 @register_class_for_io
 class Component(Element):
     """
@@ -1713,14 +1753,15 @@ class ComponentsModel(TypeModel):
     def __init__(
         self,
         model: FlowSystemModel,
-        components_with_status: list[Component],
+        all_components: list[Component],
         flows_model: FlowsModel,
-        components_with_prevent_simultaneous: list[Component] | None = None,
     ):
+        # Only register components with status as elements (they get variables)
+        components_with_status = [c for c in all_components if c.status_parameters is not None]
         super().__init__(model, components_with_status)
         self._logger = logging.getLogger('flixopt')
         self._flows_model = flows_model
-        self._components_with_prevent_simultaneous = components_with_prevent_simultaneous or []
+        self._all_components = all_components
         self._logger.debug(f'ComponentsModel initialized: {len(components_with_status)} with status')
         self.create_variables()
         self.create_constraints()
@@ -1732,6 +1773,21 @@ class ComponentsModel(TypeModel):
     def components(self) -> list[Component]:
         """List of components with status (alias for elements.values())."""
         return list(self.elements.values())
+
+    @cached_property
+    def _components_with_prevent_simultaneous(self) -> list[Component]:
+        """Generic components (non-Storage, non-Transmission) with prevent_simultaneous_flows.
+
+        Storage and Transmission handle their own prevent_simultaneous constraints
+        in StoragesModel and TransmissionsModel respectively.
+        """
+        from .components import Storage, Transmission
+
+        return [
+            c
+            for c in self._all_components
+            if c.prevent_simultaneous_flows and not isinstance(c, (Storage, Transmission))
+        ]
 
     # --- Cached Properties ---
 
@@ -2140,31 +2196,9 @@ class ComponentsModel(TypeModel):
         pass
 
     def constraint_prevent_simultaneous(self) -> None:
-        """Create mutual exclusivity constraints for components with prevent_simultaneous_flows.
-
-        For each component: sum(flow_statuses) <= 1, ensuring at most one flow is active at a time.
-        Uses a mask matrix to batch all components into a single constraint.
-        """
-        components = self._components_with_prevent_simultaneous
-        if not components:
-            return
-
-        membership = MaskHelpers.build_flow_membership(
-            components,
-            lambda c: c.prevent_simultaneous_flows,
-        )
-        mask = MaskHelpers.build_mask(
-            row_dim='component',
-            row_ids=[c.label for c in components],
-            col_dim='flow',
-            col_ids=self._flows_model.element_ids,
-            membership=membership,
-        )
-
-        status = self._flows_model._variables['status']
-        self.model.add_constraints(
-            (status * mask).sum('flow') <= 1,
-            name='prevent_simultaneous',
+        """Create mutual exclusivity constraints for components with prevent_simultaneous_flows."""
+        _add_prevent_simultaneous_constraints(
+            self._components_with_prevent_simultaneous, self._flows_model, self.model, 'prevent_simultaneous'
         )
 
     # === Variable accessor properties ===
@@ -2211,37 +2245,40 @@ class ConvertersModel:
     def __init__(
         self,
         model: FlowSystemModel,
-        converters_with_factors: list,  # list[LinearConverter] - avoid circular import
-        converters_with_piecewise: list,  # list[LinearConverter] - avoid circular import
+        all_components: list,
         flows_model: FlowsModel,
     ):
         """Initialize the converter model.
 
         Args:
             model: The FlowSystemModel to create variables/constraints in.
-            converters_with_factors: List of LinearConverters with conversion_factors.
-            converters_with_piecewise: List of LinearConverters with piecewise_conversion.
+            all_components: List of all components (LinearConverters are filtered internally).
             flows_model: The FlowsModel that owns flow variables.
         """
+        from .components import LinearConverter
         from .features import PiecewiseHelpers
 
         self._logger = logging.getLogger('flixopt')
         self.model = model
-        self.converters_with_factors = converters_with_factors
-        self.converters_with_piecewise = converters_with_piecewise
+        self.converters_with_factors = [
+            c for c in all_components if isinstance(c, LinearConverter) and c.conversion_factors
+        ]
+        self.converters_with_piecewise = [
+            c for c in all_components if isinstance(c, LinearConverter) and c.piecewise_conversion
+        ]
         self._flows_model = flows_model
         self._PiecewiseHelpers = PiecewiseHelpers
 
         # Element IDs for linear conversion
-        self.element_ids: list[str] = [c.label for c in converters_with_factors]
+        self.element_ids: list[str] = [c.label for c in self.converters_with_factors]
         self.dim_name = 'converter'
 
         # Piecewise conversion variables
         self._piecewise_variables: dict[str, linopy.Variable] = {}
 
         self._logger.debug(
-            f'ConvertersModel initialized: {len(converters_with_factors)} with factors, '
-            f'{len(converters_with_piecewise)} with piecewise'
+            f'ConvertersModel initialized: {len(self.converters_with_factors)} with factors, '
+            f'{len(self.converters_with_piecewise)} with piecewise'
         )
         self.create_linear_constraints()
         self.create_piecewise_variables()
@@ -2673,25 +2710,30 @@ class TransmissionsModel:
     def __init__(
         self,
         model: FlowSystemModel,
-        transmissions: list,  # list[Transmission] - avoid circular import
+        all_components: list,
         flows_model: FlowsModel,
     ):
         """Initialize the transmission model.
 
         Args:
             model: The FlowSystemModel to create constraints in.
-            transmissions: List of Transmission components.
+            all_components: List of all components (Transmissions are filtered internally).
             flows_model: The FlowsModel that owns flow variables.
         """
+        from .components import Transmission
+
         self._logger = logging.getLogger('flixopt')
         self.model = model
-        self.transmissions = transmissions
+        self.transmissions = [c for c in all_components if isinstance(c, Transmission)]
         self._flows_model = flows_model
-        self.element_ids: list[str] = [t.label for t in transmissions]
+        self.element_ids: list[str] = [t.label for t in self.transmissions]
         self.dim_name = 'transmission'
 
-        self._logger.debug(f'TransmissionsModel initialized: {len(transmissions)} transmissions')
+        self._logger.debug(f'TransmissionsModel initialized: {len(self.transmissions)} transmissions')
         self.create_constraints()
+        _add_prevent_simultaneous_constraints(
+            self.transmissions, self._flows_model, self.model, 'transmission|prevent_simultaneous'
+        )
 
     # === Flow Mapping Properties ===
 
