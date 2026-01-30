@@ -968,14 +968,14 @@ class FlowsModel(TypeModel):
         # Upper bound: rate <= size * relative_max
         self.model.add_constraints(
             self.rate <= self.size * self.data.effective_relative_maximum,
-            name=f'{self.dim_name}|invest_ub',
+            name=f'{self.dim_name}|invest_ub',  # TODO Rename to size_ub
             mask=mask,
         )
 
         # Lower bound: rate >= size * relative_min
         self.model.add_constraints(
             self.rate >= self.size * self.data.effective_relative_minimum,
-            name=f'{self.dim_name}|invest_lb',
+            name=f'{self.dim_name}|invest_lb',  # TODO Rename to size_lb
             mask=mask,
         )
 
@@ -1022,15 +1022,17 @@ class FlowsModel(TypeModel):
 
         # Upper bound 1: rate <= status * M where M = max_size * relative_max
         big_m_upper = max_size * rel_max
-        self.add_constraints(flow_rate <= status * big_m_upper, name='status+invest_ub1')
+        self.add_constraints(
+            flow_rate <= status * big_m_upper, name='status+invest_ub1'
+        )  # TODO Rename to status+size_ub1
 
         # Upper bound 2: rate <= size * relative_max
-        self.add_constraints(flow_rate <= size * rel_max, name='status+invest_ub2')
+        self.add_constraints(flow_rate <= size * rel_max, name='status+invest_ub2')  # TODO Rename to status+size_ub2
 
         # Lower bound: rate >= (status - 1) * M + size * relative_min
         big_m_lower = max_size * rel_min
         rhs = (status - 1) * big_m_lower + size * rel_min
-        self.add_constraints(flow_rate >= rhs, name='status+invest_lb')
+        self.add_constraints(flow_rate >= rhs, name='status+invest_lb')  # TODO Rename to status+size_lb2
 
     def _create_piecewise_effects(self) -> None:
         """Create batched piecewise effects for flows with piecewise_effects_of_investment.
