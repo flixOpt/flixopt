@@ -1,6 +1,6 @@
 """
 This module contains the effects of the flixopt framework.
-Furthermore, it contains the EffectsData, which is used to collect all effects of a system.
+Furthermore, it contains the EffectCollection, which is used to collect all effects of a system.
 Different Datatypes are used to represent the effects with assigned values by the user,
 which are then transformed into the internal data structure.
 """
@@ -9,12 +9,10 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from functools import cached_property
 from typing import TYPE_CHECKING
 
 import linopy
 import numpy as np
-import pandas as pd
 import xarray as xr
 
 from .core import PlausibilityError
@@ -324,7 +322,7 @@ class EffectsModel:
         2. Call finalize_shares() to add share expressions to effect constraints
     """
 
-    def __init__(self, model: FlowSystemModel, data: EffectsData):
+    def __init__(self, model: FlowSystemModel, data):
         self.model = model
         self.data = data
 
@@ -638,14 +636,14 @@ class EffectsModel:
         )
 
 
-class EffectsData(ElementContainer[Effect]):
+class EffectCollection(ElementContainer[Effect]):
     """
-    Handling all Effects and providing data access for the EffectsModel.
+    Handling all Effects
     """
 
     def __init__(self, *effects: Effect, truncate_repr: int | None = None):
         """
-        Initialize the EffectsData.
+        Initialize the EffectCollection.
 
         Args:
             *effects: Effects to register in the collection.
@@ -658,108 +656,16 @@ class EffectsData(ElementContainer[Effect]):
 
         self.add_effects(*effects)
 
-    # --- Data access properties (used by EffectsModel) ---
-
-    @cached_property
-    def effect_ids(self) -> list[str]:
-        return [e.label for e in self.values()]
-
-    @cached_property
-    def effect_index(self) -> pd.Index:
-        return pd.Index(self.effect_ids, name='effect')
-
-    @property
-    def objective_effect_id(self) -> str:
-        return self.objective_effect.label
-
-    @property
-    def penalty_effect_id(self) -> str:
-        return self.penalty_effect.label
-
-    def _stack_bounds(self, attr_name: str, default: float = np.inf) -> xr.DataArray:
-        """Stack per-effect bounds into a single DataArray with effect dimension."""
-        effects = list(self.values())
-
-        def as_dataarray(effect: Effect) -> xr.DataArray:
-            val = getattr(effect, attr_name, None)
-            if val is None:
-                return xr.DataArray(default)
-            return val if isinstance(val, xr.DataArray) else xr.DataArray(val)
-
-        return xr.concat(
-            [as_dataarray(e).expand_dims(effect=[e.label]) for e in effects],
-            dim='effect',
-            fill_value=default,
-        )
-
-    @cached_property
-    def minimum_periodic(self) -> xr.DataArray:
-        return self._stack_bounds('minimum_periodic', -np.inf)
-
-    @cached_property
-    def maximum_periodic(self) -> xr.DataArray:
-        return self._stack_bounds('maximum_periodic', np.inf)
-
-    @cached_property
-    def minimum_temporal(self) -> xr.DataArray:
-        return self._stack_bounds('minimum_temporal', -np.inf)
-
-    @cached_property
-    def maximum_temporal(self) -> xr.DataArray:
-        return self._stack_bounds('maximum_temporal', np.inf)
-
-    @cached_property
-    def minimum_per_hour(self) -> xr.DataArray:
-        return self._stack_bounds('minimum_per_hour', -np.inf)
-
-    @cached_property
-    def maximum_per_hour(self) -> xr.DataArray:
-        return self._stack_bounds('maximum_per_hour', np.inf)
-
-    @cached_property
-    def minimum_total(self) -> xr.DataArray:
-        return self._stack_bounds('minimum_total', -np.inf)
-
-    @cached_property
-    def maximum_total(self) -> xr.DataArray:
-        return self._stack_bounds('maximum_total', np.inf)
-
-    @cached_property
-    def minimum_over_periods(self) -> xr.DataArray:
-        return self._stack_bounds('minimum_over_periods', -np.inf)
-
-    @cached_property
-    def maximum_over_periods(self) -> xr.DataArray:
-        return self._stack_bounds('maximum_over_periods', np.inf)
-
-    @cached_property
-    def effects_with_over_periods(self) -> list[Effect]:
-        return [e for e in self.values() if e.minimum_over_periods is not None or e.maximum_over_periods is not None]
-
-    @property
-    def period_weights(self) -> dict[str, xr.DataArray]:
-        """Get period weights for each effect, keyed by effect label."""
-        result = {}
-        for effect in self.values():
-            effect_weights = effect.period_weights
-            default_weights = effect._flow_system.period_weights
-            if effect_weights is not None:
-                result[effect.label] = effect_weights
-            elif default_weights is not None:
-                result[effect.label] = default_weights
-            else:
-                result[effect.label] = effect._fit_coords(name='period_weights', data=1, dims=['period'])
-        return result
-
-    # --- End data access properties ---
-
     def create_model(self, model: FlowSystemModel) -> EffectsModel:
+        from .batched import EffectsData
+
         self._plausibility_checks()
         if self._penalty_effect is None:
             penalty = self._create_penalty_effect()
             if penalty._flow_system is None:
                 penalty.link_to_flow_system(model.flow_system)
-        em = EffectsModel(model=model, data=self)
+        data = EffectsData(self)
+        em = EffectsModel(model=model, data=data)
         em.create_variables()
         em._add_share_between_effects()
         em._set_objective()

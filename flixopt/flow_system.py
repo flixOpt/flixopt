@@ -25,7 +25,7 @@ from .core import (
     FlowSystemDimensions,
     TimeSeriesData,
 )
-from .effects import Effect, EffectsData
+from .effects import Effect, EffectCollection
 from .elements import Bus, Component, Flow
 from .optimize_accessor import OptimizeAccessor
 from .statistics_accessor import StatisticsAccessor
@@ -171,7 +171,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         - Direct container access (`.components`, `.buses`, `.effects`, `.flows`) is useful
           when you need type-specific filtering or operations.
         - The `.flows` container is automatically populated from all component inputs and outputs.
-        - Creates an empty registry for components and buses, an empty EffectsData, and a placeholder for a SystemModel.
+        - Creates an empty registry for components and buses, an empty EffectCollection, and a placeholder for a SystemModel.
         - The instance starts disconnected (self._connected_and_transformed == False) and will be
           connected_and_transformed automatically when trying to optimize.
     """
@@ -249,7 +249,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             element_type_name='components', truncate_repr=10
         )
         self.buses: ElementContainer[Bus] = ElementContainer(element_type_name='buses', truncate_repr=10)
-        self.effects: EffectsData = EffectsData(truncate_repr=10)
+        self.effects: EffectCollection = EffectCollection(truncate_repr=10)
         self.model: FlowSystemModel | None = None
 
         self._connected_and_transformed = False

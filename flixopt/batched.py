@@ -23,6 +23,7 @@ from .interface import InvestParameters, StatusParameters
 from .structure import ElementContainer
 
 if TYPE_CHECKING:
+    from .effects import Effect, EffectCollection
     from .elements import Flow
     from .flow_system import FlowSystem
 
@@ -1331,6 +1332,121 @@ class FlowsData:
                 arr = arr.expand_dims({dim_name: coord})
 
         return self._ensure_canonical_order(arr)
+
+
+class EffectsData:
+    """Batched data container for all effects.
+
+    Provides indexed access to effect properties as stacked xr.DataArrays
+    with an 'effect' dimension. Separates data access from mathematical
+    modeling (EffectsModel).
+    """
+
+    def __init__(self, effect_collection: EffectCollection):
+        self._collection = effect_collection
+        self._effects: list[Effect] = list(effect_collection.values())
+
+    @cached_property
+    def effect_ids(self) -> list[str]:
+        return [e.label for e in self._effects]
+
+    @cached_property
+    def effect_index(self) -> pd.Index:
+        return pd.Index(self.effect_ids, name='effect')
+
+    @property
+    def objective_effect_id(self) -> str:
+        return self._collection.objective_effect.label
+
+    @property
+    def penalty_effect_id(self) -> str:
+        return self._collection.penalty_effect.label
+
+    def _stack_bounds(self, attr_name: str, default: float = np.inf) -> xr.DataArray:
+        """Stack per-effect bounds into a single DataArray with effect dimension."""
+
+        def as_dataarray(effect) -> xr.DataArray:
+            val = getattr(effect, attr_name, None)
+            if val is None:
+                return xr.DataArray(default)
+            return val if isinstance(val, xr.DataArray) else xr.DataArray(val)
+
+        return xr.concat(
+            [as_dataarray(e).expand_dims(effect=[e.label]) for e in self._effects],
+            dim='effect',
+            fill_value=default,
+        )
+
+    @cached_property
+    def minimum_periodic(self) -> xr.DataArray:
+        return self._stack_bounds('minimum_periodic', -np.inf)
+
+    @cached_property
+    def maximum_periodic(self) -> xr.DataArray:
+        return self._stack_bounds('maximum_periodic', np.inf)
+
+    @cached_property
+    def minimum_temporal(self) -> xr.DataArray:
+        return self._stack_bounds('minimum_temporal', -np.inf)
+
+    @cached_property
+    def maximum_temporal(self) -> xr.DataArray:
+        return self._stack_bounds('maximum_temporal', np.inf)
+
+    @cached_property
+    def minimum_per_hour(self) -> xr.DataArray:
+        return self._stack_bounds('minimum_per_hour', -np.inf)
+
+    @cached_property
+    def maximum_per_hour(self) -> xr.DataArray:
+        return self._stack_bounds('maximum_per_hour', np.inf)
+
+    @cached_property
+    def minimum_total(self) -> xr.DataArray:
+        return self._stack_bounds('minimum_total', -np.inf)
+
+    @cached_property
+    def maximum_total(self) -> xr.DataArray:
+        return self._stack_bounds('maximum_total', np.inf)
+
+    @cached_property
+    def minimum_over_periods(self) -> xr.DataArray:
+        return self._stack_bounds('minimum_over_periods', -np.inf)
+
+    @cached_property
+    def maximum_over_periods(self) -> xr.DataArray:
+        return self._stack_bounds('maximum_over_periods', np.inf)
+
+    @cached_property
+    def effects_with_over_periods(self) -> list[Effect]:
+        return [e for e in self._effects if e.minimum_over_periods is not None or e.maximum_over_periods is not None]
+
+    @property
+    def period_weights(self) -> dict[str, xr.DataArray]:
+        """Get period weights for each effect, keyed by effect label."""
+        result = {}
+        for effect in self._effects:
+            effect_weights = effect.period_weights
+            default_weights = effect._flow_system.period_weights
+            if effect_weights is not None:
+                result[effect.label] = effect_weights
+            elif default_weights is not None:
+                result[effect.label] = default_weights
+            else:
+                result[effect.label] = effect._fit_coords(name='period_weights', data=1, dims=['period'])
+        return result
+
+    def effects(self) -> list[Effect]:
+        """Access the underlying effect objects."""
+        return self._effects
+
+    def __getitem__(self, label: str) -> Effect:
+        """Look up an effect by label (delegates to the collection)."""
+        return self._collection[label]
+
+    def values(self):
+        """Iterate over Effect objects."""
+        return self._effects
 
 
 class BatchedAccessor:

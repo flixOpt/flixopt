@@ -412,4 +412,4 @@ Penalty is weighted identically to the objective effect across all dimensions.
 | Temporal limit | `maximum_temporal` | Per period (temporal only) |
 | Global limit | `maximum_over_periods` | Across all periods |
 
-**Classes:** [`Effect`][flixopt.effects.Effect], [`EffectsData`][flixopt.effects.EffectsData]
+**Classes:** [`Effect`][flixopt.effects.Effect], [`EffectCollection`][flixopt.effects.EffectCollection]
