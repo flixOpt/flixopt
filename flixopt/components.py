@@ -897,10 +897,8 @@ class StoragesModel(TypeModel):
         # === Periodic: size * effects_per_size ===
         if inv.effects_per_size is not None:
             factors = inv.effects_per_size
-            storage_ids = list(factors.coords[dim].values)
-            size = self._variables['size'].sel({dim: storage_ids})
-            expr = (size * factors).rename(rename)
-            effects_model.register_periodic_share(storage_ids, expr)
+            size = self._variables['size'].sel({dim: factors.coords[dim].values})
+            effects_model.register_periodic_share((size * factors).rename(rename))
 
             # Investment/retirement effects (bypass share variable)
             invested = self._variables.get('invested')

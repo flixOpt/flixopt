@@ -349,9 +349,9 @@ class EffectsModel:
         self.share_periodic: linopy.Variable | None = None
 
         # Registered contributions from type models (FlowsModel, StoragesModel, etc.)
-        # Each entry: (contributor_ids, defining_expr with 'contributor' dim)
-        self._temporal_share_defs: list[tuple[list[str], linopy.LinearExpression]] = []
-        self._periodic_share_defs: list[tuple[list[str], linopy.LinearExpression]] = []
+        # Each entry: a defining_expr with 'contributor' dim
+        self._temporal_share_defs: list[linopy.LinearExpression] = []
+        self._periodic_share_defs: list[linopy.LinearExpression] = []
         # Extra contributions that don't go through share variables (status effects, invested, constants)
         self._temporal_contributions: list = []
         self._periodic_contributions: list = []
@@ -361,19 +361,19 @@ class EffectsModel:
         """Public access to the effect index for type models."""
         return self._effect_index
 
-    def register_temporal_share(self, contributor_ids: list[str], defining_expr) -> None:
+    def register_temporal_share(self, defining_expr) -> None:
         """Register contributors for the share|temporal variable.
 
-        The defining_expr must have a 'contributor' dimension matching contributor_ids.
+        The defining_expr must have a 'contributor' dimension.
         """
-        self._temporal_share_defs.append((contributor_ids, defining_expr))
+        self._temporal_share_defs.append(defining_expr)
 
-    def register_periodic_share(self, contributor_ids: list[str], defining_expr) -> None:
+    def register_periodic_share(self, defining_expr) -> None:
         """Register contributors for the share|periodic variable.
 
-        The defining_expr must have a 'contributor' dimension matching contributor_ids.
+        The defining_expr must have a 'contributor' dimension.
         """
-        self._periodic_share_defs.append((contributor_ids, defining_expr))
+        self._periodic_share_defs.append(defining_expr)
 
     def add_temporal_contribution(self, expr) -> None:
         """Register a temporal effect contribution expression (not via share variable).
@@ -620,7 +620,7 @@ class EffectsModel:
 
     def _create_share_var(
         self,
-        share_defs: list[tuple[list[str], linopy.LinearExpression]],
+        share_defs: list[linopy.LinearExpression],
         name: str,
         temporal: bool,
     ) -> linopy.Variable:
@@ -631,15 +631,16 @@ class EffectsModel:
         """
         import pandas as pd
 
-        all_ids = [str(cid) for ids, _ in share_defs for cid in ids]
+        # Concatenate defining expressions along contributor dim
+        expr_datasets = [expr.data for expr in share_defs]
+        combined_data = xr.concat(expr_datasets, dim='contributor')
+        combined_expr = linopy.LinearExpression(combined_data, self.model)
+
+        # Extract contributor IDs from the concatenated expression
+        all_ids = [str(cid) for cid in combined_data.coords['contributor'].values]
         contributor_index = pd.Index(all_ids, name='contributor')
         coords = self._share_coords('contributor', contributor_index, temporal=temporal)
         var = self.model.add_variables(lower=-np.inf, upper=np.inf, coords=coords, name=name)
-
-        # Concatenate defining expressions along contributor dim
-        expr_datasets = [expr.data for _, expr in share_defs]
-        combined_data = xr.concat(expr_datasets, dim='contributor')
-        combined_expr = linopy.LinearExpression(combined_data, self.model)
 
         self.model.add_constraints(var == combined_expr, name=name)
         return var

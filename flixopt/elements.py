@@ -1208,10 +1208,8 @@ class FlowsModel(TypeModel):
         # === Temporal: rate * effects_per_flow_hour * dt ===
         factors = self.data.effects_per_flow_hour
         if factors is not None:
-            flow_ids = list(factors.coords[dim].values)
-            rate = self.rate.sel({dim: flow_ids})
-            expr = (rate * factors * dt).rename(rename)
-            effects_model.register_temporal_share(flow_ids, expr)
+            rate = self.rate.sel({dim: factors.coords[dim].values})
+            effects_model.register_temporal_share((rate * factors * dt).rename(rename))
 
         # === Temporal: status effects (bypass share variable) ===
         if self.status is not None:
@@ -1231,10 +1229,8 @@ class FlowsModel(TypeModel):
         inv = self.data._investment_data
         if inv is not None and inv.effects_per_size is not None:
             factors = inv.effects_per_size
-            flow_ids = list(factors.coords[dim].values)
-            size = self.size.sel({dim: flow_ids})
-            expr = (size * factors).rename(rename)
-            effects_model.register_periodic_share(flow_ids, expr)
+            size = self.size.sel({dim: factors.coords[dim].values})
+            effects_model.register_periodic_share((size * factors).rename(rename))
 
             # Investment/retirement effects (bypass share variable)
             if self.invested is not None:
