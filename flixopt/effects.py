@@ -1,6 +1,6 @@
 """
 This module contains the effects of the flixopt framework.
-Furthermore, it contains the EffectCollection, which is used to collect all effects of a system.
+Furthermore, it contains the EffectsData, which is used to collect all effects of a system.
 Different Datatypes are used to represent the effects with assigned values by the user,
 which are then transformed into the internal data structure.
 """
@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import logging
 from collections import deque
+from functools import cached_property
 from typing import TYPE_CHECKING
 
 import linopy
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from .core import PlausibilityError
@@ -322,14 +324,9 @@ class EffectsModel:
         2. Call finalize_shares() to add share expressions to effect constraints
     """
 
-    def __init__(self, model: FlowSystemModel, effect_collection: EffectCollection):
-        import pandas as pd
-
+    def __init__(self, model: FlowSystemModel, data: EffectsData):
         self.model = model
-        self._effect_collection = effect_collection
-        self.effects = list(effect_collection.values())
-        self.effect_ids = [e.label for e in self.effects]
-        self._effect_index = pd.Index(self.effect_ids, name='effect')
+        self.data = data
 
         # Variables (set during create_variables)
         self.periodic: linopy.Variable | None = None
@@ -360,7 +357,7 @@ class EffectsModel:
     @property
     def effect_index(self):
         """Public access to the effect index for type models."""
-        return self._effect_index
+        return self.data.effect_index
 
     def add_temporal_contribution(self, defining_expr, contributor_dim: str = 'contributor') -> None:
         """Register contributors for the share|temporal variable.
@@ -392,31 +389,6 @@ class EffectsModel:
         else:
             self._periodic_share_defs.append(defining_expr)
 
-    def _stack_bounds(self, attr_name: str, default: float = np.inf) -> xr.DataArray:
-        """Stack per-effect bounds into a single DataArray with effect dimension."""
-
-        def as_dataarray(effect: Effect) -> xr.DataArray:
-            val = getattr(effect, attr_name, None)
-            if val is None:
-                return xr.DataArray(default)
-            return val if isinstance(val, xr.DataArray) else xr.DataArray(val)
-
-        return xr.concat(
-            [as_dataarray(e).expand_dims(effect=[e.label]) for e in self.effects],
-            dim='effect',
-            fill_value=default,
-        )
-
-    def _get_period_weights(self, effect: Effect) -> xr.DataArray:
-        """Get period weights for an effect."""
-        effect_weights = effect.period_weights
-        default_weights = effect._flow_system.period_weights
-        if effect_weights is not None:
-            return effect_weights
-        elif default_weights is not None:
-            return default_weights
-        return effect._fit_coords(name='period_weights', data=1, dims=['period'])
-
     def create_variables(self) -> None:
         """Create batched effect variables with 'effect' dimension."""
 
@@ -429,13 +401,13 @@ class EffectsModel:
         # === Periodic (investment) ===
         periodic_coords = xr.Coordinates(
             _merge_coords(
-                {'effect': self._effect_index},
+                {'effect': self.data.effect_index},
                 self.model.get_coords(['period', 'scenario']),
             )
         )
         self.periodic = self.model.add_variables(
-            lower=self._stack_bounds('minimum_periodic', -np.inf),
-            upper=self._stack_bounds('maximum_periodic', np.inf),
+            lower=self.data.minimum_periodic,
+            upper=self.data.maximum_periodic,
             coords=periodic_coords,
             name='effect|periodic',
         )
@@ -447,8 +419,8 @@ class EffectsModel:
 
         # === Temporal (operation total over time) ===
         self.temporal = self.model.add_variables(
-            lower=self._stack_bounds('minimum_temporal', -np.inf),
-            upper=self._stack_bounds('maximum_temporal', np.inf),
+            lower=self.data.minimum_temporal,
+            upper=self.data.maximum_temporal,
             coords=periodic_coords,
             name='effect|temporal',
         )
@@ -460,14 +432,14 @@ class EffectsModel:
         # === Per-timestep (temporal contributions per timestep) ===
         temporal_coords = xr.Coordinates(
             _merge_coords(
-                {'effect': self._effect_index},
+                {'effect': self.data.effect_index},
                 self.model.get_coords(None),  # All dims
             )
         )
 
         # Build per-hour bounds
-        min_per_hour = self._stack_bounds('minimum_per_hour', -np.inf)
-        max_per_hour = self._stack_bounds('maximum_per_hour', np.inf)
+        min_per_hour = self.data.minimum_per_hour
+        max_per_hour = self.data.maximum_per_hour
 
         self.per_timestep = self.model.add_variables(
             lower=min_per_hour * self.model.timestep_duration if min_per_hour is not None else -np.inf,
@@ -486,8 +458,8 @@ class EffectsModel:
 
         # === Total (periodic + temporal) ===
         self.total = self.model.add_variables(
-            lower=self._stack_bounds('minimum_total', -np.inf),
-            upper=self._stack_bounds('maximum_total', np.inf),
+            lower=self.data.minimum_total,
+            upper=self.data.maximum_total,
             coords=periodic_coords,
             name='effect|total',
         )
@@ -500,9 +472,7 @@ class EffectsModel:
         # Only applicable when periods exist in the flow system
         if self.model.flow_system.periods is None:
             return
-        effects_with_over_periods = [
-            e for e in self.effects if e.minimum_over_periods is not None or e.maximum_over_periods is not None
-        ]
+        effects_with_over_periods = self.data.effects_with_over_periods
         if effects_with_over_periods:
             over_periods_ids = [e.label for e in effects_with_over_periods]
             over_periods_coords = xr.Coordinates(
@@ -530,7 +500,7 @@ class EffectsModel:
             # Can't use xr.concat with LinearExpression objects, so create individual constraints
             for e in effects_with_over_periods:
                 total_e = self.total.sel(effect=e.label)
-                weights_e = self._get_period_weights(e)
+                weights_e = self.data.period_weights[e.label]
                 weighted_total = (total_e * weights_e).sum('period')
                 self.model.add_constraints(
                     self.total_over_periods.sel(effect=e.label) == weighted_total,
@@ -548,14 +518,14 @@ class EffectsModel:
 
         The expression must have an 'effect' dimension aligned with the effect index.
         """
-        self._eq_periodic.lhs -= self._as_expression(expression).reindex({'effect': self._effect_index})
+        self._eq_periodic.lhs -= self._as_expression(expression).reindex({'effect': self.data.effect_index})
 
     def add_share_temporal(self, expression) -> None:
         """Add a temporal share expression with effect dimension to effect|per_timestep.
 
         The expression must have an 'effect' dimension aligned with the effect index.
         """
-        self._eq_per_timestep.lhs -= self._as_expression(expression).reindex({'effect': self._effect_index})
+        self._eq_per_timestep.lhs -= self._as_expression(expression).reindex({'effect': self.data.effect_index})
 
     def finalize_shares(self) -> None:
         """Collect effect contributions from type models (push-based).
@@ -577,16 +547,16 @@ class EffectsModel:
 
         # === Apply temporal constants directly ===
         for const in self._temporal_constant_defs:
-            self._eq_per_timestep.lhs -= const.sum('contributor').reindex({'effect': self._effect_index})
+            self._eq_per_timestep.lhs -= const.sum('contributor').reindex({'effect': self.data.effect_index})
 
         # === Create share|periodic variable ===
         if self._periodic_share_defs:
             self.share_periodic = self._create_share_var(self._periodic_share_defs, 'share|periodic', temporal=False)
-            self._eq_periodic.lhs -= self.share_periodic.sum('contributor').reindex({'effect': self._effect_index})
+            self._eq_periodic.lhs -= self.share_periodic.sum('contributor').reindex({'effect': self.data.effect_index})
 
         # === Apply periodic constants directly ===
         for const in self._periodic_constant_defs:
-            self._eq_periodic.lhs -= const.sum('contributor').reindex({'effect': self._effect_index})
+            self._eq_periodic.lhs -= const.sum('contributor').reindex({'effect': self.data.effect_index})
 
     def _share_coords(self, element_dim: str, element_index, temporal: bool = True) -> xr.Coordinates:
         """Build coordinates for share variables: (element, effect) + time/period/scenario."""
@@ -594,7 +564,7 @@ class EffectsModel:
         return xr.Coordinates(
             {
                 element_dim: element_index,
-                'effect': self._effect_index,
+                'effect': self.data.effect_index,
                 **{k: v for k, v in (self.model.get_coords(base_dims) or {}).items()},
             }
         )
@@ -643,39 +613,39 @@ class EffectsModel:
 
     def _add_share_between_effects(self):
         """Add cross-effect shares between effects."""
-        for target_effect in self._effect_collection.values():
+        for target_effect in self.data.values():
             target_id = target_effect.label
             # 1. temporal: <- receiving temporal shares from other effects
             for source_effect, time_series in target_effect.share_from_temporal.items():
-                source_id = self._effect_collection[source_effect].label
+                source_id = self.data[source_effect].label
                 source_per_timestep = self.get_per_timestep(source_id)
                 expr = (source_per_timestep * time_series).expand_dims(effect=[target_id])
                 self.add_share_temporal(expr)
             # 2. periodic: <- receiving periodic shares from other effects
             for source_effect, factor in target_effect.share_from_periodic.items():
-                source_id = self._effect_collection[source_effect].label
+                source_id = self.data[source_effect].label
                 source_periodic = self.get_periodic(source_id)
                 expr = (source_periodic * factor).expand_dims(effect=[target_id])
                 self.add_share_periodic(expr)
 
     def _set_objective(self):
         """Set the optimization objective function."""
-        obj_id = self._effect_collection.objective_effect.label
-        pen_id = self._effect_collection.penalty_effect.label
+        obj_id = self.data.objective_effect_id
+        pen_id = self.data.penalty_effect_id
         self.model.add_objective(
             (self.total.sel(effect=obj_id) * self.model.objective_weights).sum()
             + (self.total.sel(effect=pen_id) * self.model.objective_weights).sum()
         )
 
 
-class EffectCollection(ElementContainer[Effect]):
+class EffectsData(ElementContainer[Effect]):
     """
-    Handling all Effects
+    Handling all Effects and providing data access for the EffectsModel.
     """
 
     def __init__(self, *effects: Effect, truncate_repr: int | None = None):
         """
-        Initialize the EffectCollection.
+        Initialize the EffectsData.
 
         Args:
             *effects: Effects to register in the collection.
@@ -688,13 +658,108 @@ class EffectCollection(ElementContainer[Effect]):
 
         self.add_effects(*effects)
 
+    # --- Data access properties (used by EffectsModel) ---
+
+    @cached_property
+    def effect_ids(self) -> list[str]:
+        return [e.label for e in self.values()]
+
+    @cached_property
+    def effect_index(self) -> pd.Index:
+        return pd.Index(self.effect_ids, name='effect')
+
+    @property
+    def objective_effect_id(self) -> str:
+        return self.objective_effect.label
+
+    @property
+    def penalty_effect_id(self) -> str:
+        return self.penalty_effect.label
+
+    def _stack_bounds(self, attr_name: str, default: float = np.inf) -> xr.DataArray:
+        """Stack per-effect bounds into a single DataArray with effect dimension."""
+        effects = list(self.values())
+
+        def as_dataarray(effect: Effect) -> xr.DataArray:
+            val = getattr(effect, attr_name, None)
+            if val is None:
+                return xr.DataArray(default)
+            return val if isinstance(val, xr.DataArray) else xr.DataArray(val)
+
+        return xr.concat(
+            [as_dataarray(e).expand_dims(effect=[e.label]) for e in effects],
+            dim='effect',
+            fill_value=default,
+        )
+
+    @cached_property
+    def minimum_periodic(self) -> xr.DataArray:
+        return self._stack_bounds('minimum_periodic', -np.inf)
+
+    @cached_property
+    def maximum_periodic(self) -> xr.DataArray:
+        return self._stack_bounds('maximum_periodic', np.inf)
+
+    @cached_property
+    def minimum_temporal(self) -> xr.DataArray:
+        return self._stack_bounds('minimum_temporal', -np.inf)
+
+    @cached_property
+    def maximum_temporal(self) -> xr.DataArray:
+        return self._stack_bounds('maximum_temporal', np.inf)
+
+    @cached_property
+    def minimum_per_hour(self) -> xr.DataArray:
+        return self._stack_bounds('minimum_per_hour', -np.inf)
+
+    @cached_property
+    def maximum_per_hour(self) -> xr.DataArray:
+        return self._stack_bounds('maximum_per_hour', np.inf)
+
+    @cached_property
+    def minimum_total(self) -> xr.DataArray:
+        return self._stack_bounds('minimum_total', -np.inf)
+
+    @cached_property
+    def maximum_total(self) -> xr.DataArray:
+        return self._stack_bounds('maximum_total', np.inf)
+
+    @cached_property
+    def minimum_over_periods(self) -> xr.DataArray:
+        return self._stack_bounds('minimum_over_periods', -np.inf)
+
+    @cached_property
+    def maximum_over_periods(self) -> xr.DataArray:
+        return self._stack_bounds('maximum_over_periods', np.inf)
+
+    @cached_property
+    def effects_with_over_periods(self) -> list[Effect]:
+        return [e for e in self.values() if e.minimum_over_periods is not None or e.maximum_over_periods is not None]
+
+    @property
+    def period_weights(self) -> dict[str, xr.DataArray]:
+        """Get period weights for each effect, keyed by effect label."""
+        result = {}
+        for effect in self.values():
+            effect_weights = effect.period_weights
+            default_weights = effect._flow_system.period_weights
+            if effect_weights is not None:
+                result[effect.label] = effect_weights
+            elif default_weights is not None:
+                result[effect.label] = default_weights
+            else:
+                result[effect.label] = effect._fit_coords(name='period_weights', data=1, dims=['period'])
+        return result
+
+    # --- End data access properties ---
+
     def create_model(self, model: FlowSystemModel) -> EffectsModel:
         self._plausibility_checks()
         if self._penalty_effect is None:
             penalty = self._create_penalty_effect()
             if penalty._flow_system is None:
                 penalty.link_to_flow_system(model.flow_system)
-        em = EffectsModel(model=model, effect_collection=self)
+        em = EffectsModel(model=model, data=self)
         em.create_variables()
         em._add_share_between_effects()
         em._set_objective()
