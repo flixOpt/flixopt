@@ -166,6 +166,7 @@ class ElementType(Enum):
     STORAGE = 'storage'
     CONVERTER = 'converter'
     EFFECT = 'effect'
+    COMPONENT = 'component'
 
 
 class VariableType(Enum):
@@ -564,29 +565,29 @@ class TypeModel(ABC):
     def add_variables(
         self,
         name: str,
-        var_type: VariableType,
+        var_type: VariableType | None = None,
         lower: xr.DataArray | float = -np.inf,
         upper: xr.DataArray | float = np.inf,
         dims: tuple[str, ...] | None = ('time',),
+        element_ids: list[str] | None = None,
         **kwargs,
     ) -> linopy.Variable:
         """Create a batched variable with element dimension.
 
         Args:
             name: Variable name (will be prefixed with element type).
-            var_type: Variable type for semantic categorization.
+            var_type: Variable type for semantic categorization. None skips registration.
             lower: Lower bounds (scalar or per-element DataArray).
             upper: Upper bounds (scalar or per-element DataArray).
             dims: Dimensions beyond 'element'. None means ALL model dimensions.
+            element_ids: Subset of element IDs. None means all elements.
             **kwargs: Additional arguments passed to model.add_variables().
 
         Returns:
             The created linopy Variable with element dimension.
         """
-        # Build coordinates with element dimension first
-        coords = self._build_coords(dims)
+        coords = self._build_coords(dims, element_ids=element_ids)
 
-        # Create variable
         full_name = f'{self.element_type.value}|{name}'
         variable = self.model.add_variables(
             lower=lower,
@@ -597,9 +598,10 @@ class TypeModel(ABC):
         )
 
         # Register category for segment expansion
-        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(var_type)
-        if expansion_category is not None:
-            self.model.variable_categories[variable.name] = expansion_category
+        if var_type is not None:
+            expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(var_type)
+            if expansion_category is not None:
+                self.model.variable_categories[variable.name] = expansion_category
 
         # Store reference
         self._variables[name] = variable
