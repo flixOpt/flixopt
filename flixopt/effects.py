@@ -610,7 +610,7 @@ class EffectsModel:
         import pandas as pd
 
         # Align all expressions: expands each to the union of all contributor values
-        aligned = linopy.align(*share_defs, join='outer')
+        aligned = linopy.align(*share_defs, join='outer', fill_value=0)
         combined_expr = aligned[0]
         for expr in aligned[1:]:
             combined_expr = combined_expr + expr
