@@ -1049,22 +1049,10 @@ class FlowSystemModel(linopy.Model):
         Uses TypeModel classes (e.g., FlowsModel, BusesModel) which handle ALL
         elements of a type in a single instance with true vectorized operations.
 
-        Benefits:
-        - Cleaner architecture: One model per type, not per instance
-        - Direct variable ownership: FlowsModel owns flow_rate directly
-        - Better performance: 5-13x faster for large systems
-
         Args:
             timing: If True, print detailed timing breakdown.
-
-        Note:
-            FlowsModel, BusesModel, StoragesModel, and InterclusterStoragesModel
-            are all implemented as batched type-level models.
         """
         import time
-
-        from .components import LinearConverter, Storage, StoragesModel
-        from .elements import BusesModel, ConvertersModel, FlowsModel, TransmissionsModel
 
         timings = {}
 
@@ -1073,7 +1061,50 @@ class FlowSystemModel(linopy.Model):
 
         record('start')
 
-        # Create effect models (validation + penalty already done in connect_and_transform)
+        self._create_effects_model()
+        record('effects')
+
+        self._create_flows_model()
+        record('flows')
+
+        self._create_buses_model()
+        record('buses')
+
+        self._create_storages_model()
+        record('storages')
+
+        self._create_intercluster_storages_model()
+        record('intercluster_storages')
+
+        self._create_components_model()
+        record('components')
+
+        self._create_converters_model()
+        record('converters')
+
+        self._create_transmissions_model()
+        record('transmissions')
+
+        self._create_prevent_simultaneous_model()
+        record('prevent_simultaneous')
+
+        self._finalize_model()
+        record('end')
+
+        if timing:
+            print('\n  Type-Level Modeling Timing Breakdown:')
+            keys = list(timings.keys())
+            for i in range(1, len(keys)):
+                elapsed = (timings[keys[i]] - timings[keys[i - 1]]) * 1000
+                print(f'    {keys[i]:30s}: {elapsed:8.2f}ms')
+            total = (timings['end'] - timings['start']) * 1000
+            print(f'    {"TOTAL":30s}: {total:8.2f}ms')
+
+        logger.info(
+            f'Type-level modeling complete: {len(self.variables)} variables, {len(self.constraints)} constraints'
+        )
+
+    def _create_effects_model(self) -> None:
         from .batched import EffectsData
         from .effects import EffectsModel
 
@@ -1083,94 +1114,46 @@ class FlowSystemModel(linopy.Model):
         self.effects._add_share_between_effects()
         self.effects._set_objective()
 
-        record('effects')
+    def _create_flows_model(self) -> None:
+        from .elements import FlowsModel
 
-        # Use flow_system.flows (sorted, deduplicated) — same order as FlowsData
         all_flows = list(self.flow_system.flows.values())
-
-        record('collect_flows')
-
-        # Create type-level model for all flows
         self._flows_model = FlowsModel(self, all_flows)
         self._flows_model.create_variables()
-
-        record('flows_variables')
-
-        # Create batched status model for flows (creates active_hours, startup, shutdown, etc.)
         self._flows_model.create_status_model()
-
-        record('flows_status_model')
-
         self._flows_model.create_constraints()
 
-        record('flows_constraints')
+    def _create_buses_model(self) -> None:
+        from .elements import BusesModel
 
-        # Flow effect shares are collected by EffectsModel.finalize_shares()
-
-        record('flows_effects')
-
-        # Create type-level model for all buses
         all_buses = list(self.flow_system.buses.values())
         self._buses_model = BusesModel(self, all_buses, self._flows_model)
         self._buses_model.create_variables()
-
-        record('buses_variables')
-
         self._buses_model.create_constraints()
-
-        record('buses_constraints')
-
-        # Create effect shares for buses (imbalance penalties)
         self._buses_model.create_effect_shares()
 
-        record('buses_effects')
+    def _create_storages_model(self) -> None:
+        from .components import Storage, StoragesModel
 
-        # Collect basic (non-intercluster) storages for batching
-        # Intercluster storages are handled traditionally
-        basic_storages = []
-        for component in self.flow_system.components.values():
-            if isinstance(component, Storage):
-                clustering = self.flow_system.clustering
-                is_intercluster = clustering is not None and component.cluster_mode in (
-                    'intercluster',
-                    'intercluster_cyclic',
-                )
-                if not is_intercluster:
-                    basic_storages.append(component)
-
-        # Create type-level model for basic storages
+        basic_storages = [
+            c
+            for c in self.flow_system.components.values()
+            if isinstance(c, Storage) and not self._is_intercluster_storage(c)
+        ]
         self._storages_model = StoragesModel(self, basic_storages, self._flows_model)
         self._storages_model.create_variables()
-
-        record('storages_variables')
-
         self._storages_model.create_constraints()
-
-        record('storages_constraints')
-
-        # Create batched investment model for storages (creates size/invested variables, constraints, effects)
         self._storages_model.create_investment_model()
-
-        record('storages_investment_model')
-
-        # Create batched investment constraints linking charge_state to investment size
         self._storages_model.create_investment_constraints()
 
-        record('storages_investment_constraints')
+    def _create_intercluster_storages_model(self) -> None:
+        from .components import InterclusterStoragesModel, Storage
 
-        # Create batched InterclusterStoragesModel for intercluster storages
-        from .components import InterclusterStoragesModel
-
-        intercluster_storages: list[Storage] = []
-        clustering = self.flow_system.clustering
-        if clustering is not None:
-            for component in self.flow_system.components.values():
-                if isinstance(component, Storage) and component.cluster_mode in (
-                    'intercluster',
-                    'intercluster_cyclic',
-                ):
-                    intercluster_storages.append(component)
-
+        intercluster_storages = [
+            c
+            for c in self.flow_system.components.values()
+            if isinstance(c, Storage) and self._is_intercluster_storage(c)
+        ]
         self._intercluster_storages_model: InterclusterStoragesModel | None = None
         if intercluster_storages:
             self._intercluster_storages_model = InterclusterStoragesModel(
@@ -1182,40 +1165,26 @@ class FlowSystemModel(linopy.Model):
             self._intercluster_storages_model.create_investment_constraints()
             self._intercluster_storages_model.create_effect_shares()
 
-        record('intercluster_storages')
-
-        # Collect components for batched handling
-        from .components import Transmission
-        from .elements import ComponentsModel, PreventSimultaneousFlowsModel
+    def _create_components_model(self) -> None:
+        from .elements import ComponentsModel
 
         components_with_status = [c for c in self.flow_system.components.values() if c.status_parameters is not None]
+        self._components_model = ComponentsModel(self, components_with_status, self._flows_model)
+        self._components_model.create_variables()
+        self._components_model.create_constraints()
+        self._components_model.create_status_features()
+        self._components_model.create_effect_shares()
+
+    def _create_converters_model(self) -> None:
+        from .components import LinearConverter
+        from .elements import ConvertersModel
+
         converters_with_factors = [
             c for c in self.flow_system.components.values() if isinstance(c, LinearConverter) and c.conversion_factors
         ]
         converters_with_piecewise = [
             c for c in self.flow_system.components.values() if isinstance(c, LinearConverter) and c.piecewise_conversion
         ]
-        transmissions = [c for c in self.flow_system.components.values() if isinstance(c, Transmission)]
-
-        # Create type-level model for component status variables/constraints
-        self._components_model = ComponentsModel(self, components_with_status, self._flows_model)
-        self._components_model.create_variables()
-
-        record('component_status_variables')
-
-        self._components_model.create_constraints()
-
-        record('component_status_constraints')
-
-        self._components_model.create_status_features()
-
-        record('component_status_features')
-
-        self._components_model.create_effect_shares()
-
-        record('component_status_effects')
-
-        # Create converters model (linear conversion factors + piecewise)
         self._converters_model = ConvertersModel(
             self, converters_with_factors, converters_with_piecewise, self._flows_model
         )
@@ -1223,71 +1192,35 @@ class FlowSystemModel(linopy.Model):
         self._converters_model.create_piecewise_variables()
         self._converters_model.create_piecewise_constraints()
 
-        record('converters')
+    def _create_transmissions_model(self) -> None:
+        from .components import Transmission
+        from .elements import TransmissionsModel
 
-        # Create transmissions model
+        transmissions = [c for c in self.flow_system.components.values() if isinstance(c, Transmission)]
         self._transmissions_model = TransmissionsModel(self, transmissions, self._flows_model)
         self._transmissions_model.create_constraints()
 
-        record('transmissions')
+    def _create_prevent_simultaneous_model(self) -> None:
+        from .elements import PreventSimultaneousFlowsModel
 
-        # Collect components with prevent_simultaneous_flows
         components_with_prevent_simultaneous = [
             c for c in self.flow_system.components.values() if c.prevent_simultaneous_flows
         ]
-
-        # Create type-level model for prevent simultaneous flows
         self._prevent_simultaneous_model = PreventSimultaneousFlowsModel(
             self, components_with_prevent_simultaneous, self._flows_model
         )
         self._prevent_simultaneous_model.create_constraints()
 
-        record('prevent_simultaneous')
-
-        # Post-processing
+    def _finalize_model(self) -> None:
         self._add_scenario_equality_constraints()
         self._populate_element_variable_names()
-
-        # Finalize effect shares (creates share variables and adds to effect constraints)
         self.effects.finalize_shares()
 
-        record('end')
-
-        if timing:
-            print('\n  Type-Level Modeling Timing Breakdown:')
-            prev = timings['start']
-            for name in [
-                'effects',
-                'collect_flows',
-                'flows_variables',
-                'flows_constraints',
-                'flows_effects',
-                'buses_variables',
-                'buses_constraints',
-                'buses_effects',
-                'storages_variables',
-                'storages_constraints',
-                'storages_investment_model',
-                'storages_investment_constraints',
-                'component_status_variables',
-                'component_status_constraints',
-                'component_status_features',
-                'component_status_effects',
-                'converters',
-                'transmissions',
-                'prevent_simultaneous',
-                'components',
-                'buses',
-                'end',
-            ]:
-                elapsed = (timings[name] - prev) * 1000
-                print(f'    {name:25s}: {elapsed:8.2f}ms')
-                prev = timings[name]
-            total = (timings['end'] - timings['start']) * 1000
-            print(f'    {"TOTAL":25s}: {total:8.2f}ms')
-
-        logger.info(
-            f'Type-level modeling complete: {len(self.variables)} variables, {len(self.constraints)} constraints'
+    def _is_intercluster_storage(self, component) -> bool:
+        clustering = self.flow_system.clustering
+        return clustering is not None and component.cluster_mode in (
+            'intercluster',
+            'intercluster_cyclic',
         )
 
     def _add_scenario_equality_for_parameter_type(
