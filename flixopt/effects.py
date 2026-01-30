@@ -656,21 +656,6 @@ class EffectCollection(ElementContainer[Effect]):
 
         self.add_effects(*effects)
 
-    def create_model(self, model: FlowSystemModel) -> EffectsModel:
-        from .batched import EffectsData
-
-        self._plausibility_checks()
-        if self._penalty_effect is None:
-            penalty = self._create_penalty_effect()
-            if penalty._flow_system is None:
-                penalty.link_to_flow_system(model.flow_system)
-        data = EffectsData(self)
-        em = EffectsModel(model=model, data=data)
-        em.create_variables()
-        em._add_share_between_effects()
-        em._set_objective()
-        return em
-
     def _create_penalty_effect(self) -> Effect:
         """
         Create and register the penalty effect (called internally by FlowSystem).

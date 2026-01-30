@@ -1074,7 +1074,20 @@ class FlowSystemModel(linopy.Model):
         record('start')
 
         # Create effect models first
-        self.effects = self.flow_system.effects.create_model(self)
+        from .batched import EffectsData
+        from .effects import EffectsModel
+
+        effect_collection = self.flow_system.effects
+        effect_collection._plausibility_checks()
+        if effect_collection._penalty_effect is None:
+            penalty = effect_collection._create_penalty_effect()
+            if penalty._flow_system is None:
+                penalty.link_to_flow_system(self.flow_system)
+        data = EffectsData(effect_collection)
+        self.effects = EffectsModel(self, data)
+        self.effects.create_variables()
+        self.effects._add_share_between_effects()
+        self.effects._set_objective()
 
         record('effects')
 
