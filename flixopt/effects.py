@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import linopy
 import numpy as np
@@ -353,6 +353,9 @@ class EffectsModel:
         # Each entry: a defining_expr with 'contributor' dim
         self._temporal_share_defs: list[linopy.LinearExpression] = []
         self._periodic_share_defs: list[linopy.LinearExpression] = []
+        # Constant (xr.DataArray) contributions with 'contributor' + 'effect' dims
+        self._temporal_constant_defs: list[xr.DataArray] = []
+        self._periodic_constant_defs: list[xr.DataArray] = []
 
     @property
     def effect_index(self):
@@ -363,15 +366,23 @@ class EffectsModel:
         """Register contributors for the share|temporal variable.
 
         The defining_expr must have a 'contributor' dimension.
+        Accepts linopy LinearExpression/Variable or plain xr.DataArray (constants).
         """
-        self._temporal_share_defs.append(defining_expr)
+        if isinstance(defining_expr, xr.DataArray):
+            self._temporal_constant_defs.append(defining_expr)
+        else:
+            self._temporal_share_defs.append(defining_expr)
 
     def add_periodic_contribution(self, defining_expr) -> None:
         """Register contributors for the share|periodic variable.
 
         The defining_expr must have a 'contributor' dimension.
+        Accepts linopy LinearExpression/Variable or plain xr.DataArray (constants).
         """
-        self._periodic_share_defs.append(defining_expr)
+        if isinstance(defining_expr, xr.DataArray):
+            self._periodic_constant_defs.append(defining_expr)
+        else:
+            self._periodic_share_defs.append(defining_expr)
 
     def _stack_bounds(self, attr_name: str, default: float = np.inf) -> xr.DataArray:
         """Stack per-effect bounds into a single DataArray with effect dimension."""
@@ -556,10 +567,18 @@ class EffectsModel:
             self.share_temporal = self._create_share_var(self._temporal_share_defs, 'share|temporal', temporal=True)
             self._eq_per_timestep.lhs -= self.share_temporal.sum('contributor')
 
+        # === Apply temporal constants directly ===
+        for const in self._temporal_constant_defs:
+            self._eq_per_timestep.lhs -= const.sum('contributor').reindex({'effect': self._effect_index})
+
         # === Create share|periodic variable ===
         if self._periodic_share_defs:
             self.share_periodic = self._create_share_var(self._periodic_share_defs, 'share|periodic', temporal=False)
             self._eq_periodic.lhs -= self.share_periodic.sum('contributor').reindex({'effect': self._effect_index})
+
+        # === Apply periodic constants directly ===
+        for const in self._periodic_constant_defs:
+            self._eq_periodic.lhs -= const.sum('contributor').reindex({'effect': self._effect_index})
 
     def _share_coords(self, element_dim: str, element_index, temporal: bool = True) -> xr.Coordinates:
         """Build coordinates for share variables: (element, effect) + time/period/scenario."""
@@ -614,56 +633,6 @@ class EffectsModel:
         """Get total variable for a specific effect."""
         return self.total.sel(effect=effect_id)
 
-    def add_share_to_effects(
-        self,
-        name: str,
-        expressions: EffectExpr,
-        target: Literal['temporal', 'periodic'],
-    ) -> None:
-        """Add effect shares using batched variables.
-
-        Builds a single expression with 'effect' dimension from the per-effect dict,
-        then adds it to the appropriate constraint in one call.
-        """
-        if not expressions:
-            return
-
-        # Separate linopy expressions from plain constants (scalars/DataArrays)
-        linopy_exprs = {}
-        constant_exprs = {}
-        for effect, expression in expressions.items():
-            effect_id = self._effect_collection[effect].label
-            if isinstance(expression, (linopy.LinearExpression, linopy.Variable)):
-                linopy_exprs[effect_id] = self._as_expression(expression)
-            else:
-                constant_exprs[effect_id] = expression
-
-        # Constants: build DataArray with effect dim, subtract directly
-        if constant_exprs:
-            const_da = xr.concat(
-                [xr.DataArray(v).expand_dims(effect=[eid]) for eid, v in constant_exprs.items()],
-                dim='effect',
-                coords='minimal',
-            ).reindex(effect=self.effect_ids, fill_value=0)
-            eq = self._eq_per_timestep if target == 'temporal' else self._eq_periodic
-            eq.lhs -= const_da
-
-        # Linopy expressions: concat with effect dim
-        if not linopy_exprs:
-            return
-        combined = xr.concat(
-            [expr.data.expand_dims(effect=[eid]) for eid, expr in linopy_exprs.items()],
-            dim='effect',
-        )
-        combined_expr = linopy.LinearExpression(combined, self.model)
-
-        if target == 'temporal':
-            self.add_share_temporal(combined_expr)
-        elif target == 'periodic':
-            self.add_share_periodic(combined_expr)
-        else:
-            raise ValueError(f'Target {target} not supported!')
-
     def _add_share_between_effects(self):
         """Add cross-effect shares between effects."""
         for target_effect in self._effect_collection.values():
@@ -689,63 +658,6 @@ class EffectsModel:
             (self.total.sel(effect=obj_id) * self.model.objective_weights).sum()
             + (self.total.sel(effect=pen_id) * self.model.objective_weights).sum()
         )
-
-    def apply_batched_flow_effect_shares(
-        self,
-        flow_rate: linopy.Variable,
-        effect_specs: dict[str, list[tuple[str, float | xr.DataArray]]],
-    ) -> None:
-        """Apply batched effect shares for flows to all relevant effects.
-
-        Args:
-            flow_rate: The batched flow_rate variable with flow dimension.
-            effect_specs: Dict mapping effect_name to list of (element_id, factor) tuples.
-        """
-        # Detect the element dimension name from flow_rate (e.g., 'flow')
-        flow_rate_dims = [d for d in flow_rate.dims if d not in ('time', 'period', 'scenario', '_term')]
-        dim = flow_rate_dims[0] if flow_rate_dims else 'flow'
-
-        for effect_name, element_factors in effect_specs.items():
-            if effect_name not in self._effect_collection:
-                logger.warning(f'Effect {effect_name} not found, skipping shares')
-                continue
-
-            element_ids = [eid for eid, _ in element_factors]
-            factors = [factor for _, factor in element_factors]
-
-            factors_da = xr.concat(
-                [xr.DataArray(f) if not isinstance(f, xr.DataArray) else f for f in factors],
-                dim=dim,
-                coords='minimal',
-            ).assign_coords({dim: element_ids})
-
-            flow_rate_subset = flow_rate.sel({dim: element_ids})
-            expression_all = flow_rate_subset * self.model.timestep_duration * factors_da
-            share_sum = expression_all.sum(dim).expand_dims(effect=[effect_name])
-            self.add_share_temporal(share_sum)
-
-    def apply_batched_penalty_shares(
-        self,
-        penalty_expressions: list[tuple[str, linopy.LinearExpression]],
-    ) -> None:
-        """Apply batched penalty effect shares.
-
-        Args:
-            penalty_expressions: List of (element_label, penalty_expression) tuples.
-        """
-        for element_label, expression in penalty_expressions:
-            share_var = self.model.add_variables(
-                coords=self.model.get_coords(self.model.temporal_dims),
-                name=f'{element_label}->Penalty(temporal)',
-            )
-            self.model.add_constraints(
-                share_var == expression,
-                name=f'{element_label}->Penalty(temporal)',
-            )
-            self.add_share_temporal(share_var.expand_dims(effect=[PENALTY_EFFECT_LABEL]))
-
-
-EffectExpr = dict[str, linopy.LinearExpression]  # Used to create Shares
 
 
 class EffectCollection(ElementContainer[Effect]):

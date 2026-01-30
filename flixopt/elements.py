@@ -1180,11 +1180,7 @@ class FlowsModel(TypeModel):
             )
 
             # Add to effects (sum over element dimension for periodic share)
-            self.model.effects.add_share_to_effects(
-                name=f'{name_prefix}|{effect_name}',
-                expressions={effect_name: share_var.sum(dim)},
-                target='periodic',
-            )
+            self.model.effects.add_share_periodic(share_var.sum(dim).expand_dims(effect=[effect_name]))
 
         logger.debug(f'Created batched piecewise effects for {len(element_ids)} flows')
 
@@ -1245,14 +1241,10 @@ class FlowsModel(TypeModel):
 
         # === Constants: mandatory fixed + retirement ===
         if inv is not None:
-            for element_id, effects_dict in inv.effects_of_investment_mandatory:
-                self.model.effects.add_share_to_effects(
-                    name=f'{element_id}|effects_fix', expressions=effects_dict, target='periodic'
-                )
-            for element_id, effects_dict in inv.effects_of_retirement_constant:
-                self.model.effects.add_share_to_effects(
-                    name=f'{element_id}|effects_retire_const', expressions=effects_dict, target='periodic'
-                )
+            if inv.effects_of_investment_mandatory is not None:
+                effects_model.add_periodic_contribution(inv.effects_of_investment_mandatory.rename(rename))
+            if inv.effects_of_retirement_constant is not None:
+                effects_model.add_periodic_contribution(inv.effects_of_retirement_constant.rename(rename))
 
     # === Status Variables (cached_property) ===
 
@@ -1685,13 +1677,19 @@ class BusesModel(TypeModel):
         return penalty_specs
 
     def create_effect_shares(self) -> None:
-        """Create penalty effect shares for buses with imbalance.
+        """Create penalty effect shares for buses with imbalance."""
+        from .effects import PENALTY_EFFECT_LABEL
 
-        Collects specs and delegates to EffectsModel for application.
-        """
-        penalty_specs = self.collect_penalty_share_specs()
-        if penalty_specs:
-            self.model.effects.apply_batched_penalty_shares(penalty_specs)
+        for element_label, expression in self.collect_penalty_share_specs():
+            share_var = self.model.add_variables(
+                coords=self.model.get_coords(self.model.temporal_dims),
+                name=f'{element_label}->Penalty(temporal)',
+            )
+            self.model.add_constraints(
+                share_var == expression,
+                name=f'{element_label}->Penalty(temporal)',
+            )
+            self.model.effects.add_share_temporal(share_var.expand_dims(effect=[PENALTY_EFFECT_LABEL]))
 
     def get_variable(self, name: str, element_id: str | None = None):
         """Get a variable, optionally selecting a specific element.

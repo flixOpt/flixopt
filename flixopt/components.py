@@ -913,14 +913,10 @@ class StoragesModel(TypeModel):
                     )
 
         # === Constants: mandatory fixed + retirement ===
-        for element_id, effects_dict in inv.effects_of_investment_mandatory:
-            self.model.effects.add_share_to_effects(
-                name=f'{element_id}|effects_fix', expressions=effects_dict, target='periodic'
-            )
-        for element_id, effects_dict in inv.effects_of_retirement_constant:
-            self.model.effects.add_share_to_effects(
-                name=f'{element_id}|effects_retire_const', expressions=effects_dict, target='periodic'
-            )
+        if inv.effects_of_investment_mandatory is not None:
+            effects_model.add_periodic_contribution(inv.effects_of_investment_mandatory.rename(rename))
+        if inv.effects_of_retirement_constant is not None:
+            effects_model.add_periodic_contribution(inv.effects_of_retirement_constant.rename(rename))
 
     # --- Investment Cached Properties ---
 
@@ -1666,11 +1662,7 @@ class StoragesModel(TypeModel):
             )
 
             # Add to effects (sum over element dimension for periodic share)
-            self.model.effects.add_share_to_effects(
-                name=f'{name_prefix}|{effect_name}',
-                expressions={effect_name: share_var.sum(dim)},
-                target='periodic',
-            )
+            self.model.effects.add_share_periodic(share_var.sum(dim).expand_dims(effect=[effect_name]))
 
         logger.debug(f'Created batched piecewise effects for {len(element_ids)} storages')
 
@@ -2256,11 +2248,11 @@ class InterclusterStoragesModel:
             else:
                 continue
 
-            self.model.effects.add_share_to_effects(
-                name=f'{self.dim_name}|investment|{effect_name}',
-                expressions={effect_name: expr},
-                target='periodic',
-            )
+            if isinstance(expr, (int, float)) and expr == 0:
+                continue
+            if isinstance(expr, (int, float)):
+                expr = xr.DataArray(expr)
+            self.model.effects.add_share_periodic(expr.expand_dims(effect=[effect_name]))
 
 
 @register_class_for_io

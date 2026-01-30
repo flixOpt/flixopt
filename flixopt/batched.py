@@ -466,32 +466,16 @@ class InvestmentData:
         return self._build_effects('effects_of_retirement', self.with_effects_of_retirement)
 
     @cached_property
-    def effects_of_investment_mandatory(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
-        """List of (element_id, effects_dict) for mandatory investments with fixed effects."""
-        result = []
-        for eid in self.with_mandatory:
-            effects = self._params[eid].effects_of_investment
-            if effects:
-                effects_dict = {
-                    k: v for k, v in effects.items() if v is not None and not (np.isscalar(v) and np.isnan(v))
-                }
-                if effects_dict:
-                    result.append((eid, effects_dict))
-        return result
+    def effects_of_investment_mandatory(self) -> xr.DataArray | None:
+        """(element, effect) - fixed effects of investment for mandatory elements."""
+        ids = [eid for eid in self.with_mandatory if self._params[eid].effects_of_investment]
+        return self._build_effects('effects_of_investment', ids)
 
     @cached_property
-    def effects_of_retirement_constant(self) -> list[tuple[str, dict[str, float | xr.DataArray]]]:
-        """List of (element_id, effects_dict) for retirement constant parts."""
-        result = []
-        for eid in self.with_optional:
-            effects = self._params[eid].effects_of_retirement
-            if effects:
-                effects_dict = {
-                    k: v for k, v in effects.items() if v is not None and not (np.isscalar(v) and np.isnan(v))
-                }
-                if effects_dict:
-                    result.append((eid, effects_dict))
-        return result
+    def effects_of_retirement_constant(self) -> xr.DataArray | None:
+        """(element, effect) - constant retirement effects for optional elements."""
+        ids = [eid for eid in self.with_optional if self._params[eid].effects_of_retirement]
+        return self._build_effects('effects_of_retirement', ids)
 
 
 class FlowsData:
