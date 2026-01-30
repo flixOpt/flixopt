@@ -1108,23 +1108,17 @@ class FlowSystemModel(linopy.Model):
         from .batched import EffectsData
         from .effects import EffectsModel
 
-        data = EffectsData(self.flow_system.effects)
-        self.effects = EffectsModel(self, data)
-        self.effects.do_modeling()
+        self.effects = EffectsModel(self, EffectsData(self.flow_system.effects)).build_model()
 
     def _create_flows_model(self) -> None:
         from .elements import FlowsModel
 
-        all_flows = list(self.flow_system.flows.values())
-        self._flows_model = FlowsModel(self, all_flows)
-        self._flows_model.do_modeling()
+        self._flows_model = FlowsModel(self, list(self.flow_system.flows.values())).build_model()
 
     def _create_buses_model(self) -> None:
         from .elements import BusesModel
 
-        all_buses = list(self.flow_system.buses.values())
-        self._buses_model = BusesModel(self, all_buses, self._flows_model)
-        self._buses_model.do_modeling()
+        self._buses_model = BusesModel(self, list(self.flow_system.buses.values()), self._flows_model).build_model()
 
     def _create_storages_model(self) -> None:
         from .components import Storage, StoragesModel
@@ -1134,8 +1128,7 @@ class FlowSystemModel(linopy.Model):
             for c in self.flow_system.components.values()
             if isinstance(c, Storage) and not self._is_intercluster_storage(c)
         ]
-        self._storages_model = StoragesModel(self, basic_storages, self._flows_model)
-        self._storages_model.do_modeling()
+        self._storages_model = StoragesModel(self, basic_storages, self._flows_model).build_model()
 
     def _create_intercluster_storages_model(self) -> None:
         from .components import InterclusterStoragesModel, Storage
@@ -1149,15 +1142,13 @@ class FlowSystemModel(linopy.Model):
         if intercluster_storages:
             self._intercluster_storages_model = InterclusterStoragesModel(
                 self, intercluster_storages, self._flows_model
-            )
-            self._intercluster_storages_model.do_modeling()
+            ).build_model()
 
     def _create_components_model(self) -> None:
         from .elements import ComponentsModel
 
         components_with_status = [c for c in self.flow_system.components.values() if c.status_parameters is not None]
-        self._components_model = ComponentsModel(self, components_with_status, self._flows_model)
-        self._components_model.do_modeling()
+        self._components_model = ComponentsModel(self, components_with_status, self._flows_model).build_model()
 
     def _create_converters_model(self) -> None:
         from .components import LinearConverter
@@ -1171,27 +1162,22 @@ class FlowSystemModel(linopy.Model):
         ]
         self._converters_model = ConvertersModel(
             self, converters_with_factors, converters_with_piecewise, self._flows_model
-        )
-        self._converters_model.do_modeling()
+        ).build_model()
 
     def _create_transmissions_model(self) -> None:
         from .components import Transmission
         from .elements import TransmissionsModel
 
         transmissions = [c for c in self.flow_system.components.values() if isinstance(c, Transmission)]
-        self._transmissions_model = TransmissionsModel(self, transmissions, self._flows_model)
-        self._transmissions_model.do_modeling()
+        self._transmissions_model = TransmissionsModel(self, transmissions, self._flows_model).build_model()
 
     def _create_prevent_simultaneous_model(self) -> None:
         from .elements import PreventSimultaneousFlowsModel
 
-        components_with_prevent_simultaneous = [
-            c for c in self.flow_system.components.values() if c.prevent_simultaneous_flows
-        ]
+        components = [c for c in self.flow_system.components.values() if c.prevent_simultaneous_flows]
         self._prevent_simultaneous_model = PreventSimultaneousFlowsModel(
-            self, components_with_prevent_simultaneous, self._flows_model
-        )
-        self._prevent_simultaneous_model.do_modeling()
+            self, components, self._flows_model
+        ).build_model()
 
     def _finalize_model(self) -> None:
         self._add_scenario_equality_constraints()

@@ -352,11 +352,12 @@ class EffectsModel:
         self._temporal_constant_defs: list[xr.DataArray] = []
         self._periodic_constant_defs: list[xr.DataArray] = []
 
-    def do_modeling(self) -> None:
+    def build_model(self) -> EffectsModel:
         """Build effect variables, cross-effect shares, and objective."""
         self.create_variables()
         self._add_share_between_effects()
         self._set_objective()
+        return self
 
     @property
     def effect_index(self):

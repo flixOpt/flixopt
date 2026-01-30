@@ -790,11 +790,12 @@ class FlowsModel(TypeModel):
             binary=True,
         )
 
-    def do_modeling(self) -> None:
+    def build_model(self):
         """Build all flow variables, status model, and constraints."""
         self.create_variables()
         self.create_status_model()
         self.create_constraints()
+        return self
 
     def create_variables(self) -> None:
         """Create all batched variables for flows.
@@ -1551,11 +1552,12 @@ class BusesModel(TypeModel):
         for bus in elements:
             bus._buses_model = self
 
-    def do_modeling(self) -> None:
+    def build_model(self):
         """Build all bus variables, constraints, and effect shares."""
         self.create_variables()
         self.create_constraints()
         self.create_effect_shares()
+        return self
 
     def create_variables(self) -> None:
         """Create all batched variables for buses.
@@ -1785,12 +1787,13 @@ class ComponentsModel(TypeModel):
             coords={'component': self.element_ids},
         )
 
-    def do_modeling(self) -> None:
+    def build_model(self):
         """Build component status variables, constraints, features, and effect shares."""
         self.create_variables()
         self.create_constraints()
         self.create_status_features()
         self.create_effect_shares()
+        return self
 
     def create_variables(self) -> None:
         """Create batched component status variable with component dimension."""
@@ -2359,11 +2362,12 @@ class ConvertersModel:
 
             return xr.DataArray(data, dims=full_dims, coords=full_coords)
 
-    def do_modeling(self) -> None:
+    def build_model(self):
         """Build linear and piecewise conversion constraints."""
         self.create_linear_constraints()
         self.create_piecewise_variables()
         self.create_piecewise_constraints()
+        return self
 
     def create_linear_constraints(self) -> None:
         """Create batched linear conversion factor constraints.
@@ -2800,9 +2804,10 @@ class TransmissionsModel:
 
         return xr.concat(arrays, dim=self.dim_name)
 
-    def do_modeling(self) -> None:
+    def build_model(self):
         """Build transmission constraints."""
         self.create_constraints()
+        return self
 
     def create_constraints(self) -> None:
         """Create batched transmission efficiency constraints.
@@ -2930,9 +2935,10 @@ class PreventSimultaneousFlowsModel:
             membership=membership,
         )
 
-    def do_modeling(self) -> None:
+    def build_model(self):
         """Build prevent-simultaneous-flows constraints."""
         self.create_constraints()
+        return self
 
     def create_constraints(self) -> None:
         """Create batched mutual exclusivity constraints.

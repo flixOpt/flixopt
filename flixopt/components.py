@@ -1020,12 +1020,13 @@ class StoragesModel(TypeModel):
             membership=membership,
         )
 
-    def do_modeling(self) -> None:
+    def build_model(self):
         """Build all storage variables, constraints, and investment model."""
         self.create_variables()
         self.create_constraints()
         self.create_investment_model()
         self.create_investment_constraints()
+        return self
 
     def create_variables(self) -> None:
         """Create batched variables for all storages.
@@ -1739,13 +1740,14 @@ class InterclusterStoragesModel:
     # Variable Creation
     # =========================================================================
 
-    def do_modeling(self) -> None:
+    def build_model(self):
         """Build all intercluster storage variables, constraints, investment, and effect shares."""
         self.create_variables()
         self.create_constraints()
         self.create_investment_model()
         self.create_investment_constraints()
         self.create_effect_shares()
+        return self
 
     def create_variables(self) -> None:
         """Create batched variables for all intercluster storages."""
