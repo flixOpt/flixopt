@@ -971,47 +971,6 @@ class FlowsModel(TypeModel):
         """
         return self.data.previous_states
 
-    def _add_subset_variables(
-        self,
-        name: str,
-        var_type: VariableType,
-        element_ids: list[str],
-        dims: tuple[str, ...] | None,
-        lower: xr.DataArray | float = -np.inf,
-        upper: xr.DataArray | float = np.inf,
-        binary: bool = False,
-        **kwargs,
-    ) -> None:
-        """Create a variable for a subset of elements.
-
-        Unlike add_variables() which uses self.element_ids, this creates
-        a variable with a custom subset of element IDs.
-
-        Args:
-            dims: Dimensions to include. None means ALL model dimensions.
-        """
-        coords = self._build_coords(dims=dims, element_ids=element_ids)
-
-        # Create variable
-        full_name = f'{self.element_type.value}|{name}'
-        variable = self.model.add_variables(
-            lower=lower if not binary else None,
-            upper=upper if not binary else None,
-            coords=coords,
-            name=full_name,
-            binary=binary,
-            **kwargs,
-        )
-
-        # Register expansion category
-        from .structure import VARIABLE_TYPE_TO_EXPANSION
-
-        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(var_type)
-        if expansion_category is not None:
-            self.model.variable_categories[variable.name] = expansion_category
-
-        self._variables[name] = variable
-
     def _build_constraint_mask(self, selected_ids: set[str], reference_var: linopy.Variable) -> xr.DataArray:
         """Build a mask for constraint creation from selected flow IDs.
 
@@ -1717,61 +1676,26 @@ class BusesModel(TypeModel):
         """
         if self.buses_with_imbalance:
             # virtual_supply: allows adding flow to meet demand
-            self._add_subset_variables(
-                name='virtual_supply',
-                var_type=VariableType.VIRTUAL_FLOW,
-                element_ids=self.imbalance_ids,
+            self.add_variables(
+                'virtual_supply',
+                VariableType.VIRTUAL_FLOW,
                 lower=0.0,
-                upper=np.inf,
                 dims=self.model.temporal_dims,
+                element_ids=self.imbalance_ids,
             )
 
             # virtual_demand: allows removing excess flow
-            self._add_subset_variables(
-                name='virtual_demand',
-                var_type=VariableType.VIRTUAL_FLOW,
-                element_ids=self.imbalance_ids,
+            self.add_variables(
+                'virtual_demand',
+                VariableType.VIRTUAL_FLOW,
                 lower=0.0,
-                upper=np.inf,
                 dims=self.model.temporal_dims,
+                element_ids=self.imbalance_ids,
             )
 
         logger.debug(
             f'BusesModel created variables: {len(self.elements)} buses, {len(self.buses_with_imbalance)} with imbalance'
         )
-
-    def _add_subset_variables(
-        self,
-        name: str,
-        var_type: VariableType,
-        element_ids: list[str],
-        dims: tuple[str, ...],
-        lower: xr.DataArray | float = -np.inf,
-        upper: xr.DataArray | float = np.inf,
-        **kwargs,
-    ) -> None:
-        """Create a variable for a subset of elements."""
-        coords = self._build_coords(dims=dims, element_ids=element_ids)
-
-        # Create variable
-        full_name = f'{self.element_type.value}|{name}'
-        variable = self.model.add_variables(
-            lower=lower,
-            upper=upper,
-            coords=coords,
-            name=full_name,
-            **kwargs,
-        )
-
-        # Register category for segment expansion
-        from .structure import VARIABLE_TYPE_TO_EXPANSION
-
-        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(var_type)
-        if expansion_category is not None:
-            self.model.variable_categories[variable.name] = expansion_category
-
-        # Store reference
-        self._variables[name] = variable
 
     def create_constraints(self) -> None:
         """Create all batched constraints for buses.
