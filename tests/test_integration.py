@@ -92,7 +92,7 @@ class TestComplex:
 
         # Check piecewise effects
         assert_almost_equal_numeric(
-            sol['storage|piecewise_effects|costs'].sel(storage='Speicher').values,
+            sol['storage|piecewise_effects|share'].sel(storage='Speicher', effect='costs').values,
             800,
             'Speicher piecewise_effects costs doesnt match expected value',
         )
@@ -135,7 +135,7 @@ class TestComplex:
 
         # Check piecewise effects cost
         assert_almost_equal_numeric(
-            sol['storage|piecewise_effects|costs'].sel(storage='Speicher').values,
+            sol['storage|piecewise_effects|share'].sel(storage='Speicher', effect='costs').values,
             454.75,
             'Speicher piecewise_effects costs doesnt match expected value',
         )

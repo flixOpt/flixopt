@@ -1151,36 +1151,41 @@ class FlowsModel(TypeModel):
             f'{name_prefix}|size|coupling',
         )
 
-        # Create share variables and coupling constraints for each effect
-
-        coords_dict = {dim: pd.Index(element_ids, name=dim)}
+        # Create single share variable with (dim, effect) and vectorized coupling constraint
+        effect_names = sorted(all_effect_names)
+        coords_dict = {dim: pd.Index(element_ids, name=dim), 'effect': effect_names}
         if base_coords is not None:
             coords_dict.update(dict(base_coords))
         share_coords = xr.Coordinates(coords_dict)
 
-        for effect_name in all_effect_names:
-            # Create batched share variable
-            share_var = self.model.add_variables(
-                lower=-np.inf,  # Shares can be negative (e.g., costs)
-                upper=np.inf,
-                coords=share_coords,
-                name=f'{name_prefix}|{effect_name}',
-            )
+        share_var = self.model.add_variables(
+            lower=-np.inf,
+            upper=np.inf,
+            coords=share_coords,
+            name=f'{name_prefix}|share',
+        )
 
-            # Create coupling constraint for this share
-            starts, ends = effect_breakpoints[effect_name]
-            PiecewiseHelpers.create_coupling_constraint(
-                self.model,
-                share_var,
-                piecewise_vars['lambda0'],
-                piecewise_vars['lambda1'],
-                starts,
-                ends,
-                f'{name_prefix}|{effect_name}|coupling',
-            )
+        # Stack breakpoints into (dim, segment, effect) for vectorized coupling
+        all_starts = xr.concat(
+            [effect_breakpoints[eff][0].expand_dims(effect=[eff]) for eff in effect_names],
+            dim='effect',
+        )
+        all_ends = xr.concat(
+            [effect_breakpoints[eff][1].expand_dims(effect=[eff]) for eff in effect_names],
+            dim='effect',
+        )
+        PiecewiseHelpers.create_coupling_constraint(
+            self.model,
+            share_var,
+            piecewise_vars['lambda0'],
+            piecewise_vars['lambda1'],
+            all_starts,
+            all_ends,
+            f'{name_prefix}|coupling',
+        )
 
-            # Add to effects (sum over element dimension for periodic share)
-            self.model.effects.add_share_periodic(share_var.sum(dim).expand_dims(effect=[effect_name]))
+        # Sum over element dim, keep effect dim
+        self.model.effects.add_share_periodic(share_var.sum(dim))
 
         logger.debug(f'Created batched piecewise effects for {len(element_ids)} flows')
 
