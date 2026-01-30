@@ -326,7 +326,7 @@ class EffectsModel:
         self.model = model
         self.data = data
 
-        # Variables (set during create_variables)
+        # Variables (set during do_modeling / create_variables)
         self.periodic: linopy.Variable | None = None
         self.temporal: linopy.Variable | None = None
         self.per_timestep: linopy.Variable | None = None
@@ -351,6 +351,12 @@ class EffectsModel:
         # Constant (xr.DataArray) contributions with 'contributor' + 'effect' dims
         self._temporal_constant_defs: list[xr.DataArray] = []
         self._periodic_constant_defs: list[xr.DataArray] = []
+
+    def do_modeling(self) -> None:
+        """Build effect variables, cross-effect shares, and objective."""
+        self.create_variables()
+        self._add_share_between_effects()
+        self._set_objective()
 
     @property
     def effect_index(self):
