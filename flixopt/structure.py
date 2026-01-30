@@ -874,7 +874,6 @@ class FlowSystemModel(linopy.Model):
         self._components_model = None  # Reference to ComponentsModel
         self._converters_model = None  # Reference to ConvertersModel
         self._transmissions_model = None  # Reference to TransmissionsModel
-        self._prevent_simultaneous_model = None  # Reference to PreventSimultaneousFlowsModel
 
     def add_variables(
         self,
@@ -1062,7 +1061,6 @@ class FlowSystemModel(linopy.Model):
             ComponentsModel,
             ConvertersModel,
             FlowsModel,
-            PreventSimultaneousFlowsModel,
             TransmissionsModel,
         )
 
@@ -1103,7 +1101,10 @@ class FlowSystemModel(linopy.Model):
         record('intercluster_storages')
 
         components_with_status = [c for c in self.flow_system.components.values() if c.status_parameters is not None]
-        self._components_model = ComponentsModel(self, components_with_status, self._flows_model)
+        components_with_prevent = [c for c in self.flow_system.components.values() if c.prevent_simultaneous_flows]
+        self._components_model = ComponentsModel(
+            self, components_with_status, self._flows_model, components_with_prevent
+        )
         record('components')
 
         converters_with_factors = [
@@ -1120,12 +1121,6 @@ class FlowSystemModel(linopy.Model):
         transmissions = [c for c in self.flow_system.components.values() if isinstance(c, Transmission)]
         self._transmissions_model = TransmissionsModel(self, transmissions, self._flows_model)
         record('transmissions')
-
-        components_with_prevent = [c for c in self.flow_system.components.values() if c.prevent_simultaneous_flows]
-        self._prevent_simultaneous_model = PreventSimultaneousFlowsModel(
-            self, components_with_prevent, self._flows_model
-        )
-        record('prevent_simultaneous')
 
         self._add_scenario_equality_constraints()
         self._populate_element_variable_names()

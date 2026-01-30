@@ -1715,15 +1715,18 @@ class ComponentsModel(TypeModel):
         model: FlowSystemModel,
         components_with_status: list[Component],
         flows_model: FlowsModel,
+        components_with_prevent_simultaneous: list[Component] | None = None,
     ):
         super().__init__(model, components_with_status)
         self._logger = logging.getLogger('flixopt')
         self._flows_model = flows_model
+        self._components_with_prevent_simultaneous = components_with_prevent_simultaneous or []
         self._logger.debug(f'ComponentsModel initialized: {len(components_with_status)} with status')
         self.create_variables()
         self.create_constraints()
         self.create_status_features()
         self.create_effect_shares()
+        self.constraint_prevent_simultaneous()
 
     @property
     def components(self) -> list[Component]:
@@ -2135,6 +2138,34 @@ class ComponentsModel(TypeModel):
     def create_effect_shares(self) -> None:
         """No-op: effect shares are now collected centrally in EffectsModel.finalize_shares()."""
         pass
+
+    def constraint_prevent_simultaneous(self) -> None:
+        """Create mutual exclusivity constraints for components with prevent_simultaneous_flows.
+
+        For each component: sum(flow_statuses) <= 1, ensuring at most one flow is active at a time.
+        Uses a mask matrix to batch all components into a single constraint.
+        """
+        components = self._components_with_prevent_simultaneous
+        if not components:
+            return
+
+        membership = MaskHelpers.build_flow_membership(
+            components,
+            lambda c: c.prevent_simultaneous_flows,
+        )
+        mask = MaskHelpers.build_mask(
+            row_dim='component',
+            row_ids=[c.label for c in components],
+            col_dim='flow',
+            col_ids=self._flows_model.element_ids,
+            membership=membership,
+        )
+
+        status = self._flows_model._variables['status']
+        self.model.add_constraints(
+            (status * mask).sum('flow') <= 1,
+            name='prevent_simultaneous',
+        )
 
     # === Variable accessor properties ===
 
@@ -2870,76 +2901,4 @@ class TransmissionsModel:
 
         self._logger.debug(
             f'TransmissionsModel created batched constraints for {len(self.transmissions)} transmissions'
-        )
-
-
-class PreventSimultaneousFlowsModel:
-    """Type-level model for batched prevent_simultaneous_flows constraints.
-
-    Handles mutual exclusivity constraints for components where flows cannot
-    be active simultaneously (e.g., Storage charge/discharge, SourceAndSink buy/sell).
-
-    Each constraint enforces: sum(flow_statuses) <= 1
-    """
-
-    def __init__(
-        self,
-        model: FlowSystemModel,
-        components: list[Component],
-        flows_model: FlowsModel,
-    ):
-        """Initialize the prevent simultaneous flows model.
-
-        Args:
-            model: The FlowSystemModel to create constraints in.
-            components: List of components with prevent_simultaneous_flows set.
-            flows_model: The FlowsModel that owns flow status variables.
-        """
-        self._logger = logging.getLogger('flixopt')
-        self.model = model
-        self.components = components
-        self._flows_model = flows_model
-
-        self._logger.debug(f'PreventSimultaneousFlowsModel initialized: {len(components)} components')
-        self.create_constraints()
-
-    @cached_property
-    def _flow_mask(self) -> xr.DataArray:
-        """(component, flow) mask: 1 if flow belongs to component's prevent_simultaneous_flows."""
-        membership = MaskHelpers.build_flow_membership(
-            self.components,
-            lambda c: c.prevent_simultaneous_flows,
-        )
-        return MaskHelpers.build_mask(
-            row_dim='component',
-            row_ids=[c.label for c in self.components],
-            col_dim='flow',
-            col_ids=self._flows_model.element_ids,
-            membership=membership,
-        )
-
-    def create_constraints(self) -> None:
-        """Create batched mutual exclusivity constraints.
-
-        Uses a mask matrix to batch all components into a single constraint:
-        - mask: (component, flow) = 1 if flow in component's prevent_simultaneous_flows
-        - status: (flow, time, ...)
-        - (status * mask).sum('flow') <= 1 gives (component, time, ...) constraint
-        """
-        if not self.components:
-            return
-
-        status = self._flows_model._variables['status']
-        mask = self._flow_mask
-
-        # Batched constraint: sum of statuses for each component's flows <= 1
-        # status * mask broadcasts to (component, flow, time, ...)
-        # .sum('flow') reduces to (component, time, ...)
-        self.model.add_constraints(
-            (status * mask).sum('flow') <= 1,
-            name='prevent_simultaneous',
-        )
-
-        self._logger.debug(
-            f'PreventSimultaneousFlowsModel created batched constraint for {len(self.components)} components'
         )
