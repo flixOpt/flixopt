@@ -1592,9 +1592,9 @@ class FlowSystemModel(linopy.Model):
                 else:
                     share_type = suffix
 
-                # Find source dimension (flow, storage, component, or custom)
+                # Find source dimension (contributor, or legacy flow/storage/component/source)
                 source_dim = None
-                for dim in ['flow', 'storage', 'component', 'source']:
+                for dim in ['contributor', 'flow', 'storage', 'component', 'source']:
                     if dim in var.dims:
                         source_dim = dim
                         break

@@ -1203,18 +1203,17 @@ class FlowsModel(TypeModel):
         """
         dim = self.dim_name
         dt = self.model.timestep_duration
+        rename = {dim: 'contributor'}
 
         # === Temporal: rate * effects_per_flow_hour * dt ===
         factors = self.data.effects_per_flow_hour
         if factors is not None:
-            rate = self.rate.sel({dim: factors.coords[dim].values})
-            share_var = effects_model.create_share_variable(
-                'share|temporal', dim, factors.coords[dim], rate * factors * dt, temporal=True
-            )
-            effects_model.share_temporal = share_var
-            effects_model.add_temporal_contribution(share_var.sum(dim))
+            flow_ids = list(factors.coords[dim].values)
+            rate = self.rate.sel({dim: flow_ids})
+            expr = (rate * factors * dt).rename(rename)
+            effects_model.register_temporal_share(flow_ids, expr)
 
-        # === Temporal: status effects ===
+        # === Temporal: status effects (bypass share variable) ===
         if self.status is not None:
             factor = self.data.effects_per_active_hour
             if factor is not None:
@@ -1232,14 +1231,12 @@ class FlowsModel(TypeModel):
         inv = self.data._investment_data
         if inv is not None and inv.effects_per_size is not None:
             factors = inv.effects_per_size
-            size = self.size.sel({dim: factors.coords[dim].values})
-            share_var = effects_model.create_share_variable(
-                'share|periodic', dim, factors.coords[dim], size * factors, temporal=False
-            )
-            effects_model.share_periodic = share_var
-            effects_model.add_periodic_contribution(share_var.sum(dim))
+            flow_ids = list(factors.coords[dim].values)
+            size = self.size.sel({dim: flow_ids})
+            expr = (size * factors).rename(rename)
+            effects_model.register_periodic_share(flow_ids, expr)
 
-            # Investment/retirement effects (invested-based)
+            # Investment/retirement effects (bypass share variable)
             if self.invested is not None:
                 if (f := inv.effects_of_investment) is not None:
                     effects_model.add_periodic_contribution(

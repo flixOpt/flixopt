@@ -311,14 +311,14 @@ class TestFlowInvestModel:
         _flow_invested = model.variables['flow|invested'].sel(flow=flow_label, drop=True)
         _flow_size = model.variables['flow|size'].sel(flow=flow_label, drop=True)
 
-        # Check periodic share variable has flow and effect dimensions
+        # Check periodic share variable has contributor and effect dimensions
         share_periodic = model.variables['share|periodic']
-        assert 'flow' in share_periodic.dims
+        assert 'contributor' in share_periodic.dims
         assert 'effect' in share_periodic.dims
 
         # Check that the flow has investment effects for both costs and CO2
-        costs_share = share_periodic.sel(flow=flow_label, effect='costs', drop=True)
-        co2_share = share_periodic.sel(flow=flow_label, effect='CO2', drop=True)
+        costs_share = share_periodic.sel(contributor=flow_label, effect='costs', drop=True)
+        co2_share = share_periodic.sel(contributor=flow_label, effect='CO2', drop=True)
 
         # Both share variables should exist and be non-null
         assert costs_share is not None
