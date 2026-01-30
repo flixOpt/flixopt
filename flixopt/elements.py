@@ -126,11 +126,37 @@ class Component(Element):
             flow.link_to_flow_system(flow_system)
 
     def transform_data(self) -> None:
+        self._propagate_status_parameters()
+
         if self.status_parameters is not None:
             self.status_parameters.transform_data()
 
         for flow in self.inputs + self.outputs:
             flow.transform_data()
+
+    def _propagate_status_parameters(self) -> None:
+        """Propagate status parameters from this component to flows that need them.
+
+        Components with status_parameters require all their flows to have
+        StatusParameters (for big-M constraints). Components with
+        prevent_simultaneous_flows require those flows to have them too.
+        """
+        from .interface import StatusParameters
+
+        if self.status_parameters:
+            for flow in self.inputs + self.outputs:
+                if flow.status_parameters is None:
+                    flow.status_parameters = StatusParameters()
+                    flow.status_parameters.link_to_flow_system(
+                        self._flow_system, f'{flow.label_full}|status_parameters'
+                    )
+        if self.prevent_simultaneous_flows:
+            for flow in self.prevent_simultaneous_flows:
+                if flow.status_parameters is None:
+                    flow.status_parameters = StatusParameters()
+                    flow.status_parameters.link_to_flow_system(
+                        self._flow_system, f'{flow.label_full}|status_parameters'
+                    )
 
     def _check_unique_flow_labels(self):
         all_flow_labels = [flow.label for flow in self.inputs + self.outputs]

@@ -756,6 +756,32 @@ class Transmission(Component):
                     f'{self.in2.size.minimum_or_fixed_size=}, {self.in2.size.maximum_or_fixed_size=}.'
                 )
 
+    def _propagate_status_parameters(self) -> None:
+        super()._propagate_status_parameters()
+        # Transmissions with absolute_losses need status variables on input flows
+        # Also need relative_minimum > 0 to link status to flow rate properly
+        if self.absolute_losses is not None and np.any(self.absolute_losses != 0):
+            from .config import CONFIG
+            from .interface import StatusParameters
+
+            input_flows = [self.in1]
+            if self.in2 is not None:
+                input_flows.append(self.in2)
+            for flow in input_flows:
+                if flow.status_parameters is None:
+                    flow.status_parameters = StatusParameters()
+                    flow.status_parameters.link_to_flow_system(
+                        self._flow_system, f'{flow.label_full}|status_parameters'
+                    )
+                rel_min = flow.relative_minimum
+                needs_update = (
+                    rel_min is None
+                    or (np.isscalar(rel_min) and rel_min <= 0)
+                    or (isinstance(rel_min, np.ndarray) and np.all(rel_min <= 0))
+                )
+                if needs_update:
+                    flow.relative_minimum = CONFIG.Modeling.epsilon
+
     def transform_data(self) -> None:
         super().transform_data()
         self.relative_losses = self._fit_coords(f'{self.prefix}|relative_losses', self.relative_losses)
