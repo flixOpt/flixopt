@@ -2000,9 +2000,6 @@ class ComponentsModel:
         # Variables dict
         self._variables: dict[str, linopy.Variable] = {}
 
-        # Status feature variables (active_hours, startup, shutdown, etc.) created by StatusHelpers
-        self._status_variables: dict[str, linopy.Variable] = {}
-
         self._logger.debug(f'ComponentsModel initialized: {len(components_with_status)} with status')
 
     # --- Cached Properties ---
@@ -2195,24 +2192,291 @@ class ComponentsModel:
         ]
         return xr.concat(padded, dim='flow').any(dim='flow').astype(int)
 
-    def create_status_features(self) -> None:
-        """Create status features (startup, shutdown, active_hours, etc.) using StatusHelpers."""
+    # === Status Variables (cached_property) ===
+
+    @cached_property
+    def active_hours(self) -> linopy.Variable | None:
+        """(component, period, scenario) - total active hours for components with status."""
         if not self.components:
-            return
+            return None
+
+        dim = self.dim_name
+        element_ids = self._status_data.ids
+        params = self._status_data._params
+        total_hours = self.model.temporal_weight.sum(self.model.temporal_dims)
+
+        min_vals = [params[eid].active_hours_min or 0 for eid in element_ids]
+        active_hours_min = xr.DataArray(min_vals, dims=[dim], coords={dim: element_ids})
+
+        max_list = [params[eid].active_hours_max for eid in element_ids]
+        has_max = xr.DataArray([v is not None for v in max_list], dims=[dim], coords={dim: element_ids})
+        max_vals = xr.DataArray([v if v is not None else 0 for v in max_list], dims=[dim], coords={dim: element_ids})
+        active_hours_max = xr.where(has_max, max_vals, total_hours)
+
+        base_coords = self.model.get_coords(['period', 'scenario'])
+        base_coords_dict = dict(base_coords) if base_coords is not None else {}
+        coords = xr.Coordinates({dim: pd.Index(element_ids, name=dim), **base_coords_dict})
+
+        var = self.model.add_variables(
+            lower=active_hours_min,
+            upper=active_hours_max,
+            coords=coords,
+            name=ComponentVarName.ACTIVE_HOURS,
+        )
+        self._variables['active_hours'] = var
+        return var
+
+    @cached_property
+    def startup(self) -> linopy.Variable | None:
+        """(component, time, ...) - binary startup variable for components with startup tracking."""
+        if not self._status_data.with_startup_tracking:
+            return None
+
+        dim = self.dim_name
+        element_ids = self._status_data.with_startup_tracking
+        temporal_coords = self.model.get_coords()
+        coords = xr.Coordinates({dim: pd.Index(element_ids, name=dim), **dict(temporal_coords)})
+
+        var = self.model.add_variables(binary=True, coords=coords, name=ComponentVarName.STARTUP)
+        self._variables['startup'] = var
+        return var
+
+    @cached_property
+    def shutdown(self) -> linopy.Variable | None:
+        """(component, time, ...) - binary shutdown variable for components with startup tracking."""
+        if not self._status_data.with_startup_tracking:
+            return None
+
+        dim = self.dim_name
+        element_ids = self._status_data.with_startup_tracking
+        temporal_coords = self.model.get_coords()
+        coords = xr.Coordinates({dim: pd.Index(element_ids, name=dim), **dict(temporal_coords)})
+
+        var = self.model.add_variables(binary=True, coords=coords, name=ComponentVarName.SHUTDOWN)
+        self._variables['shutdown'] = var
+        return var
+
+    @cached_property
+    def inactive(self) -> linopy.Variable | None:
+        """(component, time, ...) - binary inactive variable for components with downtime tracking."""
+        if not self._status_data.with_downtime_tracking:
+            return None
+
+        dim = self.dim_name
+        element_ids = self._status_data.with_downtime_tracking
+        temporal_coords = self.model.get_coords()
+        coords = xr.Coordinates({dim: pd.Index(element_ids, name=dim), **dict(temporal_coords)})
+
+        var = self.model.add_variables(binary=True, coords=coords, name=ComponentVarName.INACTIVE)
+        self._variables['inactive'] = var
+        return var
+
+    @cached_property
+    def startup_count(self) -> linopy.Variable | None:
+        """(component, period, scenario) - startup count for components with startup limit."""
+        if not self._status_data.with_startup_limit:
+            return None
+
+        dim = self.dim_name
+        element_ids = self._status_data.with_startup_limit
+
+        base_coords = self.model.get_coords(['period', 'scenario'])
+        base_coords_dict = dict(base_coords) if base_coords is not None else {}
+        coords = xr.Coordinates({dim: pd.Index(element_ids, name=dim), **base_coords_dict})
+
+        var = self.model.add_variables(
+            lower=0, upper=self._status_data.startup_limit, coords=coords, name=ComponentVarName.STARTUP_COUNT
+        )
+        self._variables['startup_count'] = var
+        return var
+
+    @cached_property
+    def uptime(self) -> linopy.Variable | None:
+        """(component, time, ...) - consecutive uptime duration for components with uptime tracking."""
+        if not self._status_data.with_uptime_tracking:
+            return None
 
         from .features import StatusHelpers
 
-        # Use helper to create all status features with StatusData
-        status_vars = StatusHelpers.create_status_features(
+        previous_uptime = self._status_data.previous_uptime
+        var = StatusHelpers.add_batched_duration_tracking(
             model=self.model,
-            status=self._variables['status'],
-            status_data=self._status_data,
-            var_names=ComponentVarName,
-            has_clusters=self.model.flow_system.clusters is not None,
+            state=self._variables['status'].sel({self.dim_name: self._status_data.with_uptime_tracking}),
+            name=ComponentVarName.UPTIME,
+            dim_name=self.dim_name,
+            timestep_duration=self.model.timestep_duration,
+            minimum_duration=self._status_data.min_uptime,
+            maximum_duration=self._status_data.max_uptime,
+            previous_duration=previous_uptime
+            if previous_uptime is not None and fast_notnull(previous_uptime).any()
+            else None,
+        )
+        self._variables['uptime'] = var
+        return var
+
+    @cached_property
+    def downtime(self) -> linopy.Variable | None:
+        """(component, time, ...) - consecutive downtime duration for components with downtime tracking."""
+        if not self._status_data.with_downtime_tracking:
+            return None
+
+        from .features import StatusHelpers
+
+        # inactive variable is required for downtime tracking
+        inactive = self.inactive
+
+        previous_downtime = self._status_data.previous_downtime
+        var = StatusHelpers.add_batched_duration_tracking(
+            model=self.model,
+            state=inactive,
+            name=ComponentVarName.DOWNTIME,
+            dim_name=self.dim_name,
+            timestep_duration=self.model.timestep_duration,
+            minimum_duration=self._status_data.min_downtime,
+            maximum_duration=self._status_data.max_downtime,
+            previous_duration=previous_downtime
+            if previous_downtime is not None and fast_notnull(previous_downtime).any()
+            else None,
+        )
+        self._variables['downtime'] = var
+        return var
+
+    # === Status Constraints ===
+
+    def constraint_active_hours(self) -> None:
+        """Constrain active_hours == sum_temporal(status)."""
+        if self.active_hours is None:
+            return
+
+        self.model.add_constraints(
+            self.active_hours == self.model.sum_temporal(self._variables['status']),
+            name=ComponentVarName.Constraint.ACTIVE_HOURS,
         )
 
-        # Store created variables
-        self._status_variables = status_vars
+    def constraint_complementary(self) -> None:
+        """Constrain status + inactive == 1 for downtime tracking components."""
+        if self.inactive is None:
+            return
+
+        dim = self.dim_name
+        element_ids = self._status_data.with_downtime_tracking
+        status_subset = self._variables['status'].sel({dim: element_ids})
+
+        self.model.add_constraints(
+            status_subset + self.inactive == 1,
+            name=ComponentVarName.Constraint.COMPLEMENTARY,
+        )
+
+    def constraint_switch_transition(self) -> None:
+        """Constrain startup[t] - shutdown[t] == status[t] - status[t-1] for t > 0."""
+        if self.startup is None:
+            return
+
+        dim = self.dim_name
+        element_ids = self._status_data.with_startup_tracking
+        status_subset = self._variables['status'].sel({dim: element_ids})
+
+        self.model.add_constraints(
+            self.startup.isel(time=slice(1, None)) - self.shutdown.isel(time=slice(1, None))
+            == status_subset.isel(time=slice(1, None)) - status_subset.isel(time=slice(None, -1)),
+            name=ComponentVarName.Constraint.SWITCH_TRANSITION,
+        )
+
+    def constraint_switch_mutex(self) -> None:
+        """Constrain startup + shutdown <= 1."""
+        if self.startup is None:
+            return
+
+        self.model.add_constraints(
+            self.startup + self.shutdown <= 1,
+            name=ComponentVarName.Constraint.SWITCH_MUTEX,
+        )
+
+    def constraint_switch_initial(self) -> None:
+        """Constrain startup[0] - shutdown[0] == status[0] - previous_status[-1]."""
+        if self.startup is None:
+            return
+
+        dim = self.dim_name
+        element_ids = self._status_data.with_startup_tracking
+        previous_status = self._status_data._previous_states
+
+        elements_with_initial = [eid for eid in element_ids if eid in previous_status]
+        if not elements_with_initial:
+            return
+
+        prev_arrays = [previous_status[eid].expand_dims({dim: [eid]}) for eid in elements_with_initial]
+        prev_status_batched = xr.concat(prev_arrays, dim=dim)
+        prev_state = prev_status_batched.isel(time=-1)
+
+        startup_subset = self.startup.sel({dim: elements_with_initial})
+        shutdown_subset = self.shutdown.sel({dim: elements_with_initial})
+        status_initial = self._variables['status'].sel({dim: elements_with_initial}).isel(time=0)
+
+        self.model.add_constraints(
+            startup_subset.isel(time=0) - shutdown_subset.isel(time=0) == status_initial - prev_state,
+            name=ComponentVarName.Constraint.SWITCH_INITIAL,
+        )
+
+    def constraint_startup_count(self) -> None:
+        """Constrain startup_count == sum(startup) over temporal dims."""
+        if self.startup_count is None:
+            return
+
+        dim = self.dim_name
+        element_ids = self._status_data.with_startup_limit
+        startup_subset = self.startup.sel({dim: element_ids})
+        startup_temporal_dims = [d for d in startup_subset.dims if d not in ('period', 'scenario', dim)]
+
+        self.model.add_constraints(
+            self.startup_count == startup_subset.sum(startup_temporal_dims),
+            name=ComponentVarName.Constraint.STARTUP_COUNT,
+        )
+
+    def constraint_cluster_cyclic(self) -> None:
+        """Constrain status[0] == status[-1] for cyclic cluster mode."""
+        if self.model.flow_system.clusters is None:
+            return
+
+        dim = self.dim_name
+        params = self._status_data._params
+        cyclic_ids = [eid for eid in self._status_data.ids if params[eid].cluster_mode == 'cyclic']
+
+        if not cyclic_ids:
+            return
+
+        status_cyclic = self._variables['status'].sel({dim: cyclic_ids})
+        self.model.add_constraints(
+            status_cyclic.isel(time=0) == status_cyclic.isel(time=-1),
+            name=ComponentVarName.Constraint.CLUSTER_CYCLIC,
+        )
+
+    def create_status_features(self) -> None:
+        """Create status variables and constraints for components with status.
+
+        Triggers cached property creation for all status variables and calls
+        individual constraint methods.
+        """
+        if not self.components:
+            return
+
+        # Trigger variable creation via cached properties
+        _ = self.active_hours
+        _ = self.startup
+        _ = self.shutdown
+        _ = self.inactive
+        _ = self.startup_count
+        _ = self.uptime
+        _ = self.downtime
+
+        # Create constraints
+        self.constraint_active_hours()
+        self.constraint_complementary()
+        self.constraint_switch_transition()
+        self.constraint_switch_mutex()
+        self.constraint_switch_initial()
+        self.constraint_startup_count()
+        self.constraint_cluster_cyclic()
 
         self._logger.debug(f'ComponentsModel created status features for {len(self.components)} components')
 
@@ -2231,9 +2495,7 @@ class ComponentsModel:
         """Get variable slice for a specific component."""
         dim = self.dim_name
         if var_name in self._variables:
-            return self._variables[var_name].sel({dim: component_id})
-        elif hasattr(self, '_status_variables') and var_name in self._status_variables:
-            var = self._status_variables[var_name]
+            var = self._variables[var_name]
             if component_id in var.coords.get(dim, []):
                 return var.sel({dim: component_id})
             return None
