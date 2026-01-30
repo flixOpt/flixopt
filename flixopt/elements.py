@@ -1081,30 +1081,31 @@ class FlowsModel(TypeModel):
             element_ids, origin_breakpoints, max_segments, dim
         )
 
-        # Collect all effect names across all flows
+        # Collect effect breakpoints as (dim, segment, effect) arrays
         all_effect_names: set[str] = set()
         for fid in with_piecewise:
             shares = invest_params[fid].piecewise_effects_of_investment.piecewise_shares
             all_effect_names.update(shares.keys())
+        effect_names = sorted(all_effect_names)
 
-        # Collect breakpoints for each effect
-        effect_breakpoints: dict[str, tuple[xr.DataArray, xr.DataArray]] = {}
-        for effect_name in all_effect_names:
+        effect_starts_list, effect_ends_list = [], []
+        for effect_name in effect_names:
             breakpoints = {}
             for fid in with_piecewise:
                 shares = invest_params[fid].piecewise_effects_of_investment.piecewise_shares
                 if effect_name in shares:
                     piecewise = shares[effect_name]
-                    starts = [p.start for p in piecewise]
-                    ends = [p.end for p in piecewise]
+                    breakpoints[fid] = ([p.start for p in piecewise], [p.end for p in piecewise])
                 else:
-                    # This flow doesn't have this effect - use NaN (will be masked)
-                    starts = [0.0] * segment_counts[fid]
-                    ends = [0.0] * segment_counts[fid]
-                breakpoints[fid] = (starts, ends)
+                    zeros = [0.0] * segment_counts[fid]
+                    breakpoints[fid] = (zeros, zeros)
 
-            starts, ends = PiecewiseHelpers.pad_breakpoints(element_ids, breakpoints, max_segments, dim)
-            effect_breakpoints[effect_name] = (starts, ends)
+            s, e = PiecewiseHelpers.pad_breakpoints(element_ids, breakpoints, max_segments, dim)
+            effect_starts_list.append(s.expand_dims(effect=[effect_name]))
+            effect_ends_list.append(e.expand_dims(effect=[effect_name]))
+
+        effect_starts = xr.concat(effect_starts_list, dim='effect')
+        effect_ends = xr.concat(effect_ends_list, dim='effect')
 
         # Create batched piecewise variables
         base_coords = self.model.get_coords(['period', 'scenario'])
@@ -1151,36 +1152,24 @@ class FlowsModel(TypeModel):
             f'{name_prefix}|size|coupling',
         )
 
-        # Create single share variable with (dim, effect) and vectorized coupling constraint
-        effect_names = sorted(all_effect_names)
+        # Create share variable with (dim, effect) and vectorized coupling constraint
         coords_dict = {dim: pd.Index(element_ids, name=dim), 'effect': effect_names}
         if base_coords is not None:
             coords_dict.update(dict(base_coords))
-        share_coords = xr.Coordinates(coords_dict)
 
         share_var = self.model.add_variables(
             lower=-np.inf,
             upper=np.inf,
-            coords=share_coords,
+            coords=xr.Coordinates(coords_dict),
             name=f'{name_prefix}|share',
-        )
-
-        # Stack breakpoints into (dim, segment, effect) for vectorized coupling
-        all_starts = xr.concat(
-            [effect_breakpoints[eff][0].expand_dims(effect=[eff]) for eff in effect_names],
-            dim='effect',
-        )
-        all_ends = xr.concat(
-            [effect_breakpoints[eff][1].expand_dims(effect=[eff]) for eff in effect_names],
-            dim='effect',
         )
         PiecewiseHelpers.create_coupling_constraint(
             self.model,
             share_var,
             piecewise_vars['lambda0'],
             piecewise_vars['lambda1'],
-            all_starts,
-            all_ends,
+            effect_starts,
+            effect_ends,
             f'{name_prefix}|coupling',
         )
 
