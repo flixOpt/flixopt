@@ -362,23 +362,31 @@ class EffectsModel:
         """Public access to the effect index for type models."""
         return self._effect_index
 
-    def add_temporal_contribution(self, defining_expr) -> None:
+    def add_temporal_contribution(self, defining_expr, contributor_dim: str = 'contributor') -> None:
         """Register contributors for the share|temporal variable.
 
-        The defining_expr must have a 'contributor' dimension.
-        Accepts linopy LinearExpression/Variable or plain xr.DataArray (constants).
+        Args:
+            defining_expr: Expression with a contributor dimension.
+                Accepts linopy LinearExpression/Variable or plain xr.DataArray (constants).
+            contributor_dim: Name of the element dimension to rename to 'contributor'.
         """
+        if contributor_dim != 'contributor':
+            defining_expr = defining_expr.rename({contributor_dim: 'contributor'})
         if isinstance(defining_expr, xr.DataArray):
             self._temporal_constant_defs.append(defining_expr)
         else:
             self._temporal_share_defs.append(defining_expr)
 
-    def add_periodic_contribution(self, defining_expr) -> None:
+    def add_periodic_contribution(self, defining_expr, contributor_dim: str = 'contributor') -> None:
         """Register contributors for the share|periodic variable.
 
-        The defining_expr must have a 'contributor' dimension.
-        Accepts linopy LinearExpression/Variable or plain xr.DataArray (constants).
+        Args:
+            defining_expr: Expression with a contributor dimension.
+                Accepts linopy LinearExpression/Variable or plain xr.DataArray (constants).
+            contributor_dim: Name of the element dimension to rename to 'contributor'.
         """
+        if contributor_dim != 'contributor':
+            defining_expr = defining_expr.rename({contributor_dim: 'contributor'})
         if isinstance(defining_expr, xr.DataArray):
             self._periodic_constant_defs.append(defining_expr)
         else:

@@ -1199,13 +1199,12 @@ class FlowsModel(TypeModel):
         """
         dim = self.dim_name
         dt = self.model.timestep_duration
-        rename = {dim: 'contributor'}
 
         # === Temporal: rate * effects_per_flow_hour * dt ===
         factors = self.data.effects_per_flow_hour
         if factors is not None:
             rate = self.rate.sel({dim: factors.coords[dim].values})
-            effects_model.add_temporal_contribution((rate * factors * dt).rename(rename))
+            effects_model.add_temporal_contribution(rate * factors * dt, contributor_dim=dim)
 
         # === Temporal: status effects ===
         if self.status is not None:
@@ -1213,38 +1212,38 @@ class FlowsModel(TypeModel):
             if factor is not None:
                 flow_ids = factor.coords[dim].values
                 status_subset = self.status.sel({dim: flow_ids})
-                effects_model.add_temporal_contribution((status_subset * factor * dt).rename(rename))
+                effects_model.add_temporal_contribution(status_subset * factor * dt, contributor_dim=dim)
 
             factor = self.data.effects_per_startup
             if self.startup is not None and factor is not None:
                 flow_ids = factor.coords[dim].values
                 startup_subset = self.startup.sel({dim: flow_ids})
-                effects_model.add_temporal_contribution((startup_subset * factor).rename(rename))
+                effects_model.add_temporal_contribution(startup_subset * factor, contributor_dim=dim)
 
         # === Periodic: size * effects_per_size ===
         inv = self.data._investment_data
         if inv is not None and inv.effects_per_size is not None:
             factors = inv.effects_per_size
             size = self.size.sel({dim: factors.coords[dim].values})
-            effects_model.add_periodic_contribution((size * factors).rename(rename))
+            effects_model.add_periodic_contribution(size * factors, contributor_dim=dim)
 
             # Investment/retirement effects
             if self.invested is not None:
                 if (f := inv.effects_of_investment) is not None:
                     effects_model.add_periodic_contribution(
-                        (self.invested.sel({dim: f.coords[dim].values}) * f).rename(rename)
+                        self.invested.sel({dim: f.coords[dim].values}) * f, contributor_dim=dim
                     )
                 if (f := inv.effects_of_retirement) is not None:
                     effects_model.add_periodic_contribution(
-                        (self.invested.sel({dim: f.coords[dim].values}) * (-f)).rename(rename)
+                        self.invested.sel({dim: f.coords[dim].values}) * (-f), contributor_dim=dim
                     )
 
         # === Constants: mandatory fixed + retirement ===
         if inv is not None:
             if inv.effects_of_investment_mandatory is not None:
-                effects_model.add_periodic_contribution(inv.effects_of_investment_mandatory.rename(rename))
+                effects_model.add_periodic_contribution(inv.effects_of_investment_mandatory, contributor_dim=dim)
             if inv.effects_of_retirement_constant is not None:
-                effects_model.add_periodic_contribution(inv.effects_of_retirement_constant.rename(rename))
+                effects_model.add_periodic_contribution(inv.effects_of_retirement_constant, contributor_dim=dim)
 
     # === Status Variables (cached_property) ===
 
