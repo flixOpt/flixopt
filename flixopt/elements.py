@@ -718,19 +718,11 @@ class FlowsModel(TypeModel):
     @cached_property
     def rate(self) -> linopy.Variable:
         """(flow, time, ...) - flow rate variable for ALL flows."""
-        coords = self._build_coords(dims=None)
         # Reindex bounds to match coords flow order (FlowsData uses sorted order, TypeModel uses insertion order)
-        lower = self.data.absolute_lower_bounds.reindex({self.dim_name: coords[self.dim_name]})
-        upper = self.data.absolute_upper_bounds.reindex({self.dim_name: coords[self.dim_name]})
-        var = self.model.add_variables(
-            lower=lower,
-            upper=upper,
-            coords=coords,
-            name=f'{self.dim_name}|rate',
-        )
-        self._variables['rate'] = var
-        self.model.variable_categories[var.name] = VariableCategory.FLOW_RATE
-        return var
+        flow_order = self._build_coords(dims=None)[self.dim_name]
+        lower = self.data.absolute_lower_bounds.reindex({self.dim_name: flow_order})
+        upper = self.data.absolute_upper_bounds.reindex({self.dim_name: flow_order})
+        return self.add_variables('rate', VariableType.FLOW_RATE, lower=lower, upper=upper, dims=None)
 
     @cached_property
     def status(self) -> linopy.Variable | None:
