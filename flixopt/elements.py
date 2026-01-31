@@ -2414,39 +2414,54 @@ class ConvertersModel(TypeModel):
         For each converter c with equation i:
             sum_f(flow_rate[f] * coefficient[c,i,f] * sign[c,f]) == 0
 
-        where:
-            - Inputs have positive sign, outputs have negative sign
-            - coefficient contains the conversion factors (may be time-varying)
+        Uses sparse groupby summation: instead of building a dense
+        (converter × equation × all_flows × time) expression and summing,
+        only the non-zero (converter, flow) pairs are selected and grouped.
+        Each converter typically uses 2-3 flows out of hundreds.
         """
         if not self.converters_with_factors:
             return
 
-        coefficients = self._coefficients
-        flow_rate = self._flows_model[FlowVarName.RATE]
-        sign = self._flow_sign
-
-        # Pre-combine coefficients and sign (both are xr.DataArrays, not linopy)
-        # This avoids creating intermediate linopy expressions
-        # coefficients: (converter, equation_idx, flow, [time, ...])
-        # sign: (converter, flow)
-        # Result: (converter, equation_idx, flow, [time, ...])
+        coefficients = self._coefficients  # (converter, equation_idx, flow, [time])
+        flow_rate = self._flows_model[FlowVarName.RATE]  # (flow, time)
+        sign = self._flow_sign  # (converter, flow)
         signed_coeffs = coefficients * sign
 
-        # Now multiply flow_rate by the combined coefficients
-        # flow_rate: (flow, time, ...)
-        # signed_coeffs: (converter, equation_idx, flow, [time, ...])
-        # Result: (converter, equation_idx, flow, time, ...)
-        weighted = flow_rate * signed_coeffs
+        converter_ids = self._factor_element_ids
+        flow_ids = list(flow_rate.coords['flow'].values)
 
-        # Sum over flows: (converter, equation_idx, time, ...)
-        flow_sum = weighted.sum('flow')
+        # Find active (converter, flow) pairs where coefficients are non-zero.
+        # Collapse equation_idx (and time if present) to find any non-zero entry.
+        sc_values = signed_coeffs.values  # (n_conv, max_eq, n_flow, [n_time])
+        nonzero_mask = np.any(sc_values != 0, axis=1)  # (n_conv, n_flow, [n_time])
+        while nonzero_mask.ndim > 2:
+            nonzero_mask = np.any(nonzero_mask, axis=-1)  # collapse extra dims
+        conv_idx, flow_idx = np.nonzero(nonzero_mask)  # active pairs
 
-        # Build valid mask: (converter, equation_idx)
-        # True where converter HAS that equation (keep constraint)
+        # Build sparse pair arrays
+        pair_flow = [flow_ids[f] for f in flow_idx]
+        pair_converter = [converter_ids[c] for c in conv_idx]
+        pair_coeffs = xr.DataArray(
+            np.array([sc_values[c, :, f] for c, f in zip(conv_idx, flow_idx, strict=False)]),
+            dims=['pair', 'equation_idx'] + list(signed_coeffs.dims[3:]),
+            coords={d: signed_coeffs.coords[d] for d in signed_coeffs.dims[3:]},
+        )
+
+        # Select flow rates for active pairs and multiply by coefficients
+        weighted = flow_rate.sel(flow=xr.DataArray(pair_flow, dims=['pair'])) * pair_coeffs
+
+        # Sum back to converter dimension via groupby
+        converter_mapping = xr.DataArray(pair_converter, dims=['pair'], name='converter')
+        flow_sum = weighted.groupby(converter_mapping).sum()
+
+        # Reindex to match original converter order (groupby sorts alphabetically)
+        flow_sum = flow_sum.sel(converter=converter_ids)
+
+        # Build valid mask: True where converter HAS that equation
         n_equations_per_converter = xr.DataArray(
             [len(c.conversion_factors) for c in self.converters_with_factors],
             dims=['converter'],
-            coords={'converter': self._factor_element_ids},
+            coords={'converter': converter_ids},
         )
         equation_indices = xr.DataArray(
             list(range(self._max_equations)),
@@ -2455,8 +2470,6 @@ class ConvertersModel(TypeModel):
         )
         valid_mask = equation_indices < n_equations_per_converter
 
-        # Add all constraints at once using linopy's mask parameter
-        # mask=True means KEEP constraint for that (converter, equation_idx) pair
         self.add_constraints(
             flow_sum == 0,
             name=ConverterVarName.Constraint.CONVERSION,
