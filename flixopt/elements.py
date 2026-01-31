@@ -2639,14 +2639,30 @@ class ConvertersModel(TypeModel):
         lambda0 = self._piecewise_variables['lambda0']
         lambda1 = self._piecewise_variables['lambda1']
 
-        # Compute all reconstructed values at once: (converter, flow, time, period, ...)
-        all_reconstructed = (lambda0 * bp['starts'] + lambda1 * bp['ends']).sum('segment')
+        # Each flow belongs to exactly one converter. Select the owning converter
+        # per flow directly instead of broadcasting across all (converter × flow).
+        starts = bp['starts']  # (converter, segment, flow, [time])
+        ends = bp['ends']
 
-        # Mask: valid where breakpoints exist (not NaN)
-        valid_mask = fast_notnull(bp['starts']).any('segment')
+        # Find which converter owns each flow (first non-NaN along converter)
+        notnull = fast_notnull(starts)
+        for d in notnull.dims:
+            if d not in ('flow', 'converter'):
+                notnull = notnull.any(d)
+        owner_idx = notnull.argmax('converter')  # (flow,)
+        owner_ids = starts.coords['converter'].values[owner_idx.values]
 
-        # Apply mask and sum over converter (each flow has exactly one valid converter)
-        reconstructed_per_flow = all_reconstructed.where(valid_mask).sum('converter')
+        # Select breakpoints and lambdas for the owning converter per flow
+        owner_da = xr.DataArray(owner_ids, dims=['flow'], coords={'flow': starts.coords['flow']})
+        flow_starts = starts.sel(converter=owner_da).drop_vars('converter')
+        flow_ends = ends.sel(converter=owner_da).drop_vars('converter')
+        flow_lambda0 = lambda0.sel(converter=owner_da)
+        flow_lambda1 = lambda1.sel(converter=owner_da)
+
+        # Reconstruct: sum over segments only (no converter dim)
+        reconstructed_per_flow = (flow_lambda0 * flow_starts + flow_lambda1 * flow_ends).sum('segment')
+        # Drop dangling converter coord left by vectorized sel()
+        reconstructed_per_flow = reconstructed_per_flow.drop_vars('converter', errors='ignore')
 
         # Get flow rates for piecewise flows
         flow_ids = list(bp.coords['flow'].values)

@@ -15,6 +15,8 @@ Benchmarked `build_model()` across commits since `302413c4` on branch `feature/e
 | `805bcc56` | xr.concat → numpy pre-alloc | **3,468** | 3.09x |
 | `82e69989` | fix build_effects_array signature | **3,733** | 2.87x |
 | `9c2d3d3b` | Add sparse_weighted_sum | **3,317** | 3.23x |
+| `c67a6a7e` | Clean up sparse_weighted_sum, revert piecewise | **4,849** | 2.21x |
+| (wip) | Restore owner-based piecewise with drop_vars | **2,884** | 3.71x |
 
 ## Complex System (72h, piecewise)
 
@@ -27,12 +29,14 @@ Benchmarked `build_model()` across commits since `302413c4` on branch `feature/e
 | `805bcc56` | xr.concat → numpy pre-alloc | **1,194** | 0.57x |
 | `82e69989` | fix build_effects_array signature | **915** | 0.74x |
 | `9c2d3d3b` | Add sparse_weighted_sum | **947** | 0.72x |
+| `c67a6a7e` | Clean up sparse_weighted_sum, revert piecewise | **768** | 0.88x |
+| (wip) | Restore owner-based piecewise with drop_vars | **617** | 1.10x |
 
 ## Key Takeaways
 
-- **XL system: 3.23x overall speedup** — from 10.7s down to 3.3s. The biggest gains came from sparse groupby in piecewise conversion (`2a94130f`, jumping from 1.51x to 2.42x) and numpy pre-allocation replacing `xr.concat` (`805bcc56`, reaching 3.09x).
+- **XL system: 3.71x overall speedup** — from 10.7s down to 2.9s. The biggest gains came from sparse groupby in conversion and piecewise owner-based lookup. Note: ~3s of remaining time is spent in backwards-compat methods (`_find_vars_for_element`, `_find_constraints_for_element`) that will be removed.
 
-- **Complex system: regression overall** — went from 678ms to 947ms (0.72x). The Complex system is small enough that the overhead of the new sparse/numpy approaches may outweigh their benefits. The initial commit `7dd56dde` introduced a significant regression that was never fully recovered.
+- **Complex system: 1.10x speedup** — from 678ms down to 617ms. Now faster than the original baseline across all system sizes.
 
 ## How to Run Benchmarks Across Commits
 
@@ -43,7 +47,7 @@ To benchmark `build_model()` across a range of commits, use the following approa
 git stash --include-untracked
 
 # 2. Loop over commits and run the benchmark at each one
-for SHA in 302413c4 7dd56dde f38f828f 2a94130f 805bcc56 82e69989 9c2d3d3b; do
+for SHA in 302413c4 7dd56dde f38f828f 2a94130f 805bcc56 82e69989 9c2d3d3b c67a6a7e; do
     echo "=== $SHA ==="
     git checkout "$SHA" --force 2>/dev/null
     python benchmarks/benchmark_model_build.py --system complex --iterations 3
