@@ -584,8 +584,19 @@ class EffectsModel:
         """
         import pandas as pd
 
-        # Align all expressions: expands each to the union of all contributor values
-        aligned = linopy.align(*share_defs, join='outer', fill_value=0)
+        # Ensure all share defs have canonical effect order before alignment.
+        # linopy merge uses join="override" when shapes match, which aligns by
+        # position not label — mismatched effect order silently shuffles coefficients.
+        effect_index = self.data.effect_index
+        normalized = []
+        for expr in share_defs:
+            if 'effect' in expr.dims:
+                expr_effects = list(expr.data.coords['effect'].values)
+                if expr_effects != list(effect_index):
+                    expr = linopy.LinearExpression(expr.data.reindex(effect=effect_index), expr.model)
+            normalized.append(expr)
+
+        aligned = linopy.align(*normalized, join='outer', fill_value=0)
         combined_expr = sum(aligned[1:], start=aligned[0])
 
         # Extract contributor IDs from the combined expression
