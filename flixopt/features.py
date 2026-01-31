@@ -52,24 +52,30 @@ def stack_along_dim(
     values: list[float | xr.DataArray],
     dim: str,
     coords: list,
+    target_coords: dict | None = None,
 ) -> xr.DataArray:
     """Stack per-element values into a DataArray along a new labeled dimension.
 
     Handles mixed inputs: scalars, 0-d DataArrays, and N-d DataArrays with
-    potentially different dimensions. Heterogeneous shapes are expanded to
-    a common shape before concatenation.
+    potentially different dimensions. Uses fast numpy pre-allocation instead
+    of xr.concat for performance.
 
     Args:
         values: Per-element values to stack (scalars or DataArrays).
         dim: Name of the new dimension.
         coords: Coordinate labels for the new dimension.
+        target_coords: Optional coords to broadcast to (e.g., {'time': ..., 'period': ...}).
+            Order determines output dimension order after dim.
 
     Returns:
         DataArray with dim as first dimension.
     """
-    # Fast path: check if all values are scalars
+    target_coords = target_coords or {}
+
+    # Classify values and collect extra dimension info
     scalar_values = []
     has_array = False
+    collected_coords: dict = {}
 
     for v in values:
         if isinstance(v, xr.DataArray):
@@ -77,50 +83,70 @@ def stack_along_dim(
                 scalar_values.append(float(v.values))
             else:
                 has_array = True
-                break
+                for d in v.dims:
+                    if d not in collected_coords:
+                        collected_coords[d] = v.coords[d].values
         elif isinstance(v, (int, float, np.integer, np.floating)):
             scalar_values.append(float(v))
         else:
             has_array = True
-            break
 
-    if not has_array:
+    # Fast path: all scalars, no target_coords to broadcast to
+    if not has_array and not target_coords:
         return xr.DataArray(
             np.array(scalar_values),
             coords={dim: coords},
             dims=[dim],
         )
 
-    # General path: expand each value to have the stacking dim, then concat
-    arrays = []
-    for v, coord in zip(values, coords, strict=False):
+    # Merge target_coords (takes precedence) with collected coords
+    final_coords = dict(target_coords)
+    for d, c in collected_coords.items():
+        if d not in final_coords:
+            final_coords[d] = c
+
+    # All scalars but need broadcasting to target_coords
+    if not has_array:
+        n = len(scalar_values)
+        extra_dims = list(final_coords.keys())
+        extra_shape = [len(c) for c in final_coords.values()]
+        data = np.broadcast_to(
+            np.array(scalar_values).reshape([n] + [1] * len(extra_dims)),
+            [n] + extra_shape,
+        ).copy()
+        full_coords = {dim: coords}
+        full_coords.update(final_coords)
+        return xr.DataArray(data, coords=full_coords, dims=[dim] + extra_dims)
+
+    # General path: pre-allocate numpy array and fill
+    n_elements = len(values)
+    extra_dims = list(final_coords.keys())
+    extra_shape = [len(c) for c in final_coords.values()]
+    full_shape = [n_elements] + extra_shape
+    full_dims = [dim] + extra_dims
+
+    data = np.full(full_shape, np.nan)
+
+    # Create template for broadcasting only if needed
+    template = xr.DataArray(coords=final_coords, dims=extra_dims) if final_coords else None
+
+    for i, v in enumerate(values):
         if isinstance(v, xr.DataArray):
             if v.ndim == 0:
-                arr = xr.DataArray(float(v.values), coords={dim: [coord]}, dims=[dim])
+                data[i, ...] = float(v.values)
+            elif template is not None:
+                broadcasted = v.broadcast_like(template)
+                data[i, ...] = broadcasted.values
             else:
-                arr = v.expand_dims({dim: [coord]})
+                data[i, ...] = v.values
+        elif isinstance(v, float) and np.isnan(v):
+            pass  # leave as NaN
         else:
-            arr = xr.DataArray(v, coords={dim: [coord]}, dims=[dim])
-        arrays.append(arr)
+            data[i, ...] = float(v)
 
-    # Find union of all non-stacking dimensions
-    all_dims = {}
-    for arr in arrays:
-        for d in arr.dims:
-            if d != dim and d not in all_dims:
-                all_dims[d] = arr.coords[d].values
-
-    # Expand each array to have all dimensions
-    if all_dims:
-        expanded = []
-        for arr in arrays:
-            for d, dim_coords in all_dims.items():
-                if d not in arr.dims:
-                    arr = arr.expand_dims({d: dim_coords})
-            expanded.append(arr)
-        arrays = expanded
-
-    return xr.concat(arrays, dim=dim, coords='minimal')
+    full_coords = {dim: coords}
+    full_coords.update(final_coords)
+    return xr.DataArray(data, coords=full_coords, dims=full_dims)
 
 
 class InvestmentBuilder:
