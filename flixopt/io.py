@@ -1773,26 +1773,13 @@ class FlowSystemDatasetIO:
         reference_structure: dict[str, Any],
         cls: type[FlowSystem],
     ) -> None:
-        """Restore carriers and variable categories."""
-        from .structure import VariableCategory
-
+        """Restore carriers from reference structure."""
         # Restore carriers if present
         if 'carriers' in reference_structure:
             carriers_structure = json.loads(reference_structure['carriers'])
             for carrier_data in carriers_structure.values():
                 carrier = cls._resolve_reference_structure(carrier_data, {})
                 flow_system._carriers.add(carrier)
-
-        # Restore variable categories if present
-        if 'variable_categories' in reference_structure:
-            categories_dict = json.loads(reference_structure['variable_categories'])
-            restored_categories: dict[str, VariableCategory] = {}
-            for name, value in categories_dict.items():
-                try:
-                    restored_categories[name] = VariableCategory(value)
-                except ValueError:
-                    logger.warning(f'Unknown VariableCategory value "{value}" for "{name}", skipping')
-            flow_system._variable_categories = restored_categories
 
     # --- Serialization (FlowSystem -> Dataset) ---
 
@@ -1830,9 +1817,6 @@ class FlowSystemDatasetIO:
 
         # Add clustering
         ds = cls._add_clustering_to_dataset(ds, flow_system.clustering, include_original_data)
-
-        # Add variable categories
-        ds = cls._add_variable_categories_to_dataset(ds, flow_system._variable_categories)
 
         # Add version info
         ds.attrs['flixopt_version'] = __version__
@@ -1911,18 +1895,6 @@ class FlowSystemDatasetIO:
             prefixed_arrays = {f'{cls.CLUSTERING_PREFIX}{name}': arr for name, arr in clustering_arrays.items()}
             ds = ds.assign(prefixed_arrays)
             ds.attrs['clustering'] = json.dumps(clustering_ref)
-
-        return ds
-
-    @staticmethod
-    def _add_variable_categories_to_dataset(
-        ds: xr.Dataset,
-        variable_categories: dict,
-    ) -> xr.Dataset:
-        """Add variable categories to dataset attributes."""
-        if variable_categories:
-            categories_dict = {name: cat.value for name, cat in variable_categories.items()}
-            ds.attrs['variable_categories'] = json.dumps(categories_dict)
 
         return ds
 

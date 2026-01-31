@@ -28,7 +28,6 @@ from .structure import (
     FlowVarName,
     TransmissionVarName,
     TypeModel,
-    VariableType,
     register_class_for_io,
 )
 
@@ -786,7 +785,6 @@ class FlowsModel(TypeModel):
         """(flow, time, ...) - flow rate variable for ALL flows."""
         return self.add_variables(
             FlowVarName.RATE,
-            VariableType.FLOW_RATE,
             lower=self.data.absolute_lower_bounds,
             upper=self.data.absolute_upper_bounds,
             dims=None,
@@ -799,7 +797,6 @@ class FlowsModel(TypeModel):
             return None
         return self.add_variables(
             FlowVarName.STATUS,
-            VariableType.STATUS,
             dims=None,
             mask=self.data.has_status,
             binary=True,
@@ -812,7 +809,6 @@ class FlowsModel(TypeModel):
             return None
         return self.add_variables(
             FlowVarName.SIZE,
-            VariableType.FLOW_SIZE,
             lower=self.data.size_minimum_all,
             upper=self.data.size_maximum_all,
             dims=('period', 'scenario'),
@@ -1605,7 +1601,6 @@ class BusesModel(TypeModel):
             # virtual_supply: allows adding flow to meet demand
             self.add_variables(
                 BusVarName.VIRTUAL_SUPPLY,
-                VariableType.VIRTUAL_FLOW,
                 lower=0.0,
                 dims=self.model.temporal_dims,
                 element_ids=self.imbalance_ids,
@@ -1614,7 +1609,6 @@ class BusesModel(TypeModel):
             # virtual_demand: allows removing excess flow
             self.add_variables(
                 BusVarName.VIRTUAL_DEMAND,
-                VariableType.VIRTUAL_FLOW,
                 lower=0.0,
                 dims=self.model.temporal_dims,
                 element_ids=self.imbalance_ids,

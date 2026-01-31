@@ -83,71 +83,13 @@ def _ensure_coords(
     return data.broadcast_like(template)
 
 
-class VariableCategory(Enum):
-    """Fine-grained variable categories - names mirror variable names.
+class ExpansionMode(Enum):
+    """How a variable is expanded when converting clustered segments back to full time series."""
 
-    Each variable type has its own category for precise handling during
-    segment expansion and statistics calculation.
-    """
-
-    # === State variables ===
-    CHARGE_STATE = 'charge_state'  # Storage SOC (interpolate between boundaries)
-    SOC_BOUNDARY = 'soc_boundary'  # Intercluster SOC boundaries
-
-    # === Rate/Power variables ===
-    FLOW_RATE = 'flow_rate'  # Flow rate (kW)
-    NETTO_DISCHARGE = 'netto_discharge'  # Storage net discharge
-    VIRTUAL_FLOW = 'virtual_flow'  # Bus penalty slack variables
-
-    # === Binary state ===
-    STATUS = 'status'  # On/off status (persists through segment)
-    INACTIVE = 'inactive'  # Complementary inactive status
-
-    # === Binary events ===
-    STARTUP = 'startup'  # Startup event
-    SHUTDOWN = 'shutdown'  # Shutdown event
-
-    # === Effect variables ===
-    PER_TIMESTEP = 'per_timestep'  # Effect per timestep
-    SHARE = 'share'  # All temporal contributions (flow, active, startup)
-    TOTAL = 'total'  # Effect total (per period/scenario)
-    TOTAL_OVER_PERIODS = 'total_over_periods'  # Effect total over all periods
-
-    # === Investment ===
-    SIZE = 'size'  # Generic investment size (for backwards compatibility)
-    FLOW_SIZE = 'flow_size'  # Flow investment size
-    STORAGE_SIZE = 'storage_size'  # Storage capacity size
-    INVESTED = 'invested'  # Invested yes/no binary
-
-    # === Counting/Duration ===
-    STARTUP_COUNT = 'startup_count'  # Count of startups
-    DURATION = 'duration'  # Duration tracking (uptime/downtime)
-
-    # === Piecewise linearization ===
-    INSIDE_PIECE = 'inside_piece'  # Binary segment selection
-    LAMBDA0 = 'lambda0'  # Interpolation weight
-    LAMBDA1 = 'lambda1'  # Interpolation weight
-    ZERO_POINT = 'zero_point'  # Zero point handling
-
-    # === Other ===
-    OTHER = 'other'  # Uncategorized
-
-
-# === Logical Groupings for Segment Expansion ===
-# Default behavior (not listed): repeat value within segment
-
-EXPAND_INTERPOLATE: set[VariableCategory] = {VariableCategory.CHARGE_STATE}
-"""State variables that should be interpolated between segment boundaries."""
-
-EXPAND_DIVIDE: set[VariableCategory] = {VariableCategory.PER_TIMESTEP, VariableCategory.SHARE}
-"""Segment totals that should be divided by expansion factor to preserve sums."""
-
-EXPAND_FIRST_TIMESTEP: set[VariableCategory] = {VariableCategory.STARTUP, VariableCategory.SHUTDOWN}
-"""Binary events that should appear only at the first timestep of the segment."""
-
-# Alias for clarity - VariableCategory is specifically for segment expansion behavior
-# New code should use ExpansionCategory; VariableCategory is kept for backward compatibility
-ExpansionCategory = VariableCategory
+    REPEAT = 'repeat'
+    INTERPOLATE = 'interpolate'
+    DIVIDE = 'divide'
+    FIRST_TIMESTEP = 'first_timestep'
 
 
 # =============================================================================
@@ -168,51 +110,6 @@ class ElementType(Enum):
     INTERCLUSTER_STORAGE = 'intercluster_storage'
     EFFECT = 'effect'
     COMPONENT = 'component'
-
-
-class VariableType(Enum):
-    """What role a variable plays in the model.
-
-    Provides semantic meaning for variables beyond just their name.
-    Maps to ExpansionCategory
-     (formerly VariableCategory) for segment expansion.
-    """
-
-    # === Rates/Power ===
-    FLOW_RATE = 'flow_rate'  # Flow rate (kW)
-    NETTO_DISCHARGE = 'netto_discharge'  # Storage net discharge
-    VIRTUAL_FLOW = 'virtual_flow'  # Bus penalty slack variables
-
-    # === State ===
-    CHARGE_STATE = 'charge_state'  # Storage SOC (interpolate between boundaries)
-    SOC_BOUNDARY = 'soc_boundary'  # Intercluster SOC boundaries
-
-    # === Binary state ===
-    STATUS = 'status'  # On/off status (persists through segment)
-    INACTIVE = 'inactive'  # Complementary inactive status
-    STARTUP = 'startup'  # Startup event
-    SHUTDOWN = 'shutdown'  # Shutdown event
-
-    # === Aggregates ===
-    TOTAL = 'total'  # total_flow_hours, active_hours
-    TOTAL_OVER_PERIODS = 'total_over_periods'  # Sum across periods
-
-    # === Investment ===
-    SIZE = 'size'  # Investment size
-    FLOW_SIZE = 'flow_size'  # Flow investment size
-    STORAGE_SIZE = 'storage_size'  # Storage capacity size
-    INVESTED = 'invested'  # Invested yes/no binary
-
-    # === Piecewise linearization ===
-    INSIDE_PIECE = 'inside_piece'  # Binary segment selection
-    LAMBDA = 'lambda_weight'  # Interpolation weight
-
-    # === Effects ===
-    PER_TIMESTEP = 'per_timestep'  # Effect per timestep
-    SHARE = 'share'  # Effect share contribution
-
-    # === Other ===
-    OTHER = 'other'  # Uncategorized
 
 
 class ConstraintType(Enum):
@@ -242,32 +139,6 @@ class ConstraintType(Enum):
 
     # === Other ===
     OTHER = 'other'  # Uncategorized
-
-
-# Mapping from VariableType to ExpansionCategory (for segment expansion)
-# This connects the new enum system to the existing segment expansion logic
-VARIABLE_TYPE_TO_EXPANSION: dict[VariableType, ExpansionCategory] = {
-    VariableType.FLOW_RATE: VariableCategory.FLOW_RATE,
-    VariableType.NETTO_DISCHARGE: VariableCategory.NETTO_DISCHARGE,
-    VariableType.VIRTUAL_FLOW: VariableCategory.VIRTUAL_FLOW,
-    VariableType.CHARGE_STATE: VariableCategory.CHARGE_STATE,
-    VariableType.SOC_BOUNDARY: VariableCategory.SOC_BOUNDARY,
-    VariableType.STATUS: VariableCategory.STATUS,
-    VariableType.INACTIVE: VariableCategory.INACTIVE,
-    VariableType.STARTUP: VariableCategory.STARTUP,
-    VariableType.SHUTDOWN: VariableCategory.SHUTDOWN,
-    VariableType.TOTAL: VariableCategory.TOTAL,
-    VariableType.TOTAL_OVER_PERIODS: VariableCategory.TOTAL_OVER_PERIODS,
-    VariableType.SIZE: VariableCategory.SIZE,
-    VariableType.FLOW_SIZE: VariableCategory.FLOW_SIZE,
-    VariableType.STORAGE_SIZE: VariableCategory.STORAGE_SIZE,
-    VariableType.INVESTED: VariableCategory.INVESTED,
-    VariableType.INSIDE_PIECE: VariableCategory.INSIDE_PIECE,
-    VariableType.LAMBDA: VariableCategory.LAMBDA0,  # Maps to LAMBDA0 for expansion
-    VariableType.PER_TIMESTEP: VariableCategory.PER_TIMESTEP,
-    VariableType.SHARE: VariableCategory.SHARE,
-    VariableType.OTHER: VariableCategory.OTHER,
-}
 
 
 # =============================================================================
@@ -501,6 +372,17 @@ class EffectVarName:
     TOTAL = 'effect|total'
 
 
+NAME_TO_EXPANSION: dict[str, ExpansionMode] = {
+    StorageVarName.CHARGE: ExpansionMode.INTERPOLATE,
+    InterclusterStorageVarName.CHARGE_STATE: ExpansionMode.INTERPOLATE,
+    FlowVarName.STARTUP: ExpansionMode.FIRST_TIMESTEP,
+    FlowVarName.SHUTDOWN: ExpansionMode.FIRST_TIMESTEP,
+    ComponentVarName.STARTUP: ExpansionMode.FIRST_TIMESTEP,
+    ComponentVarName.SHUTDOWN: ExpansionMode.FIRST_TIMESTEP,
+    EffectVarName.PER_TIMESTEP: ExpansionMode.DIVIDE,
+}
+
+
 # =============================================================================
 # TypeModel Base Class
 # =============================================================================
@@ -538,7 +420,6 @@ class TypeModel(ABC):
         ...     def create_variables(self):
         ...         self.add_variables(
         ...             'flow|rate',  # Creates 'flow|rate' with 'flow' dimension
-        ...             VariableType.FLOW_RATE,
         ...             lower=self._stack_bounds('lower'),
         ...             upper=self._stack_bounds('upper'),
         ...         )
@@ -589,7 +470,6 @@ class TypeModel(ABC):
     def add_variables(
         self,
         name: str,
-        var_type: VariableType | None = None,
         lower: xr.DataArray | float = -np.inf,
         upper: xr.DataArray | float = np.inf,
         dims: tuple[str, ...] | None = ('time',),
@@ -602,7 +482,6 @@ class TypeModel(ABC):
 
         Args:
             name: Variable name (e.g., 'flow|rate'). Used as-is for the linopy variable.
-            var_type: Variable type for semantic categorization. None skips registration.
             lower: Lower bounds (scalar or per-element DataArray).
             upper: Upper bounds (scalar or per-element DataArray).
             dims: Dimensions beyond 'element'. None means ALL model dimensions.
@@ -633,12 +512,6 @@ class TypeModel(ABC):
             name=name,
             **kwargs,
         )
-
-        # Register category for segment expansion
-        if var_type is not None:
-            expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(var_type)
-            if expansion_category is not None:
-                self.model.variable_categories[variable.name] = expansion_category
 
         # Store reference
         self._variables[name] = variable
@@ -900,7 +773,6 @@ class FlowSystemModel(linopy.Model):
         super().__init__(force_dim_names=True)
         self.flow_system = flow_system
         self.effects: EffectsModel | None = None
-        self.variable_categories: dict[str, VariableCategory] = {}
         self._flows_model: TypeModel | None = None  # Reference to FlowsModel
         self._buses_model: TypeModel | None = None  # Reference to BusesModel
         self._storages_model = None  # Reference to StoragesModel

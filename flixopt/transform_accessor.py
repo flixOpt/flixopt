@@ -17,7 +17,7 @@ import pandas as pd
 import xarray as xr
 
 from .modeling import _scalar_safe_reduce
-from .structure import EXPAND_DIVIDE, EXPAND_INTERPOLATE, VariableCategory
+from .structure import NAME_TO_EXPANSION, ExpansionMode
 
 if TYPE_CHECKING:
     from tsam.config import ClusterConfig, ExtremeConfig, SegmentConfig
@@ -1800,7 +1800,7 @@ class TransformAccessor:
             n_original_clusters: Number of original clusters before aggregation.
         """
         n_original_timesteps_extra = len(original_timesteps_extra)
-        soc_boundary_vars = self._fs.get_variables_by_category(VariableCategory.SOC_BOUNDARY)
+        soc_boundary_vars = [name for name in self._fs.solution if name == 'intercluster_storage|SOC_boundary']
 
         for soc_boundary_name in soc_boundary_vars:
             storage_name = soc_boundary_name.rsplit('|', 1)[0]
@@ -1920,28 +1920,6 @@ class TransformAccessor:
             decay_da = decay_da.isel(cluster=cluster_per_timestep).drop_vars('cluster', errors='ignore')
 
         return soc_boundary_per_timestep * decay_da
-
-    def _build_segment_total_varnames(self) -> set[str]:
-        """Build segment total variable names - BACKWARDS COMPATIBILITY FALLBACK.
-
-        This method is only used when variable_categories is empty (old FlowSystems
-        saved before category registration was implemented). New FlowSystems use
-        the VariableCategory registry with EXPAND_DIVIDE categories (PER_TIMESTEP, SHARE).
-
-        For segmented systems, these variables contain values that are summed over
-        segments. When expanded to hourly resolution, they need to be divided by
-        segment duration to get correct hourly rates.
-
-        Returns:
-            Set of variable names that should be divided by expansion divisor.
-        """
-        segment_total_vars: set[str] = set()
-
-        # Batched variables that contain segment totals (need division by segment duration)
-        segment_total_vars.add('effect|per_timestep')
-        segment_total_vars.add('share|temporal')
-
-        return segment_total_vars
 
     def _interpolate_charge_state_segmented(
         self,
@@ -2127,21 +2105,13 @@ class TransformAccessor:
         # For segmented systems: build expansion divisor and identify segment total variables
         expansion_divisor = None
         segment_total_vars: set[str] = set()
-        variable_categories = getattr(self._fs, '_variable_categories', {})
         if clustering.is_segmented:
             expansion_divisor = clustering.build_expansion_divisor(original_time=original_timesteps)
-            # Build segment total vars using registry first, fall back to pattern matching
-            segment_total_vars = {name for name, cat in variable_categories.items() if cat in EXPAND_DIVIDE}
-            # Fall back to pattern matching for backwards compatibility (old FlowSystems without categories)
-            if not segment_total_vars:
-                segment_total_vars = self._build_segment_total_varnames()
+            segment_total_vars = {name for name in NAME_TO_EXPANSION if NAME_TO_EXPANSION[name] is ExpansionMode.DIVIDE}
 
         def _is_state_variable(var_name: str) -> bool:
             """Check if a variable is a state variable (should be interpolated)."""
-            if var_name in variable_categories:
-                return variable_categories[var_name] in EXPAND_INTERPOLATE
-            # Fall back to pattern matching for backwards compatibility
-            return var_name.endswith('|charge_state')
+            return NAME_TO_EXPANSION.get(var_name) is ExpansionMode.INTERPOLATE
 
         def _append_final_state(expanded: xr.DataArray, da: xr.DataArray) -> xr.DataArray:
             """Append final state value from original data to expanded data."""

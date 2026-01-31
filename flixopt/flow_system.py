@@ -35,7 +35,6 @@ from .structure import (
     ElementContainer,
     FlowSystemModel,
     Interface,
-    VariableCategory,
 )
 from .topology_accessor import TopologyAccessor
 from .transform_accessor import TransformAccessor
@@ -261,10 +260,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Solution dataset - populated after optimization or loaded from file
         self._solution: xr.Dataset | None = None
-
-        # Variable categories for segment expansion handling
-        # Populated when model is built, used by transform.expand()
-        self._variable_categories: dict[str, VariableCategory] = {}
 
         # Aggregation info - populated by transform.cluster()
         self.clustering: Clustering | None = None
@@ -1464,9 +1459,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Store solution on FlowSystem for direct Element access
         self.solution = self.model.solution
 
-        # Copy variable categories for segment expansion handling
-        self._variable_categories = self.model.variable_categories.copy()
-
         logger.info(f'Optimization solved successfully. Objective: {self.model.objective.value:.4f}')
 
         return self
@@ -1498,47 +1490,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._statistics = None  # Invalidate cached statistics
 
     @property
-    def variable_categories(self) -> dict[str, VariableCategory]:
-        """Variable categories for filtering and segment expansion.
-
-        Returns:
-            Dict mapping variable names to their VariableCategory.
-        """
-        return self._variable_categories
-
-    def get_variables_by_category(self, *categories: VariableCategory, from_solution: bool = True) -> list[str]:
-        """Get batched variable names matching any of the specified categories.
-
-        Args:
-            *categories: One or more VariableCategory values to filter by.
-            from_solution: If True, only return variables present in solution.
-                If False, return all registered variables matching categories.
-
-        Returns:
-            List of batched variable names matching any of the specified categories.
-
-        Example:
-            >>> fs.get_variables_by_category(VariableCategory.FLOW_RATE)
-            ['flow|rate']
-            >>> fs.get_variables_by_category(VariableCategory.SIZE, VariableCategory.INVESTED)
-            ['flow|size', 'flow|invested', 'storage|size', 'storage|invested']
-        """
-        category_set = set(categories)
-
-        if self._variable_categories:
-            matching = [name for name, cat in self._variable_categories.items() if cat in category_set]
-            # Remove duplicates while preserving order
-            seen = set()
-            matching = [v for v in matching if not (v in seen or seen.add(v))]
-        else:
-            matching = []
-
-        if from_solution and self._solution is not None:
-            solution_vars = set(self._solution.data_vars)
-            matching = [v for v in matching if v in solution_vars]
-        return matching
-
-    @property
     def is_locked(self) -> bool:
         """Check if the FlowSystem is locked (has a solution).
 
@@ -1565,7 +1516,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._topology = None  # Invalidate topology accessor (and its cached colors)
         self._flow_carriers = None  # Invalidate flow-to-carrier mapping
         self._batched = None  # Invalidate batched data accessor (forces re-creation of FlowsData)
-        self._variable_categories.clear()  # Clear stale categories for segment expansion
         for element in self.values():
             element._variable_names = []
             element._constraint_names = []

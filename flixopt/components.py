@@ -26,8 +26,6 @@ from .structure import (
     InterclusterStorageVarName,
     StorageVarName,
     TypeModel,
-    VariableCategory,
-    VariableType,
     register_class_for_io,
 )
 
@@ -1037,7 +1035,6 @@ class StoragesModel(TypeModel):
         """(storage, time+1, ...) - charge state variable for ALL storages."""
         return self.add_variables(
             StorageVarName.CHARGE,
-            var_type=VariableType.CHARGE_STATE,
             lower=self.data.charge_state_lower_bounds,
             upper=self.data.charge_state_upper_bounds,
             dims=None,
@@ -1049,7 +1046,6 @@ class StoragesModel(TypeModel):
         """(storage, time, ...) - netto discharge variable for ALL storages."""
         return self.add_variables(
             StorageVarName.NETTO,
-            var_type=VariableType.NETTO_DISCHARGE,
             dims=None,
         )
 
@@ -1284,7 +1280,6 @@ class StoragesModel(TypeModel):
 
         return self.add_variables(
             StorageVarName.SIZE,
-            var_type=VariableType.SIZE,
             lower=lower_bounds,
             upper=size_max,
             dims=('period', 'scenario'),
@@ -1625,7 +1620,6 @@ class InterclusterStoragesModel(TypeModel):
         """(intercluster_storage, time+1, ...) - relative SOC change."""
         return self.add_variables(
             InterclusterStorageVarName.CHARGE_STATE,
-            var_type=VariableType.CHARGE_STATE,
             lower=-self.data.capacity_upper,
             upper=self.data.capacity_upper,
             dims=None,
@@ -1637,7 +1631,6 @@ class InterclusterStoragesModel(TypeModel):
         """(intercluster_storage, time, ...) - net discharge rate."""
         return self.add_variables(
             InterclusterStorageVarName.NETTO_DISCHARGE,
-            var_type=VariableType.NETTO_DISCHARGE,
             dims=None,
         )
 
@@ -1690,7 +1683,6 @@ class InterclusterStoragesModel(TypeModel):
             name=f'{self.dim_name}|SOC_boundary',
         )
         self._variables[InterclusterStorageVarName.SOC_BOUNDARY] = soc_boundary
-        self.model.variable_categories[soc_boundary.name] = VariableCategory.SOC_BOUNDARY
         return soc_boundary
 
     # =========================================================================
@@ -1920,7 +1912,6 @@ class InterclusterStoragesModel(TypeModel):
         inv = self.data.investment_data
         return self.add_variables(
             InterclusterStorageVarName.SIZE,
-            var_type=VariableType.STORAGE_SIZE,
             lower=inv.size_minimum,
             upper=inv.size_maximum,
             dims=('period', 'scenario'),
@@ -1934,7 +1925,6 @@ class InterclusterStoragesModel(TypeModel):
             return None
         return self.add_variables(
             InterclusterStorageVarName.INVESTED,
-            var_type=VariableType.INVESTED,
             dims=('period', 'scenario'),
             element_ids=self.data.with_optional_investment,
             binary=True,
