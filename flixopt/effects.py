@@ -593,10 +593,8 @@ class EffectsModel:
     ) -> linopy.Variable:
         """Create a share variable from per-contributor expressions.
 
-        Groups contributors by nterm (number of terms) so that expressions
-        with the same shape can be merged cheaply via linopy.merge (no padding
-        needed when _term sizes match). This avoids both the massive memory
-        cost of full alignment and the overhead of per-contributor constraints.
+        Each entry is a single-contributor LinearExpression. Creates one
+        constraint per contributor to avoid expensive alignment/merge.
         """
         import pandas as pd
 
@@ -606,24 +604,14 @@ class EffectsModel:
         coords = self._share_coords('contributor', contributor_index, temporal=temporal)
         var = self.model.add_variables(lower=-np.inf, upper=np.inf, coords=coords, name=name)
 
-        # Group contributors by nterm for efficient batching
-        by_nterm: dict[int, list[str]] = {}
-        normalized: dict[str, linopy.LinearExpression] = {}
         for cid, expr in shares.items():
             if 'effect' in expr.dims:
                 expr_effects = list(expr.coords['effect'].values)
                 if expr_effects != list(effect_index):
                     expr = expr.reindex(effect=effect_index)
-            normalized[cid] = expr
-            nt = expr.nterm
-            by_nterm.setdefault(nt, []).append(cid)
-
-        for i, (_nt, cids) in enumerate(by_nterm.items()):
-            group_exprs = [normalized[cid].sel(contributor=cid) for cid in cids]
-            combined = linopy.merge(group_exprs, dim='contributor')
             self.model.add_constraints(
-                var.sel(contributor=cids) == combined,
-                name=f'{name}|g{i}',
+                var.sel(contributor=cid) == expr.sel(contributor=cid),
+                name=f'{name}|{cid}',
             )
 
         return var
