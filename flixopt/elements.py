@@ -2670,14 +2670,33 @@ class ConvertersModel(TypeModel):
         lambda0 = self._piecewise_variables['lambda0']
         lambda1 = self._piecewise_variables['lambda1']
 
-        # Compute all reconstructed values at once: (converter, flow, time, period, ...)
-        all_reconstructed = (lambda0 * bp['starts'] + lambda1 * bp['ends']).sum('segment')
+        # Each flow belongs to exactly one converter. Instead of broadcasting
+        # lambda × breakpoints across all (converter × flow) and summing,
+        # find the owning converter per flow and select directly.
+        starts = bp['starts']  # (flow, converter, segment)
+        ends = bp['ends']
 
-        # Mask: valid where breakpoints exist (not NaN)
-        valid_mask = fast_notnull(bp['starts']).any('segment')
+        # Find which converter owns each flow (first non-NaN along converter).
+        # Collapse all dims except flow and converter — ownership is static.
+        notnull = fast_notnull(starts)
+        for d in notnull.dims:
+            if d not in ('flow', 'converter'):
+                notnull = notnull.any(d)
+        owner_idx = notnull.argmax('converter')  # (flow,)
+        owner_ids = starts.coords['converter'].values[owner_idx.values]
 
-        # Apply mask and sum over converter (each flow has exactly one valid converter)
-        reconstructed_per_flow = all_reconstructed.where(valid_mask).sum('converter')
+        # Select breakpoints for only the owning converter per flow
+        # Use vectorized indexing: select converter=owner for each flow
+        owner_da = xr.DataArray(owner_ids, dims=['flow'], coords={'flow': starts.coords['flow']})
+        flow_starts = starts.sel(converter=owner_da)  # (flow, segment)
+        flow_ends = ends.sel(converter=owner_da)  # (flow, segment)
+
+        # Select lambda for the owning converter per flow
+        flow_lambda0 = lambda0.sel(converter=owner_da)  # (flow, segment, time, ...)
+        flow_lambda1 = lambda1.sel(converter=owner_da)  # (flow, segment, time, ...)
+
+        # Reconstruct: sum over segments only (no converter dim)
+        reconstructed_per_flow = (flow_lambda0 * flow_starts + flow_lambda1 * flow_ends).sum('segment')
 
         # Get flow rates for piecewise flows
         flow_ids = list(bp.coords['flow'].values)
