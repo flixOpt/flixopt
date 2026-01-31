@@ -767,15 +767,11 @@ class TestV4APIConversion:
         if result_name == '04_scenarios':
             pytest.skip('Scenario weights are now always normalized - old results have different weights')
 
-        # The batched model architecture (v7) uses type-level modeling which produces
-        # slightly better (more optimal) solutions compared to the old per-element model.
-        # This is expected behavior - the model finds better optima. Use a relaxed
-        # tolerance of 10% to allow for this improvement while still catching major issues.
-        assert new_objective == pytest.approx(old_objective, rel=0.1, abs=1), (
+        assert new_objective == pytest.approx(old_objective, rel=1e-5), (
             f'Objective mismatch for {result_name}: new={new_objective}, old={old_objective}'
         )
 
-        assert new_effect_total == pytest.approx(old_effect_total, rel=0.1, abs=1), (
+        assert new_effect_total == pytest.approx(old_effect_total, rel=1e-5), (
             f'Effect {objective_effect_label} mismatch for {result_name}: '
             f'new={new_effect_total}, old={old_effect_total}'
         )
