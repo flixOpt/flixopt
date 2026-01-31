@@ -5,6 +5,7 @@ This module contains the basic elements of the flixopt framework.
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from functools import cached_property
 from typing import TYPE_CHECKING
 
@@ -15,7 +16,14 @@ import xarray as xr
 from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError
-from .features import MaskHelpers, StatusBuilder, fast_notnull, sparse_weighted_sum, stack_along_dim
+from .features import (
+    MaskHelpers,
+    StatusBuilder,
+    fast_notnull,
+    sparse_multiply_sum,
+    sparse_weighted_sum,
+    stack_along_dim,
+)
 from .interface import InvestParameters, StatusParameters
 from .modeling import ModelingUtilitiesAbstract
 from .structure import (
@@ -2279,29 +2287,6 @@ class ConvertersModel(TypeModel):
         return max(len(c.conversion_factors) for c in self.converters_with_factors)
 
     @cached_property
-    def _flow_sign(self) -> xr.DataArray:
-        """(converter, flow) sign: +1 for inputs, -1 for outputs, 0 if not involved."""
-        all_flow_ids = self._flows_model.element_ids
-
-        # Build sign array
-        sign_data = np.zeros((len(self._factor_element_ids), len(all_flow_ids)))
-        for i, conv in enumerate(self.converters_with_factors):
-            for flow in conv.inputs:
-                if flow.label_full in all_flow_ids:
-                    j = all_flow_ids.index(flow.label_full)
-                    sign_data[i, j] = 1.0  # inputs are positive
-            for flow in conv.outputs:
-                if flow.label_full in all_flow_ids:
-                    j = all_flow_ids.index(flow.label_full)
-                    sign_data[i, j] = -1.0  # outputs are negative
-
-        return xr.DataArray(
-            sign_data,
-            dims=['converter', 'flow'],
-            coords={'converter': self._factor_element_ids, 'flow': all_flow_ids},
-        )
-
-    @cached_property
     def _equation_mask(self) -> xr.DataArray:
         """(converter, equation_idx) mask: 1 if equation exists, 0 otherwise."""
         max_eq = self._max_equations
@@ -2318,95 +2303,45 @@ class ConvertersModel(TypeModel):
         )
 
     @cached_property
-    def _coefficients(self) -> xr.DataArray:
-        """(converter, equation_idx, flow, [time, ...]) conversion coefficients.
+    def _signed_coefficients(self) -> dict[tuple[str, str], float | xr.DataArray]:
+        """Sparse (converter_id, flow_id) -> signed coefficient mapping.
 
-        Returns DataArray with dims (converter, equation_idx, flow) for constant coefficients,
-        or (converter, equation_idx, flow, time, ...) for time-varying coefficients.
-        Values are 0 where flow is not involved in equation.
+        Returns a dict where keys are (converter_id, flow_id) tuples and values
+        are the signed coefficients (positive for inputs, negative for outputs).
+        For converters with multiple equations, values are DataArrays with an
+        equation_idx dimension.
         """
         max_eq = self._max_equations
-        all_flow_ids = self._flows_model.element_ids
-        n_conv = len(self._factor_element_ids)
-        n_flows = len(all_flow_ids)
+        all_flow_ids_set = set(self._flows_model.element_ids)
 
-        # Build flow_label -> flow_id mapping for each converter
-        conv_flow_maps = []
+        # Collect signed coefficients per (converter, flow) across equations
+        intermediate: dict[tuple[str, str], list[tuple[int, float | xr.DataArray]]] = defaultdict(list)
+
         for conv in self.converters_with_factors:
             flow_map = {fl.label: fl.label_full for fl in conv.flows.values()}
-            conv_flow_maps.append(flow_map)
+            # +1 for inputs, -1 for outputs
+            flow_signs = {f.label_full: 1.0 for f in conv.inputs if f.label_full in all_flow_ids_set}
+            flow_signs.update({f.label_full: -1.0 for f in conv.outputs if f.label_full in all_flow_ids_set})
 
-        # First pass: collect all coefficients and check for time-varying
-        coeff_values = {}  # (i, eq_idx, j) -> value
-        has_dataarray = False
-        extra_coords = {}
-
-        flow_id_to_idx = {fid: j for j, fid in enumerate(all_flow_ids)}
-
-        for i, (conv, flow_map) in enumerate(zip(self.converters_with_factors, conv_flow_maps, strict=False)):
             for eq_idx, conv_factors in enumerate(conv.conversion_factors):
                 for flow_label, coeff in conv_factors.items():
                     flow_id = flow_map.get(flow_label)
-                    if flow_id and flow_id in flow_id_to_idx:
-                        j = flow_id_to_idx[flow_id]
-                        coeff_values[(i, eq_idx, j)] = coeff
-                        if isinstance(coeff, xr.DataArray) and coeff.ndim > 0:
-                            has_dataarray = True
-                            for d in coeff.dims:
-                                if d not in extra_coords:
-                                    extra_coords[d] = coeff.coords[d].values
+                    sign = flow_signs.get(flow_id, 0.0) if flow_id else 0.0
+                    if sign != 0.0:
+                        intermediate[(conv.label, flow_id)].append((eq_idx, coeff * sign))
 
-        # Build the coefficient array
-        if not has_dataarray:
-            # Fast path: all scalars - use simple numpy array
-            data = np.zeros((n_conv, max_eq, n_flows), dtype=np.float64)
-            for (i, eq_idx, j), val in coeff_values.items():
-                if isinstance(val, xr.DataArray):
-                    data[i, eq_idx, j] = float(val.values)
-                else:
-                    data[i, eq_idx, j] = float(val)
+        # Stack each (converter, flow) pair's per-equation values into a DataArray
+        result: dict[tuple[str, str], float | xr.DataArray] = {}
+        eq_coords = list(range(max_eq))
 
-            return xr.DataArray(
-                data,
-                dims=['converter', 'equation_idx', 'flow'],
-                coords={
-                    'converter': self._factor_element_ids,
-                    'equation_idx': list(range(max_eq)),
-                    'flow': all_flow_ids,
-                },
-            )
-        else:
-            # Slow path: some time-varying coefficients - broadcast all to common shape
-            extra_dims = list(extra_coords.keys())
-            extra_shape = [len(c) for c in extra_coords.values()]
-            full_shape = [n_conv, max_eq, n_flows] + extra_shape
-            full_dims = ['converter', 'equation_idx', 'flow'] + extra_dims
+        for key, entries in intermediate.items():
+            # Build a list indexed by equation_idx (0.0 where equation doesn't use this flow)
+            per_eq: list[float | xr.DataArray] = [0.0] * max_eq
+            for eq_idx, val in entries:
+                per_eq[eq_idx] = val
+            result[key] = stack_along_dim(per_eq, dim='equation_idx', coords=eq_coords)
 
-            data = np.zeros(full_shape, dtype=np.float64)
-
-            # Create template for broadcasting
-            template = xr.DataArray(coords=extra_coords, dims=extra_dims) if extra_coords else None
-
-            for (i, eq_idx, j), val in coeff_values.items():
-                if isinstance(val, xr.DataArray):
-                    if val.ndim == 0:
-                        data[i, eq_idx, j, ...] = float(val.values)
-                    elif template is not None:
-                        broadcasted = val.broadcast_like(template)
-                        data[i, eq_idx, j, ...] = broadcasted.values
-                    else:
-                        data[i, eq_idx, j, ...] = val.values
-                else:
-                    data[i, eq_idx, j, ...] = float(val)
-
-            full_coords = {
-                'converter': self._factor_element_ids,
-                'equation_idx': list(range(max_eq)),
-                'flow': all_flow_ids,
-            }
-            full_coords.update(extra_coords)
-
-            return xr.DataArray(data, dims=full_dims, coords=full_coords)
+        return result
 
     def create_linear_constraints(self) -> None:
         """Create batched linear conversion factor constraints.
@@ -2414,17 +2349,16 @@ class ConvertersModel(TypeModel):
         For each converter c with equation i:
             sum_f(flow_rate[f] * coefficient[c,i,f] * sign[c,f]) == 0
 
-        Uses sparse_weighted_sum: each converter only touches its own 2-3 flows
-        instead of broadcasting across all flows in the system.
+        Uses sparse_multiply_sum: each converter only touches its own 2-3 flows
+        instead of allocating a dense coefficient array across all flows.
         """
         if not self.converters_with_factors:
             return
 
         flow_rate = self._flows_model[FlowVarName.RATE]
-        signed_coeffs = self._coefficients * self._flow_sign
 
         # Sparse sum: only multiplies non-zero (converter, flow) pairs
-        flow_sum = sparse_weighted_sum(flow_rate, signed_coeffs, sum_dim='flow', group_dim='converter')
+        flow_sum = sparse_multiply_sum(flow_rate, self._signed_coefficients, sum_dim='flow', group_dim='converter')
 
         # Build valid mask: True where converter HAS that equation
         n_equations_per_converter = xr.DataArray(
