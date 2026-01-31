@@ -17,6 +17,7 @@ Benchmarked `build_model()` across commits since `302413c4` on branch `feature/e
 | `9c2d3d3b` | Add sparse_weighted_sum | **3,317** | 3.23x |
 | `c67a6a7e` | Clean up sparse_weighted_sum, revert piecewise | **4,849** | 2.21x |
 | (wip) | Restore owner-based piecewise with drop_vars | **2,884** | 3.71x |
+| (wip) | Drop _populate_names + pre-combine xarray coeffs | **1,480** | 7.24x |
 
 ## Complex System (72h, piecewise)
 
@@ -31,12 +32,13 @@ Benchmarked `build_model()` across commits since `302413c4` on branch `feature/e
 | `9c2d3d3b` | Add sparse_weighted_sum | **947** | 0.72x |
 | `c67a6a7e` | Clean up sparse_weighted_sum, revert piecewise | **768** | 0.88x |
 | (wip) | Restore owner-based piecewise with drop_vars | **617** | 1.10x |
+| (wip) | Drop _populate_names + pre-combine xarray coeffs | **624** | 1.09x |
 
 ## Key Takeaways
 
-- **XL system: 3.71x overall speedup** — from 10.7s down to 2.9s. The biggest gains came from sparse groupby in conversion and piecewise owner-based lookup. Note: ~3s of remaining time is spent in backwards-compat methods (`_find_vars_for_element`, `_find_constraints_for_element`) that will be removed.
+- **XL system: 7.24x overall speedup** — from 10.7s down to 1.5s. Major gains: sparse groupby (2.4x), owner-based piecewise (3.7x), removing `_populate_names` backwards-compat (7.2x). Remaining time is linopy/xarray infrastructure overhead.
 
-- **Complex system: 1.10x speedup** — from 678ms down to 617ms. Now faster than the original baseline across all system sizes.
+- **Complex system: 1.09x speedup** — from 678ms down to 624ms. Modest improvement since the Complex system is dominated by linopy per-operation overhead (~5-15ms per arithmetic op), not data size. With only 72 timesteps and 14 flows, each linopy operation processes tiny arrays but still pays full xarray Dataset construction/alignment/merge costs.
 
 ## How to Run Benchmarks Across Commits
 

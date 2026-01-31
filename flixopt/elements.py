@@ -1213,7 +1213,7 @@ class FlowsModel(TypeModel):
         factors = self.data.effects_per_flow_hour
         if factors is not None:
             rate = self.rate.sel({dim: factors.coords[dim].values})
-            effects_model.add_temporal_contribution(rate * factors * dt, contributor_dim=dim)
+            effects_model.add_temporal_contribution(rate * (factors * dt), contributor_dim=dim)
 
         # === Temporal: status effects ===
         if self.status is not None:
@@ -1221,7 +1221,7 @@ class FlowsModel(TypeModel):
             if factor is not None:
                 flow_ids = factor.coords[dim].values
                 status_subset = self.status.sel({dim: flow_ids})
-                effects_model.add_temporal_contribution(status_subset * factor * dt, contributor_dim=dim)
+                effects_model.add_temporal_contribution(status_subset * (factor * dt), contributor_dim=dim)
 
             factor = self.data.effects_per_startup
             if self.startup is not None and factor is not None:

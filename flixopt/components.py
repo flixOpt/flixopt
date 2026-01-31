@@ -1086,11 +1086,15 @@ class StoragesModel(TypeModel):
 
         # Energy balance: cs[t+1] = cs[t] * (1-loss)^dt + charge * eta_c * dt - discharge * dt / eta_d
         # Rearranged: cs[t+1] - cs[t] * (1-loss)^dt - charge * eta_c * dt + discharge * dt / eta_d = 0
+        # Pre-combine pure xarray coefficients to minimize linopy operations
+        loss_factor = (1 - rel_loss) ** timestep_duration
+        charge_factor = eta_charge * timestep_duration
+        discharge_factor = timestep_duration / eta_discharge
         energy_balance_lhs = (
             charge_state.isel(time=slice(1, None))
-            - charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
-            - charge_rates * eta_charge * timestep_duration
-            + discharge_rates * timestep_duration / eta_discharge
+            - charge_state.isel(time=slice(None, -1)) * loss_factor
+            - charge_rates * charge_factor
+            + discharge_rates * discharge_factor
         )
         self.model.add_constraints(
             energy_balance_lhs == 0,
@@ -1697,11 +1701,15 @@ class InterclusterStoragesModel(TypeModel):
         eta_charge = self.data.eta_charge
         eta_discharge = self.data.eta_discharge
 
+        # Pre-combine pure xarray coefficients to minimize linopy operations
+        loss_factor = (1 - rel_loss) ** timestep_duration
+        charge_factor = eta_charge * timestep_duration
+        discharge_factor = timestep_duration / eta_discharge
         lhs = (
             charge_state.isel(time=slice(1, None))
-            - charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
-            - charge_rates * eta_charge * timestep_duration
-            + discharge_rates * timestep_duration / eta_discharge
+            - charge_state.isel(time=slice(None, -1)) * loss_factor
+            - charge_rates * charge_factor
+            + discharge_rates * discharge_factor
         )
         self.model.add_constraints(lhs == 0, name=f'{self.dim_name}|energy_balance')
 
