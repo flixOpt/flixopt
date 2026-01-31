@@ -403,10 +403,12 @@ class TestStorageModel:
 
             # Check for batched constraint that enforces either charging or discharging
             # Constraint name is 'prevent_simultaneous' with a 'component' dimension
-            assert 'prevent_simultaneous' in model.constraints, 'Missing constraint to prevent simultaneous operation'
+            assert 'storage|prevent_simultaneous' in model.constraints, (
+                'Missing constraint to prevent simultaneous operation'
+            )
 
             # Verify this storage is included in the constraint
-            constraint = model.constraints['prevent_simultaneous']
+            constraint = model.constraints['storage|prevent_simultaneous']
             assert 'SimultaneousStorage' in constraint.coords['component'].values
 
     @pytest.mark.parametrize(
