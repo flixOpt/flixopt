@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .features import InvestmentBuilder, concat_with_coords, fast_isnull, fast_notnull
+from .features import fast_isnull, fast_notnull, stack_along_dim
 from .interface import InvestParameters, StatusParameters
 from .modeling import _scalar_safe_isel_drop
 from .structure import ElementContainer
@@ -137,7 +137,7 @@ def build_effects_array(
         for eid in ids
     ]
 
-    return concat_with_coords(factors, dim_name, ids)
+    return stack_along_dim(factors, dim_name, ids)
 
 
 class StatusData:
@@ -410,13 +410,13 @@ class InvestmentData:
         For optional: 0 (invested variable controls actual minimum)
         """
         bounds = [self._params[eid].minimum_or_fixed_size if self._params[eid].mandatory else 0.0 for eid in self._ids]
-        return InvestmentBuilder.stack_bounds(bounds, self._ids, self._dim)
+        return stack_along_dim(bounds, self._dim, self._ids)
 
     @cached_property
     def size_maximum(self) -> xr.DataArray:
         """(element, [period, scenario]) - maximum size for all investment elements."""
         bounds = [self._params[eid].maximum_or_fixed_size for eid in self._ids]
-        return InvestmentBuilder.stack_bounds(bounds, self._ids, self._dim)
+        return stack_along_dim(bounds, self._dim, self._ids)
 
     @cached_property
     def optional_size_minimum(self) -> xr.DataArray | None:
@@ -425,7 +425,7 @@ class InvestmentData:
         if not ids:
             return None
         bounds = [self._params[eid].minimum_or_fixed_size for eid in ids]
-        return InvestmentBuilder.stack_bounds(bounds, ids, self._dim)
+        return stack_along_dim(bounds, self._dim, ids)
 
     @cached_property
     def optional_size_maximum(self) -> xr.DataArray | None:
@@ -434,7 +434,7 @@ class InvestmentData:
         if not ids:
             return None
         bounds = [self._params[eid].maximum_or_fixed_size for eid in ids]
-        return InvestmentBuilder.stack_bounds(bounds, ids, self._dim)
+        return stack_along_dim(bounds, self._dim, ids)
 
     @cached_property
     def linked_periods(self) -> xr.DataArray | None:
@@ -443,7 +443,7 @@ class InvestmentData:
         if not ids:
             return None
         bounds = [self._params[eid].linked_periods for eid in ids]
-        return InvestmentBuilder.stack_bounds(bounds, ids, self._dim)
+        return stack_along_dim(bounds, self._dim, ids)
 
     # === Effects ===
 
@@ -664,35 +664,30 @@ class StoragesData:
 
     # === Stacked Storage Parameters ===
 
-    def _stack(self, values: list) -> xr.DataArray:
-        """Stack per-element values into DataArray with storage dimension."""
-        das = [v if isinstance(v, xr.DataArray) else xr.DataArray(v) for v in values]
-        return concat_with_coords(das, self._dim_name, self.ids)
-
     @cached_property
     def eta_charge(self) -> xr.DataArray:
         """(element, [time]) - charging efficiency."""
-        return self._stack([s.eta_charge for s in self._storages])
+        return stack_along_dim([s.eta_charge for s in self._storages], self._dim_name, self.ids)
 
     @cached_property
     def eta_discharge(self) -> xr.DataArray:
         """(element, [time]) - discharging efficiency."""
-        return self._stack([s.eta_discharge for s in self._storages])
+        return stack_along_dim([s.eta_discharge for s in self._storages], self._dim_name, self.ids)
 
     @cached_property
     def relative_loss_per_hour(self) -> xr.DataArray:
         """(element, [time]) - relative loss per hour."""
-        return self._stack([s.relative_loss_per_hour for s in self._storages])
+        return stack_along_dim([s.relative_loss_per_hour for s in self._storages], self._dim_name, self.ids)
 
     @cached_property
     def relative_minimum_charge_state(self) -> xr.DataArray:
         """(element, [time]) - relative minimum charge state."""
-        return self._stack([s.relative_minimum_charge_state for s in self._storages])
+        return stack_along_dim([s.relative_minimum_charge_state for s in self._storages], self._dim_name, self.ids)
 
     @cached_property
     def relative_maximum_charge_state(self) -> xr.DataArray:
         """(element, [time]) - relative maximum charge state."""
-        return self._stack([s.relative_maximum_charge_state for s in self._storages])
+        return stack_along_dim([s.relative_maximum_charge_state for s in self._storages], self._dim_name, self.ids)
 
     @cached_property
     def charging_flow_ids(self) -> list[str]:
@@ -779,8 +774,8 @@ class StoragesData:
             rel_mins.append(min_bounds)
             rel_maxs.append(max_bounds)
 
-        rel_min_stacked = concat_with_coords(rel_mins, self._dim_name, self.ids)
-        rel_max_stacked = concat_with_coords(rel_maxs, self._dim_name, self.ids)
+        rel_min_stacked = stack_along_dim(rel_mins, self._dim_name, self.ids)
+        rel_max_stacked = stack_along_dim(rel_maxs, self._dim_name, self.ids)
         return rel_min_stacked, rel_max_stacked
 
     @cached_property
@@ -1274,7 +1269,7 @@ class FlowsData:
         """(flow, period, scenario) - minimum size for flows with investment."""
         if not self._investment_data:
             return None
-        # InvestmentData.size_minimum already has flow dim via InvestmentBuilder.stack_bounds
+        # InvestmentData.size_minimum already has flow dim via stack_along_dim
         raw = self._investment_data.size_minimum
         return self._broadcast_existing(raw, dims=['period', 'scenario'])
 
@@ -1619,60 +1614,53 @@ class EffectsData:
     def penalty_effect_id(self) -> str:
         return self._collection.penalty_effect.label
 
-    def _stack_bounds(self, attr_name: str, default: float = np.inf) -> xr.DataArray:
-        """Stack per-effect bounds into a single DataArray with effect dimension."""
-
-        def as_dataarray(effect) -> xr.DataArray:
+    def _effect_values(self, attr_name: str, default: float) -> list:
+        """Extract per-effect attribute values, substituting default for None."""
+        values = []
+        for effect in self._effects:
             val = getattr(effect, attr_name, None)
-            if val is None:
-                return xr.DataArray(default)
-            return val if isinstance(val, xr.DataArray) else xr.DataArray(val)
-
-        return xr.concat(
-            [as_dataarray(e).expand_dims(effect=[e.label]) for e in self._effects],
-            dim='effect',
-            fill_value=default,
-        )
+            values.append(default if val is None else val)
+        return values
 
     @cached_property
     def minimum_periodic(self) -> xr.DataArray:
-        return self._stack_bounds('minimum_periodic', -np.inf)
+        return stack_along_dim(self._effect_values('minimum_periodic', -np.inf), 'effect', self.effect_ids)
 
     @cached_property
     def maximum_periodic(self) -> xr.DataArray:
-        return self._stack_bounds('maximum_periodic', np.inf)
+        return stack_along_dim(self._effect_values('maximum_periodic', np.inf), 'effect', self.effect_ids)
 
     @cached_property
     def minimum_temporal(self) -> xr.DataArray:
-        return self._stack_bounds('minimum_temporal', -np.inf)
+        return stack_along_dim(self._effect_values('minimum_temporal', -np.inf), 'effect', self.effect_ids)
 
     @cached_property
     def maximum_temporal(self) -> xr.DataArray:
-        return self._stack_bounds('maximum_temporal', np.inf)
+        return stack_along_dim(self._effect_values('maximum_temporal', np.inf), 'effect', self.effect_ids)
 
     @cached_property
     def minimum_per_hour(self) -> xr.DataArray:
-        return self._stack_bounds('minimum_per_hour', -np.inf)
+        return stack_along_dim(self._effect_values('minimum_per_hour', -np.inf), 'effect', self.effect_ids)
 
     @cached_property
     def maximum_per_hour(self) -> xr.DataArray:
-        return self._stack_bounds('maximum_per_hour', np.inf)
+        return stack_along_dim(self._effect_values('maximum_per_hour', np.inf), 'effect', self.effect_ids)
 
     @cached_property
     def minimum_total(self) -> xr.DataArray:
-        return self._stack_bounds('minimum_total', -np.inf)
+        return stack_along_dim(self._effect_values('minimum_total', -np.inf), 'effect', self.effect_ids)
 
     @cached_property
     def maximum_total(self) -> xr.DataArray:
-        return self._stack_bounds('maximum_total', np.inf)
+        return stack_along_dim(self._effect_values('maximum_total', np.inf), 'effect', self.effect_ids)
 
     @cached_property
     def minimum_over_periods(self) -> xr.DataArray:
-        return self._stack_bounds('minimum_over_periods', -np.inf)
+        return stack_along_dim(self._effect_values('minimum_over_periods', -np.inf), 'effect', self.effect_ids)
 
     @cached_property
     def maximum_over_periods(self) -> xr.DataArray:
-        return self._stack_bounds('maximum_over_periods', np.inf)
+        return stack_along_dim(self._effect_values('maximum_over_periods', np.inf), 'effect', self.effect_ids)
 
     @cached_property
     def effects_with_over_periods(self) -> list[Effect]:

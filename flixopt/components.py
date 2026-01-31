@@ -15,7 +15,7 @@ import xarray as xr
 from . import io as fx_io
 from .core import PlausibilityError
 from .elements import Component, Flow
-from .features import MaskHelpers, concat_with_coords
+from .features import MaskHelpers, stack_along_dim
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
 from .modeling import _scalar_safe_isel, _scalar_safe_reduce
 from .structure import (
@@ -942,33 +942,27 @@ class StoragesModel(TypeModel):
     @functools.cached_property
     def _size_lower(self) -> xr.DataArray:
         """(storage,) - minimum size for investment storages."""
-        from .features import InvestmentBuilder
-
         element_ids = self.with_investment
         values = [self.storage(sid).capacity_in_flow_hours.minimum_or_fixed_size for sid in element_ids]
-        return InvestmentBuilder.stack_bounds(values, element_ids, self.dim_name)
+        return stack_along_dim(values, self.dim_name, element_ids)
 
     @functools.cached_property
     def _size_upper(self) -> xr.DataArray:
         """(storage,) - maximum size for investment storages."""
-        from .features import InvestmentBuilder
-
         element_ids = self.with_investment
         values = [self.storage(sid).capacity_in_flow_hours.maximum_or_fixed_size for sid in element_ids]
-        return InvestmentBuilder.stack_bounds(values, element_ids, self.dim_name)
+        return stack_along_dim(values, self.dim_name, element_ids)
 
     @functools.cached_property
     def _linked_periods_mask(self) -> xr.DataArray | None:
         """(storage, period) - linked periods for investment storages. None if no linking."""
-        from .features import InvestmentBuilder
-
         element_ids = self.with_investment
         linked_list = [self.storage(sid).capacity_in_flow_hours.linked_periods for sid in element_ids]
         if not any(lp is not None for lp in linked_list):
             return None
 
         values = [lp if lp is not None else np.nan for lp in linked_list]
-        return InvestmentBuilder.stack_bounds(values, element_ids, self.dim_name)
+        return stack_along_dim(values, self.dim_name, element_ids)
 
     @functools.cached_property
     def _mandatory_mask(self) -> xr.DataArray:
@@ -982,22 +976,20 @@ class StoragesModel(TypeModel):
         """(storage,) - minimum size for optional investment storages."""
         if not self.with_optional_investment:
             return None
-        from .features import InvestmentBuilder
 
         element_ids = self.with_optional_investment
         values = [self.storage(sid).capacity_in_flow_hours.minimum_or_fixed_size for sid in element_ids]
-        return InvestmentBuilder.stack_bounds(values, element_ids, self.dim_name)
+        return stack_along_dim(values, self.dim_name, element_ids)
 
     @functools.cached_property
     def _optional_upper(self) -> xr.DataArray | None:
         """(storage,) - maximum size for optional investment storages."""
         if not self.with_optional_investment:
             return None
-        from .features import InvestmentBuilder
 
         element_ids = self.with_optional_investment
         values = [self.storage(sid).capacity_in_flow_hours.maximum_or_fixed_size for sid in element_ids]
-        return InvestmentBuilder.stack_bounds(values, element_ids, self.dim_name)
+        return stack_along_dim(values, self.dim_name, element_ids)
 
     @functools.cached_property
     def _flow_mask(self) -> xr.DataArray:
@@ -1155,12 +1147,6 @@ class StoragesModel(TypeModel):
             name='storage|balanced_sizes',
         )
 
-    def _stack_parameter(self, values: list, element_ids: list | None = None) -> xr.DataArray:
-        """Stack parameter values into DataArray with storage dimension."""
-        ids = element_ids if element_ids is not None else self.element_ids
-        das = [v if isinstance(v, xr.DataArray) else xr.DataArray(v) for v in values]
-        return concat_with_coords(das, self.dim_name, ids)
-
     def _add_batched_initial_final_constraints(self, charge_state) -> None:
         """Add batched initial and final charge state constraints."""
         # Group storages by constraint type
@@ -1191,7 +1177,7 @@ class StoragesModel(TypeModel):
         # Batched numeric initial constraint
         if storages_numeric_initial:
             ids = [s.label_full for s, _ in storages_numeric_initial]
-            values = self._stack_parameter([v for _, v in storages_numeric_initial], ids)
+            values = stack_along_dim([v for _, v in storages_numeric_initial], self.dim_name, ids)
             cs_initial = charge_state.sel({dim: ids}).isel(time=0)
             self.model.add_constraints(
                 cs_initial == values,
@@ -1210,7 +1196,7 @@ class StoragesModel(TypeModel):
         # Batched max final constraint
         if storages_max_final:
             ids = [s.label_full for s, _ in storages_max_final]
-            values = self._stack_parameter([v for _, v in storages_max_final], ids)
+            values = stack_along_dim([v for _, v in storages_max_final], self.dim_name, ids)
             cs_final = charge_state.sel({dim: ids}).isel(time=-1)
             self.model.add_constraints(
                 cs_final <= values,
@@ -1220,7 +1206,7 @@ class StoragesModel(TypeModel):
         # Batched min final constraint
         if storages_min_final:
             ids = [s.label_full for s, _ in storages_min_final]
-            values = self._stack_parameter([v for _, v in storages_min_final], ids)
+            values = stack_along_dim([v for _, v in storages_min_final], self.dim_name, ids)
             cs_final = charge_state.sel({dim: ids}).isel(time=-1)
             self.model.add_constraints(
                 cs_final >= values,
@@ -1641,8 +1627,8 @@ class InterclusterStoragesModel(TypeModel):
             uppers.append(cap_bounds.upper)
 
         # Stack bounds
-        lower = concat_with_coords(lowers, dim, self.element_ids)
-        upper = concat_with_coords(uppers, dim, self.element_ids)
+        lower = stack_along_dim(lowers, dim, self.element_ids)
+        upper = stack_along_dim(uppers, dim, self.element_ids)
 
         soc_boundary = self.model.add_variables(
             lower=lower,
@@ -1791,7 +1777,7 @@ class InterclusterStoragesModel(TypeModel):
         # Add fixed initial constraints
         if initial_fixed_ids:
             soc_initial = soc_boundary.sel({self.dim_name: initial_fixed_ids})
-            initial_stacked = self._InvestmentBuilder.stack_bounds(initial_values, initial_fixed_ids, self.dim_name)
+            initial_stacked = stack_along_dim(initial_values, self.dim_name, initial_fixed_ids)
             self.model.add_constraints(
                 soc_initial.isel(cluster_boundary=0) == initial_stacked,
                 name=f'{self.dim_name}|initial_SOC_boundary',
@@ -1862,7 +1848,7 @@ class InterclusterStoragesModel(TypeModel):
         # Fixed capacity storages: combined <= capacity
         if fixed_ids:
             combined_fixed = combined.sel({self.dim_name: fixed_ids})
-            caps_stacked = self._InvestmentBuilder.stack_bounds(fixed_caps, fixed_ids, self.dim_name)
+            caps_stacked = stack_along_dim(fixed_caps, self.dim_name, fixed_ids)
             self.model.add_constraints(
                 combined_fixed <= caps_stacked,
                 name=f'{self.dim_name}|soc_ub_{sample_name}_fixed',
@@ -1979,7 +1965,7 @@ class InterclusterStoragesModel(TypeModel):
 
         # Add effect shares
         for effect_name, effect_type, factors in effects:
-            factor_stacked = InvestmentBuilder.stack_bounds(factors, investment_ids, self.dim_name)
+            factor_stacked = stack_along_dim(factors, self.dim_name, investment_ids)
 
             if effect_type == 'per_size':
                 expr = (size_var * factor_stacked).sum(self.dim_name)

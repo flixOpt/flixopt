@@ -48,25 +48,79 @@ def fast_isnull(arr: xr.DataArray) -> xr.DataArray:
     return xr.DataArray(np.isnan(arr.values), dims=arr.dims, coords=arr.coords)
 
 
-def concat_with_coords(
-    arrays: list[xr.DataArray],
+def stack_along_dim(
+    values: list[float | xr.DataArray],
     dim: str,
     coords: list,
 ) -> xr.DataArray:
-    """Concatenate arrays along dim and assign coordinates.
+    """Stack per-element values into a DataArray along a new labeled dimension.
 
-    This is a common pattern used when stacking per-element arrays into
-    a batched array with proper element dimension coordinates.
+    Handles mixed inputs: scalars, 0-d DataArrays, and N-d DataArrays with
+    potentially different dimensions. Heterogeneous shapes are expanded to
+    a common shape before concatenation.
 
     Args:
-        arrays: List of DataArrays to concatenate.
-        dim: Dimension name to concatenate along.
-        coords: Coordinate values to assign to the dimension.
+        values: Per-element values to stack (scalars or DataArrays).
+        dim: Name of the new dimension.
+        coords: Coordinate labels for the new dimension.
 
     Returns:
-        Concatenated DataArray with proper coordinates assigned.
+        DataArray with dim as first dimension.
     """
-    return xr.concat(arrays, dim=dim, coords='minimal').assign_coords({dim: coords})
+    # Fast path: check if all values are scalars
+    scalar_values = []
+    has_array = False
+
+    for v in values:
+        if isinstance(v, xr.DataArray):
+            if v.ndim == 0:
+                scalar_values.append(float(v.values))
+            else:
+                has_array = True
+                break
+        elif isinstance(v, (int, float, np.integer, np.floating)):
+            scalar_values.append(float(v))
+        else:
+            has_array = True
+            break
+
+    if not has_array:
+        return xr.DataArray(
+            np.array(scalar_values),
+            coords={dim: coords},
+            dims=[dim],
+        )
+
+    # General path: expand each value to have the stacking dim, then concat
+    arrays = []
+    for v, coord in zip(values, coords, strict=False):
+        if isinstance(v, xr.DataArray):
+            if v.ndim == 0:
+                arr = xr.DataArray(float(v.values), coords={dim: [coord]}, dims=[dim])
+            else:
+                arr = v.expand_dims({dim: [coord]})
+        else:
+            arr = xr.DataArray(v, coords={dim: [coord]}, dims=[dim])
+        arrays.append(arr)
+
+    # Find union of all non-stacking dimensions
+    all_dims = {}
+    for arr in arrays:
+        for d in arr.dims:
+            if d != dim and d not in all_dims:
+                all_dims[d] = arr.coords[d].values
+
+    # Expand each array to have all dimensions
+    if all_dims:
+        expanded = []
+        for arr in arrays:
+            for d, dim_coords in all_dims.items():
+                if d not in arr.dims:
+                    arr = arr.expand_dims({d: dim_coords})
+            expanded.append(arr)
+        arrays = expanded
+
+    return xr.concat(arrays, dim=dim, coords='minimal')
 
 
 class InvestmentBuilder:
@@ -257,76 +311,11 @@ class InvestmentBuilder:
 
         effect_ids = list(effects_dict.keys())
         effect_arrays = [effects_dict[eff] for eff in effect_ids]
-        result = concat_with_coords(effect_arrays, 'effect', effect_ids)
+        result = stack_along_dim(effect_arrays, 'effect', effect_ids)
 
         # Transpose to put element first, then effect, then any other dims (like time)
         dims_order = [dim_name, 'effect'] + [d for d in result.dims if d not in (dim_name, 'effect')]
         return result.transpose(*dims_order)
-
-    @staticmethod
-    def stack_bounds(
-        bounds: list[float | xr.DataArray],
-        element_ids: list[str],
-        dim_name: str,
-    ) -> xr.DataArray:
-        """Stack per-element bounds into array with element dimension.
-
-        Args:
-            bounds: List of bounds (one per element).
-            element_ids: List of element IDs (same order as bounds).
-            dim_name: Dimension name (e.g., 'flow', 'storage').
-
-        Returns:
-            Stacked DataArray with element dimension. Always includes the
-            element dimension for consistent dimension handling.
-        """
-        # Extract scalar values from 0-d DataArrays or plain scalars
-        scalar_values = []
-        has_multidim = False
-
-        for b in bounds:
-            if isinstance(b, xr.DataArray):
-                if b.ndim == 0:
-                    scalar_values.append(float(b.values))
-                else:
-                    has_multidim = True
-                    break
-            else:
-                scalar_values.append(float(b))
-
-        # Fast path: all scalars - still return DataArray with element dim
-        if not has_multidim:
-            return xr.DataArray(
-                np.array(scalar_values),
-                coords={dim_name: element_ids},
-                dims=[dim_name],
-            )
-
-        # Slow path: need full concat for multi-dimensional bounds
-        arrays_to_stack = []
-        for bound, eid in zip(bounds, element_ids, strict=False):
-            if isinstance(bound, xr.DataArray):
-                arr = bound.expand_dims({dim_name: [eid]})
-            else:
-                arr = xr.DataArray(bound, coords={dim_name: [eid]}, dims=[dim_name])
-            arrays_to_stack.append(arr)
-
-        # Find union of all non-element dimensions and their coords
-        all_dims = {}
-        for arr in arrays_to_stack:
-            for d in arr.dims:
-                if d != dim_name and d not in all_dims:
-                    all_dims[d] = arr.coords[d].values
-
-        # Expand each array to have all dimensions
-        expanded = []
-        for arr in arrays_to_stack:
-            for d, coords in all_dims.items():
-                if d not in arr.dims:
-                    arr = arr.expand_dims({d: coords})
-            expanded.append(arr)
-
-        return xr.concat(expanded, dim=dim_name, coords='minimal')
 
 
 class StatusBuilder:

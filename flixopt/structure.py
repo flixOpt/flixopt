@@ -403,8 +403,8 @@ class TypeModel(ABC):
         ...     def create_variables(self):
         ...         self.add_variables(
         ...             'flow|rate',  # Creates 'flow|rate' with 'flow' dimension
-        ...             lower=self._stack_bounds('lower'),
-        ...             upper=self._stack_bounds('upper'),
+        ...             lower=data.lower_bounds,
+        ...             upper=data.upper_bounds,
         ...         )
     """
 
@@ -559,79 +559,6 @@ class TypeModel(ABC):
                         coord_dict[dim] = model_coords[dim]
 
         return xr.Coordinates(coord_dict)
-
-    def _stack_bounds(
-        self,
-        bounds: list[float | xr.DataArray],
-    ) -> xr.DataArray | float:
-        """Stack per-element bounds into array with element-type dimension.
-
-        Args:
-            bounds: List of bounds (one per element, same order as self.elements).
-
-        Returns:
-            Stacked DataArray with element-type dimension (e.g., 'flow'), or scalar if all identical.
-        """
-        dim = self.dim_name  # e.g., 'flow', 'storage'
-
-        # Extract scalar values from 0-d DataArrays or plain scalars
-        scalar_values = []
-        has_multidim = False
-
-        for b in bounds:
-            if isinstance(b, xr.DataArray):
-                if b.ndim == 0:
-                    scalar_values.append(float(b.values))
-                else:
-                    has_multidim = True
-                    break
-            else:
-                scalar_values.append(float(b))
-
-        # Fast path: all scalars
-        if not has_multidim:
-            unique_values = set(scalar_values)
-            if len(unique_values) == 1:
-                return scalar_values[0]  # Return scalar - linopy will broadcast
-
-            return xr.DataArray(
-                np.array(scalar_values),
-                coords={dim: self.element_ids},
-                dims=[dim],
-            )
-
-        # Slow path: need full concat for multi-dimensional bounds
-        arrays_to_stack = []
-        for bound, eid in zip(bounds, self.element_ids, strict=False):
-            if isinstance(bound, xr.DataArray):
-                arr = bound.expand_dims({dim: [eid]})
-            else:
-                arr = xr.DataArray(bound, coords={dim: [eid]}, dims=[dim])
-            arrays_to_stack.append(arr)
-
-        # Find union of all non-element dimensions and their coords
-        all_dims = {}  # dim -> coords
-        for arr in arrays_to_stack:
-            for d in arr.dims:
-                if d != dim and d not in all_dims:
-                    all_dims[d] = arr.coords[d].values
-
-        # Expand each array to have all non-element dimensions
-        expanded = []
-        for arr in arrays_to_stack:
-            for d, coords in all_dims.items():
-                if d not in arr.dims:
-                    arr = arr.expand_dims({d: coords})
-            expanded.append(arr)
-
-        stacked = xr.concat(expanded, dim=dim, coords='minimal')
-
-        # Ensure element-type dim is first dimension
-        if dim in stacked.dims and stacked.dims[0] != dim:
-            dim_order = [dim] + [d for d in stacked.dims if d != dim]
-            stacked = stacked.transpose(*dim_order)
-
-        return stacked
 
     def _broadcast_to_model_coords(
         self,

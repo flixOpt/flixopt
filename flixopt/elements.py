@@ -15,7 +15,7 @@ import xarray as xr
 from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError
-from .features import MaskHelpers, StatusBuilder, fast_notnull
+from .features import MaskHelpers, StatusBuilder, fast_notnull, stack_along_dim
 from .interface import InvestParameters, StatusParameters
 from .modeling import ModelingUtilitiesAbstract
 from .structure import (
@@ -2793,7 +2793,7 @@ class TransmissionsModel(TypeModel):
         for t in self.transmissions:
             loss = t.relative_losses if t.relative_losses is not None else 0
             values.append(loss)
-        return self._stack_data(values)
+        return stack_along_dim(values, self.dim_name, self.element_ids)
 
     @cached_property
     def _absolute_losses(self) -> xr.DataArray:
@@ -2804,7 +2804,7 @@ class TransmissionsModel(TypeModel):
         for t in self.transmissions:
             loss = t.absolute_losses if t.absolute_losses is not None else 0
             values.append(loss)
-        return self._stack_data(values)
+        return stack_along_dim(values, self.dim_name, self.element_ids)
 
     @cached_property
     def _has_absolute_losses_mask(self) -> xr.DataArray:
@@ -2822,27 +2822,6 @@ class TransmissionsModel(TypeModel):
     def _transmissions_with_abs_losses(self) -> list[str]:
         """Element IDs for transmissions with absolute losses."""
         return [t.label for t in self.transmissions if t.absolute_losses is not None and np.any(t.absolute_losses != 0)]
-
-    def _stack_data(self, values: list) -> xr.DataArray:
-        """Stack transmission data into (transmission, [time, ...]) array."""
-        if not values:
-            return xr.DataArray()
-
-        # Convert scalars to arrays with proper coords
-        arrays = []
-        for i, val in enumerate(values):
-            if isinstance(val, xr.DataArray):
-                arr = val.expand_dims({self.dim_name: [self.element_ids[i]]})
-            else:
-                # Scalar - create simple array
-                arr = xr.DataArray(
-                    val,
-                    dims=[self.dim_name],
-                    coords={self.dim_name: [self.element_ids[i]]},
-                )
-            arrays.append(arr)
-
-        return xr.concat(arrays, dim=self.dim_name)
 
     def create_variables(self) -> None:
         """No variables needed for transmissions (constraint-only model)."""
