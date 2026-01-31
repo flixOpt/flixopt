@@ -42,8 +42,6 @@ def sparse_weighted_sum(var, coeffs: xr.DataArray, sum_dim: str, group_dim: str)
     Returns:
         linopy expression with sum_dim removed, group_dim present.
     """
-    import linopy
-
     coeffs_values = coeffs.values
     group_ids = list(coeffs.coords[group_dim].values)
     sum_ids = list(coeffs.coords[sum_dim].values)
@@ -71,17 +69,13 @@ def sparse_weighted_sum(var, coeffs: xr.DataArray, sum_dim: str, group_dim: str)
     pair_sum_ids = [sum_ids[s] for s in sum_idx]
     pair_group_ids = [group_ids[g] for g in group_idx]
 
-    # Extract per-pair coefficients: select along group_dim and sum_dim axes
-    # Build indexing tuple for the original array
-    idx = [slice(None)] * coeffs_values.ndim
-    pair_coeffs_list = []
-    for g, s in zip(group_idx, sum_idx, strict=False):
-        idx[group_axis] = g
-        idx[sum_axis] = s
-        pair_coeffs_list.append(coeffs_values[tuple(idx)])
-    pair_coeffs_data = np.array(pair_coeffs_list)
+    # Extract per-pair coefficients using fancy indexing
+    fancy_idx = [slice(None)] * coeffs_values.ndim
+    fancy_idx[group_axis] = group_idx
+    fancy_idx[sum_axis] = sum_idx
+    pair_coeffs_data = coeffs_values[tuple(fancy_idx)]
 
-    # Build DataArray for pair coefficients with remaining dims
+    # Build DataArray with pair dim replacing group and sum dims
     remaining_dims = [d for d in coeffs.dims if d not in (group_dim, sum_dim)]
     remaining_coords = {d: coeffs.coords[d] for d in remaining_dims if d in coeffs.coords}
     pair_coeffs = xr.DataArray(
@@ -91,10 +85,8 @@ def sparse_weighted_sum(var, coeffs: xr.DataArray, sum_dim: str, group_dim: str)
     )
 
     # Select var for active pairs and multiply by coefficients.
-    # Convert to LinearExpression first to avoid linopy Variable coord issues.
-    selected = (var * 1).sel({sum_dim: xr.DataArray(pair_sum_ids, dims=['pair'])})
-    # Drop the dangling sum_dim coordinate that sel() leaves behind
-    selected = linopy.LinearExpression(selected.data.drop_vars(sum_dim, errors='ignore'), selected.model)
+    # The multiplication naturally converts Variable -> LinearExpression.
+    selected = var.sel({sum_dim: xr.DataArray(pair_sum_ids, dims=['pair'])})
     weighted = selected * pair_coeffs
 
     # Groupby to sum back to group dimension
@@ -102,7 +94,10 @@ def sparse_weighted_sum(var, coeffs: xr.DataArray, sum_dim: str, group_dim: str)
     result = weighted.groupby(mapping).sum()
 
     # Reindex to original group order (groupby sorts alphabetically)
-    return result.sel({group_dim: group_ids})
+    result = result.sel({group_dim: group_ids})
+
+    # Vectorized sel() leaves sum_dim as a non-dim coord — drop it
+    return result.drop_vars(sum_dim, errors='ignore')
 
 
 def fast_notnull(arr: xr.DataArray) -> xr.DataArray:

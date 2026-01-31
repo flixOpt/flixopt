@@ -2414,54 +2414,23 @@ class ConvertersModel(TypeModel):
         For each converter c with equation i:
             sum_f(flow_rate[f] * coefficient[c,i,f] * sign[c,f]) == 0
 
-        Uses sparse groupby summation: instead of building a dense
-        (converter × equation × all_flows × time) expression and summing,
-        only the non-zero (converter, flow) pairs are selected and grouped.
-        Each converter typically uses 2-3 flows out of hundreds.
+        Uses sparse_weighted_sum: each converter only touches its own 2-3 flows
+        instead of broadcasting across all flows in the system.
         """
         if not self.converters_with_factors:
             return
 
-        coefficients = self._coefficients  # (converter, equation_idx, flow, [time])
-        flow_rate = self._flows_model[FlowVarName.RATE]  # (flow, time)
-        sign = self._flow_sign  # (converter, flow)
-        signed_coeffs = coefficients * sign
+        flow_rate = self._flows_model[FlowVarName.RATE]
+        signed_coeffs = self._coefficients * self._flow_sign
 
-        converter_ids = self._factor_element_ids
-        flow_ids = list(flow_rate.coords['flow'].values)
-
-        # Find active (converter, flow) pairs where coefficients are non-zero.
-        # Collapse equation_idx (and time if present) to find any non-zero entry.
-        sc_values = signed_coeffs.values  # (n_conv, max_eq, n_flow, [n_time])
-        nonzero_mask = np.any(sc_values != 0, axis=1)  # (n_conv, n_flow, [n_time])
-        while nonzero_mask.ndim > 2:
-            nonzero_mask = np.any(nonzero_mask, axis=-1)  # collapse extra dims
-        conv_idx, flow_idx = np.nonzero(nonzero_mask)  # active pairs
-
-        # Build sparse pair arrays
-        pair_flow = [flow_ids[f] for f in flow_idx]
-        pair_converter = [converter_ids[c] for c in conv_idx]
-        pair_coeffs = xr.DataArray(
-            np.array([sc_values[c, :, f] for c, f in zip(conv_idx, flow_idx, strict=False)]),
-            dims=['pair', 'equation_idx'] + list(signed_coeffs.dims[3:]),
-            coords={d: signed_coeffs.coords[d] for d in signed_coeffs.dims[3:]},
-        )
-
-        # Select flow rates for active pairs and multiply by coefficients
-        weighted = flow_rate.sel(flow=xr.DataArray(pair_flow, dims=['pair'])) * pair_coeffs
-
-        # Sum back to converter dimension via groupby
-        converter_mapping = xr.DataArray(pair_converter, dims=['pair'], name='converter')
-        flow_sum = weighted.groupby(converter_mapping).sum()
-
-        # Reindex to match original converter order (groupby sorts alphabetically)
-        flow_sum = flow_sum.sel(converter=converter_ids)
+        # Sparse sum: only multiplies non-zero (converter, flow) pairs
+        flow_sum = sparse_weighted_sum(flow_rate, signed_coeffs, sum_dim='flow', group_dim='converter')
 
         # Build valid mask: True where converter HAS that equation
         n_equations_per_converter = xr.DataArray(
             [len(c.conversion_factors) for c in self.converters_with_factors],
             dims=['converter'],
-            coords={'converter': converter_ids},
+            coords={'converter': self._factor_element_ids},
         )
         equation_indices = xr.DataArray(
             list(range(self._max_equations)),
@@ -2670,33 +2639,14 @@ class ConvertersModel(TypeModel):
         lambda0 = self._piecewise_variables['lambda0']
         lambda1 = self._piecewise_variables['lambda1']
 
-        # Each flow belongs to exactly one converter. Instead of broadcasting
-        # lambda × breakpoints across all (converter × flow) and summing,
-        # find the owning converter per flow and select directly.
-        starts = bp['starts']  # (flow, converter, segment)
-        ends = bp['ends']
+        # Compute all reconstructed values at once: (converter, flow, time, period, ...)
+        all_reconstructed = (lambda0 * bp['starts'] + lambda1 * bp['ends']).sum('segment')
 
-        # Find which converter owns each flow (first non-NaN along converter).
-        # Collapse all dims except flow and converter — ownership is static.
-        notnull = fast_notnull(starts)
-        for d in notnull.dims:
-            if d not in ('flow', 'converter'):
-                notnull = notnull.any(d)
-        owner_idx = notnull.argmax('converter')  # (flow,)
-        owner_ids = starts.coords['converter'].values[owner_idx.values]
+        # Mask: valid where breakpoints exist (not NaN)
+        valid_mask = fast_notnull(bp['starts']).any('segment')
 
-        # Select breakpoints for only the owning converter per flow
-        # Use vectorized indexing: select converter=owner for each flow
-        owner_da = xr.DataArray(owner_ids, dims=['flow'], coords={'flow': starts.coords['flow']})
-        flow_starts = starts.sel(converter=owner_da)  # (flow, segment)
-        flow_ends = ends.sel(converter=owner_da)  # (flow, segment)
-
-        # Select lambda for the owning converter per flow
-        flow_lambda0 = lambda0.sel(converter=owner_da)  # (flow, segment, time, ...)
-        flow_lambda1 = lambda1.sel(converter=owner_da)  # (flow, segment, time, ...)
-
-        # Reconstruct: sum over segments only (no converter dim)
-        reconstructed_per_flow = (flow_lambda0 * flow_starts + flow_lambda1 * flow_ends).sum('segment')
+        # Apply mask and sum over converter (each flow has exactly one valid converter)
+        reconstructed_per_flow = all_reconstructed.where(valid_mask).sum('converter')
 
         # Get flow rates for piecewise flows
         flow_ids = list(bp.coords['flow'].values)
