@@ -1154,8 +1154,8 @@ class StoragesModel(TypeModel):
 
         # === Batched netto_discharge constraint ===
         # Build charge and discharge flow_rate selections aligned with storage dimension
-        charge_flow_ids = [s.charging.label_full for s in self.elements.values()]
-        discharge_flow_ids = [s.discharging.label_full for s in self.elements.values()]
+        charge_flow_ids = self.data.charging_flow_ids
+        discharge_flow_ids = self.data.discharging_flow_ids
 
         # Detect flow dimension name from flow_rate variable
         flow_dim = 'flow' if 'flow' in flow_rate.dims else 'element'
@@ -1173,10 +1173,9 @@ class StoragesModel(TypeModel):
         )
 
         # === Batched energy balance constraint ===
-        # Stack parameters into DataArrays with element dimension
-        eta_charge = self._stack_parameter([s.eta_charge for s in self.elements.values()])
-        eta_discharge = self._stack_parameter([s.eta_discharge for s in self.elements.values()])
-        rel_loss = self._stack_parameter([s.relative_loss_per_hour for s in self.elements.values()])
+        eta_charge = self.data.eta_charge
+        eta_discharge = self.data.eta_discharge
+        rel_loss = self.data.relative_loss_per_hour
 
         # Energy balance: cs[t+1] = cs[t] * (1-loss)^dt + charge * eta_c * dt - discharge * dt / eta_d
         # Rearranged: cs[t+1] - cs[t] * (1-loss)^dt - charge * eta_c * dt + discharge * dt / eta_d = 0
@@ -1831,8 +1830,8 @@ class InterclusterStoragesModel(TypeModel):
         flow_rate = self._flows_model._variables['rate']
         flow_dim = 'flow' if 'flow' in flow_rate.dims else 'element'
 
-        charge_flow_ids = [s.charging.label_full for s in self.elements.values()]
-        discharge_flow_ids = [s.discharging.label_full for s in self.elements.values()]
+        charge_flow_ids = self.data.charging_flow_ids
+        discharge_flow_ids = self.data.discharging_flow_ids
 
         # Select and rename to match storage dimension
         charge_rates = flow_rate.sel({flow_dim: charge_flow_ids})
@@ -2054,20 +2053,13 @@ class InterclusterStoragesModel(TypeModel):
         if not self.data.with_investment:
             return
 
+        inv = self.data.investment_data
         investment_ids = self.data.with_investment
         optional_ids = self.data.with_optional_investment
 
-        # Build bounds
-        size_lower = self.data.charge_state_lower
-        size_upper = self.data.charge_state_upper
-        mandatory_mask = xr.DataArray(
-            [self.data[sid].capacity_in_flow_hours.mandatory for sid in investment_ids],
-            dims=[self.dim_name],
-            coords={self.dim_name: investment_ids},
-        )
-
-        # Size variable: mandatory uses min bound, optional uses 0
-        lower_for_size = xr.where(mandatory_mask, size_lower, 0)
+        # Build bounds from InvestmentData
+        lower_for_size = inv.size_minimum
+        size_upper = inv.size_maximum
 
         storage_coord = {self.dim_name: investment_ids}
         coords = self.model.get_coords(['period', 'scenario'])
@@ -2130,17 +2122,10 @@ class InterclusterStoragesModel(TypeModel):
         )
 
         # Optional investment bounds using InvestmentHelpers
+        inv = self.data.investment_data
         if optional_ids and invested_var is not None:
-            optional_lower = self._InvestmentHelpers.stack_bounds(
-                [self.data[sid].capacity_in_flow_hours.minimum_or_fixed_size for sid in optional_ids],
-                optional_ids,
-                self.dim_name,
-            )
-            optional_upper = self._InvestmentHelpers.stack_bounds(
-                [self.data[sid].capacity_in_flow_hours.maximum_or_fixed_size for sid in optional_ids],
-                optional_ids,
-                self.dim_name,
-            )
+            optional_lower = inv.optional_size_minimum
+            optional_upper = inv.optional_size_maximum
             size_optional = size_var.sel({self.dim_name: optional_ids})
 
             self._InvestmentHelpers.add_optional_size_bounds(

@@ -635,21 +635,47 @@ class StoragesData:
             effect_ids=self._effect_ids,
         )
 
-    # === Bounds ===
+    # === Stacked Storage Parameters ===
+
+    def _stack(self, values: list) -> xr.DataArray:
+        """Stack per-element values into DataArray with storage dimension."""
+        das = [v if isinstance(v, xr.DataArray) else xr.DataArray(v) for v in values]
+        return concat_with_coords(das, self._dim_name, self.ids)
 
     @cached_property
-    def charge_state_lower(self) -> xr.DataArray:
-        """(element,) - minimum size for investment storages."""
-        element_ids = self.with_investment
-        values = [self._by_label[sid].capacity_in_flow_hours.minimum_or_fixed_size for sid in element_ids]
-        return InvestmentHelpers.stack_bounds(values, element_ids, self._dim_name)
+    def eta_charge(self) -> xr.DataArray:
+        """(element, [time]) - charging efficiency."""
+        return self._stack([s.eta_charge for s in self._storages])
 
     @cached_property
-    def charge_state_upper(self) -> xr.DataArray:
-        """(element,) - maximum size for investment storages."""
-        element_ids = self.with_investment
-        values = [self._by_label[sid].capacity_in_flow_hours.maximum_or_fixed_size for sid in element_ids]
-        return InvestmentHelpers.stack_bounds(values, element_ids, self._dim_name)
+    def eta_discharge(self) -> xr.DataArray:
+        """(element, [time]) - discharging efficiency."""
+        return self._stack([s.eta_discharge for s in self._storages])
+
+    @cached_property
+    def relative_loss_per_hour(self) -> xr.DataArray:
+        """(element, [time]) - relative loss per hour."""
+        return self._stack([s.relative_loss_per_hour for s in self._storages])
+
+    @cached_property
+    def relative_minimum_charge_state(self) -> xr.DataArray:
+        """(element, [time]) - relative minimum charge state."""
+        return self._stack([s.relative_minimum_charge_state for s in self._storages])
+
+    @cached_property
+    def relative_maximum_charge_state(self) -> xr.DataArray:
+        """(element, [time]) - relative maximum charge state."""
+        return self._stack([s.relative_maximum_charge_state for s in self._storages])
+
+    @cached_property
+    def charging_flow_ids(self) -> list[str]:
+        """Flow IDs for charging flows, aligned with self.ids."""
+        return [s.charging.label_full for s in self._storages]
+
+    @cached_property
+    def discharging_flow_ids(self) -> list[str]:
+        """Flow IDs for discharging flows, aligned with self.ids."""
+        return [s.discharging.label_full for s in self._storages]
 
 
 class FlowsData:
