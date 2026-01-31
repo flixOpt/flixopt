@@ -1641,26 +1641,20 @@ class BusesModel(TypeModel):
         flow_dim = self._flows_model.dim_name  # 'flow'
         bus_dim = self.dim_name  # 'bus'
 
-        # Get ordered lists for coefficient matrix
         bus_ids = list(self.elements.keys())
-        flow_ids = list(flow_rate.coords[flow_dim].values)
-
-        if not bus_ids or not flow_ids:
-            logger.debug('BusesModel: no buses or flows, skipping balance constraints')
+        if not bus_ids:
+            logger.debug('BusesModel: no buses, skipping balance constraints')
             return
 
-        # Build coefficient matrix: +1 for inputs, -1 for outputs, 0 otherwise
-        coeffs = np.zeros((len(bus_ids), len(flow_ids)), dtype=np.float64)
-        for i, bus in enumerate(self.elements.values()):
+        # Build sparse coefficients: +1 for inputs, -1 for outputs
+        coefficients: dict[tuple[str, str], float] = {}
+        for bus in self.elements.values():
             for f in bus.inputs:
-                coeffs[i, flow_ids.index(f.label_full)] = 1.0
+                coefficients[(bus.label_full, f.label_full)] = 1.0
             for f in bus.outputs:
-                coeffs[i, flow_ids.index(f.label_full)] = -1.0
+                coefficients[(bus.label_full, f.label_full)] = -1.0
 
-        coeffs_da = xr.DataArray(coeffs, dims=[bus_dim, flow_dim], coords={bus_dim: bus_ids, flow_dim: flow_ids})
-
-        # Balance = sum(inputs) - sum(outputs)
-        balance = sparse_weighted_sum(flow_rate, coeffs_da, sum_dim=flow_dim, group_dim=bus_dim)
+        balance = sparse_multiply_sum(flow_rate, coefficients, sum_dim=flow_dim, group_dim=bus_dim)
 
         if self.buses_with_imbalance:
             imbalance_ids = [b.label_full for b in self.buses_with_imbalance]
