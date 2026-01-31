@@ -459,41 +459,6 @@ class _Expander:
         """Check if variable is a first-timestep-only variable (startup/shutdown)."""
         return var_name in self._first_timestep_vars
 
-    def _build_segment_total_varnames(self) -> set[str]:
-        """Build segment total variable names - BACKWARDS COMPATIBILITY FALLBACK.
-
-        This method is only used when variable_categories is empty (old FlowSystems
-        saved before category registration was implemented). New FlowSystems use
-        the VariableCategory registry with EXPAND_DIVIDE categories (PER_TIMESTEP, SHARE).
-
-        Returns:
-            Set of variable names that should be divided by expansion divisor.
-        """
-        segment_total_vars: set[str] = set()
-        effect_names = list(self._fs.effects.keys())
-
-        # 1. Per-timestep totals for each effect
-        for effect in effect_names:
-            segment_total_vars.add(f'{effect}(temporal)|per_timestep')
-
-        # 2. Flow contributions to effects
-        for flow_label in self._fs.flows:
-            for effect in effect_names:
-                segment_total_vars.add(f'{flow_label}->{effect}(temporal)')
-
-        # 3. Component contributions to effects
-        for component_label in self._fs.components:
-            for effect in effect_names:
-                segment_total_vars.add(f'{component_label}->{effect}(temporal)')
-
-        # 4. Effect-to-effect contributions
-        for target_effect_name, target_effect in self._fs.effects.items():
-            if target_effect.share_from_temporal:
-                for source_effect_name in target_effect.share_from_temporal:
-                    segment_total_vars.add(f'{source_effect_name}(temporal)->{target_effect_name}(temporal)')
-
-        return segment_total_vars
-
     def _append_final_state(self, expanded: xr.DataArray, da: xr.DataArray) -> xr.DataArray:
         """Append final state value from original data to expanded data."""
         cluster_assignments = self._clustering.cluster_assignments

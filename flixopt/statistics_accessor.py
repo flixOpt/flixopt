@@ -20,7 +20,6 @@ Example:
 from __future__ import annotations
 
 import logging
-import re
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -32,7 +31,7 @@ from xarray_plotly.figures import add_secondary_y, update_traces
 from .color_processing import ColorType, hex_to_rgba, process_colors
 from .config import CONFIG
 from .plot_result import PlotResult
-from .structure import FlowVarName, StorageVarName
+from .structure import EffectVarName, FlowVarName, StorageVarName
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
@@ -538,7 +537,16 @@ class StatisticsAccessor:
         """
         self._require_solution()
         if self._flow_rates is None:
-            self._flow_rates = self._fs.solution[FlowVarName.RATE].to_dataset('flow')
+            ds = self._fs.solution[FlowVarName.RATE].to_dataset('flow')
+            # Add carrier/unit attributes back (lost during to_dataset)
+            for label in ds.data_vars:
+                flow = self._fs.flows.get(label)
+                if flow is not None:
+                    bus = self._fs.buses.get(flow.bus)
+                    carrier = bus.carrier if bus else None
+                    ds[label].attrs['carrier'] = carrier
+                    ds[label].attrs['unit'] = self.carrier_units.get(carrier, '') if carrier else ''
+            self._flow_rates = ds
         return self._flow_rates
 
     @property
@@ -787,27 +795,29 @@ class StatisticsAccessor:
     def _create_effects_dataset(self, mode: Literal['temporal', 'periodic', 'total']) -> xr.Dataset:
         """Create dataset containing effect totals for all contributors.
 
-        Detects contributors (flows, components, etc.) from solution data variables.
+        Uses batched share|temporal and share|periodic DataArrays from the solution.
         Excludes effect-to-effect shares which are intermediate conversions.
         Provides component and component_type coordinates for flexible groupby operations.
         """
         solution = self._fs.solution
         template = self._create_template_for_mode(mode)
-
-        # Detect contributors from solution data variables
-        # Pattern: {contributor}->{effect}(temporal) or {contributor}->{effect}(periodic)
-        contributor_pattern = re.compile(r'^(.+)->(.+)\((temporal|periodic)\)$')
         effect_labels = set(self._fs.effects.keys())
 
+        # Determine modes to process
+        modes_to_process = ['temporal', 'periodic'] if mode == 'total' else [mode]
+        share_var_map = {'temporal': 'share|temporal', 'periodic': 'share|periodic'}
+
+        # Detect contributors from batched share variables
         detected_contributors: set[str] = set()
-        for var in solution.data_vars:
-            match = contributor_pattern.match(str(var))
-            if match:
-                contributor = match.group(1)
-                # Exclude effect-to-effect shares (e.g., costs(temporal) -> Effect1(temporal))
-                base_name = contributor.split('(')[0] if '(' in contributor else contributor
-                if base_name not in effect_labels:
-                    detected_contributors.add(contributor)
+        for current_mode in modes_to_process:
+            share_name = share_var_map[current_mode]
+            if share_name in solution:
+                share_da = solution[share_name]
+                for c in share_da.coords['contributor'].values:
+                    # Exclude effect-to-effect shares
+                    base_name = str(c).split('(')[0] if '(' in str(c) else str(c)
+                    if base_name not in effect_labels:
+                        detected_contributors.add(str(c))
 
         contributors = sorted(detected_contributors)
 
@@ -832,9 +842,6 @@ class StatisticsAccessor:
         parents = [get_parent_component(c) for c in contributors]
         contributor_types = [get_contributor_type(c) for c in contributors]
 
-        # Determine modes to process
-        modes_to_process = ['temporal', 'periodic'] if mode == 'total' else [mode]
-
         ds = xr.Dataset()
 
         for effect in self._fs.effects:
@@ -844,6 +851,15 @@ class StatisticsAccessor:
                 share_total: xr.DataArray | None = None
 
                 for current_mode in modes_to_process:
+                    share_name = share_var_map[current_mode]
+                    if share_name not in solution:
+                        continue
+                    share_da = solution[share_name]
+
+                    # Check if this contributor exists in the share variable
+                    if contributor not in share_da.coords['contributor'].values:
+                        continue
+
                     # Get conversion factors: which source effects contribute to this target effect
                     conversion_factors = {
                         key[0]: value
@@ -853,19 +869,18 @@ class StatisticsAccessor:
                     conversion_factors[effect] = 1  # Direct contribution
 
                     for source_effect, factor in conversion_factors.items():
-                        label = f'{contributor}->{source_effect}({current_mode})'
-                        if label in solution:
-                            da = solution[label] * factor
-                            # For total mode, sum temporal over time (apply cluster_weight for proper weighting)
-                            # Sum over all temporal dimensions (time, and cluster if present)
-                            if mode == 'total' and current_mode == 'temporal' and 'time' in da.dims:
-                                weighted = da * self._fs.weights.get('cluster', 1.0)
-                                temporal_dims = [d for d in weighted.dims if d not in ('period', 'scenario')]
-                                da = weighted.sum(temporal_dims)
-                            if share_total is None:
-                                share_total = da
-                            else:
-                                share_total = share_total + da
+                        if source_effect not in share_da.coords['effect'].values:
+                            continue
+                        da = share_da.sel(contributor=contributor, effect=source_effect) * factor
+                        # For total mode, sum temporal over time (apply cluster_weight for proper weighting)
+                        if mode == 'total' and current_mode == 'temporal' and 'time' in da.dims:
+                            weighted = da * self._fs.weights.get('cluster', 1.0)
+                            temporal_dims = [d for d in weighted.dims if d not in ('period', 'scenario')]
+                            da = weighted.sum(temporal_dims)
+                        if share_total is None:
+                            share_total = da
+                        else:
+                            share_total = share_total + da
 
                 # If no share found, use NaN template
                 if share_total is None:
@@ -886,16 +901,21 @@ class StatisticsAccessor:
         )
 
         # Validation: check totals match solution
-        suffix_map = {'temporal': '(temporal)|per_timestep', 'periodic': '(periodic)', 'total': ''}
-        for effect in self._fs.effects:
-            label = f'{effect}{suffix_map[mode]}'
-            if label in solution:
-                computed = ds[effect].sum('contributor')
-                found = solution[label]
-                if not np.allclose(computed.fillna(0).values, found.fillna(0).values, equal_nan=True):
-                    logger.critical(
-                        f'Results for {effect}({mode}) in effects_dataset doesnt match {label}\n{computed=}\n, {found=}'
-                    )
+        effect_var_map = {
+            'temporal': EffectVarName.PER_TIMESTEP,
+            'periodic': EffectVarName.PERIODIC,
+            'total': EffectVarName.TOTAL,
+        }
+        effect_var_name = effect_var_map[mode]
+        if effect_var_name in solution:
+            for effect in self._fs.effects:
+                if effect in solution[effect_var_name].coords.get('effect', xr.DataArray([])).values:
+                    computed = ds[effect].sum('contributor')
+                    found = solution[effect_var_name].sel(effect=effect)
+                    if not np.allclose(computed.fillna(0).values, found.fillna(0).values, equal_nan=True):
+                        logger.critical(
+                            f'Results for {effect}({mode}) in effects_dataset doesnt match {effect_var_name}\n{computed=}\n, {found=}'
+                        )
 
         return ds
 

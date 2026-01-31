@@ -366,6 +366,7 @@ NAME_TO_EXPANSION: dict[str, ExpansionMode] = {
     ComponentVarName.STARTUP: ExpansionMode.FIRST_TIMESTEP,
     ComponentVarName.SHUTDOWN: ExpansionMode.FIRST_TIMESTEP,
     EffectVarName.PER_TIMESTEP: ExpansionMode.DIVIDE,
+    'share|temporal': ExpansionMode.DIVIDE,
     InterclusterStorageVarName.SOC_BOUNDARY: ExpansionMode.CONSUME,
 }
 
