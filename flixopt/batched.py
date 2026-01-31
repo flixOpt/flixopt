@@ -647,29 +647,29 @@ class StoragesData:
 
     @cached_property
     def capacity_lower(self) -> xr.DataArray:
-        """(storage,) - lower capacity per storage (0 for None, min_size for invest, cap for fixed)."""
+        """(storage, [period, scenario]) - lower capacity per storage (0 for None, min_size for invest, cap for fixed)."""
         values = []
         for s in self._storages:
             if s.capacity_in_flow_hours is None:
                 values.append(0.0)
             elif isinstance(s.capacity_in_flow_hours, InvestParameters):
-                values.append(float(s.capacity_in_flow_hours.minimum_or_fixed_size))
+                values.append(s.capacity_in_flow_hours.minimum_or_fixed_size)
             else:
-                values.append(float(s.capacity_in_flow_hours))
-        return xr.DataArray(values, dims=[self._dim_name], coords={self._dim_name: self.ids})
+                values.append(s.capacity_in_flow_hours)
+        return stack_along_dim(values, self._dim_name, self.ids)
 
     @cached_property
     def capacity_upper(self) -> xr.DataArray:
-        """(storage,) - upper capacity per storage (inf for None, max_size for invest, cap for fixed)."""
+        """(storage, [period, scenario]) - upper capacity per storage (inf for None, max_size for invest, cap for fixed)."""
         values = []
         for s in self._storages:
             if s.capacity_in_flow_hours is None:
                 values.append(np.inf)
             elif isinstance(s.capacity_in_flow_hours, InvestParameters):
-                values.append(float(s.capacity_in_flow_hours.maximum_or_fixed_size))
+                values.append(s.capacity_in_flow_hours.maximum_or_fixed_size)
             else:
-                values.append(float(s.capacity_in_flow_hours))
-        return xr.DataArray(values, dims=[self._dim_name], coords={self._dim_name: self.ids})
+                values.append(s.capacity_in_flow_hours)
+        return stack_along_dim(values, self._dim_name, self.ids)
 
     def _relative_bounds_extra(self) -> tuple[xr.DataArray, xr.DataArray]:
         """Compute relative charge state bounds extended with final timestep values.
