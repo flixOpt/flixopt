@@ -559,7 +559,8 @@ class EffectsModel:
         # === Create share|temporal variable ===
         if self._temporal_shares:
             self.share_temporal = self._create_share_var(self._temporal_shares, 'share|temporal', temporal=True)
-            self._eq_per_timestep.lhs -= self.share_temporal.sum('contributor')
+            # Sum expressions directly instead of summing the variable (avoids NaN-padded where())
+            self._eq_per_timestep.lhs -= self._sum_share_expressions(self._temporal_shares)
 
         # === Apply temporal constants directly ===
         for const in self._temporal_constant_defs:
@@ -568,7 +569,7 @@ class EffectsModel:
         # === Create share|periodic variable ===
         if self._periodic_shares:
             self.share_periodic = self._create_share_var(self._periodic_shares, 'share|periodic', temporal=False)
-            self._eq_periodic.lhs -= self.share_periodic.sum('contributor').reindex({'effect': self.data.effect_index})
+            self._eq_periodic.lhs -= self._sum_share_expressions(self._periodic_shares)
 
         # === Apply periodic constants directly ===
         for const in self._periodic_constant_defs:
@@ -584,6 +585,24 @@ class EffectsModel:
                 **{k: v for k, v in (self.model.get_coords(base_dims) or {}).items()},
             }
         )
+
+    def _sum_share_expressions(self, shares: dict[str, linopy.LinearExpression]) -> linopy.LinearExpression:
+        """Sum per-contributor expressions, dropping the contributor dim.
+
+        Uses linopy.merge along _term (default), which is cheap when all
+        expressions have the same non-helper dimensions. This avoids
+        Variable.sum('contributor') which triggers expensive nansum/where().
+        """
+        effect_index = self.data.effect_index
+        flat = []
+        for cid, expr in shares.items():
+            e = expr.sel(contributor=cid)  # drop contributor dim
+            if 'effect' in e.dims:
+                expr_effects = list(e.coords['effect'].values)
+                if expr_effects != list(effect_index):
+                    e = e.reindex(effect=effect_index)
+            flat.append(e)
+        return linopy.merge(flat)  # default dim=_term = addition
 
     def _create_share_var(
         self,
