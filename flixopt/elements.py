@@ -722,7 +722,7 @@ class Flow(Element):
         """Get total_flow_hours from FlowsModel (if using type-level modeling)."""
         if self._flows_model is None:
             return None
-        return self._flows_model.get_variable('flow|total_flow_hours', self.label_full)
+        return self._flows_model.get_variable(FlowVarName.TOTAL_FLOW_HOURS, self.label_full)
 
     @property
     def status_from_type_model(self) -> linopy.Variable | None:

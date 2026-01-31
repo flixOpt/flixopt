@@ -27,6 +27,7 @@ from .structure import (
     StorageVarName,
     TypeModel,
     VariableCategory,
+    VariableType,
     register_class_for_io,
 )
 
@@ -932,11 +933,11 @@ class StoragesModel(TypeModel):
         # === Periodic: size * effects_per_size ===
         if inv.effects_per_size is not None:
             factors = inv.effects_per_size
-            size = self[StorageVarName.SIZE].sel({dim: factors.coords[dim].values})
+            size = self.size.sel({dim: factors.coords[dim].values})
             effects_model.add_periodic_contribution(size * factors, contributor_dim=dim)
 
             # Investment/retirement effects
-            invested = self.get(StorageVarName.INVESTED)
+            invested = self.invested
             if invested is not None:
                 if (f := inv.effects_of_investment) is not None:
                     effects_model.add_periodic_contribution(
@@ -1030,46 +1031,41 @@ class StoragesModel(TypeModel):
             membership=membership,
         )
 
+    @functools.cached_property
+    def charge(self) -> linopy.Variable:
+        """(storage, time+1, ...) - charge state variable for ALL storages."""
+        lower_bounds = self._collect_charge_state_bounds('lower')
+        upper_bounds = self._collect_charge_state_bounds('upper')
+        return self.add_variables(
+            StorageVarName.CHARGE,
+            var_type=VariableType.CHARGE_STATE,
+            lower=lower_bounds,
+            upper=upper_bounds,
+            dims=None,
+            extra_timestep=True,
+        )
+
+    @functools.cached_property
+    def netto(self) -> linopy.Variable:
+        """(storage, time, ...) - netto discharge variable for ALL storages."""
+        return self.add_variables(
+            StorageVarName.NETTO,
+            var_type=VariableType.NETTO_DISCHARGE,
+            dims=None,
+        )
+
     def create_variables(self) -> None:
-        """Create batched variables for all storages.
+        """Create all batched variables for storages.
 
-        Creates:
-        - storage|charge: For ALL storages (with storage dimension, extra timestep)
-        - storage|netto: For ALL storages (with storage dimension)
+        Triggers cached property creation for:
+        - storage|charge: For ALL storages (with extra timestep)
+        - storage|netto: For ALL storages
         """
-        from .structure import VARIABLE_TYPE_TO_EXPANSION, VariableType
-
         if not self.elements:
             return
 
-        # === storage|charge: ALL storages (with extra timestep) ===
-        lower_bounds = self._collect_charge_state_bounds('lower')
-        upper_bounds = self._collect_charge_state_bounds('upper')
-
-        charge_state = self.model.add_variables(
-            lower=lower_bounds,
-            upper=upper_bounds,
-            coords=self._build_coords(dims=None, extra_timestep=True),
-            name=StorageVarName.CHARGE,
-        )
-        self._variables[StorageVarName.CHARGE] = charge_state
-
-        # Register category for segment expansion
-        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(VariableType.CHARGE_STATE)
-        if expansion_category is not None:
-            self.model.variable_categories[charge_state.name] = expansion_category
-
-        # === storage|netto: ALL storages ===
-        netto_discharge = self.model.add_variables(
-            coords=self._build_coords(dims=None),
-            name=StorageVarName.NETTO,
-        )
-        self._variables[StorageVarName.NETTO] = netto_discharge
-
-        # Register category for segment expansion
-        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(VariableType.NETTO_DISCHARGE)
-        if expansion_category is not None:
-            self.model.variable_categories[netto_discharge.name] = expansion_category
+        _ = self.charge
+        _ = self.netto
 
         logger.debug(
             f'StoragesModel created variables: {len(self.elements)} storages, '
@@ -1157,8 +1153,8 @@ class StoragesModel(TypeModel):
             return
 
         flow_rate = self._flows_model[FlowVarName.RATE]
-        charge_state = self[StorageVarName.CHARGE]
-        netto_discharge = self[StorageVarName.NETTO]
+        charge_state = self.charge
+        netto_discharge = self.netto
         timestep_duration = self.model.timestep_duration
 
         # === Batched netto_discharge constraint ===
@@ -1337,33 +1333,12 @@ class StoragesModel(TypeModel):
             name='storage|cluster_cyclic',
         )
 
-    def create_investment_model(self) -> None:
-        """Create investment variables and constraints for storages with investment.
-
-        Creates:
-        - storage|size: For all storages with investment
-        - storage|invested: For storages with optional (non-mandatory) investment
-
-        Must be called BEFORE create_investment_constraints().
-        """
+    @functools.cached_property
+    def size(self) -> linopy.Variable | None:
+        """(storage, period, scenario) - size variable for storages with investment."""
         if not self.storages_with_investment:
-            return
+            return None
 
-        import pandas as pd
-
-        from .features import InvestmentHelpers
-        from .structure import VARIABLE_TYPE_TO_EXPANSION, VariableType
-
-        dim = self.dim_name
-        element_ids = self.investment_ids
-        non_mandatory_ids = self.optional_investment_ids
-        mandatory_ids = self.mandatory_investment_ids
-
-        # Get base coords
-        base_coords = self.model.get_coords(['period', 'scenario'])
-        base_coords_dict = dict(base_coords) if base_coords is not None else {}
-
-        # Use cached properties for bounds
         size_min = self._size_lower
         size_max = self._size_upper
 
@@ -1374,38 +1349,50 @@ class StoragesModel(TypeModel):
             size_min = size_min * linked
             size_max = size_max * linked
 
-        # Use cached mandatory mask
-        mandatory_mask = self._mandatory_mask
-
         # For non-mandatory, lower bound is 0 (invested variable controls actual minimum)
-        lower_bounds = xr.where(mandatory_mask, size_min, 0)
-        upper_bounds = size_max
+        lower_bounds = xr.where(self._mandatory_mask, size_min, 0)
 
-        # === storage|size variable ===
-        size_coords = xr.Coordinates({dim: pd.Index(element_ids, name=dim), **base_coords_dict})
-        size_var = self.model.add_variables(
+        return self.add_variables(
+            StorageVarName.SIZE,
+            var_type=VariableType.SIZE,
             lower=lower_bounds,
-            upper=upper_bounds,
-            coords=size_coords,
-            name=StorageVarName.SIZE,
+            upper=size_max,
+            dims=('period', 'scenario'),
+            element_ids=self.investment_ids,
         )
-        self._variables[StorageVarName.SIZE] = size_var
 
-        # Register category for segment expansion
-        expansion_category = VARIABLE_TYPE_TO_EXPANSION.get(VariableType.SIZE)
-        if expansion_category is not None:
-            self.model.variable_categories[size_var.name] = expansion_category
+    @functools.cached_property
+    def invested(self) -> linopy.Variable | None:
+        """(storage, period, scenario) - binary invested variable for optional investment."""
+        if not self.optional_investment_ids:
+            return None
+        return self.add_variables(
+            StorageVarName.INVESTED,
+            dims=('period', 'scenario'),
+            element_ids=self.optional_investment_ids,
+            binary=True,
+        )
 
-        # === storage|invested variable (non-mandatory only) ===
-        if non_mandatory_ids:
-            invested_coords = xr.Coordinates({dim: pd.Index(non_mandatory_ids, name=dim), **base_coords_dict})
-            invested_var = self.model.add_variables(
-                binary=True,
-                coords=invested_coords,
-                name=StorageVarName.INVESTED,
-            )
-            self._variables[StorageVarName.INVESTED] = invested_var
+    def create_investment_model(self) -> None:
+        """Create investment variables and constraints for storages with investment.
 
+        Must be called BEFORE create_investment_constraints().
+        """
+        if not self.storages_with_investment:
+            return
+
+        from .features import InvestmentHelpers
+
+        dim = self.dim_name
+        element_ids = self.investment_ids
+        non_mandatory_ids = self.optional_investment_ids
+        mandatory_ids = self.mandatory_investment_ids
+
+        # Trigger variable creation via cached properties
+        size_var = self.size
+        invested_var = self.invested
+
+        if invested_var is not None:
             # State-controlled bounds constraints using cached properties
             InvestmentHelpers.add_optional_size_bounds(
                 model=self.model,
@@ -1449,8 +1436,8 @@ class StoragesModel(TypeModel):
         if not self.storages_with_investment or StorageVarName.SIZE not in self:
             return
 
-        charge_state = self[StorageVarName.CHARGE]
-        size_var = self[StorageVarName.SIZE]  # Batched size with storage dimension
+        charge_state = self.charge
+        size_var = self.size  # Batched size with storage dimension
 
         # Collect relative bounds for all investment storages
         rel_lowers = []
@@ -1526,28 +1513,6 @@ class StoragesModel(TypeModel):
 
     # === Variable accessor properties ===
 
-    @property
-    def charge(self) -> linopy.Variable | None:
-        """Batched charge state variable with (storage, time+1) dims."""
-        return self.model.variables[StorageVarName.CHARGE] if StorageVarName.CHARGE in self.model.variables else None
-
-    @property
-    def netto(self) -> linopy.Variable | None:
-        """Batched netto discharge variable with (storage, time) dims."""
-        return self.model.variables[StorageVarName.NETTO] if StorageVarName.NETTO in self.model.variables else None
-
-    @property
-    def size(self) -> linopy.Variable | None:
-        """Batched size variable with (storage,) dims, or None if no storages have investment."""
-        return self.model.variables[StorageVarName.SIZE] if StorageVarName.SIZE in self.model.variables else None
-
-    @property
-    def invested(self) -> linopy.Variable | None:
-        """Batched invested binary variable with (storage,) dims, or None if no optional investments."""
-        return (
-            self.model.variables[StorageVarName.INVESTED] if StorageVarName.INVESTED in self.model.variables else None
-        )
-
     def get_variable(self, name: str, element_id: str | None = None):
         """Get a variable, optionally selecting a specific element."""
         var = self._variables.get(name)
@@ -1569,8 +1534,8 @@ class StoragesModel(TypeModel):
         from .features import PiecewiseHelpers
 
         dim = self.dim_name
-        size_var = self.get(StorageVarName.SIZE)
-        invested_var = self.get(StorageVarName.INVESTED)
+        size_var = self.size
+        invested_var = self.invested
 
         if size_var is None:
             return
@@ -1735,34 +1700,36 @@ class InterclusterStoragesModel(TypeModel):
     # Variable Creation
     # =========================================================================
 
+    @functools.cached_property
+    def charge_state(self) -> linopy.Variable:
+        """(intercluster_storage, time+1, ...) - relative SOC change."""
+        lb, ub = self._compute_charge_state_bounds()
+        return self.add_variables(
+            InterclusterStorageVarName.CHARGE_STATE,
+            var_type=VariableType.CHARGE_STATE,
+            lower=lb,
+            upper=ub,
+            dims=None,
+            extra_timestep=True,
+        )
+
+    @functools.cached_property
+    def netto_discharge(self) -> linopy.Variable:
+        """(intercluster_storage, time, ...) - net discharge rate."""
+        return self.add_variables(
+            InterclusterStorageVarName.NETTO_DISCHARGE,
+            var_type=VariableType.NETTO_DISCHARGE,
+            dims=None,
+        )
+
     def create_variables(self) -> None:
         """Create batched variables for all intercluster storages."""
         if not self.elements:
             return
 
-        dim = self.dim_name
-
-        # charge_state: (intercluster_storage, time+1, ...) - relative SOC change
-        lb, ub = self._compute_charge_state_bounds()
-        charge_state = self.model.add_variables(
-            lower=lb,
-            upper=ub,
-            coords=self._build_coords(dims=None, extra_timestep=True),
-            name=f'{dim}|charge_state',
-        )
-        self._variables[InterclusterStorageVarName.CHARGE_STATE] = charge_state
-        self.model.variable_categories[charge_state.name] = VariableCategory.CHARGE_STATE
-
-        # netto_discharge: (intercluster_storage, time, ...) - net discharge rate
-        netto_discharge = self.model.add_variables(
-            coords=self._build_coords(dims=None),
-            name=f'{dim}|netto_discharge',
-        )
-        self._variables[InterclusterStorageVarName.NETTO_DISCHARGE] = netto_discharge
-        self.model.variable_categories[netto_discharge.name] = VariableCategory.NETTO_DISCHARGE
-
-        # SOC_boundary: (cluster_boundary, intercluster_storage, ...) - absolute SOC at boundaries
-        self._create_soc_boundary_variable()
+        _ = self.charge_state
+        _ = self.netto_discharge
+        _ = self.soc_boundary
 
     def _compute_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
         """Compute symmetric bounds for charge_state variable."""
@@ -1787,8 +1754,9 @@ class InterclusterStoragesModel(TypeModel):
         upper = self._InvestmentHelpers.stack_bounds(uppers, self.element_ids, self.dim_name)
         return lower, upper
 
-    def _create_soc_boundary_variable(self) -> None:
-        """Create SOC_boundary variable for tracking absolute SOC at period boundaries."""
+    @functools.cached_property
+    def soc_boundary(self) -> linopy.Variable:
+        """(cluster_boundary, intercluster_storage, ...) - absolute SOC at period boundaries."""
         import pandas as pd
 
         from .clustering.intercluster_helpers import build_boundary_coords, extract_capacity_bounds
@@ -1827,6 +1795,7 @@ class InterclusterStoragesModel(TypeModel):
         )
         self._variables[InterclusterStorageVarName.SOC_BOUNDARY] = soc_boundary
         self.model.variable_categories[soc_boundary.name] = VariableCategory.SOC_BOUNDARY
+        return soc_boundary
 
     # =========================================================================
     # Constraint Creation
@@ -1846,7 +1815,7 @@ class InterclusterStoragesModel(TypeModel):
 
     def _add_netto_discharge_constraints(self) -> None:
         """Add constraint: netto_discharge = discharging - charging for all storages."""
-        netto = self[InterclusterStorageVarName.NETTO_DISCHARGE]
+        netto = self.netto_discharge
         dim = self.dim_name
 
         # Get batched flow_rate variable and select charge/discharge flows
@@ -1869,7 +1838,7 @@ class InterclusterStoragesModel(TypeModel):
 
     def _add_energy_balance_constraints(self) -> None:
         """Add energy balance constraints for all storages."""
-        charge_state = self[InterclusterStorageVarName.CHARGE_STATE]
+        charge_state = self.charge_state
         timestep_duration = self.model.timestep_duration
         dim = self.dim_name
 
@@ -1896,7 +1865,7 @@ class InterclusterStoragesModel(TypeModel):
 
     def _add_cluster_start_constraints(self) -> None:
         """Constrain ΔE = 0 at the start of each cluster for all storages."""
-        charge_state = self[InterclusterStorageVarName.CHARGE_STATE]
+        charge_state = self.charge_state
         self.model.add_constraints(
             charge_state.isel(time=0) == 0,
             name=f'{self.dim_name}|cluster_start',
@@ -1904,8 +1873,8 @@ class InterclusterStoragesModel(TypeModel):
 
     def _add_linking_constraints(self) -> None:
         """Add constraints linking consecutive SOC_boundary values."""
-        soc_boundary = self[InterclusterStorageVarName.SOC_BOUNDARY]
-        charge_state = self[InterclusterStorageVarName.CHARGE_STATE]
+        soc_boundary = self.soc_boundary
+        charge_state = self.charge_state
         n_original_clusters = self._clustering.n_original_clusters
         cluster_assignments = self._clustering.cluster_assignments
 
@@ -1935,7 +1904,7 @@ class InterclusterStoragesModel(TypeModel):
 
     def _add_cyclic_or_initial_constraints(self) -> None:
         """Add cyclic or initial SOC_boundary constraints per storage."""
-        soc_boundary = self[InterclusterStorageVarName.SOC_BOUNDARY]
+        soc_boundary = self.soc_boundary
         n_original_clusters = self._clustering.n_original_clusters
 
         # Group by constraint type
@@ -1974,8 +1943,8 @@ class InterclusterStoragesModel(TypeModel):
 
     def _add_combined_bound_constraints(self) -> None:
         """Add constraints ensuring actual SOC stays within bounds at sample points."""
-        charge_state = self[InterclusterStorageVarName.CHARGE_STATE]
-        soc_boundary = self[InterclusterStorageVarName.SOC_BOUNDARY]
+        charge_state = self.charge_state
+        soc_boundary = self.soc_boundary
         n_original_clusters = self._clustering.n_original_clusters
         cluster_assignments = self._clustering.cluster_assignments
 
@@ -2026,7 +1995,7 @@ class InterclusterStoragesModel(TypeModel):
         # Investment storages: combined <= size
         if invest_ids:
             combined_invest = combined.sel({self.dim_name: invest_ids})
-            size_var = self.get(InterclusterStorageVarName.SIZE)
+            size_var = self.size
             if size_var is not None:
                 size_invest = size_var.sel({self.dim_name: invest_ids})
                 self.model.add_constraints(
@@ -2047,45 +2016,41 @@ class InterclusterStoragesModel(TypeModel):
     # Investment
     # =========================================================================
 
+    @functools.cached_property
+    def size(self) -> linopy.Variable | None:
+        """(intercluster_storage, period, scenario) - size variable for storages with investment."""
+        if not self.data.with_investment:
+            return None
+        inv = self.data.investment_data
+        return self.add_variables(
+            InterclusterStorageVarName.SIZE,
+            var_type=VariableType.STORAGE_SIZE,
+            lower=inv.size_minimum,
+            upper=inv.size_maximum,
+            dims=('period', 'scenario'),
+            element_ids=self.data.with_investment,
+        )
+
+    @functools.cached_property
+    def invested(self) -> linopy.Variable | None:
+        """(intercluster_storage, period, scenario) - binary invested variable for optional investment."""
+        if not self.data.with_optional_investment:
+            return None
+        return self.add_variables(
+            InterclusterStorageVarName.INVESTED,
+            var_type=VariableType.INVESTED,
+            dims=('period', 'scenario'),
+            element_ids=self.data.with_optional_investment,
+            binary=True,
+        )
+
     def create_investment_model(self) -> None:
         """Create batched investment variables using InvestmentHelpers."""
         if not self.data.with_investment:
             return
 
-        inv = self.data.investment_data
-        investment_ids = self.data.with_investment
-        optional_ids = self.data.with_optional_investment
-
-        # Build bounds from InvestmentData
-        lower_for_size = inv.size_minimum
-        size_upper = inv.size_maximum
-
-        storage_coord = {self.dim_name: investment_ids}
-        coords = self.model.get_coords(['period', 'scenario'])
-        coords = coords.merge(xr.Coordinates(storage_coord))
-
-        size_var = self.model.add_variables(
-            lower=lower_for_size,
-            upper=size_upper,
-            coords=coords,
-            name=f'{self.dim_name}|size',
-        )
-        self._variables[InterclusterStorageVarName.SIZE] = size_var
-        self.model.variable_categories[size_var.name] = VariableCategory.STORAGE_SIZE
-
-        # Invested binary for optional investment
-        if optional_ids:
-            optional_coord = {self.dim_name: optional_ids}
-            optional_coords = self.model.get_coords(['period', 'scenario'])
-            optional_coords = optional_coords.merge(xr.Coordinates(optional_coord))
-
-            invested_var = self.model.add_variables(
-                binary=True,
-                coords=optional_coords,
-                name=f'{self.dim_name}|invested',
-            )
-            self._variables[InterclusterStorageVarName.INVESTED] = invested_var
-            self.model.variable_categories[invested_var.name] = VariableCategory.INVESTED
+        _ = self.size
+        _ = self.invested
 
     def create_investment_constraints(self) -> None:
         """Create investment-related constraints."""
@@ -2095,10 +2060,10 @@ class InterclusterStoragesModel(TypeModel):
         investment_ids = self.data.with_investment
         optional_ids = self.data.with_optional_investment
 
-        size_var = self.get(InterclusterStorageVarName.SIZE)
-        invested_var = self.get(InterclusterStorageVarName.INVESTED)
-        charge_state = self[InterclusterStorageVarName.CHARGE_STATE]
-        soc_boundary = self[InterclusterStorageVarName.SOC_BOUNDARY]
+        size_var = self.size
+        invested_var = self.invested
+        charge_state = self.charge_state
+        soc_boundary = self.soc_boundary
 
         # Symmetric bounds on charge_state: -size <= charge_state <= size
         size_for_all = size_var.sel({self.dim_name: investment_ids})
@@ -2149,8 +2114,8 @@ class InterclusterStoragesModel(TypeModel):
         optional_ids = self.data.with_optional_investment
         storages_with_investment = [self.data[sid] for sid in investment_ids]
 
-        size_var = self.get(InterclusterStorageVarName.SIZE)
-        invested_var = self.get(InterclusterStorageVarName.INVESTED)
+        size_var = self.size
+        invested_var = self.invested
 
         # Collect effects
         effects = InvestmentHelpers.collect_effects(

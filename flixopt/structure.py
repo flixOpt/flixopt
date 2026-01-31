@@ -174,7 +174,8 @@ class VariableType(Enum):
     """What role a variable plays in the model.
 
     Provides semantic meaning for variables beyond just their name.
-    Maps to ExpansionCategory (formerly VariableCategory) for segment expansion.
+    Maps to ExpansionCategory
+     (formerly VariableCategory) for segment expansion.
     """
 
     # === Rates/Power ===
@@ -284,6 +285,7 @@ class FlowVarName:
     # === Flow Variables ===
     RATE = 'flow|rate'
     HOURS = 'flow|hours'
+    TOTAL_FLOW_HOURS = 'flow|total_flow_hours'
     STATUS = 'flow|status'
     SIZE = 'flow|size'
     INVESTED = 'flow|invested'
@@ -593,6 +595,7 @@ class TypeModel(ABC):
         dims: tuple[str, ...] | None = ('time',),
         element_ids: list[str] | None = None,
         mask: xr.DataArray | None = None,
+        extra_timestep: bool = False,
         **kwargs,
     ) -> linopy.Variable:
         """Create a batched variable with element dimension.
@@ -606,12 +609,13 @@ class TypeModel(ABC):
             element_ids: Subset of element IDs. None means all elements.
             mask: Optional boolean mask. If provided, automatically reindexed and broadcast
                 to match the built coords. True = create variable, False = skip.
+            extra_timestep: If True, extends time dimension by 1 (for charge_state boundaries).
             **kwargs: Additional arguments passed to model.add_variables().
 
         Returns:
             The created linopy Variable with element dimension.
         """
-        coords = self._build_coords(dims, element_ids=element_ids)
+        coords = self._build_coords(dims, element_ids=element_ids, extra_timestep=extra_timestep)
 
         # Broadcast mask to match coords if needed
         if mask is not None:
