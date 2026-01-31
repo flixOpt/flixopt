@@ -13,7 +13,7 @@ import numpy as np
 import xarray as xr
 
 from . import io as fx_io
-from .batched import InvestmentData
+from .batched import InvestmentData, StoragesData
 from .core import PlausibilityError
 from .elements import Component, Flow
 from .features import MaskHelpers, concat_with_coords
@@ -834,6 +834,11 @@ class StoragesModel(TypeModel):
         ]
         super().__init__(model, basic_storages)
         self._flows_model = flows_model
+        self.data = StoragesData(
+            basic_storages,
+            self.dim_name,
+            list(model.flow_system.effects.keys()),
+        )
 
         # Set reference on each storage element
         for storage in basic_storages:
@@ -856,71 +861,47 @@ class StoragesModel(TypeModel):
         """Get a storage by its label_full."""
         return self.elements[label]
 
-    # === Storage Categorization Properties ===
-    # All return list[str] of label_full IDs. Use self.storage(id) to get the Storage object.
+    # === Storage Categorization Properties (delegate to self.data) ===
 
-    @functools.cached_property
+    @property
     def with_investment(self) -> list[str]:
-        """IDs of storages with investment parameters."""
-        return [s.label_full for s in self.elements.values() if isinstance(s.capacity_in_flow_hours, InvestParameters)]
+        return self.data.with_investment
 
-    @functools.cached_property
+    @property
     def with_optional_investment(self) -> list[str]:
-        """IDs of storages with optional (non-mandatory) investment."""
-        return [sid for sid in self.with_investment if not self.storage(sid).capacity_in_flow_hours.mandatory]
+        return self.data.with_optional_investment
 
-    @functools.cached_property
+    @property
     def with_mandatory_investment(self) -> list[str]:
-        """IDs of storages with mandatory investment."""
-        return [sid for sid in self.with_investment if self.storage(sid).capacity_in_flow_hours.mandatory]
+        return self.data.with_mandatory_investment
 
-    # Compatibility properties (return Storage objects for legacy code)
     @property
     def storages_with_investment(self) -> list[Storage]:
-        """Storages with investment parameters (legacy, prefer with_investment)."""
         return [self.storage(sid) for sid in self.with_investment]
 
     @property
     def storages_with_optional_investment(self) -> list[Storage]:
-        """Storages with optional investment (legacy, prefer with_optional_investment)."""
         return [self.storage(sid) for sid in self.with_optional_investment]
 
     @property
     def investment_ids(self) -> list[str]:
-        """Alias for with_investment (legacy)."""
         return self.with_investment
 
     @property
     def optional_investment_ids(self) -> list[str]:
-        """Alias for with_optional_investment (legacy)."""
         return self.with_optional_investment
 
     @property
     def mandatory_investment_ids(self) -> list[str]:
-        """Alias for with_mandatory_investment (legacy)."""
         return self.with_mandatory_investment
 
-    # --- Investment Data and Effect Properties ---
-
-    @functools.cached_property
+    @property
     def invest_params(self) -> dict[str, InvestParameters]:
-        """Investment parameters for storages with investment, keyed by label_full."""
-        return {
-            s.label_full: s.capacity_in_flow_hours
-            for s in self.elements.values()
-            if s.label_full in self.with_investment
-        }
+        return self.data.invest_params
 
-    @functools.cached_property
+    @property
     def _investment_data(self) -> InvestmentData | None:
-        """Batched investment data for storages with investment."""
-        if not self.with_investment:
-            return None
-        return InvestmentData(
-            params=self.invest_params,
-            dim_name=self.dim_name,
-            effect_ids=list(self.model.flow_system.effects.keys()),
-        )
+        return self.data.investment_data
 
     def add_effect_contributions(self, effects_model) -> None:
         """Push ALL effect contributions from storages to EffectsModel.
@@ -1658,7 +1639,7 @@ class StoragesModel(TypeModel):
         logger.debug(f'Created batched piecewise effects for {len(element_ids)} storages')
 
 
-class InterclusterStoragesModel:
+class InterclusterStoragesModel(TypeModel):
     """Type-level batched model for ALL intercluster storages.
 
     Replaces per-element InterclusterStorageModel with a single batched implementation.
@@ -1669,6 +1650,8 @@ class InterclusterStoragesModel:
     - The FlowSystem has been clustered
     - There are storages with cluster_mode='intercluster' or 'intercluster_cyclic'
     """
+
+    element_type = ElementType.INTERCLUSTER_STORAGE
 
     def __init__(
         self,
@@ -1686,7 +1669,7 @@ class InterclusterStoragesModel:
         from .features import InvestmentHelpers
 
         clustering = model.flow_system.clustering
-        elements = [
+        intercluster_storages = [
             c
             for c in all_components
             if isinstance(c, Storage)
@@ -1694,31 +1677,21 @@ class InterclusterStoragesModel:
             and c.cluster_mode in ('intercluster', 'intercluster_cyclic')
         ]
 
-        self.model = model
-        self.elements = elements
-        self.element_ids: list[str] = [s.label_full for s in elements]
+        super().__init__(model, intercluster_storages)
         self._flows_model = flows_model
         self._InvestmentHelpers = InvestmentHelpers
-
-        # Storage for created variables
-        self._variables: dict[str, linopy.Variable] = {}
-
-        # Categorize by features
-        self.storages_with_investment: list[Storage] = [
-            s for s in elements if isinstance(s.capacity_in_flow_hours, InvestParameters)
-        ]
-        self.investment_ids: list[str] = [s.label_full for s in self.storages_with_investment]
-        self.storages_with_optional_investment: list[Storage] = [
-            s for s in self.storages_with_investment if not s.capacity_in_flow_hours.mandatory
-        ]
-        self.optional_investment_ids: list[str] = [s.label_full for s in self.storages_with_optional_investment]
+        self.data = StoragesData(
+            intercluster_storages,
+            self.dim_name,
+            list(model.flow_system.effects.keys()),
+        )
 
         # Clustering info (required for intercluster)
-        self.clustering = clustering
-        if not elements:
+        self._clustering = clustering
+        if not intercluster_storages:
             return  # Nothing to model
 
-        if self.clustering is None:
+        if self._clustering is None:
             raise ValueError('InterclusterStoragesModel requires a clustered FlowSystem')
 
         self.create_variables()
@@ -1726,36 +1699,6 @@ class InterclusterStoragesModel:
         self.create_investment_model()
         self.create_investment_constraints()
         self.create_effect_shares()
-
-    @property
-    def dim_name(self) -> str:
-        """Dimension name for intercluster storage elements."""
-        return 'intercluster_storage'
-
-    def _build_coords(
-        self,
-        dims: tuple[str, ...] | None = ('time',),
-        element_ids: list[str] | None = None,
-        extra_timestep: bool = False,
-    ) -> xr.Coordinates:
-        """Build coordinates with element dimension + model dimensions."""
-        import pandas as pd
-
-        if element_ids is None:
-            element_ids = self.element_ids
-
-        coord_dict = {self.dim_name: pd.Index(element_ids, name=self.dim_name)}
-        model_coords = self.model.get_coords(dims=dims, extra_timestep=extra_timestep)
-        if model_coords is not None:
-            if dims is None:
-                for dim, coord in model_coords.items():
-                    coord_dict[dim] = coord
-            else:
-                for dim in dims:
-                    if dim in model_coords:
-                        coord_dict[dim] = model_coords[dim]
-
-        return xr.Coordinates(coord_dict)
 
     def get_variable(self, name: str, element_id: str | None = None) -> linopy.Variable:
         """Get a variable, optionally selecting a specific element."""
@@ -1805,7 +1748,7 @@ class InterclusterStoragesModel:
         # Bounds: -capacity <= ΔE <= capacity
         lowers = []
         uppers = []
-        for storage in self.elements:
+        for storage in self.elements.values():
             if storage.capacity_in_flow_hours is None:
                 lowers.append(-np.inf)
                 uppers.append(np.inf)
@@ -1829,7 +1772,7 @@ class InterclusterStoragesModel:
         from .clustering.intercluster_helpers import build_boundary_coords, extract_capacity_bounds
 
         dim = self.dim_name
-        n_original_clusters = self.clustering.n_original_clusters
+        n_original_clusters = self._clustering.n_original_clusters
         flow_system = self.model.flow_system
 
         # Build coords for boundary dimension (returns dict, not xr.Coordinates)
@@ -1845,7 +1788,7 @@ class InterclusterStoragesModel:
         # Compute bounds per storage
         lowers = []
         uppers = []
-        for storage in self.elements:
+        for storage in self.elements.values():
             cap_bounds = extract_capacity_bounds(storage.capacity_in_flow_hours, boundary_coords_dict, boundary_dims)
             lowers.append(cap_bounds.lower)
             uppers.append(cap_bounds.upper)
@@ -1888,8 +1831,8 @@ class InterclusterStoragesModel:
         flow_rate = self._flows_model._variables['rate']
         flow_dim = 'flow' if 'flow' in flow_rate.dims else 'element'
 
-        charge_flow_ids = [s.charging.label_full for s in self.elements]
-        discharge_flow_ids = [s.discharging.label_full for s in self.elements]
+        charge_flow_ids = [s.charging.label_full for s in self.elements.values()]
+        discharge_flow_ids = [s.discharging.label_full for s in self.elements.values()]
 
         # Select and rename to match storage dimension
         charge_rates = flow_rate.sel({flow_dim: charge_flow_ids})
@@ -1913,7 +1856,7 @@ class InterclusterStoragesModel:
         dim = self.dim_name
 
         # Add constraint per storage (dimension alignment is complex in clustered systems)
-        for storage in self.elements:
+        for storage in self.elements.values():
             cs = charge_state.sel({dim: storage.label_full})
             charge_rate = self._flows_model.get_variable('rate', storage.charging.label_full)
             discharge_rate = self._flows_model.get_variable('rate', storage.discharging.label_full)
@@ -1942,8 +1885,8 @@ class InterclusterStoragesModel:
         """Add constraints linking consecutive SOC_boundary values."""
         soc_boundary = self._variables['SOC_boundary']
         charge_state = self._variables['charge_state']
-        n_original_clusters = self.clustering.n_original_clusters
-        cluster_assignments = self.clustering.cluster_assignments
+        n_original_clusters = self._clustering.n_original_clusters
+        cluster_assignments = self._clustering.cluster_assignments
 
         # delta_SOC = charge_state at end of cluster (start is 0 by constraint)
         delta_soc = charge_state.isel(time=-1) - charge_state.isel(time=0)
@@ -1963,7 +1906,7 @@ class InterclusterStoragesModel:
 
         # Build decay factors per storage
         decay_factors = []
-        for storage in self.elements:
+        for storage in self.elements.values():
             rel_loss = _scalar_safe_reduce(storage.relative_loss_per_hour, 'time', 'mean')
             total_hours = _scalar_safe_reduce(self.model.timestep_duration, 'time', 'sum')
             decay = (1 - rel_loss) ** total_hours
@@ -1983,14 +1926,14 @@ class InterclusterStoragesModel:
     def _add_cyclic_or_initial_constraints(self) -> None:
         """Add cyclic or initial SOC_boundary constraints per storage."""
         soc_boundary = self._variables['SOC_boundary']
-        n_original_clusters = self.clustering.n_original_clusters
+        n_original_clusters = self._clustering.n_original_clusters
 
         # Group by constraint type
         cyclic_ids = []
         initial_fixed_ids = []
         initial_values = []
 
-        for storage in self.elements:
+        for storage in self.elements.values():
             if storage.cluster_mode == 'intercluster_cyclic':
                 cyclic_ids.append(storage.label_full)
             else:
@@ -2023,8 +1966,8 @@ class InterclusterStoragesModel:
         """Add constraints ensuring actual SOC stays within bounds at sample points."""
         charge_state = self._variables['charge_state']
         soc_boundary = self._variables['SOC_boundary']
-        n_original_clusters = self.clustering.n_original_clusters
-        cluster_assignments = self.clustering.cluster_assignments
+        n_original_clusters = self._clustering.n_original_clusters
+        cluster_assignments = self._clustering.cluster_assignments
 
         # soc_d: SOC at start of each original period
         soc_d = soc_boundary.isel(cluster_boundary=slice(None, -1))
@@ -2045,7 +1988,7 @@ class InterclusterStoragesModel:
 
             # Build decay factors per storage
             decay_factors = []
-            for storage in self.elements:
+            for storage in self.elements.values():
                 rel_loss = _scalar_safe_reduce(storage.relative_loss_per_hour, 'time', 'mean')
                 mean_dt = _scalar_safe_reduce(self.model.timestep_duration, 'time', 'mean')
                 hours_offset = offset * mean_dt
@@ -2075,7 +2018,7 @@ class InterclusterStoragesModel:
         fixed_ids = []
         fixed_caps = []
 
-        for storage in self.elements:
+        for storage in self.elements.values():
             if isinstance(storage.capacity_in_flow_hours, InvestParameters):
                 invest_ids.append(storage.label_full)
             elif storage.capacity_in_flow_hours is not None:
@@ -2108,30 +2051,25 @@ class InterclusterStoragesModel:
 
     def create_investment_model(self) -> None:
         """Create batched investment variables using InvestmentHelpers."""
-        if not self.storages_with_investment:
+        if not self.data.with_investment:
             return
 
+        investment_ids = self.data.with_investment
+        optional_ids = self.data.with_optional_investment
+
         # Build bounds
-        size_lower = self._InvestmentHelpers.stack_bounds(
-            [s.capacity_in_flow_hours.minimum_or_fixed_size for s in self.storages_with_investment],
-            self.investment_ids,
-            self.dim_name,
-        )
-        size_upper = self._InvestmentHelpers.stack_bounds(
-            [s.capacity_in_flow_hours.maximum_or_fixed_size for s in self.storages_with_investment],
-            self.investment_ids,
-            self.dim_name,
-        )
+        size_lower = self.data.charge_state_lower
+        size_upper = self.data.charge_state_upper
         mandatory_mask = xr.DataArray(
-            [s.capacity_in_flow_hours.mandatory for s in self.storages_with_investment],
+            [self.data[sid].capacity_in_flow_hours.mandatory for sid in investment_ids],
             dims=[self.dim_name],
-            coords={self.dim_name: self.investment_ids},
+            coords={self.dim_name: investment_ids},
         )
 
         # Size variable: mandatory uses min bound, optional uses 0
         lower_for_size = xr.where(mandatory_mask, size_lower, 0)
 
-        storage_coord = {self.dim_name: self.investment_ids}
+        storage_coord = {self.dim_name: investment_ids}
         coords = self.model.get_coords(['period', 'scenario'])
         coords = coords.merge(xr.Coordinates(storage_coord))
 
@@ -2145,8 +2083,8 @@ class InterclusterStoragesModel:
         self.model.variable_categories[size_var.name] = VariableCategory.STORAGE_SIZE
 
         # Invested binary for optional investment
-        if self.optional_investment_ids:
-            optional_coord = {self.dim_name: self.optional_investment_ids}
+        if optional_ids:
+            optional_coord = {self.dim_name: optional_ids}
             optional_coords = self.model.get_coords(['period', 'scenario'])
             optional_coords = optional_coords.merge(xr.Coordinates(optional_coord))
 
@@ -2160,8 +2098,11 @@ class InterclusterStoragesModel:
 
     def create_investment_constraints(self) -> None:
         """Create investment-related constraints."""
-        if not self.storages_with_investment:
+        if not self.data.with_investment:
             return
+
+        investment_ids = self.data.with_investment
+        optional_ids = self.data.with_optional_investment
 
         size_var = self._variables.get('size')
         invested_var = self._variables.get('invested')
@@ -2169,8 +2110,8 @@ class InterclusterStoragesModel:
         soc_boundary = self._variables['SOC_boundary']
 
         # Symmetric bounds on charge_state: -size <= charge_state <= size
-        size_for_all = size_var.sel({self.dim_name: self.investment_ids})
-        cs_for_invest = charge_state.sel({self.dim_name: self.investment_ids})
+        size_for_all = size_var.sel({self.dim_name: investment_ids})
+        cs_for_invest = charge_state.sel({self.dim_name: investment_ids})
 
         self.model.add_constraints(
             cs_for_invest >= -size_for_all,
@@ -2182,25 +2123,25 @@ class InterclusterStoragesModel:
         )
 
         # SOC_boundary <= size
-        soc_for_invest = soc_boundary.sel({self.dim_name: self.investment_ids})
+        soc_for_invest = soc_boundary.sel({self.dim_name: investment_ids})
         self.model.add_constraints(
             soc_for_invest <= size_for_all,
             name=f'{self.dim_name}|SOC_boundary_ub',
         )
 
         # Optional investment bounds using InvestmentHelpers
-        if self.optional_investment_ids and invested_var is not None:
+        if optional_ids and invested_var is not None:
             optional_lower = self._InvestmentHelpers.stack_bounds(
-                [s.capacity_in_flow_hours.minimum_or_fixed_size for s in self.storages_with_optional_investment],
-                self.optional_investment_ids,
+                [self.data[sid].capacity_in_flow_hours.minimum_or_fixed_size for sid in optional_ids],
+                optional_ids,
                 self.dim_name,
             )
             optional_upper = self._InvestmentHelpers.stack_bounds(
-                [s.capacity_in_flow_hours.maximum_or_fixed_size for s in self.storages_with_optional_investment],
-                self.optional_investment_ids,
+                [self.data[sid].capacity_in_flow_hours.maximum_or_fixed_size for sid in optional_ids],
+                optional_ids,
                 self.dim_name,
             )
-            size_optional = size_var.sel({self.dim_name: self.optional_investment_ids})
+            size_optional = size_var.sel({self.dim_name: optional_ids})
 
             self._InvestmentHelpers.add_optional_size_bounds(
                 self.model,
@@ -2208,40 +2149,40 @@ class InterclusterStoragesModel:
                 invested_var,
                 optional_lower,
                 optional_upper,
-                self.optional_investment_ids,
+                optional_ids,
                 self.dim_name,
                 f'{self.dim_name}|size',
             )
 
     def create_effect_shares(self) -> None:
         """Add investment effects to the EffectsModel."""
-        if not self.storages_with_investment:
+        if not self.data.with_investment:
             return
 
         from .features import InvestmentHelpers
+
+        investment_ids = self.data.with_investment
+        optional_ids = self.data.with_optional_investment
+        storages_with_investment = [self.data[sid] for sid in investment_ids]
 
         size_var = self._variables.get('size')
         invested_var = self._variables.get('invested')
 
         # Collect effects
         effects = InvestmentHelpers.collect_effects(
-            self.storages_with_investment,
+            storages_with_investment,
             lambda s: s.capacity_in_flow_hours,
         )
 
         # Add effect shares
         for effect_name, effect_type, factors in effects:
-            factor_stacked = InvestmentHelpers.stack_bounds(factors, self.investment_ids, self.dim_name)
+            factor_stacked = InvestmentHelpers.stack_bounds(factors, investment_ids, self.dim_name)
 
             if effect_type == 'per_size':
                 expr = (size_var * factor_stacked).sum(self.dim_name)
             elif effect_type == 'fixed':
                 if invested_var is not None:
-                    # For optional: invested * factor, for mandatory: just factor
-                    mandatory_ids = [
-                        s.label_full for s in self.storages_with_investment if s.capacity_in_flow_hours.mandatory
-                    ]
-                    optional_ids = [s.label_full for s in self.storages_with_optional_investment]
+                    mandatory_ids = self.data.with_mandatory_investment
 
                     expr_parts = []
                     if mandatory_ids:

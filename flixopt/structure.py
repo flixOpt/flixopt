@@ -165,6 +165,7 @@ class ElementType(Enum):
     BUS = 'bus'
     STORAGE = 'storage'
     CONVERTER = 'converter'
+    INTERCLUSTER_STORAGE = 'intercluster_storage'
     EFFECT = 'effect'
     COMPONENT = 'component'
 

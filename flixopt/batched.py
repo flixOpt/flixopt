@@ -567,6 +567,91 @@ class InvestmentData:
         return self._piecewise_raw.get('effect_names', [])
 
 
+class StoragesData:
+    """Batched data container for storage categorization and investment data.
+
+    Provides categorization and batched data for a list of storages,
+    separating data management from mathematical modeling.
+    Used by both StoragesModel and InterclusterStoragesModel.
+    """
+
+    def __init__(self, storages: list, dim_name: str, effect_ids: list[str]):
+        """Initialize StoragesData.
+
+        Args:
+            storages: List of Storage elements.
+            dim_name: Dimension name for arrays ('storage' or 'intercluster_storage').
+            effect_ids: List of effect IDs for building effect arrays.
+        """
+        self._storages = storages
+        self._dim_name = dim_name
+        self._effect_ids = effect_ids
+        self._by_label = {s.label_full: s for s in storages}
+
+    @cached_property
+    def ids(self) -> list[str]:
+        """All storage IDs (label_full)."""
+        return [s.label_full for s in self._storages]
+
+    def __getitem__(self, label: str):
+        """Get a storage by its label_full."""
+        return self._by_label[label]
+
+    def __len__(self) -> int:
+        return len(self._storages)
+
+    # === Categorization ===
+
+    @cached_property
+    def with_investment(self) -> list[str]:
+        """IDs of storages with investment parameters."""
+        return [s.label_full for s in self._storages if isinstance(s.capacity_in_flow_hours, InvestParameters)]
+
+    @cached_property
+    def with_optional_investment(self) -> list[str]:
+        """IDs of storages with optional (non-mandatory) investment."""
+        return [sid for sid in self.with_investment if not self._by_label[sid].capacity_in_flow_hours.mandatory]
+
+    @cached_property
+    def with_mandatory_investment(self) -> list[str]:
+        """IDs of storages with mandatory investment."""
+        return [sid for sid in self.with_investment if self._by_label[sid].capacity_in_flow_hours.mandatory]
+
+    # === Investment Data ===
+
+    @cached_property
+    def invest_params(self) -> dict[str, InvestParameters]:
+        """Investment parameters for storages with investment, keyed by label_full."""
+        return {sid: self._by_label[sid].capacity_in_flow_hours for sid in self.with_investment}
+
+    @cached_property
+    def investment_data(self) -> InvestmentData | None:
+        """Batched investment data for storages with investment."""
+        if not self.with_investment:
+            return None
+        return InvestmentData(
+            params=self.invest_params,
+            dim_name=self._dim_name,
+            effect_ids=self._effect_ids,
+        )
+
+    # === Bounds ===
+
+    @cached_property
+    def charge_state_lower(self) -> xr.DataArray:
+        """(element,) - minimum size for investment storages."""
+        element_ids = self.with_investment
+        values = [self._by_label[sid].capacity_in_flow_hours.minimum_or_fixed_size for sid in element_ids]
+        return InvestmentHelpers.stack_bounds(values, element_ids, self._dim_name)
+
+    @cached_property
+    def charge_state_upper(self) -> xr.DataArray:
+        """(element,) - maximum size for investment storages."""
+        element_ids = self.with_investment
+        values = [self._by_label[sid].capacity_in_flow_hours.maximum_or_fixed_size for sid in element_ids]
+        return InvestmentHelpers.stack_bounds(values, element_ids, self._dim_name)
+
+
 class FlowsData:
     """Batched data container for all flows with indexed access.
 
