@@ -746,6 +746,28 @@ def register_class_for_io(cls):
     return cls
 
 
+class _BuildTimer:
+    """Simple timing helper for build_model profiling."""
+
+    def __init__(self):
+        import time
+
+        self._time = time
+        self._records: list[tuple[str, float]] = [('start', time.perf_counter())]
+
+    def record(self, name: str) -> None:
+        self._records.append((name, self._time.perf_counter()))
+
+    def print_summary(self) -> None:
+        print('\n  Type-Level Modeling Timing Breakdown:')
+        for i in range(1, len(self._records)):
+            name = self._records[i][0]
+            elapsed = (self._records[i][1] - self._records[i - 1][1]) * 1000
+            print(f'    {name:30s}: {elapsed:8.2f}ms')
+        total = (self._records[-1][1] - self._records[0][1]) * 1000
+        print(f'    {"TOTAL":30s}: {total:8.2f}ms')
+
+
 class FlowSystemModel(linopy.Model):
     """
     The FlowSystemModel is the linopy Model that is used to create the mathematical model of the flow_system.
@@ -942,8 +964,6 @@ class FlowSystemModel(linopy.Model):
         Args:
             timing: If True, print detailed timing breakdown.
         """
-        import time
-
         from .batched import (
             BusesData,
             ComponentsData,
@@ -962,21 +982,19 @@ class FlowSystemModel(linopy.Model):
             TransmissionsModel,
         )
 
-        timings = {}
-
-        def record(name):
-            timings[name] = time.perf_counter()
-
-        record('start')
+        timer = _BuildTimer() if timing else None
 
         self.effects = EffectsModel(self, EffectsData(self.flow_system.effects))
-        record('effects')
+        if timer:
+            timer.record('effects')
 
         self._flows_model = FlowsModel(self, self.flow_system.batched.flows)
-        record('flows')
+        if timer:
+            timer.record('flows')
 
         self._buses_model = BusesModel(self, BusesData(list(self.flow_system.buses.values())), self._flows_model)
-        record('buses')
+        if timer:
+            timer.record('buses')
 
         all_components = list(self.flow_system.components.values())
         effect_ids = list(self.flow_system.effects.keys())
@@ -993,7 +1011,8 @@ class FlowSystemModel(linopy.Model):
             StoragesData(basic_storages, 'storage', effect_ids, timesteps_extra=self.flow_system.timesteps_extra),
             self._flows_model,
         )
-        record('storages')
+        if timer:
+            timer.record('storages')
 
         intercluster_storages = [
             c
@@ -1007,35 +1026,34 @@ class FlowSystemModel(linopy.Model):
             StoragesData(intercluster_storages, 'intercluster_storage', effect_ids),
             self._flows_model,
         )
-        record('intercluster_storages')
+        if timer:
+            timer.record('intercluster_storages')
 
         components_with_status = [c for c in all_components if c.status_parameters is not None]
         self._components_model = ComponentsModel(
             self, ComponentsData(components_with_status, all_components), self._flows_model
         )
-        record('components')
+        if timer:
+            timer.record('components')
 
         converters = [c for c in all_components if isinstance(c, LinearConverter)]
         self._converters_model = ConvertersModel(self, ConvertersData(converters), self._flows_model)
-        record('converters')
+        if timer:
+            timer.record('converters')
 
         transmissions = [c for c in all_components if isinstance(c, Transmission)]
         self._transmissions_model = TransmissionsModel(self, TransmissionsData(transmissions), self._flows_model)
-        record('transmissions')
+        if timer:
+            timer.record('transmissions')
 
         self._add_scenario_equality_constraints()
         self._populate_element_variable_names()
         self.effects.finalize_shares()
-        record('end')
 
-        if timing:
-            print('\n  Type-Level Modeling Timing Breakdown:')
-            keys = list(timings.keys())
-            for i in range(1, len(keys)):
-                elapsed = (timings[keys[i]] - timings[keys[i - 1]]) * 1000
-                print(f'    {keys[i]:30s}: {elapsed:8.2f}ms')
-            total = (timings['end'] - timings['start']) * 1000
-            print(f'    {"TOTAL":30s}: {total:8.2f}ms')
+        if timer:
+            timer.record('finalize')
+        if timer:
+            timer.print_summary()
 
         logger.info(
             f'Type-level modeling complete: {len(self.variables)} variables, {len(self.constraints)} constraints'

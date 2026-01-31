@@ -1045,18 +1045,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         )
 
         if self.model.termination_condition in ('infeasible', 'infeasible_or_unbounded'):
-            if CONFIG.Solving.compute_infeasibilities:
-                import io
-                from contextlib import redirect_stdout
-
-                f = io.StringIO()
-
-                # Redirect stdout to our buffer
-                with redirect_stdout(f):
-                    self.model.print_infeasibilities()
-
-                infeasibilities = f.getvalue()
-                logger.error('Successfully extracted infeasibilities: \n%s', infeasibilities)
+            self._log_infeasibilities()
             raise RuntimeError(f'Model was infeasible. Status: {self.model.status}. Check your constraints and bounds.')
 
         # Store solution on FlowSystem for direct Element access
@@ -1065,6 +1054,21 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         logger.info(f'Optimization solved successfully. Objective: {self.model.objective.value:.4f}')
 
         return self
+
+    def _log_infeasibilities(self) -> None:
+        """Log infeasibility details if configured and model supports it."""
+        if not CONFIG.Solving.compute_infeasibilities:
+            return
+
+        import io
+        from contextlib import redirect_stdout
+
+        f = io.StringIO()
+        with redirect_stdout(f):
+            self.model.print_infeasibilities()
+
+        infeasibilities = f.getvalue()
+        logger.error('Successfully extracted infeasibilities: \n%s', infeasibilities)
 
     @property
     def solution(self) -> xr.Dataset | None:
