@@ -15,7 +15,7 @@ import xarray as xr
 from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError
-from .features import MaskHelpers, fast_notnull
+from .features import MaskHelpers, StatusBuilder, fast_notnull
 from .interface import InvestParameters, StatusParameters
 from .modeling import ModelingUtilitiesAbstract
 from .structure import (
@@ -859,13 +859,13 @@ class FlowsModel(TypeModel):
         if self.size is None:
             return
 
-        from .features import InvestmentHelpers
+        from .features import InvestmentBuilder
 
         dim = self.dim_name
 
         # Optional investment: size controlled by invested binary
         if self.invested is not None:
-            InvestmentHelpers.add_optional_size_bounds(
+            InvestmentBuilder.add_optional_size_bounds(
                 model=self.model,
                 size_var=self.size,
                 invested_var=self.invested,
@@ -877,7 +877,7 @@ class FlowsModel(TypeModel):
             )
 
         # Linked periods constraints
-        InvestmentHelpers.add_linked_periods_constraints(
+        InvestmentBuilder.add_linked_periods_constraints(
             model=self.model,
             size_var=self.size,
             params=self.data.invest_params,
@@ -1096,11 +1096,11 @@ class FlowsModel(TypeModel):
     def _create_piecewise_effects(self) -> None:
         """Create batched piecewise effects for flows with piecewise_effects_of_investment.
 
-        Uses PiecewiseHelpers for pad-to-max batching across all flows with
+        Uses PiecewiseBuilder for pad-to-max batching across all flows with
         piecewise effects. Creates batched segment variables, share variables,
         and coupling constraints.
         """
-        from .features import PiecewiseHelpers
+        from .features import PiecewiseBuilder
 
         dim = self.dim_name
         size_var = self.get(FlowVarName.SIZE)
@@ -1125,7 +1125,7 @@ class FlowsModel(TypeModel):
         # Create batched piecewise variables
         base_coords = self.model.get_coords(['period', 'scenario'])
         name_prefix = f'{dim}|piecewise_effects'
-        piecewise_vars = PiecewiseHelpers.create_piecewise_variables(
+        piecewise_vars = PiecewiseBuilder.create_piecewise_variables(
             self.model,
             element_ids,
             max_segments,
@@ -1146,7 +1146,7 @@ class FlowsModel(TypeModel):
                     zero_point = invested_var.sel({dim: element_ids})
 
         # Create piecewise constraints
-        PiecewiseHelpers.create_piecewise_constraints(
+        PiecewiseBuilder.create_piecewise_constraints(
             self.model,
             piecewise_vars,
             segment_mask,
@@ -1157,7 +1157,7 @@ class FlowsModel(TypeModel):
 
         # Create coupling constraint for size (origin)
         size_subset = size_var.sel({dim: element_ids})
-        PiecewiseHelpers.create_coupling_constraint(
+        PiecewiseBuilder.create_coupling_constraint(
             self.model,
             size_subset,
             piecewise_vars['lambda0'],
@@ -1178,7 +1178,7 @@ class FlowsModel(TypeModel):
             coords=xr.Coordinates(coords_dict),
             name=f'{name_prefix}|share',
         )
-        PiecewiseHelpers.create_coupling_constraint(
+        PiecewiseBuilder.create_coupling_constraint(
             self.model,
             share_var,
             piecewise_vars['lambda0'],
@@ -1326,10 +1326,10 @@ class FlowsModel(TypeModel):
         sd = self.data
         if not sd.with_uptime_tracking:
             return None
-        from .features import StatusHelpers
+        from .features import StatusBuilder
 
         prev = sd.previous_uptime
-        var = StatusHelpers.add_batched_duration_tracking(
+        var = StatusBuilder.add_batched_duration_tracking(
             model=self.model,
             state=self.status.sel({self.dim_name: sd.with_uptime_tracking}),
             name=FlowVarName.UPTIME,
@@ -1348,10 +1348,10 @@ class FlowsModel(TypeModel):
         sd = self.data
         if not sd.with_downtime_tracking:
             return None
-        from .features import StatusHelpers
+        from .features import StatusBuilder
 
         prev = sd.previous_downtime
-        var = StatusHelpers.add_batched_duration_tracking(
+        var = StatusBuilder.add_batched_duration_tracking(
             model=self.model,
             state=self.inactive,
             name=FlowVarName.DOWNTIME,
@@ -1374,38 +1374,45 @@ class FlowsModel(TypeModel):
         """Constrain active_hours == sum_temporal(status)."""
         if self.active_hours is None:
             return
-        self.model.add_constraints(
-            self.active_hours == self.model.sum_temporal(self.status),
-            name=FlowVarName.Constraint.ACTIVE_HOURS,
+        StatusBuilder.add_active_hours_constraint(
+            self.model,
+            self.active_hours,
+            self.status,
+            FlowVarName.Constraint.ACTIVE_HOURS,
         )
 
     def constraint_complementary(self) -> None:
         """Constrain status + inactive == 1 for downtime tracking flows."""
         if self.inactive is None:
             return
-        self.model.add_constraints(
-            self._status_sel(self.data.with_downtime_tracking) + self.inactive == 1,
-            name=FlowVarName.Constraint.COMPLEMENTARY,
+        StatusBuilder.add_complementary_constraint(
+            self.model,
+            self._status_sel(self.data.with_downtime_tracking),
+            self.inactive,
+            FlowVarName.Constraint.COMPLEMENTARY,
         )
 
     def constraint_switch_transition(self) -> None:
         """Constrain startup[t] - shutdown[t] == status[t] - status[t-1] for t > 0."""
         if self.startup is None:
             return
-        status = self._status_sel(self.data.with_startup_tracking)
-        self.model.add_constraints(
-            self.startup.isel(time=slice(1, None)) - self.shutdown.isel(time=slice(1, None))
-            == status.isel(time=slice(1, None)) - status.isel(time=slice(None, -1)),
-            name=FlowVarName.Constraint.SWITCH_TRANSITION,
+        StatusBuilder.add_switch_transition_constraint(
+            self.model,
+            self._status_sel(self.data.with_startup_tracking),
+            self.startup,
+            self.shutdown,
+            FlowVarName.Constraint.SWITCH_TRANSITION,
         )
 
     def constraint_switch_mutex(self) -> None:
         """Constrain startup + shutdown <= 1."""
         if self.startup is None:
             return
-        self.model.add_constraints(
-            self.startup + self.shutdown <= 1,
-            name=FlowVarName.Constraint.SWITCH_MUTEX,
+        StatusBuilder.add_switch_mutex_constraint(
+            self.model,
+            self.startup,
+            self.shutdown,
+            FlowVarName.Constraint.SWITCH_MUTEX,
         )
 
     def constraint_switch_initial(self) -> None:
@@ -1420,22 +1427,26 @@ class FlowsModel(TypeModel):
         prev_arrays = [self._previous_status[eid].expand_dims({dim: [eid]}) for eid in ids]
         prev_state = xr.concat(prev_arrays, dim=dim).isel(time=-1)
 
-        self.model.add_constraints(
-            self.startup.sel({dim: ids}).isel(time=0) - self.shutdown.sel({dim: ids}).isel(time=0)
-            == self._status_sel(ids).isel(time=0) - prev_state,
-            name=FlowVarName.Constraint.SWITCH_INITIAL,
+        StatusBuilder.add_switch_initial_constraint(
+            self.model,
+            self._status_sel(ids).isel(time=0),
+            self.startup.sel({dim: ids}).isel(time=0),
+            self.shutdown.sel({dim: ids}).isel(time=0),
+            prev_state,
+            FlowVarName.Constraint.SWITCH_INITIAL,
         )
 
     def constraint_startup_count(self) -> None:
         """Constrain startup_count == sum(startup) over temporal dims."""
         if self.startup_count is None:
             return
-        dim = self.dim_name
-        startup_subset = self.startup.sel({dim: self.data.with_startup_limit})
-        temporal_dims = [d for d in startup_subset.dims if d not in ('period', 'scenario', dim)]
-        self.model.add_constraints(
-            self.startup_count == startup_subset.sum(temporal_dims),
-            name=FlowVarName.Constraint.STARTUP_COUNT,
+        startup_subset = self.startup.sel({self.dim_name: self.data.with_startup_limit})
+        StatusBuilder.add_startup_count_constraint(
+            self.model,
+            self.startup_count,
+            startup_subset,
+            self.dim_name,
+            FlowVarName.Constraint.STARTUP_COUNT,
         )
 
     def constraint_cluster_cyclic(self) -> None:
@@ -1446,10 +1457,10 @@ class FlowsModel(TypeModel):
         cyclic_ids = [eid for eid in self.data.with_status if params[eid].cluster_mode == 'cyclic']
         if not cyclic_ids:
             return
-        status = self._status_sel(cyclic_ids)
-        self.model.add_constraints(
-            status.isel(time=0) == status.isel(time=-1),
-            name=FlowVarName.Constraint.CLUSTER_CYCLIC,
+        StatusBuilder.add_cluster_cyclic_constraint(
+            self.model,
+            self._status_sel(cyclic_ids),
+            FlowVarName.Constraint.CLUSTER_CYCLIC,
         )
 
     def create_status_model(self) -> None:
@@ -2015,10 +2026,10 @@ class ComponentsModel(TypeModel):
         sd = self._status_data
         if not sd.with_uptime_tracking:
             return None
-        from .features import StatusHelpers
+        from .features import StatusBuilder
 
         prev = sd.previous_uptime
-        var = StatusHelpers.add_batched_duration_tracking(
+        var = StatusBuilder.add_batched_duration_tracking(
             model=self.model,
             state=self[ComponentVarName.STATUS].sel({self.dim_name: sd.with_uptime_tracking}),
             name=ComponentVarName.UPTIME,
@@ -2037,11 +2048,11 @@ class ComponentsModel(TypeModel):
         sd = self._status_data
         if not sd.with_downtime_tracking:
             return None
-        from .features import StatusHelpers
+        from .features import StatusBuilder
 
         _ = self.inactive  # ensure inactive variable exists
         prev = sd.previous_downtime
-        var = StatusHelpers.add_batched_duration_tracking(
+        var = StatusBuilder.add_batched_duration_tracking(
             model=self.model,
             state=self.inactive,
             name=ComponentVarName.DOWNTIME,
@@ -2064,38 +2075,45 @@ class ComponentsModel(TypeModel):
         """Constrain active_hours == sum_temporal(status)."""
         if self.active_hours is None:
             return
-        self.model.add_constraints(
-            self.active_hours == self.model.sum_temporal(self[ComponentVarName.STATUS]),
-            name=ComponentVarName.Constraint.ACTIVE_HOURS,
+        StatusBuilder.add_active_hours_constraint(
+            self.model,
+            self.active_hours,
+            self[ComponentVarName.STATUS],
+            ComponentVarName.Constraint.ACTIVE_HOURS,
         )
 
     def constraint_complementary(self) -> None:
         """Constrain status + inactive == 1 for downtime tracking components."""
         if self.inactive is None:
             return
-        self.model.add_constraints(
-            self._status_sel(self._status_data.with_downtime_tracking) + self.inactive == 1,
-            name=ComponentVarName.Constraint.COMPLEMENTARY,
+        StatusBuilder.add_complementary_constraint(
+            self.model,
+            self._status_sel(self._status_data.with_downtime_tracking),
+            self.inactive,
+            ComponentVarName.Constraint.COMPLEMENTARY,
         )
 
     def constraint_switch_transition(self) -> None:
         """Constrain startup[t] - shutdown[t] == status[t] - status[t-1] for t > 0."""
         if self.startup is None:
             return
-        status = self._status_sel(self._status_data.with_startup_tracking)
-        self.model.add_constraints(
-            self.startup.isel(time=slice(1, None)) - self.shutdown.isel(time=slice(1, None))
-            == status.isel(time=slice(1, None)) - status.isel(time=slice(None, -1)),
-            name=ComponentVarName.Constraint.SWITCH_TRANSITION,
+        StatusBuilder.add_switch_transition_constraint(
+            self.model,
+            self._status_sel(self._status_data.with_startup_tracking),
+            self.startup,
+            self.shutdown,
+            ComponentVarName.Constraint.SWITCH_TRANSITION,
         )
 
     def constraint_switch_mutex(self) -> None:
         """Constrain startup + shutdown <= 1."""
         if self.startup is None:
             return
-        self.model.add_constraints(
-            self.startup + self.shutdown <= 1,
-            name=ComponentVarName.Constraint.SWITCH_MUTEX,
+        StatusBuilder.add_switch_mutex_constraint(
+            self.model,
+            self.startup,
+            self.shutdown,
+            ComponentVarName.Constraint.SWITCH_MUTEX,
         )
 
     def constraint_switch_initial(self) -> None:
@@ -2111,22 +2129,26 @@ class ComponentsModel(TypeModel):
         prev_arrays = [previous_status[eid].expand_dims({dim: [eid]}) for eid in ids]
         prev_state = xr.concat(prev_arrays, dim=dim).isel(time=-1)
 
-        self.model.add_constraints(
-            self.startup.sel({dim: ids}).isel(time=0) - self.shutdown.sel({dim: ids}).isel(time=0)
-            == self._status_sel(ids).isel(time=0) - prev_state,
-            name=ComponentVarName.Constraint.SWITCH_INITIAL,
+        StatusBuilder.add_switch_initial_constraint(
+            self.model,
+            self._status_sel(ids).isel(time=0),
+            self.startup.sel({dim: ids}).isel(time=0),
+            self.shutdown.sel({dim: ids}).isel(time=0),
+            prev_state,
+            ComponentVarName.Constraint.SWITCH_INITIAL,
         )
 
     def constraint_startup_count(self) -> None:
         """Constrain startup_count == sum(startup) over temporal dims."""
         if self.startup_count is None:
             return
-        dim = self.dim_name
-        startup_subset = self.startup.sel({dim: self._status_data.with_startup_limit})
-        temporal_dims = [d for d in startup_subset.dims if d not in ('period', 'scenario', dim)]
-        self.model.add_constraints(
-            self.startup_count == startup_subset.sum(temporal_dims),
-            name=ComponentVarName.Constraint.STARTUP_COUNT,
+        startup_subset = self.startup.sel({self.dim_name: self._status_data.with_startup_limit})
+        StatusBuilder.add_startup_count_constraint(
+            self.model,
+            self.startup_count,
+            startup_subset,
+            self.dim_name,
+            ComponentVarName.Constraint.STARTUP_COUNT,
         )
 
     def constraint_cluster_cyclic(self) -> None:
@@ -2137,10 +2159,10 @@ class ComponentsModel(TypeModel):
         cyclic_ids = [eid for eid in self._status_data.ids if params[eid].cluster_mode == 'cyclic']
         if not cyclic_ids:
             return
-        status = self._status_sel(cyclic_ids)
-        self.model.add_constraints(
-            status.isel(time=0) == status.isel(time=-1),
-            name=ComponentVarName.Constraint.CLUSTER_CYCLIC,
+        StatusBuilder.add_cluster_cyclic_constraint(
+            self.model,
+            self._status_sel(cyclic_ids),
+            ComponentVarName.Constraint.CLUSTER_CYCLIC,
         )
 
     def create_status_features(self) -> None:
@@ -2224,13 +2246,13 @@ class ConvertersModel(TypeModel):
             data: ConvertersData container.
             flows_model: The FlowsModel that owns flow variables.
         """
-        from .features import PiecewiseHelpers
+        from .features import PiecewiseBuilder
 
         super().__init__(model, data)
         self.converters_with_factors = data.with_factors
         self.converters_with_piecewise = data.with_piecewise
         self._flows_model = flows_model
-        self._PiecewiseHelpers = PiecewiseHelpers
+        self._PiecewiseBuilder = PiecewiseBuilder
 
         # Piecewise conversion variables
         self._piecewise_variables: dict[str, linopy.Variable] = {}
@@ -2467,7 +2489,7 @@ class ConvertersModel(TypeModel):
     @cached_property
     def _piecewise_segment_mask(self) -> xr.DataArray:
         """(converter, segment) mask: 1=valid, 0=padded."""
-        _, mask = self._PiecewiseHelpers.collect_segment_info(
+        _, mask = self._PiecewiseBuilder.collect_segment_info(
             self._piecewise_element_ids, self._piecewise_segment_counts, self._piecewise_dim_name
         )
         return mask
@@ -2509,7 +2531,7 @@ class ConvertersModel(TypeModel):
 
             # Get time coordinates from model for time-varying breakpoints
             time_coords = self.model.flow_system.timesteps
-            starts, ends = self._PiecewiseHelpers.pad_breakpoints(
+            starts, ends = self._PiecewiseBuilder.pad_breakpoints(
                 self._piecewise_element_ids,
                 breakpoints,
                 self._piecewise_max_segments,
@@ -2592,7 +2614,7 @@ class ConvertersModel(TypeModel):
 
         base_coords = self.model.get_coords(['time', 'period', 'scenario'])
 
-        self._piecewise_variables = self._PiecewiseHelpers.create_piecewise_variables(
+        self._piecewise_variables = self._PiecewiseBuilder.create_piecewise_variables(
             self.model,
             self._piecewise_element_ids,
             self._piecewise_max_segments,
@@ -2617,7 +2639,7 @@ class ConvertersModel(TypeModel):
         zero_point = None
 
         # Create lambda_sum and single_segment constraints
-        self._PiecewiseHelpers.create_piecewise_constraints(
+        self._PiecewiseBuilder.create_piecewise_constraints(
             self.model,
             self._piecewise_variables,
             self._piecewise_segment_mask,

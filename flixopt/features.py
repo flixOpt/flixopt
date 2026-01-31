@@ -69,7 +69,7 @@ def concat_with_coords(
     return xr.concat(arrays, dim=dim, coords='minimal').assign_coords({dim: coords})
 
 
-class InvestmentHelpers:
+class InvestmentBuilder:
     """Static helper methods for investment constraint creation.
 
     These helpers contain the shared math for investment constraints,
@@ -329,7 +329,7 @@ class InvestmentHelpers:
         return xr.concat(expanded, dim=dim_name, coords='minimal')
 
 
-class StatusHelpers:
+class StatusBuilder:
     """Static helper methods for status constraint creation.
 
     These helpers contain the shared math for status constraints,
@@ -469,6 +469,112 @@ class StatusHelpers:
 
         return duration
 
+    @staticmethod
+    def add_active_hours_constraint(
+        model: FlowSystemModel,
+        active_hours_var: linopy.Variable,
+        status_var: linopy.Variable,
+        name: str,
+    ) -> None:
+        """Constrain active_hours == sum_temporal(status)."""
+        model.add_constraints(
+            active_hours_var == model.sum_temporal(status_var),
+            name=name,
+        )
+
+    @staticmethod
+    def add_complementary_constraint(
+        model: FlowSystemModel,
+        status_var: linopy.Variable,
+        inactive_var: linopy.Variable,
+        name: str,
+    ) -> None:
+        """Constrain status + inactive == 1."""
+        model.add_constraints(
+            status_var + inactive_var == 1,
+            name=name,
+        )
+
+    @staticmethod
+    def add_switch_transition_constraint(
+        model: FlowSystemModel,
+        status_var: linopy.Variable,
+        startup_var: linopy.Variable,
+        shutdown_var: linopy.Variable,
+        name: str,
+    ) -> None:
+        """Constrain startup[t] - shutdown[t] == status[t] - status[t-1] for t > 0."""
+        model.add_constraints(
+            startup_var.isel(time=slice(1, None)) - shutdown_var.isel(time=slice(1, None))
+            == status_var.isel(time=slice(1, None)) - status_var.isel(time=slice(None, -1)),
+            name=name,
+        )
+
+    @staticmethod
+    def add_switch_mutex_constraint(
+        model: FlowSystemModel,
+        startup_var: linopy.Variable,
+        shutdown_var: linopy.Variable,
+        name: str,
+    ) -> None:
+        """Constrain startup + shutdown <= 1."""
+        model.add_constraints(
+            startup_var + shutdown_var <= 1,
+            name=name,
+        )
+
+    @staticmethod
+    def add_switch_initial_constraint(
+        model: FlowSystemModel,
+        status_t0: linopy.Variable,
+        startup_t0: linopy.Variable,
+        shutdown_t0: linopy.Variable,
+        prev_state: xr.DataArray,
+        name: str,
+    ) -> None:
+        """Constrain startup[0] - shutdown[0] == status[0] - previous_status[-1].
+
+        All variables should be pre-selected to t=0 and to the relevant element subset.
+        prev_state should be the last timestep of the previous period.
+        """
+        model.add_constraints(
+            startup_t0 - shutdown_t0 == status_t0 - prev_state,
+            name=name,
+        )
+
+    @staticmethod
+    def add_startup_count_constraint(
+        model: FlowSystemModel,
+        startup_count_var: linopy.Variable,
+        startup_var: linopy.Variable,
+        dim_name: str,
+        name: str,
+    ) -> None:
+        """Constrain startup_count == sum(startup) over temporal dims.
+
+        startup_var should be pre-selected to the relevant element subset.
+        """
+        temporal_dims = [d for d in startup_var.dims if d not in ('period', 'scenario', dim_name)]
+        model.add_constraints(
+            startup_count_var == startup_var.sum(temporal_dims),
+            name=name,
+        )
+
+    @staticmethod
+    def add_cluster_cyclic_constraint(
+        model: FlowSystemModel,
+        status_var: linopy.Variable,
+        name: str,
+    ) -> None:
+        """Constrain status[0] == status[-1] for cyclic cluster mode.
+
+        status_var should be pre-selected to only the cyclic elements.
+        """
+        model.add_constraints(
+            status_var.isel(time=0) == status_var.isel(time=-1),
+            name=name,
+        )
+
 
 class MaskHelpers:
     """Static helper methods for batched constraint creation using mask matrices.
@@ -546,7 +652,7 @@ class MaskHelpers:
         return {e.label: [f.label_full for f in get_flows(e)] for e in elements}
 
 
-class PiecewiseHelpers:
+class PiecewiseBuilder:
     """Static helper methods for batched piecewise linear modeling.
 
     Enables batching of piecewise constraints across multiple elements with

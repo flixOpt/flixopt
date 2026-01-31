@@ -285,10 +285,10 @@ class ConverterVarName:
     """
 
     # === Piecewise Conversion Variables ===
-    # Prefix for all piecewise-related names (used by PiecewiseHelpers)
+    # Prefix for all piecewise-related names (used by PiecewiseBuilder)
     PIECEWISE_PREFIX = 'converter|piecewise_conversion'
 
-    # Full variable names (prefix + suffix added by PiecewiseHelpers)
+    # Full variable names (prefix + suffix added by PiecewiseBuilder)
     PIECEWISE_INSIDE = f'{PIECEWISE_PREFIX}|inside_piece'
     PIECEWISE_LAMBDA0 = f'{PIECEWISE_PREFIX}|lambda0'
     PIECEWISE_LAMBDA1 = f'{PIECEWISE_PREFIX}|lambda1'

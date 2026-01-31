@@ -942,25 +942,25 @@ class StoragesModel(TypeModel):
     @functools.cached_property
     def _size_lower(self) -> xr.DataArray:
         """(storage,) - minimum size for investment storages."""
-        from .features import InvestmentHelpers
+        from .features import InvestmentBuilder
 
         element_ids = self.with_investment
         values = [self.storage(sid).capacity_in_flow_hours.minimum_or_fixed_size for sid in element_ids]
-        return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
+        return InvestmentBuilder.stack_bounds(values, element_ids, self.dim_name)
 
     @functools.cached_property
     def _size_upper(self) -> xr.DataArray:
         """(storage,) - maximum size for investment storages."""
-        from .features import InvestmentHelpers
+        from .features import InvestmentBuilder
 
         element_ids = self.with_investment
         values = [self.storage(sid).capacity_in_flow_hours.maximum_or_fixed_size for sid in element_ids]
-        return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
+        return InvestmentBuilder.stack_bounds(values, element_ids, self.dim_name)
 
     @functools.cached_property
     def _linked_periods_mask(self) -> xr.DataArray | None:
         """(storage, period) - linked periods for investment storages. None if no linking."""
-        from .features import InvestmentHelpers
+        from .features import InvestmentBuilder
 
         element_ids = self.with_investment
         linked_list = [self.storage(sid).capacity_in_flow_hours.linked_periods for sid in element_ids]
@@ -968,7 +968,7 @@ class StoragesModel(TypeModel):
             return None
 
         values = [lp if lp is not None else np.nan for lp in linked_list]
-        return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
+        return InvestmentBuilder.stack_bounds(values, element_ids, self.dim_name)
 
     @functools.cached_property
     def _mandatory_mask(self) -> xr.DataArray:
@@ -982,22 +982,22 @@ class StoragesModel(TypeModel):
         """(storage,) - minimum size for optional investment storages."""
         if not self.with_optional_investment:
             return None
-        from .features import InvestmentHelpers
+        from .features import InvestmentBuilder
 
         element_ids = self.with_optional_investment
         values = [self.storage(sid).capacity_in_flow_hours.minimum_or_fixed_size for sid in element_ids]
-        return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
+        return InvestmentBuilder.stack_bounds(values, element_ids, self.dim_name)
 
     @functools.cached_property
     def _optional_upper(self) -> xr.DataArray | None:
         """(storage,) - maximum size for optional investment storages."""
         if not self.with_optional_investment:
             return None
-        from .features import InvestmentHelpers
+        from .features import InvestmentBuilder
 
         element_ids = self.with_optional_investment
         values = [self.storage(sid).capacity_in_flow_hours.maximum_or_fixed_size for sid in element_ids]
-        return InvestmentHelpers.stack_bounds(values, element_ids, self.dim_name)
+        return InvestmentBuilder.stack_bounds(values, element_ids, self.dim_name)
 
     @functools.cached_property
     def _flow_mask(self) -> xr.DataArray:
@@ -1290,7 +1290,7 @@ class StoragesModel(TypeModel):
         if not self.storages_with_investment:
             return
 
-        from .features import InvestmentHelpers
+        from .features import InvestmentBuilder
 
         dim = self.dim_name
         element_ids = self.investment_ids
@@ -1303,7 +1303,7 @@ class StoragesModel(TypeModel):
 
         if invested_var is not None:
             # State-controlled bounds constraints using cached properties
-            InvestmentHelpers.add_optional_size_bounds(
+            InvestmentBuilder.add_optional_size_bounds(
                 model=self.model,
                 size_var=size_var,
                 invested_var=invested_var,
@@ -1315,7 +1315,7 @@ class StoragesModel(TypeModel):
             )
 
         # Linked periods constraints
-        InvestmentHelpers.add_linked_periods_constraints(
+        InvestmentBuilder.add_linked_periods_constraints(
             model=self.model,
             size_var=size_var,
             params=self.invest_params,
@@ -1426,11 +1426,11 @@ class StoragesModel(TypeModel):
     def _create_piecewise_effects(self) -> None:
         """Create batched piecewise effects for storages with piecewise_effects_of_investment.
 
-        Uses PiecewiseHelpers for pad-to-max batching across all storages with
+        Uses PiecewiseBuilder for pad-to-max batching across all storages with
         piecewise effects. Creates batched segment variables, share variables,
         and coupling constraints.
         """
-        from .features import PiecewiseHelpers
+        from .features import PiecewiseBuilder
 
         dim = self.dim_name
         size_var = self.size
@@ -1455,7 +1455,7 @@ class StoragesModel(TypeModel):
         # Create batched piecewise variables
         base_coords = self.model.get_coords(['period', 'scenario'])
         name_prefix = f'{dim}|piecewise_effects'
-        piecewise_vars = PiecewiseHelpers.create_piecewise_variables(
+        piecewise_vars = PiecewiseBuilder.create_piecewise_variables(
             self.model,
             element_ids,
             max_segments,
@@ -1475,7 +1475,7 @@ class StoragesModel(TypeModel):
                     zero_point = invested_var.sel({dim: element_ids})
 
         # Create piecewise constraints
-        PiecewiseHelpers.create_piecewise_constraints(
+        PiecewiseBuilder.create_piecewise_constraints(
             self.model,
             piecewise_vars,
             segment_mask,
@@ -1486,7 +1486,7 @@ class StoragesModel(TypeModel):
 
         # Create coupling constraint for size (origin)
         size_subset = size_var.sel({dim: element_ids})
-        PiecewiseHelpers.create_coupling_constraint(
+        PiecewiseBuilder.create_coupling_constraint(
             self.model,
             size_subset,
             piecewise_vars['lambda0'],
@@ -1509,7 +1509,7 @@ class StoragesModel(TypeModel):
             coords=xr.Coordinates(coords_dict),
             name=f'{name_prefix}|share',
         )
-        PiecewiseHelpers.create_coupling_constraint(
+        PiecewiseBuilder.create_coupling_constraint(
             self.model,
             share_var,
             piecewise_vars['lambda0'],
@@ -1550,11 +1550,11 @@ class InterclusterStoragesModel(TypeModel):
             data: StoragesData container for intercluster storages.
             flows_model: The FlowsModel containing flow_rate variables.
         """
-        from .features import InvestmentHelpers
+        from .features import InvestmentBuilder
 
         super().__init__(model, data)
         self._flows_model = flows_model
-        self._InvestmentHelpers = InvestmentHelpers
+        self._InvestmentBuilder = InvestmentBuilder
 
         # Clustering info (required for intercluster)
         self._clustering = model.flow_system.clustering
@@ -1791,7 +1791,7 @@ class InterclusterStoragesModel(TypeModel):
         # Add fixed initial constraints
         if initial_fixed_ids:
             soc_initial = soc_boundary.sel({self.dim_name: initial_fixed_ids})
-            initial_stacked = self._InvestmentHelpers.stack_bounds(initial_values, initial_fixed_ids, self.dim_name)
+            initial_stacked = self._InvestmentBuilder.stack_bounds(initial_values, initial_fixed_ids, self.dim_name)
             self.model.add_constraints(
                 soc_initial.isel(cluster_boundary=0) == initial_stacked,
                 name=f'{self.dim_name}|initial_SOC_boundary',
@@ -1862,7 +1862,7 @@ class InterclusterStoragesModel(TypeModel):
         # Fixed capacity storages: combined <= capacity
         if fixed_ids:
             combined_fixed = combined.sel({self.dim_name: fixed_ids})
-            caps_stacked = self._InvestmentHelpers.stack_bounds(fixed_caps, fixed_ids, self.dim_name)
+            caps_stacked = self._InvestmentBuilder.stack_bounds(fixed_caps, fixed_ids, self.dim_name)
             self.model.add_constraints(
                 combined_fixed <= caps_stacked,
                 name=f'{self.dim_name}|soc_ub_{sample_name}_fixed',
@@ -1899,7 +1899,7 @@ class InterclusterStoragesModel(TypeModel):
         )
 
     def create_investment_model(self) -> None:
-        """Create batched investment variables using InvestmentHelpers."""
+        """Create batched investment variables using InvestmentBuilder."""
         if not self.data.with_investment:
             return
 
@@ -1939,14 +1939,14 @@ class InterclusterStoragesModel(TypeModel):
             name=f'{self.dim_name}|SOC_boundary_ub',
         )
 
-        # Optional investment bounds using InvestmentHelpers
+        # Optional investment bounds using InvestmentBuilder
         inv = self.data.investment_data
         if optional_ids and invested_var is not None:
             optional_lower = inv.optional_size_minimum
             optional_upper = inv.optional_size_maximum
             size_optional = size_var.sel({self.dim_name: optional_ids})
 
-            self._InvestmentHelpers.add_optional_size_bounds(
+            self._InvestmentBuilder.add_optional_size_bounds(
                 self.model,
                 size_optional,
                 invested_var,
@@ -1962,7 +1962,7 @@ class InterclusterStoragesModel(TypeModel):
         if not self.data.with_investment:
             return
 
-        from .features import InvestmentHelpers
+        from .features import InvestmentBuilder
 
         investment_ids = self.data.with_investment
         optional_ids = self.data.with_optional_investment
@@ -1972,14 +1972,14 @@ class InterclusterStoragesModel(TypeModel):
         invested_var = self.invested
 
         # Collect effects
-        effects = InvestmentHelpers.collect_effects(
+        effects = InvestmentBuilder.collect_effects(
             storages_with_investment,
             lambda s: s.capacity_in_flow_hours,
         )
 
         # Add effect shares
         for effect_name, effect_type, factors in effects:
-            factor_stacked = InvestmentHelpers.stack_bounds(factors, investment_ids, self.dim_name)
+            factor_stacked = InvestmentBuilder.stack_bounds(factors, investment_ids, self.dim_name)
 
             if effect_type == 'per_size':
                 expr = (size_var * factor_stacked).sum(self.dim_name)

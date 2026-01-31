@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .features import InvestmentHelpers, concat_with_coords, fast_isnull, fast_notnull
+from .features import InvestmentBuilder, concat_with_coords, fast_isnull, fast_notnull
 from .interface import InvestParameters, StatusParameters
 from .modeling import _scalar_safe_isel_drop
 from .structure import ElementContainer
@@ -292,12 +292,12 @@ class StatusData:
         if not ids or self._timestep_duration is None:
             return None
 
-        from .features import StatusHelpers
+        from .features import StatusBuilder
 
         values = np.full(len(ids), np.nan, dtype=float)
         for i, eid in enumerate(ids):
             if eid in self._previous_states and getattr(self._params[eid], min_attr) is not None:
-                values[i] = StatusHelpers.compute_previous_duration(
+                values[i] = StatusBuilder.compute_previous_duration(
                     self._previous_states[eid], target_state=target_state, timestep_duration=self._timestep_duration
                 )
 
@@ -410,13 +410,13 @@ class InvestmentData:
         For optional: 0 (invested variable controls actual minimum)
         """
         bounds = [self._params[eid].minimum_or_fixed_size if self._params[eid].mandatory else 0.0 for eid in self._ids]
-        return InvestmentHelpers.stack_bounds(bounds, self._ids, self._dim)
+        return InvestmentBuilder.stack_bounds(bounds, self._ids, self._dim)
 
     @cached_property
     def size_maximum(self) -> xr.DataArray:
         """(element, [period, scenario]) - maximum size for all investment elements."""
         bounds = [self._params[eid].maximum_or_fixed_size for eid in self._ids]
-        return InvestmentHelpers.stack_bounds(bounds, self._ids, self._dim)
+        return InvestmentBuilder.stack_bounds(bounds, self._ids, self._dim)
 
     @cached_property
     def optional_size_minimum(self) -> xr.DataArray | None:
@@ -425,7 +425,7 @@ class InvestmentData:
         if not ids:
             return None
         bounds = [self._params[eid].minimum_or_fixed_size for eid in ids]
-        return InvestmentHelpers.stack_bounds(bounds, ids, self._dim)
+        return InvestmentBuilder.stack_bounds(bounds, ids, self._dim)
 
     @cached_property
     def optional_size_maximum(self) -> xr.DataArray | None:
@@ -434,7 +434,7 @@ class InvestmentData:
         if not ids:
             return None
         bounds = [self._params[eid].maximum_or_fixed_size for eid in ids]
-        return InvestmentHelpers.stack_bounds(bounds, ids, self._dim)
+        return InvestmentBuilder.stack_bounds(bounds, ids, self._dim)
 
     @cached_property
     def linked_periods(self) -> xr.DataArray | None:
@@ -443,7 +443,7 @@ class InvestmentData:
         if not ids:
             return None
         bounds = [self._params[eid].linked_periods for eid in ids]
-        return InvestmentHelpers.stack_bounds(bounds, ids, self._dim)
+        return InvestmentBuilder.stack_bounds(bounds, ids, self._dim)
 
     # === Effects ===
 
@@ -485,7 +485,7 @@ class InvestmentData:
     @cached_property
     def _piecewise_raw(self) -> dict:
         """Compute all piecewise data in one pass. Returns dict with all arrays or empty dict."""
-        from .features import PiecewiseHelpers
+        from .features import PiecewiseBuilder
 
         ids = self.with_piecewise_effects
         if not ids:
@@ -496,14 +496,14 @@ class InvestmentData:
 
         # Segment counts and mask
         segment_counts = {eid: len(params[eid].piecewise_effects_of_investment.piecewise_origin) for eid in ids}
-        max_segments, segment_mask = PiecewiseHelpers.collect_segment_info(ids, segment_counts, dim)
+        max_segments, segment_mask = PiecewiseBuilder.collect_segment_info(ids, segment_counts, dim)
 
         # Origin breakpoints (for size coupling)
         origin_breakpoints = {}
         for eid in ids:
             pieces = params[eid].piecewise_effects_of_investment.piecewise_origin
             origin_breakpoints[eid] = ([p.start for p in pieces], [p.end for p in pieces])
-        origin_starts, origin_ends = PiecewiseHelpers.pad_breakpoints(ids, origin_breakpoints, max_segments, dim)
+        origin_starts, origin_ends = PiecewiseBuilder.pad_breakpoints(ids, origin_breakpoints, max_segments, dim)
 
         # Effect breakpoints as (dim, segment, effect)
         all_effect_names: set[str] = set()
@@ -521,7 +521,7 @@ class InvestmentData:
                     breakpoints[eid] = ([p.start for p in piecewise], [p.end for p in piecewise])
                 else:
                     breakpoints[eid] = ([0.0] * segment_counts[eid], [0.0] * segment_counts[eid])
-            s, e = PiecewiseHelpers.pad_breakpoints(ids, breakpoints, max_segments, dim)
+            s, e = PiecewiseBuilder.pad_breakpoints(ids, breakpoints, max_segments, dim)
             effect_starts_list.append(s.expand_dims(effect=[effect_name]))
             effect_ends_list.append(e.expand_dims(effect=[effect_name]))
 
@@ -1274,7 +1274,7 @@ class FlowsData:
         """(flow, period, scenario) - minimum size for flows with investment."""
         if not self._investment_data:
             return None
-        # InvestmentData.size_minimum already has flow dim via InvestmentHelpers.stack_bounds
+        # InvestmentData.size_minimum already has flow dim via InvestmentBuilder.stack_bounds
         raw = self._investment_data.size_minimum
         return self._broadcast_existing(raw, dims=['period', 'scenario'])
 
