@@ -102,7 +102,9 @@ class TestFlowModel:
         model = create_linopy_model(flow_system)
 
         # Batched temporal shares are managed by the EffectsModel
-        assert 'share|temporal' in model.constraints, 'Batched temporal share constraint should exist'
+        assert any(c.startswith('share|temporal') for c in model.constraints), (
+            'Batched temporal share constraint(s) should exist'
+        )
 
         # Check batched effect variables exist
         assert 'effect|per_timestep' in model.variables, 'Batched effect per_timestep should exist'

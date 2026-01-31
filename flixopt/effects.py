@@ -593,30 +593,39 @@ class EffectsModel:
     ) -> linopy.Variable:
         """Create a share variable from per-contributor expressions.
 
-        Each entry in shares is a single-contributor LinearExpression (already
-        accumulated). Uses linopy.merge along 'contributor' to combine them.
+        Groups contributors by nterm (number of terms) so that expressions
+        with the same shape can be merged cheaply via linopy.merge (no padding
+        needed when _term sizes match). This avoids both the massive memory
+        cost of full alignment and the overhead of per-contributor constraints.
         """
         import pandas as pd
 
         effect_index = self.data.effect_index
 
-        # Normalize effect order
-        exprs: list[linopy.LinearExpression] = []
-        for expr in shares.values():
-            if 'effect' in expr.dims:
-                expr_effects = list(expr.coords['effect'].values)
-                if expr_effects != list(effect_index):
-                    expr = expr.reindex(effect=effect_index)
-            exprs.append(expr)
-
-        combined_expr = linopy.merge(exprs, dim='contributor')
-
-        # Create variable and constraint
         contributor_index = pd.Index(list(shares.keys()), name='contributor')
         coords = self._share_coords('contributor', contributor_index, temporal=temporal)
         var = self.model.add_variables(lower=-np.inf, upper=np.inf, coords=coords, name=name)
 
-        self.model.add_constraints(var == combined_expr, name=name)
+        # Group contributors by nterm for efficient batching
+        by_nterm: dict[int, list[str]] = {}
+        normalized: dict[str, linopy.LinearExpression] = {}
+        for cid, expr in shares.items():
+            if 'effect' in expr.dims:
+                expr_effects = list(expr.coords['effect'].values)
+                if expr_effects != list(effect_index):
+                    expr = expr.reindex(effect=effect_index)
+            normalized[cid] = expr
+            nt = expr.nterm
+            by_nterm.setdefault(nt, []).append(cid)
+
+        for i, (_nt, cids) in enumerate(by_nterm.items()):
+            group_exprs = [normalized[cid].sel(contributor=cid) for cid in cids]
+            combined = linopy.merge(group_exprs, dim='contributor')
+            self.model.add_constraints(
+                var.sel(contributor=cids) == combined,
+                name=f'{name}|g{i}',
+            )
+
         return var
 
     def get_periodic(self, effect_id: str) -> linopy.Variable:
