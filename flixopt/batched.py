@@ -20,6 +20,7 @@ import xarray as xr
 
 from .features import InvestmentHelpers, concat_with_coords, fast_isnull, fast_notnull
 from .interface import InvestParameters, StatusParameters
+from .modeling import _scalar_safe_isel_drop
 from .structure import ElementContainer
 
 if TYPE_CHECKING:
@@ -575,17 +576,22 @@ class StoragesData:
     Used by both StoragesModel and InterclusterStoragesModel.
     """
 
-    def __init__(self, storages: list, dim_name: str, effect_ids: list[str]):
+    def __init__(
+        self, storages: list, dim_name: str, effect_ids: list[str], timesteps_extra: pd.DatetimeIndex | None = None
+    ):
         """Initialize StoragesData.
 
         Args:
             storages: List of Storage elements.
             dim_name: Dimension name for arrays ('storage' or 'intercluster_storage').
             effect_ids: List of effect IDs for building effect arrays.
+            timesteps_extra: Extended timesteps (time + 1 final step) for charge state bounds.
+                Required for StoragesModel, None for InterclusterStoragesModel.
         """
         self._storages = storages
         self._dim_name = dim_name
         self._effect_ids = effect_ids
+        self._timesteps_extra = timesteps_extra
         self._by_label = {s.label_full: s for s in storages}
 
     @cached_property
@@ -681,6 +687,110 @@ class StoragesData:
     def discharging_flow_ids(self) -> list[str]:
         """Flow IDs for discharging flows, aligned with self.ids."""
         return [s.discharging.label_full for s in self._storages]
+
+    # === Capacity and Charge State Bounds ===
+
+    @cached_property
+    def capacity_lower(self) -> xr.DataArray:
+        """(storage,) - lower capacity per storage (0 for None, min_size for invest, cap for fixed)."""
+        values = []
+        for s in self._storages:
+            if s.capacity_in_flow_hours is None:
+                values.append(0.0)
+            elif isinstance(s.capacity_in_flow_hours, InvestParameters):
+                values.append(float(s.capacity_in_flow_hours.minimum_or_fixed_size))
+            else:
+                values.append(float(s.capacity_in_flow_hours))
+        return xr.DataArray(values, dims=[self._dim_name], coords={self._dim_name: self.ids})
+
+    @cached_property
+    def capacity_upper(self) -> xr.DataArray:
+        """(storage,) - upper capacity per storage (inf for None, max_size for invest, cap for fixed)."""
+        values = []
+        for s in self._storages:
+            if s.capacity_in_flow_hours is None:
+                values.append(np.inf)
+            elif isinstance(s.capacity_in_flow_hours, InvestParameters):
+                values.append(float(s.capacity_in_flow_hours.maximum_or_fixed_size))
+            else:
+                values.append(float(s.capacity_in_flow_hours))
+        return xr.DataArray(values, dims=[self._dim_name], coords={self._dim_name: self.ids})
+
+    def _relative_bounds_extra(self) -> tuple[xr.DataArray, xr.DataArray]:
+        """Compute relative charge state bounds extended with final timestep values.
+
+        Returns stacked (storage, time_extra) arrays for relative min and max bounds.
+        """
+        assert self._timesteps_extra is not None, 'timesteps_extra required for charge state bounds'
+
+        rel_mins = []
+        rel_maxs = []
+        for s in self._storages:
+            rel_min = s.relative_minimum_charge_state
+            rel_max = s.relative_maximum_charge_state
+
+            # Get final values
+            if s.relative_minimum_final_charge_state is None:
+                min_final_value = _scalar_safe_isel_drop(rel_min, 'time', -1)
+            else:
+                min_final_value = s.relative_minimum_final_charge_state
+
+            if s.relative_maximum_final_charge_state is None:
+                max_final_value = _scalar_safe_isel_drop(rel_max, 'time', -1)
+            else:
+                max_final_value = s.relative_maximum_final_charge_state
+
+            # Build bounds arrays for timesteps_extra
+            if 'time' in rel_min.dims:
+                min_final_da = (
+                    min_final_value.expand_dims('time') if 'time' not in min_final_value.dims else min_final_value
+                )
+                min_final_da = min_final_da.assign_coords(time=[self._timesteps_extra[-1]])
+                min_bounds = xr.concat([rel_min, min_final_da], dim='time')
+            else:
+                min_bounds = rel_min.expand_dims(time=self._timesteps_extra)
+
+            if 'time' in rel_max.dims:
+                max_final_da = (
+                    max_final_value.expand_dims('time') if 'time' not in max_final_value.dims else max_final_value
+                )
+                max_final_da = max_final_da.assign_coords(time=[self._timesteps_extra[-1]])
+                max_bounds = xr.concat([rel_max, max_final_da], dim='time')
+            else:
+                max_bounds = rel_max.expand_dims(time=self._timesteps_extra)
+
+            min_bounds, max_bounds = xr.broadcast(min_bounds, max_bounds)
+            rel_mins.append(min_bounds)
+            rel_maxs.append(max_bounds)
+
+        rel_min_stacked = concat_with_coords(rel_mins, self._dim_name, self.ids)
+        rel_max_stacked = concat_with_coords(rel_maxs, self._dim_name, self.ids)
+        return rel_min_stacked, rel_max_stacked
+
+    @cached_property
+    def _relative_bounds_extra_cached(self) -> tuple[xr.DataArray, xr.DataArray]:
+        """Cached relative bounds extended with final timestep."""
+        return self._relative_bounds_extra()
+
+    @cached_property
+    def relative_minimum_charge_state_extra(self) -> xr.DataArray:
+        """(storage, time_extra) - relative min charge state bounds including final timestep."""
+        return self._relative_bounds_extra_cached[0]
+
+    @cached_property
+    def relative_maximum_charge_state_extra(self) -> xr.DataArray:
+        """(storage, time_extra) - relative max charge state bounds including final timestep."""
+        return self._relative_bounds_extra_cached[1]
+
+    @cached_property
+    def charge_state_lower_bounds(self) -> xr.DataArray:
+        """(storage, time_extra) - absolute lower bounds = relative_min * capacity_lower."""
+        return self.relative_minimum_charge_state_extra * self.capacity_lower
+
+    @cached_property
+    def charge_state_upper_bounds(self) -> xr.DataArray:
+        """(storage, time_extra) - absolute upper bounds = relative_max * capacity_upper."""
+        return self.relative_maximum_charge_state_extra * self.capacity_upper
 
 
 class FlowsData:

@@ -18,7 +18,7 @@ from .core import PlausibilityError
 from .elements import Component, Flow
 from .features import MaskHelpers, concat_with_coords
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
-from .modeling import _scalar_safe_isel, _scalar_safe_isel_drop, _scalar_safe_reduce
+from .modeling import _scalar_safe_isel, _scalar_safe_reduce
 from .structure import (
     ElementType,
     FlowSystemModel,
@@ -848,6 +848,7 @@ class StoragesModel(TypeModel):
             basic_storages,
             self.dim_name,
             list(model.flow_system.effects.keys()),
+            timesteps_extra=model.flow_system.timesteps_extra,
         )
 
         # Set reference on each storage element
@@ -1034,13 +1035,11 @@ class StoragesModel(TypeModel):
     @functools.cached_property
     def charge(self) -> linopy.Variable:
         """(storage, time+1, ...) - charge state variable for ALL storages."""
-        lower_bounds = self._collect_charge_state_bounds('lower')
-        upper_bounds = self._collect_charge_state_bounds('upper')
         return self.add_variables(
             StorageVarName.CHARGE,
             var_type=VariableType.CHARGE_STATE,
-            lower=lower_bounds,
-            upper=upper_bounds,
+            lower=self.data.charge_state_lower_bounds,
+            upper=self.data.charge_state_upper_bounds,
             dims=None,
             extra_timestep=True,
         )
@@ -1071,75 +1070,6 @@ class StoragesModel(TypeModel):
             f'StoragesModel created variables: {len(self.elements)} storages, '
             f'{len(self.storages_with_investment)} with investment'
         )
-
-    def _collect_charge_state_bounds(self, bound_type: str) -> xr.DataArray:
-        """Collect charge_state bounds from all storages.
-
-        Args:
-            bound_type: 'lower' or 'upper'
-        """
-        dim = self.dim_name  # 'storage'
-        bounds_list = []
-        for storage in self.elements.values():
-            rel_min, rel_max = self._get_relative_charge_state_bounds(storage)
-
-            if storage.capacity_in_flow_hours is None:
-                lb, ub = 0, np.inf
-            elif isinstance(storage.capacity_in_flow_hours, InvestParameters):
-                cap_min = storage.capacity_in_flow_hours.minimum_or_fixed_size
-                cap_max = storage.capacity_in_flow_hours.maximum_or_fixed_size
-                lb = rel_min * cap_min
-                ub = rel_max * cap_max
-            else:
-                cap = storage.capacity_in_flow_hours
-                lb = rel_min * cap
-                ub = rel_max * cap
-
-            if bound_type == 'lower':
-                bounds_list.append(lb if isinstance(lb, xr.DataArray) else xr.DataArray(lb))
-            else:
-                bounds_list.append(ub if isinstance(ub, xr.DataArray) else xr.DataArray(ub))
-
-        return concat_with_coords(bounds_list, dim, self.element_ids)
-
-    def _get_relative_charge_state_bounds(self, storage: Storage) -> tuple[xr.DataArray, xr.DataArray]:
-        """Get relative charge state bounds with final timestep values."""
-        timesteps_extra = self.model.flow_system.timesteps_extra
-
-        rel_min = storage.relative_minimum_charge_state
-        rel_max = storage.relative_maximum_charge_state
-
-        # Get final values
-        if storage.relative_minimum_final_charge_state is None:
-            min_final_value = _scalar_safe_isel_drop(rel_min, 'time', -1)
-        else:
-            min_final_value = storage.relative_minimum_final_charge_state
-
-        if storage.relative_maximum_final_charge_state is None:
-            max_final_value = _scalar_safe_isel_drop(rel_max, 'time', -1)
-        else:
-            max_final_value = storage.relative_maximum_final_charge_state
-
-        # Build bounds arrays for timesteps_extra
-        if 'time' in rel_min.dims:
-            min_final_da = (
-                min_final_value.expand_dims('time') if 'time' not in min_final_value.dims else min_final_value
-            )
-            min_final_da = min_final_da.assign_coords(time=[timesteps_extra[-1]])
-            min_bounds = xr.concat([rel_min, min_final_da], dim='time')
-        else:
-            min_bounds = rel_min.expand_dims(time=timesteps_extra)
-
-        if 'time' in rel_max.dims:
-            max_final_da = (
-                max_final_value.expand_dims('time') if 'time' not in max_final_value.dims else max_final_value
-            )
-            max_final_da = max_final_da.assign_coords(time=[timesteps_extra[-1]])
-            max_bounds = xr.concat([rel_max, max_final_da], dim='time')
-        else:
-            max_bounds = rel_max.expand_dims(time=timesteps_extra)
-
-        return xr.broadcast(min_bounds, max_bounds)
 
     def create_constraints(self) -> None:
         """Create batched constraints for all storages.
@@ -1439,19 +1369,9 @@ class StoragesModel(TypeModel):
         charge_state = self.charge
         size_var = self.size  # Batched size with storage dimension
 
-        # Collect relative bounds for all investment storages
-        rel_lowers = []
-        rel_uppers = []
-        for storage in self.storages_with_investment:
-            rel_lower, rel_upper = self._get_relative_charge_state_bounds(storage)
-            rel_lowers.append(rel_lower)
-            rel_uppers.append(rel_upper)
-
-        # Stack relative bounds with storage dimension
-        # Use coords='minimal' to handle dimension mismatches (some have 'period', some don't)
         dim = self.dim_name
-        rel_lower_stacked = concat_with_coords(rel_lowers, dim, self.investment_ids)
-        rel_upper_stacked = concat_with_coords(rel_uppers, dim, self.investment_ids)
+        rel_lower_stacked = self.data.relative_minimum_charge_state_extra.sel({dim: self.investment_ids})
+        rel_upper_stacked = self.data.relative_maximum_charge_state_extra.sel({dim: self.investment_ids})
 
         # Select charge_state for investment storages only
         cs_investment = charge_state.sel({dim: self.investment_ids})
@@ -1703,12 +1623,11 @@ class InterclusterStoragesModel(TypeModel):
     @functools.cached_property
     def charge_state(self) -> linopy.Variable:
         """(intercluster_storage, time+1, ...) - relative SOC change."""
-        lb, ub = self._compute_charge_state_bounds()
         return self.add_variables(
             InterclusterStorageVarName.CHARGE_STATE,
             var_type=VariableType.CHARGE_STATE,
-            lower=lb,
-            upper=ub,
+            lower=-self.data.capacity_upper,
+            upper=self.data.capacity_upper,
             dims=None,
             extra_timestep=True,
         )
@@ -1730,29 +1649,6 @@ class InterclusterStoragesModel(TypeModel):
         _ = self.charge_state
         _ = self.netto_discharge
         _ = self.soc_boundary
-
-    def _compute_charge_state_bounds(self) -> tuple[xr.DataArray, xr.DataArray]:
-        """Compute symmetric bounds for charge_state variable."""
-        # For intercluster, charge_state is ΔE which can be negative
-        # Bounds: -capacity <= ΔE <= capacity
-        lowers = []
-        uppers = []
-        for storage in self.elements.values():
-            if storage.capacity_in_flow_hours is None:
-                lowers.append(-np.inf)
-                uppers.append(np.inf)
-            elif isinstance(storage.capacity_in_flow_hours, InvestParameters):
-                cap_max = storage.capacity_in_flow_hours.maximum_or_fixed_size
-                lowers.append(-cap_max + 0.0)
-                uppers.append(cap_max + 0.0)
-            else:
-                cap = storage.capacity_in_flow_hours
-                lowers.append(-cap + 0.0)
-                uppers.append(cap + 0.0)
-
-        lower = self._InvestmentHelpers.stack_bounds(lowers, self.element_ids, self.dim_name)
-        upper = self._InvestmentHelpers.stack_bounds(uppers, self.element_ids, self.dim_name)
-        return lower, upper
 
     @functools.cached_property
     def soc_boundary(self) -> linopy.Variable:
