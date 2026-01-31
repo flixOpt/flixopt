@@ -1615,6 +1615,10 @@ class InterclusterStoragesModel(TypeModel):
         # Build coords for boundary dimension (returns dict, not xr.Coordinates)
         boundary_coords_dict, boundary_dims = build_boundary_coords(n_original_clusters, flow_system)
 
+        # Build per-storage bounds using original boundary dims (without storage dim)
+        per_storage_coords = dict(boundary_coords_dict)
+        per_storage_dims = list(boundary_dims)
+
         # Add storage dimension with pd.Index for proper indexing
         boundary_coords_dict[dim] = pd.Index(self.element_ids, name=dim)
         boundary_dims = list(boundary_dims) + [dim]
@@ -1626,7 +1630,7 @@ class InterclusterStoragesModel(TypeModel):
         lowers = []
         uppers = []
         for storage in self.elements.values():
-            cap_bounds = extract_capacity_bounds(storage.capacity_in_flow_hours, boundary_coords_dict, boundary_dims)
+            cap_bounds = extract_capacity_bounds(storage.capacity_in_flow_hours, per_storage_coords, per_storage_dims)
             lowers.append(cap_bounds.lower)
             uppers.append(cap_bounds.upper)
 

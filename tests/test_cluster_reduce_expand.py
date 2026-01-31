@@ -443,9 +443,9 @@ class TestStorageClusterModes:
         fs_clustered.optimize(solver_fixture)
 
         # Intercluster mode SHOULD have SOC_boundary
-        assert 'storage|SOC_boundary' in fs_clustered.solution
+        assert 'intercluster_storage|SOC_boundary' in fs_clustered.solution
 
-        soc_boundary = fs_clustered.solution['storage|SOC_boundary'].sel(storage='Battery')
+        soc_boundary = fs_clustered.solution['intercluster_storage|SOC_boundary'].sel(intercluster_storage='Battery')
         assert 'cluster_boundary' in soc_boundary.dims
 
         # Number of boundaries = n_original_clusters + 1
@@ -459,9 +459,9 @@ class TestStorageClusterModes:
         fs_clustered.optimize(solver_fixture)
 
         # Intercluster_cyclic mode SHOULD have SOC_boundary
-        assert 'storage|SOC_boundary' in fs_clustered.solution
+        assert 'intercluster_storage|SOC_boundary' in fs_clustered.solution
 
-        soc_boundary = fs_clustered.solution['storage|SOC_boundary'].sel(storage='Battery')
+        soc_boundary = fs_clustered.solution['intercluster_storage|SOC_boundary'].sel(intercluster_storage='Battery')
         assert 'cluster_boundary' in soc_boundary.dims
 
         # First and last SOC_boundary values should be equal (cyclic constraint)
@@ -480,8 +480,8 @@ class TestInterclusterStorageLinking:
         fs_clustered.optimize(solver_fixture)
 
         # Verify SOC_boundary exists in solution
-        assert 'storage|SOC_boundary' in fs_clustered.solution
-        soc_boundary = fs_clustered.solution['storage|SOC_boundary'].sel(storage='Battery')
+        assert 'intercluster_storage|SOC_boundary' in fs_clustered.solution
+        soc_boundary = fs_clustered.solution['intercluster_storage|SOC_boundary'].sel(intercluster_storage='Battery')
         assert 'cluster_boundary' in soc_boundary.dims
 
     def test_expand_combines_soc_boundary_with_charge_state(self, solver_fixture, timesteps_8_days):
@@ -495,7 +495,7 @@ class TestInterclusterStorageLinking:
 
         # After expansion: charge_state should be non-negative (absolute SOC)
         fs_expanded = fs_clustered.transform.expand()
-        cs_after = fs_expanded.solution['storage|charge'].sel(storage='Battery')
+        cs_after = fs_expanded.solution['intercluster_storage|charge_state'].sel(intercluster_storage='Battery')
 
         # All values should be >= 0 (with small tolerance for numerical issues)
         assert (cs_after >= -0.01).all(), f'Negative charge_state found: min={float(cs_after.min())}'
@@ -513,7 +513,7 @@ class TestInterclusterStorageLinking:
 
         # Expand solution
         fs_expanded = fs_clustered.transform.expand()
-        cs_expanded = fs_expanded.solution['storage|charge'].sel(storage='Battery')
+        cs_expanded = fs_expanded.solution['intercluster_storage|charge_state'].sel(intercluster_storage='Battery')
 
         # With self-discharge, SOC should decay over time within each period
         # The expanded solution should still be non-negative
@@ -531,14 +531,14 @@ class TestInterclusterStorageLinking:
         fs_clustered.optimize(solver_fixture)
 
         # Get values needed for manual calculation
-        soc_boundary = fs_clustered.solution['storage|SOC_boundary'].sel(storage='Battery')
-        cs_clustered = fs_clustered.solution['storage|charge'].sel(storage='Battery')
+        soc_boundary = fs_clustered.solution['intercluster_storage|SOC_boundary'].sel(intercluster_storage='Battery')
+        cs_clustered = fs_clustered.solution['intercluster_storage|charge_state'].sel(intercluster_storage='Battery')
         clustering = fs_clustered.clustering
         cluster_assignments = clustering.cluster_assignments.values
         timesteps_per_cluster = clustering.timesteps_per_cluster
 
         fs_expanded = fs_clustered.transform.expand()
-        cs_expanded = fs_expanded.solution['storage|charge'].sel(storage='Battery')
+        cs_expanded = fs_expanded.solution['intercluster_storage|charge_state'].sel(intercluster_storage='Battery')
 
         # Manual verification for first few timesteps of first period
         p = 0  # First period
