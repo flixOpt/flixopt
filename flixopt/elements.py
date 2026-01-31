@@ -1652,7 +1652,7 @@ class BusesModel(TypeModel):
         coeffs_da = xr.DataArray(coeffs, dims=[bus_dim, flow_dim], coords={bus_dim: bus_ids, flow_dim: flow_ids})
 
         # Balance = sum(inputs) - sum(outputs)
-        balance = (coeffs_da * flow_rate).sum(flow_dim)
+        balance = sparse_weighted_sum(flow_rate, coeffs_da, sum_dim=flow_dim, group_dim=bus_dim)
 
         if self.buses_with_imbalance:
             imbalance_ids = [b.label_full for b in self.buses_with_imbalance]
