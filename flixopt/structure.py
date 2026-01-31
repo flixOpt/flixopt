@@ -97,22 +97,6 @@ class ExpansionMode(Enum):
 # =============================================================================
 
 
-class ElementType(Enum):
-    """What kind of element creates a variable/constraint.
-
-    Used to group elements by type for batch processing in type-level models.
-    """
-
-    FLOW = 'flow'
-    BUS = 'bus'
-    STORAGE = 'storage'
-    CONVERTER = 'converter'
-    INTERCLUSTER_STORAGE = 'intercluster_storage'
-    TRANSMISSION = 'transmission'
-    EFFECT = 'effect'
-    COMPONENT = 'component'
-
-
 class ConstraintType(Enum):
     """What kind of constraint this is.
 
@@ -400,8 +384,8 @@ class TypeModel(ABC):
     - One constraint call for all elements
 
     Variable/Constraint Naming Convention:
-        - Variables: '{element_type}|{var_name}' e.g., 'flow|rate', 'storage|charge'
-        - Constraints: '{element_type}|{constraint_name}' e.g., 'flow|rate_ub'
+        - Variables: '{dim_name}|{var_name}' e.g., 'flow|rate', 'storage|charge'
+        - Constraints: '{dim_name}|{constraint_name}' e.g., 'flow|rate_ub'
 
     Dimension Naming:
         - Each element type uses its own dimension name: 'flow', 'storage', 'effect', 'component'
@@ -409,15 +393,13 @@ class TypeModel(ABC):
 
     Attributes:
         model: The FlowSystemModel to create variables/constraints in.
-        element_type: The ElementType this model handles.
-        elements: List of elements this model manages.
+        data: Data object providing element_ids, dim_name, and elements.
+        elements: ElementContainer of elements this model manages.
         element_ids: List of element identifiers (label_full).
         dim_name: Dimension name for this element type (e.g., 'flow', 'storage').
 
     Example:
         >>> class FlowsModel(TypeModel):
-        ...     element_type = ElementType.FLOW
-        ...
         ...     def create_variables(self):
         ...         self.add_variables(
         ...             'flow|rate',  # Creates 'flow|rate' with 'flow' dimension
@@ -426,31 +408,34 @@ class TypeModel(ABC):
         ...         )
     """
 
-    element_type: ClassVar[ElementType]
-
-    def __init__(self, model: FlowSystemModel, elements: list):
+    def __init__(self, model: FlowSystemModel, data):
         """Initialize the type-level model.
 
         Args:
             model: The FlowSystemModel to create variables/constraints in.
-            elements: List of elements of this type to model.
+            data: Data object providing element_ids, dim_name, and elements.
         """
         self.model = model
-        self.elements: ElementContainer = ElementContainer(elements)
+        self.data = data
 
         # Storage for created variables and constraints
         self._variables: dict[str, linopy.Variable] = {}
         self._constraints: dict[str, linopy.Constraint] = {}
 
     @property
+    def elements(self) -> ElementContainer:
+        """ElementContainer of elements in this model."""
+        return self.data.elements
+
+    @property
     def element_ids(self) -> list[str]:
         """List of element IDs (label_full) in this model."""
-        return list(self.elements.keys())
+        return self.data.element_ids
 
     @property
     def dim_name(self) -> str:
         """Dimension name for this element type (e.g., 'flow', 'storage')."""
-        return self.element_type.value
+        return self.data.dim_name
 
     @abstractmethod
     def create_variables(self) -> None:
@@ -534,7 +519,7 @@ class TypeModel(ABC):
         Returns:
             The created linopy Constraint.
         """
-        full_name = f'{self.element_type.value}|{name}'
+        full_name = f'{self.dim_name}|{name}'
         constraint = self.model.add_constraints(expression, name=full_name, **kwargs)
         self._constraints[name] = constraint
         return constraint
@@ -959,8 +944,15 @@ class FlowSystemModel(linopy.Model):
         """
         import time
 
-        from .batched import EffectsData
-        from .components import InterclusterStoragesModel, StoragesModel
+        from .batched import (
+            BusesData,
+            ComponentsData,
+            ConvertersData,
+            EffectsData,
+            StoragesData,
+            TransmissionsData,
+        )
+        from .components import InterclusterStoragesModel, LinearConverter, Storage, StoragesModel, Transmission
         from .effects import EffectsModel
         from .elements import (
             BusesModel,
@@ -980,31 +972,55 @@ class FlowSystemModel(linopy.Model):
         self.effects = EffectsModel(self, EffectsData(self.flow_system.effects))
         record('effects')
 
-        self._flows_model = FlowsModel(self, list(self.flow_system.flows.values()))
+        self._flows_model = FlowsModel(self, self.flow_system.batched.flows)
         record('flows')
 
-        self._buses_model = BusesModel(self, list(self.flow_system.buses.values()), self._flows_model)
+        self._buses_model = BusesModel(self, BusesData(list(self.flow_system.buses.values())), self._flows_model)
         record('buses')
 
         all_components = list(self.flow_system.components.values())
+        effect_ids = list(self.flow_system.effects.keys())
+        clustering = self.flow_system.clustering
 
-        self._storages_model = StoragesModel(self, all_components, self._flows_model)
+        basic_storages = [
+            c
+            for c in all_components
+            if isinstance(c, Storage)
+            and not (clustering is not None and c.cluster_mode in ('intercluster', 'intercluster_cyclic'))
+        ]
+        self._storages_model = StoragesModel(
+            self,
+            StoragesData(basic_storages, 'storage', effect_ids, timesteps_extra=self.flow_system.timesteps_extra),
+            self._flows_model,
+        )
         record('storages')
 
-        self._intercluster_storages_model = InterclusterStoragesModel(self, all_components, self._flows_model)
+        intercluster_storages = [
+            c
+            for c in all_components
+            if isinstance(c, Storage)
+            and clustering is not None
+            and c.cluster_mode in ('intercluster', 'intercluster_cyclic')
+        ]
+        self._intercluster_storages_model = InterclusterStoragesModel(
+            self,
+            StoragesData(intercluster_storages, 'intercluster_storage', effect_ids),
+            self._flows_model,
+        )
         record('intercluster_storages')
 
-        self._components_model = ComponentsModel(self, all_components, self._flows_model)
+        components_with_status = [c for c in all_components if c.status_parameters is not None]
+        self._components_model = ComponentsModel(
+            self, ComponentsData(components_with_status, all_components), self._flows_model
+        )
         record('components')
 
-        from .components import LinearConverter, Transmission
-
         converters = [c for c in all_components if isinstance(c, LinearConverter)]
-        self._converters_model = ConvertersModel(self, converters, self._flows_model)
+        self._converters_model = ConvertersModel(self, ConvertersData(converters), self._flows_model)
         record('converters')
 
         transmissions = [c for c in all_components if isinstance(c, Transmission)]
-        self._transmissions_model = TransmissionsModel(self, transmissions, self._flows_model)
+        self._transmissions_model = TransmissionsModel(self, TransmissionsData(transmissions), self._flows_model)
         record('transmissions')
 
         self._add_scenario_equality_constraints()

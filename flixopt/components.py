@@ -13,14 +13,12 @@ import numpy as np
 import xarray as xr
 
 from . import io as fx_io
-from .batched import InvestmentData, StoragesData
 from .core import PlausibilityError
 from .elements import Component, Flow
 from .features import MaskHelpers, concat_with_coords
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
 from .modeling import _scalar_safe_isel, _scalar_safe_reduce
 from .structure import (
-    ElementType,
     FlowSystemModel,
     FlowVarName,
     InterclusterStorageVarName,
@@ -32,6 +30,7 @@ from .structure import (
 if TYPE_CHECKING:
     import linopy
 
+    from .batched import InvestmentData, StoragesData
     from .types import Numeric_PS, Numeric_TPS
 
 logger = logging.getLogger('flixopt')
@@ -818,39 +817,24 @@ class StoragesModel(TypeModel):
         >>> storages_model.create_investment_constraints()
     """
 
-    element_type = ElementType.STORAGE
-
     def __init__(
         self,
         model: FlowSystemModel,
-        all_components: list,
+        data: StoragesData,
         flows_model,  # FlowsModel - avoid circular import
     ):
         """Initialize the type-level model for basic storages.
 
         Args:
             model: The FlowSystemModel to create variables/constraints in.
-            all_components: List of all components (basic storages are filtered internally).
+            data: StoragesData container for basic storages.
             flows_model: The FlowsModel containing flow_rate variables.
         """
-        clustering = model.flow_system.clustering
-        basic_storages = [
-            c
-            for c in all_components
-            if isinstance(c, Storage)
-            and not (clustering is not None and c.cluster_mode in ('intercluster', 'intercluster_cyclic'))
-        ]
-        super().__init__(model, basic_storages)
+        super().__init__(model, data)
         self._flows_model = flows_model
-        self.data = StoragesData(
-            basic_storages,
-            self.dim_name,
-            list(model.flow_system.effects.keys()),
-            timesteps_extra=model.flow_system.timesteps_extra,
-        )
 
         # Set reference on each storage element
-        for storage in basic_storages:
+        for storage in self.elements.values():
             storage._storages_model = self
 
         self.create_variables()
@@ -1553,44 +1537,28 @@ class InterclusterStoragesModel(TypeModel):
     - There are storages with cluster_mode='intercluster' or 'intercluster_cyclic'
     """
 
-    element_type = ElementType.INTERCLUSTER_STORAGE
-
     def __init__(
         self,
         model: FlowSystemModel,
-        all_components: list,
+        data: StoragesData,
         flows_model,  # FlowsModel - avoid circular import
     ):
         """Initialize the batched model for intercluster storages.
 
         Args:
             model: The FlowSystemModel to create variables/constraints in.
-            all_components: List of all components (intercluster storages are filtered internally).
+            data: StoragesData container for intercluster storages.
             flows_model: The FlowsModel containing flow_rate variables.
         """
         from .features import InvestmentHelpers
 
-        clustering = model.flow_system.clustering
-        intercluster_storages = [
-            c
-            for c in all_components
-            if isinstance(c, Storage)
-            and clustering is not None
-            and c.cluster_mode in ('intercluster', 'intercluster_cyclic')
-        ]
-
-        super().__init__(model, intercluster_storages)
+        super().__init__(model, data)
         self._flows_model = flows_model
         self._InvestmentHelpers = InvestmentHelpers
-        self.data = StoragesData(
-            intercluster_storages,
-            self.dim_name,
-            list(model.flow_system.effects.keys()),
-        )
 
         # Clustering info (required for intercluster)
-        self._clustering = clustering
-        if not intercluster_storages:
+        self._clustering = model.flow_system.clustering
+        if not self.elements:
             return  # Nothing to model
 
         if self._clustering is None:

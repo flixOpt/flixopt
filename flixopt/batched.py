@@ -24,8 +24,9 @@ from .modeling import _scalar_safe_isel_drop
 from .structure import ElementContainer
 
 if TYPE_CHECKING:
+    from .components import LinearConverter, Transmission
     from .effects import Effect, EffectCollection
-    from .elements import Flow
+    from .elements import Bus, Component, Flow
     from .flow_system import FlowSystem
 
 
@@ -599,6 +600,21 @@ class StoragesData:
         """All storage IDs (label_full)."""
         return [s.label_full for s in self._storages]
 
+    @property
+    def element_ids(self) -> list[str]:
+        """All storage IDs (alias for ids)."""
+        return self.ids
+
+    @property
+    def dim_name(self) -> str:
+        """Dimension name for this data container."""
+        return self._dim_name
+
+    @cached_property
+    def elements(self) -> ElementContainer:
+        """ElementContainer of storages."""
+        return ElementContainer(self._storages)
+
     def __getitem__(self, label: str):
         """Get a storage by its label_full."""
         return self._by_label[label]
@@ -833,6 +849,11 @@ class FlowsData:
     def ids(self) -> list[str]:
         """List of all flow IDs (label_full)."""
         return list(self.elements.keys())
+
+    @property
+    def element_ids(self) -> list[str]:
+        """List of all flow IDs (alias for ids)."""
+        return self.ids
 
     @cached_property
     def _ids_index(self) -> pd.Index:
@@ -1576,6 +1597,16 @@ class EffectsData:
     def effect_ids(self) -> list[str]:
         return [e.label for e in self._effects]
 
+    @property
+    def element_ids(self) -> list[str]:
+        """Alias for effect_ids."""
+        return self.effect_ids
+
+    @property
+    def dim_name(self) -> str:
+        """Dimension name for this data container."""
+        return 'effect'
+
     @cached_property
     def effect_index(self) -> pd.Index:
         return pd.Index(self.effect_ids, name='effect')
@@ -1673,6 +1704,105 @@ class EffectsData:
     def values(self):
         """Iterate over Effect objects."""
         return self._effects
+
+
+class BusesData:
+    """Batched data container for buses."""
+
+    def __init__(self, buses: list[Bus]):
+        self._buses = buses
+        self.elements: ElementContainer = ElementContainer(buses)
+
+    @property
+    def element_ids(self) -> list[str]:
+        return list(self.elements.keys())
+
+    @property
+    def dim_name(self) -> str:
+        return 'bus'
+
+    @cached_property
+    def with_imbalance(self) -> list[str]:
+        """IDs of buses allowing imbalance."""
+        return [b.label_full for b in self._buses if b.allows_imbalance]
+
+    @cached_property
+    def imbalance_elements(self) -> list[Bus]:
+        """Bus objects that allow imbalance."""
+        return [b for b in self._buses if b.allows_imbalance]
+
+
+class ComponentsData:
+    """Batched data container for components with status."""
+
+    def __init__(self, components_with_status: list[Component], all_components: list[Component]):
+        self._components_with_status = components_with_status
+        self._all_components = all_components
+        self.elements: ElementContainer = ElementContainer(components_with_status)
+
+    @property
+    def element_ids(self) -> list[str]:
+        return list(self.elements.keys())
+
+    @property
+    def dim_name(self) -> str:
+        return 'component'
+
+    @property
+    def all_components(self) -> list[Component]:
+        return self._all_components
+
+
+class ConvertersData:
+    """Batched data container for converters."""
+
+    def __init__(self, converters: list[LinearConverter]):
+        self._converters = converters
+        self.elements: ElementContainer = ElementContainer(converters)
+
+    @property
+    def element_ids(self) -> list[str]:
+        return list(self.elements.keys())
+
+    @property
+    def dim_name(self) -> str:
+        return 'converter'
+
+    @cached_property
+    def with_factors(self) -> list[LinearConverter]:
+        """Converters with conversion_factors."""
+        return [c for c in self._converters if c.conversion_factors]
+
+    @cached_property
+    def with_piecewise(self) -> list[LinearConverter]:
+        """Converters with piecewise_conversion."""
+        return [c for c in self._converters if c.piecewise_conversion]
+
+
+class TransmissionsData:
+    """Batched data container for transmissions."""
+
+    def __init__(self, transmissions: list[Transmission]):
+        self._transmissions = transmissions
+        self.elements: ElementContainer = ElementContainer(transmissions)
+
+    @property
+    def element_ids(self) -> list[str]:
+        return list(self.elements.keys())
+
+    @property
+    def dim_name(self) -> str:
+        return 'transmission'
+
+    @cached_property
+    def bidirectional(self) -> list[Transmission]:
+        """Transmissions that are bidirectional."""
+        return [t for t in self._transmissions if t.in2 is not None]
+
+    @cached_property
+    def balanced(self) -> list[Transmission]:
+        """Transmissions with balanced flow sizes."""
+        return [t for t in self._transmissions if t.balanced]
 
 
 class BatchedAccessor:

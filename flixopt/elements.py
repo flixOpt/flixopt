@@ -23,7 +23,6 @@ from .structure import (
     ComponentVarName,
     ConverterVarName,
     Element,
-    ElementType,
     FlowSystemModel,
     FlowVarName,
     TransmissionVarName,
@@ -34,7 +33,7 @@ from .structure import (
 if TYPE_CHECKING:
     import linopy
 
-    from .batched import FlowsData
+    from .batched import BusesData, ComponentsData, ConvertersData, FlowsData, TransmissionsData
     from .types import (
         Effect_TPS,
         Numeric_PS,
@@ -771,13 +770,6 @@ class FlowsModel(TypeModel):
         >>> boiler_rate = flows_model.get_variable(FlowVarName.RATE, 'Boiler(gas_in)')
     """
 
-    element_type = ElementType.FLOW
-
-    @property
-    def data(self) -> FlowsData:
-        """Access FlowsData from the batched accessor."""
-        return self.model.flow_system.batched.flows
-
     # === Variables (cached_property) ===
 
     @cached_property
@@ -959,17 +951,17 @@ class FlowsModel(TypeModel):
             rhs = total_time * self.data.load_factor_maximum * size
             self.add_constraints(hours <= rhs, name='load_factor_max')
 
-    def __init__(self, model: FlowSystemModel, elements: list[Flow]):
+    def __init__(self, model: FlowSystemModel, data: FlowsData):
         """Initialize the type-level model for all flows.
 
         Args:
             model: The FlowSystemModel to create variables/constraints in.
-            elements: List of all Flow elements to model.
+            data: FlowsData container with batched flow data.
         """
-        super().__init__(model, elements)
+        super().__init__(model, data)
 
         # Set reference on each flow element for element access pattern
-        for flow in elements:
+        for flow in self.elements.values():
             flow.set_flows_model(self)
 
         self.create_variables()
@@ -1563,27 +1555,25 @@ class BusesModel(TypeModel):
         >>> buses_model.create_constraints()
     """
 
-    element_type = ElementType.BUS
-
-    def __init__(self, model: FlowSystemModel, elements: list[Bus], flows_model: FlowsModel):
+    def __init__(self, model: FlowSystemModel, data: BusesData, flows_model: FlowsModel):
         """Initialize the type-level model for all buses.
 
         Args:
             model: The FlowSystemModel to create variables/constraints in.
-            elements: List of all Bus elements to model.
+            data: BusesData container.
             flows_model: The FlowsModel containing flow_rate variables.
         """
-        super().__init__(model, elements)
+        super().__init__(model, data)
         self._flows_model = flows_model
 
         # Categorize buses by their features
-        self.buses_with_imbalance: list[Bus] = [b for b in elements if b.allows_imbalance]
+        self.buses_with_imbalance: list[Bus] = data.imbalance_elements
 
         # Element ID lists for subsets
-        self.imbalance_ids: list[str] = [b.label_full for b in self.buses_with_imbalance]
+        self.imbalance_ids: list[str] = data.with_imbalance
 
         # Set reference on each bus element
-        for bus in elements:
+        for bus in self.elements.values():
             bus._buses_model = self
 
         self.create_variables()
@@ -1743,21 +1733,17 @@ class ComponentsModel(TypeModel):
         Transmission constraints are handled by TransmissionsModel.
     """
 
-    element_type = ElementType.COMPONENT
-
     def __init__(
         self,
         model: FlowSystemModel,
-        all_components: list[Component],
+        data: ComponentsData,
         flows_model: FlowsModel,
     ):
-        # Only register components with status as elements (they get variables)
-        components_with_status = [c for c in all_components if c.status_parameters is not None]
-        super().__init__(model, components_with_status)
+        super().__init__(model, data)
         self._logger = logging.getLogger('flixopt')
         self._flows_model = flows_model
-        self._all_components = all_components
-        self._logger.debug(f'ComponentsModel initialized: {len(components_with_status)} with status')
+        self._all_components = data.all_components
+        self._logger.debug(f'ComponentsModel initialized: {len(self.element_ids)} with status')
         self.create_variables()
         self.create_constraints()
         self.create_status_features()
@@ -2225,26 +2211,24 @@ class ConvertersModel(TypeModel):
     2. Piecewise conversion: inside_piece, lambda0, lambda1 + coupling constraints
     """
 
-    element_type = ElementType.CONVERTER
-
     def __init__(
         self,
         model: FlowSystemModel,
-        converters: list,
+        data: ConvertersData,
         flows_model: FlowsModel,
     ):
         """Initialize the converter model.
 
         Args:
             model: The FlowSystemModel to create variables/constraints in.
-            converters: List of LinearConverter instances.
+            data: ConvertersData container.
             flows_model: The FlowsModel that owns flow variables.
         """
         from .features import PiecewiseHelpers
 
-        super().__init__(model, converters)
-        self.converters_with_factors = [c for c in converters if c.conversion_factors]
-        self.converters_with_piecewise = [c for c in converters if c.piecewise_conversion]
+        super().__init__(model, data)
+        self.converters_with_factors = data.with_factors
+        self.converters_with_piecewise = data.with_piecewise
         self._flows_model = flows_model
         self._PiecewiseHelpers = PiecewiseHelpers
 
@@ -2685,22 +2669,20 @@ class TransmissionsModel(TypeModel):
     All constraints have a 'transmission' dimension for proper batching.
     """
 
-    element_type = ElementType.TRANSMISSION
-
     def __init__(
         self,
         model: FlowSystemModel,
-        transmissions: list,
+        data: TransmissionsData,
         flows_model: FlowsModel,
     ):
         """Initialize the transmission model.
 
         Args:
             model: The FlowSystemModel to create constraints in.
-            transmissions: List of Transmission instances.
+            data: TransmissionsData container.
             flows_model: The FlowsModel that owns flow variables.
         """
-        super().__init__(model, transmissions)
+        super().__init__(model, data)
         self.transmissions = list(self.elements.values())
         self._flows_model = flows_model
 
