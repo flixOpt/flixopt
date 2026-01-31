@@ -617,6 +617,11 @@ class StoragesData:
         """IDs of storages with mandatory investment."""
         return [sid for sid in self.with_investment if self._by_label[sid].capacity_in_flow_hours.mandatory]
 
+    @cached_property
+    def with_balanced(self) -> list[str]:
+        """IDs of storages with balanced charging/discharging flow sizes."""
+        return [s.label_full for s in self._storages if s.balanced]
+
     # === Investment Data ===
 
     @cached_property

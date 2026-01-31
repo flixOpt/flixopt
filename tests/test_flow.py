@@ -23,7 +23,7 @@ class TestFlowModel:
         # Get variables from type-level model
         flows_model = model._flows_model
         flow_label = 'Sink(Wärme)'
-        flow_rate = flows_model.get_variable('rate', flow_label)
+        flow_rate = flows_model.get_variable('flow|rate', flow_label)
 
         # Rate variable should have correct bounds (no flow_hours constraints for minimal flow)
         assert_var_equal(flow_rate, model.add_variables(lower=0, upper=100, coords=model.get_coords()))
@@ -50,7 +50,7 @@ class TestFlowModel:
         # Get variables from type-level model
         flows_model = model._flows_model
         flow_label = 'Sink(Wärme)'
-        flow_rate = flows_model.get_variable('rate', flow_label)
+        flow_rate = flows_model.get_variable('flow|rate', flow_label)
 
         # Hours are computed inline - no hours variable, but constraints exist
         hours_expr = (flow_rate * model.timestep_duration).sum('time')

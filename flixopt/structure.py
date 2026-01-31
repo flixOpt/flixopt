@@ -518,7 +518,7 @@ class TypeModel(ABC):
         ...
         ...     def create_variables(self):
         ...         self.add_variables(
-        ...             'rate',  # Creates 'flow|rate' with 'flow' dimension
+        ...             'flow|rate',  # Creates 'flow|rate' with 'flow' dimension
         ...             VariableType.FLOW_RATE,
         ...             lower=self._stack_bounds('lower'),
         ...             upper=self._stack_bounds('upper'),
@@ -581,7 +581,7 @@ class TypeModel(ABC):
         """Create a batched variable with element dimension.
 
         Args:
-            name: Variable name (will be prefixed with element type).
+            name: Variable name (e.g., 'flow|rate'). Used as-is for the linopy variable.
             var_type: Variable type for semantic categorization. None skips registration.
             lower: Lower bounds (scalar or per-element DataArray).
             upper: Upper bounds (scalar or per-element DataArray).
@@ -605,12 +605,11 @@ class TypeModel(ABC):
                     mask = mask.expand_dims({dim: coords[dim]})
             kwargs['mask'] = mask.transpose(*dim_order)
 
-        full_name = f'{self.element_type.value}|{name}'
         variable = self.model.add_variables(
             lower=lower,
             upper=upper,
             coords=coords,
-            name=full_name,
+            name=name,
             **kwargs,
         )
 
@@ -795,11 +794,23 @@ class TypeModel(ABC):
         template = xr.DataArray(coords=model_coords)
         return data.broadcast_like(template)
 
+    def __getitem__(self, name: str) -> linopy.Variable:
+        """Get a variable by name (e.g., model['flow|rate'])."""
+        return self._variables[name]
+
+    def __contains__(self, name: str) -> bool:
+        """Check if a variable exists (e.g., 'flow|rate' in model)."""
+        return name in self._variables
+
+    def get(self, name: str, default=None) -> linopy.Variable | None:
+        """Get a variable by name, returning default if not found."""
+        return self._variables.get(name, default)
+
     def get_variable(self, name: str, element_id: str | None = None) -> linopy.Variable:
         """Get a variable, optionally sliced to a specific element.
 
         Args:
-            name: Variable name.
+            name: Variable name (e.g., 'flow|rate').
             element_id: If provided, return slice for this element only.
 
         Returns:

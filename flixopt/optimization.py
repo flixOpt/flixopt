@@ -315,7 +315,7 @@ class Optimization:
         # Check flows with investment
         flows_model = self.model._flows_model
         if flows_model is not None and flows_model.investment_ids:
-            size_var = flows_model.get_variable('size')
+            size_var = flows_model.get_variable('flow|size')
             if size_var is not None:
                 for flow_id in flows_model.investment_ids:
                     size_solution = size_var.sel(flow=flow_id).solution
@@ -327,7 +327,7 @@ class Optimization:
         # Check storages with investment
         storages_model = self.model._storages_model
         if storages_model is not None and hasattr(storages_model, 'investment_ids') and storages_model.investment_ids:
-            size_var = storages_model.get_variable('size')
+            size_var = storages_model.get_variable('storage|size')
             if size_var is not None:
                 for storage_id in storages_model.investment_ids:
                     size_solution = size_var.sel(storage=storage_id).solution
@@ -342,8 +342,8 @@ class Optimization:
         if buses_model is not None:
             for bus in self.flow_system.buses.values():
                 if bus.allows_imbalance:
-                    virtual_supply = buses_model.get_variable('virtual_supply', bus.label_full)
-                    virtual_demand = buses_model.get_variable('virtual_demand', bus.label_full)
+                    virtual_supply = buses_model.get_variable('bus|virtual_supply', bus.label_full)
+                    virtual_demand = buses_model.get_variable('bus|virtual_demand', bus.label_full)
                     if virtual_supply is not None and virtual_demand is not None:
                         supply_sum = virtual_supply.solution.sum().item()
                         demand_sum = virtual_demand.solution.sum().item()
@@ -729,7 +729,7 @@ class SegmentedOptimization:
         flows_model = current_model._flows_model
         for current_flow in current_flow_system.flows.values():
             next_flow = next_flow_system.flows[current_flow.label_full]
-            flow_rate = flows_model.get_variable('rate', current_flow.label_full)
+            flow_rate = flows_model.get_variable('flow|rate', current_flow.label_full)
             next_flow.previous_flow_rate = flow_rate.solution.sel(
                 time=slice(start_previous_values, end_previous_values)
             ).values
@@ -741,7 +741,7 @@ class SegmentedOptimization:
             next_comp = next_flow_system.components[current_comp.label_full]
             if isinstance(next_comp, Storage):
                 if storages_model is not None:
-                    charge_state = storages_model.get_variable('charge', current_comp.label_full)
+                    charge_state = storages_model.get_variable('storage|charge', current_comp.label_full)
                     next_comp.initial_charge_state = charge_state.solution.sel(time=start).item()
                     start_values_of_this_segment[current_comp.label_full] = next_comp.initial_charge_state
 
