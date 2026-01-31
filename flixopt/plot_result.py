@@ -30,12 +30,12 @@ class PlotResult:
     Examples:
         Basic usage with chaining:
 
-        >>> result = flow_system.statistics.plot.balance('Bus')
+        >>> result = flow_system.stats.plot.balance('Bus')
         >>> result.show().to_html('plot.html')
 
         Accessing underlying data:
 
-        >>> result = flow_system.statistics.plot.flows()
+        >>> result = flow_system.stats.plot.flows()
         >>> df = result.data.to_dataframe()
         >>> result.to_csv('data.csv')
 
@@ -47,6 +47,15 @@ class PlotResult:
 
     data: xr.Dataset
     figure: go.Figure
+
+    def __repr__(self) -> str:
+        """Return a clean, concise string representation."""
+        n_vars = len(self.data.data_vars)
+        n_traces = len(self.figure.data) if self.figure.data else 0
+        title = getattr(self.figure.layout.title, 'text', None)
+        if title:
+            return f"PlotResult('{title}', variables={n_vars}, traces={n_traces})"
+        return f'PlotResult(variables={n_vars}, traces={n_traces})'
 
     def _repr_html_(self) -> str:
         """Return HTML representation for Jupyter notebook display."""

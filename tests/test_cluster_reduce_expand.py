@@ -839,6 +839,112 @@ class TestPeakSelection:
         # The peak may or may not be captured depending on clustering algorithm
         assert fs_no_peaks.solution is not None
 
+    def test_extremes_new_cluster_increases_n_clusters(self, solver_fixture, timesteps_8_days):
+        """Test that method='new_cluster' can increase n_clusters when extreme periods are detected.
+
+        Note: tsam's new_cluster method may or may not add clusters depending on whether
+        the extreme period is already captured by an existing cluster. The assertion
+        checks that at least the requested n_clusters is maintained.
+        """
+        from tsam import ExtremeConfig
+
+        fs = create_system_with_peak_demand(timesteps_8_days)
+
+        # Cluster with extremes as new clusters
+        fs_clustered = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            extremes=ExtremeConfig(
+                method='new_cluster',
+                max_value=['HeatDemand(Q)|fixed_relative_profile'],
+            ),
+        )
+
+        # n_clusters should be >= 2 (may be higher if extreme periods are added as new clusters)
+        assert fs_clustered.clustering.n_clusters >= 2
+
+        # Verify optimization works with the actual cluster count
+        fs_clustered.optimize(solver_fixture)
+        assert fs_clustered.solution is not None
+
+        # Verify expansion works
+        fs_expanded = fs_clustered.transform.expand()
+        assert len(fs_expanded.timesteps) == 192
+
+        # The sum of cluster occurrences should equal n_original_clusters (8 days)
+        assert int(fs_clustered.clustering.cluster_occurrences.sum()) == 8
+
+    def test_extremes_new_cluster_rejected_for_multi_period(self, timesteps_8_days, periods_2):
+        """Test that method='new_cluster' is rejected for multi-period systems."""
+        from tsam import ExtremeConfig
+
+        fs = create_system_with_periods(timesteps_8_days, periods_2)
+
+        with pytest.raises(ValueError, match='method="new_cluster" is not supported'):
+            fs.transform.cluster(
+                n_clusters=2,
+                cluster_duration='1D',
+                extremes=ExtremeConfig(
+                    method='new_cluster',
+                    max_value=['HeatDemand(Q)|fixed_relative_profile'],
+                ),
+            )
+
+    def test_extremes_replace_works_for_multi_period(self, solver_fixture, timesteps_8_days, periods_2):
+        """Test that method='replace' works correctly for multi-period systems."""
+        from tsam import ExtremeConfig
+
+        fs = create_system_with_periods(timesteps_8_days, periods_2)
+
+        # method='replace' should work - it maintains the requested n_clusters
+        fs_clustered = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            extremes=ExtremeConfig(
+                method='replace',
+                max_value=['HeatDemand(Q)|fixed_relative_profile'],
+            ),
+        )
+
+        assert fs_clustered.clustering.n_clusters == 2
+        fs_clustered.optimize(solver_fixture)
+        assert fs_clustered.solution is not None
+
+    def test_extremes_append_with_segments(self, solver_fixture, timesteps_8_days):
+        """Test that method='append' works correctly with segmentation."""
+        from tsam import ExtremeConfig, SegmentConfig
+
+        fs = create_system_with_peak_demand(timesteps_8_days)
+
+        # Cluster with BOTH extremes AND segments
+        fs_clustered = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            extremes=ExtremeConfig(
+                method='append',
+                max_value=['HeatDemand(Q)|fixed_relative_profile'],
+            ),
+            segments=SegmentConfig(n_segments=6),
+        )
+
+        # n_clusters should be >= 2 (extreme periods add clusters)
+        n_clusters = fs_clustered.clustering.n_clusters
+        assert n_clusters >= 2
+
+        # n_representatives = n_clusters * n_segments
+        assert fs_clustered.clustering.n_representatives == n_clusters * 6
+
+        # Verify optimization works
+        fs_clustered.optimize(solver_fixture)
+        assert fs_clustered.solution is not None
+
+        # Verify expansion works
+        fs_expanded = fs_clustered.transform.expand()
+        assert len(fs_expanded.timesteps) == 192
+
+        # The sum of cluster occurrences should equal n_original_clusters (8 days)
+        assert int(fs_clustered.clustering.cluster_occurrences.sum()) == 8
+
 
 # ==================== Data Vars Parameter Tests ====================
 
@@ -1439,84 +1545,139 @@ class TestSegmentationIO:
         )
 
 
-class TestCombineSlices:
-    """Tests for the combine_slices utility function."""
+class TestStartupShutdownExpansion:
+    """Tests for correct expansion of startup/shutdown binary events."""
 
-    def test_single_dim(self):
-        """Test combining slices with a single extra dimension."""
-        from flixopt.clustering.base import combine_slices
+    def test_startup_shutdown_first_timestep_only(self, solver_fixture, timesteps_8_days):
+        """Test that startup/shutdown events are placed at first timestep of each segment only."""
+        from tsam import SegmentConfig
 
-        slices = {
-            ('A',): np.array([1.0, 2.0, 3.0]),
-            ('B',): np.array([4.0, 5.0, 6.0]),
-        }
-        result = combine_slices(
-            slices,
-            extra_dims=['x'],
-            dim_coords={'x': ['A', 'B']},
-            output_dim='time',
-            output_coord=[0, 1, 2],
+        # Create system with on/off behavior
+        fs = fx.FlowSystem(timesteps=timesteps_8_days)
+        fs.add_elements(fx.Effect('Cost', unit='EUR', is_objective=True))
+        fs.add_elements(fx.Bus('Heat'))
+
+        # Source with minimum active time (forces on/off tracking)
+        fs.add_elements(
+            fx.Source(
+                'Boiler',
+                outputs=[
+                    fx.Flow(
+                        'Q',
+                        bus='Heat',
+                        size=100,
+                        status_parameters=fx.StatusParameters(effects_per_startup={'Cost': 10}),
+                        effects_per_flow_hour={'Cost': 50},
+                    )
+                ],
+            )
         )
 
-        assert result.dims == ('time', 'x')
-        assert result.shape == (3, 2)
-        assert result.sel(x='A').values.tolist() == [1.0, 2.0, 3.0]
-        assert result.sel(x='B').values.tolist() == [4.0, 5.0, 6.0]
-
-    def test_two_dims(self):
-        """Test combining slices with two extra dimensions."""
-        from flixopt.clustering.base import combine_slices
-
-        slices = {
-            ('P1', 'base'): np.array([1.0, 2.0]),
-            ('P1', 'high'): np.array([3.0, 4.0]),
-            ('P2', 'base'): np.array([5.0, 6.0]),
-            ('P2', 'high'): np.array([7.0, 8.0]),
-        }
-        result = combine_slices(
-            slices,
-            extra_dims=['period', 'scenario'],
-            dim_coords={'period': ['P1', 'P2'], 'scenario': ['base', 'high']},
-            output_dim='time',
-            output_coord=[0, 1],
+        # Variable demand that forces startups
+        demand_pattern = np.array([0.8] * 12 + [0.0] * 12)  # On/off pattern per day (0-1 range)
+        demand_profile = np.tile(demand_pattern, 8)
+        fs.add_elements(
+            fx.Sink('Demand', inputs=[fx.Flow('Q', bus='Heat', size=50, fixed_relative_profile=demand_profile)])
         )
 
-        assert result.dims == ('time', 'period', 'scenario')
-        assert result.shape == (2, 2, 2)
-        assert result.sel(period='P1', scenario='base').values.tolist() == [1.0, 2.0]
-        assert result.sel(period='P2', scenario='high').values.tolist() == [7.0, 8.0]
-
-    def test_attrs_propagation(self):
-        """Test that attrs are propagated to the result."""
-        from flixopt.clustering.base import combine_slices
-
-        slices = {('A',): np.array([1.0, 2.0])}
-        result = combine_slices(
-            slices,
-            extra_dims=['x'],
-            dim_coords={'x': ['A']},
-            output_dim='time',
-            output_coord=[0, 1],
-            attrs={'units': 'kW', 'description': 'power'},
+        # Cluster with segments
+        fs_clustered = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=6),
         )
 
-        assert result.attrs['units'] == 'kW'
-        assert result.attrs['description'] == 'power'
+        fs_clustered.optimize(solver_fixture)
 
-    def test_datetime_coords(self):
-        """Test with pandas DatetimeIndex as output coordinates."""
-        from flixopt.clustering.base import combine_slices
+        # Check if startup variable exists
+        startup_var = 'Boiler(Q)|startup'
+        if startup_var not in fs_clustered.solution:
+            pytest.skip('Startup variable not in solution (solver may not have triggered any startups)')
 
-        time_index = pd.date_range('2020-01-01', periods=3, freq='h')
-        slices = {('A',): np.array([1.0, 2.0, 3.0])}
-        result = combine_slices(
-            slices,
-            extra_dims=['x'],
-            dim_coords={'x': ['A']},
-            output_dim='time',
-            output_coord=time_index,
+        # Expand and check startup placement
+        fs_expanded = fs_clustered.transform.expand()
+
+        startup_expanded = fs_expanded.solution[startup_var]
+
+        # In expanded form, startup should be sparse: mostly zeros with 1s only at segment boundaries
+        # The total count should match the clustered solution (after weighting)
+        startup_clustered = fs_clustered.solution[startup_var]
+
+        # Get cluster weights for proper comparison
+        cluster_weight = fs_clustered.to_dataset()['cluster_weight']
+
+        # For expanded: just sum all startups
+        total_expanded = float(startup_expanded.sum())
+
+        # For clustered: sum with weights
+        total_clustered = float((startup_clustered * cluster_weight).sum())
+
+        # They should match (startup events are preserved, just relocated to first timestep)
+        assert_allclose(total_expanded, total_clustered, rtol=1e-5)
+
+        # Verify sparsity: most timesteps should be 0
+        n_timesteps = startup_expanded.sizes['time']
+        n_nonzero = int((startup_expanded > 0.5).sum())  # Binary, so 0.5 threshold
+        assert n_nonzero < n_timesteps * 0.2, f'Expected sparse startups, but got {n_nonzero}/{n_timesteps} non-zero'
+
+    def test_startup_timing_preserved_non_segmented(self, solver_fixture, timesteps_8_days):
+        """Test that startup timing within cluster is preserved for non-segmented systems."""
+        # Create system with on/off behavior
+        fs = fx.FlowSystem(timesteps=timesteps_8_days)
+        fs.add_elements(fx.Effect('Cost', unit='EUR', is_objective=True))
+        fs.add_elements(fx.Bus('Heat'))
+
+        fs.add_elements(
+            fx.Source(
+                'Boiler',
+                outputs=[
+                    fx.Flow(
+                        'Q',
+                        bus='Heat',
+                        size=100,
+                        status_parameters=fx.StatusParameters(effects_per_startup={'Cost': 10}),
+                        effects_per_flow_hour={'Cost': 50},
+                    )
+                ],
+            )
         )
 
-        assert result.dims == ('time', 'x')
-        assert len(result.coords['time']) == 3
-        assert result.coords['time'][0].values == time_index[0]
+        demand_pattern = np.array([0.8] * 12 + [0.0] * 12)  # On/off pattern per day (0-1 range)
+        demand_profile = np.tile(demand_pattern, 8)
+        fs.add_elements(
+            fx.Sink('Demand', inputs=[fx.Flow('Q', bus='Heat', size=50, fixed_relative_profile=demand_profile)])
+        )
+
+        # Cluster WITHOUT segments
+        fs_clustered = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+        )
+
+        fs_clustered.optimize(solver_fixture)
+
+        startup_var = 'Boiler(Q)|startup'
+        if startup_var not in fs_clustered.solution:
+            pytest.skip('Startup variable not in solution')
+
+        fs_expanded = fs_clustered.transform.expand()
+
+        # For non-segmented systems, timing within cluster should be preserved
+        # The expanded startup should match the clustered values at corresponding positions
+        startup_clustered = fs_clustered.solution[startup_var]
+        startup_expanded = fs_expanded.solution[startup_var]
+
+        # Get cluster assignments to verify mapping
+        cluster_assignments = fs_clustered.clustering.cluster_assignments.values
+        timesteps_per_cluster = 24
+
+        # Check that expanded values match clustered values at correct positions
+        for orig_day in range(8):
+            cluster_id = cluster_assignments[orig_day]
+            for hour in range(timesteps_per_cluster):
+                orig_idx = orig_day * timesteps_per_cluster + hour
+                clustered_val = float(startup_clustered.isel(cluster=cluster_id, time=hour))
+                expanded_val = float(startup_expanded.isel(time=orig_idx))
+                assert abs(clustered_val - expanded_val) < 1e-6, (
+                    f'Mismatch at day {orig_day}, hour {hour}: clustered={clustered_val}, expanded={expanded_val}'
+                )

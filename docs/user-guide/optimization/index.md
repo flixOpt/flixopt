@@ -179,7 +179,7 @@ flow_system.solve(fx.solvers.HighsSolver())
 ```python
 # Require component to run at least 100 hours total
 on_var = model.variables['CHP|on']  # Binary on/off variable
-hours = flow_system.hours_per_timestep
+hours = flow_system.timestep_duration  # DataArray with duration per timestep
 model.add_constraints(
     (on_var * hours).sum() >= 100,
     name='chp_min_runtime'

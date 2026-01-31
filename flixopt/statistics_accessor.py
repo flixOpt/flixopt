@@ -4,33 +4,35 @@ This module provides a user-friendly API for analyzing optimization results
 directly from a FlowSystem.
 
 Structure:
-    - `.statistics` - Data/metrics access (cached xarray Datasets)
-    - `.statistics.plot` - Plotting methods using the statistics data
+    - `.stats` - Data/metrics access (cached xarray Datasets)
+    - `.stats.plot` - Plotting methods using the statistics data
 
 Example:
     >>> flow_system.optimize(solver)
     >>> # Data access
-    >>> flow_system.statistics.flow_rates
-    >>> flow_system.statistics.flow_hours
+    >>> flow_system.stats.flow_rates
+    >>> flow_system.stats.flow_hours
     >>> # Plotting
-    >>> flow_system.statistics.plot.balance('ElectricityBus')
-    >>> flow_system.statistics.plot.heatmap('Boiler|on')
+    >>> flow_system.stats.plot.balance('ElectricityBus')
+    >>> flow_system.stats.plot.heatmap('Boiler|on')
 """
 
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import xarray as xr
-from xarray_plotly.figures import update_traces
+from xarray_plotly.figures import add_secondary_y, update_traces
 
 from .color_processing import ColorType, hex_to_rgba, process_colors
 from .config import CONFIG
 from .plot_result import PlotResult
+from .structure import VariableCategory
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
@@ -42,7 +44,7 @@ SelectType = dict[str, Any]
 """xarray-style selection dict: {'time': slice(...), 'scenario': 'base'}"""
 
 FilterType = str | list[str]
-"""For include/exclude filtering: 'Boiler' or ['Boiler', 'CHP']"""
+"""For include/exclude filtering: exact label(s) to match, e.g., 'Boiler(Q_th)' or ['Boiler(Q_th)', 'CHP(Q_th)']"""
 
 
 # Sankey select types with Literal keys for IDE autocomplete
@@ -61,6 +63,7 @@ _SLOT_DEFAULTS: dict[str, dict[str, str | None]] = {
     'flows': {'x': 'time', 'color': 'variable', 'symbol': None},
     'charge_states': {'x': 'time', 'color': 'variable', 'symbol': None},
     'storage': {'x': 'time', 'color': 'variable', 'pattern_shape': None},
+    'storage_line': {'x': 'time', 'color': None, 'line_dash': None, 'symbol': None},
     'sizes': {'x': 'variable', 'color': 'variable'},
     'duration_curve': {'symbol': None},  # x is computed dynamically
     'effects': {},  # x is computed dynamically
@@ -229,19 +232,28 @@ def _prepare_for_heatmap(
     return finalize(da, fallback_dims())
 
 
-def _filter_by_pattern(
+def _filter_by_labels(
     names: list[str],
     include: FilterType | None,
     exclude: FilterType | None,
 ) -> list[str]:
-    """Filter names using substring matching."""
+    """Filter names using exact string matching.
+
+    Args:
+        names: List of names to filter.
+        include: Only keep names that exactly match one of these labels.
+        exclude: Remove names that exactly match one of these labels.
+
+    Returns:
+        Filtered list of names.
+    """
     result = names.copy()
     if include is not None:
-        patterns = [include] if isinstance(include, str) else include
-        result = [n for n in result if any(p in n for p in patterns)]
+        include_set = {include} if isinstance(include, str) else set(include)
+        result = [n for n in result if n in include_set]
     if exclude is not None:
-        patterns = [exclude] if isinstance(exclude, str) else exclude
-        result = [n for n in result if not any(p in n for p in patterns)]
+        exclude_set = {exclude} if isinstance(exclude, str) else set(exclude)
+        result = [n for n in result if n not in exclude_set]
     return result
 
 
@@ -262,100 +274,29 @@ def _apply_selection(ds: xr.Dataset, select: SelectType | None, drop: bool = Tru
     return ds
 
 
-def add_line_overlay(
-    fig: go.Figure,
-    da: xr.DataArray,
-    *,
-    x: str | None = None,
-    facet_col: str | None = None,
-    facet_row: str | None = None,
-    animation_frame: str | None = None,
-    color: str | None = None,
-    line_color: str = 'black',
-    name: str | None = None,
-    secondary_y: bool = False,
-    y_title: str | None = None,
-    showlegend: bool = True,
-) -> None:
-    """Add line traces on top of existing figure, optionally on secondary y-axis.
+def _sort_dataset(ds: xr.Dataset) -> xr.Dataset:
+    """Sort dataset variables alphabetically for consistent plotting order."""
+    sorted_vars = sorted(ds.data_vars)
+    return ds[sorted_vars]
 
-    This function creates line traces from a DataArray and adds them to an existing
-    figure. When using secondary_y=True, it correctly handles faceted figures by
-    creating matching secondary axes for each primary axis.
+
+def _filter_small_variables(ds: xr.Dataset, threshold: float | None) -> xr.Dataset:
+    """Remove variables where max absolute value is below threshold.
+
+    Useful for filtering out solver noise or non-invested components.
 
     Args:
-        fig: Plotly figure to add traces to.
-        da: DataArray to plot as lines.
-        x: Dimension to use for x-axis. If None, auto-detects 'time' or first dim.
-        facet_col: Dimension for column facets (must match primary figure).
-        facet_row: Dimension for row facets (must match primary figure).
-        animation_frame: Dimension for animation slider (must match primary figure).
-        color: Dimension to color by (creates multiple lines).
-        line_color: Color for lines when color is None.
-        name: Legend name for the traces.
-        secondary_y: If True, plot on secondary y-axis.
-        y_title: Title for the y-axis (secondary if secondary_y=True).
-        showlegend: Whether to show legend entries.
+        ds: Dataset to filter.
+        threshold: Minimum max absolute value to keep. If None, no filtering.
+
+    Returns:
+        Filtered dataset.
     """
-    if da.size == 0:
-        return
-
-    # Auto-detect x dimension if not specified
-    if x is None:
-        x = 'time' if 'time' in da.dims else da.dims[0]
-
-    # Build kwargs for line plot, only passing facet params if specified
-    line_kwargs: dict[str, Any] = {'x': x}
-    if color is not None:
-        line_kwargs['color'] = color
-    if facet_col is not None:
-        line_kwargs['facet_col'] = facet_col
-    if facet_row is not None:
-        line_kwargs['facet_row'] = facet_row
-    if animation_frame is not None:
-        line_kwargs['animation_frame'] = animation_frame
-
-    # Create line figure with same facets
-    line_fig = da.plotly.line(**line_kwargs)
-
-    if secondary_y:
-        # Get the primary y-axes from the bar figure to create matching secondary axes
-        primary_yaxes = [key for key in fig.layout if key.startswith('yaxis')]
-
-        # For each primary y-axis, create a secondary y-axis.
-        # Secondary axis numbering strategy:
-        # - Primary axes are named 'yaxis', 'yaxis2', 'yaxis3', etc.
-        # - We use +100 offset (yaxis101, yaxis102, ...) to avoid conflicts
-        # - Each secondary axis 'overlays' its corresponding primary axis
-        for i, primary_key in enumerate(sorted(primary_yaxes, key=lambda x: int(x[5:]) if x[5:] else 0)):
-            primary_num = primary_key[5:] if primary_key[5:] else '1'
-            secondary_num = int(primary_num) + 100
-            secondary_key = f'yaxis{secondary_num}'
-            secondary_anchor = f'x{primary_num}' if primary_num != '1' else 'x'
-
-            fig.layout[secondary_key] = dict(
-                overlaying=f'y{primary_num}' if primary_num != '1' else 'y',
-                side='right',
-                showgrid=False,
-                title=y_title if i == len(primary_yaxes) - 1 else None,
-                anchor=secondary_anchor,
-            )
-
-    # Add line traces with correct axis assignments
-    for i, trace in enumerate(line_fig.data):
-        if name is not None:
-            trace.name = name
-        if color is None:
-            trace.line = dict(color=line_color, width=2)
-
-        if secondary_y:
-            primary_num = i + 1 if i > 0 else 1
-            trace.yaxis = f'y{primary_num + 100}'
-
-        trace.showlegend = showlegend and (i == 0)
-        if name is not None:
-            trace.legendgroup = name
-        fig.add_trace(trace)
+    if threshold is None or not ds.data_vars:
+        return ds
+    max_vals = abs(ds).max()  # Single computation for all variables
+    keep = [v for v in ds.data_vars if float(max_vals.variables[v].values) >= threshold]
+    return ds[keep] if keep else ds
 
 
 def _filter_by_carrier(ds: xr.Dataset, carrier: str | list[str] | None) -> xr.Dataset:
@@ -392,7 +333,7 @@ def _dataset_to_long_df(ds: xr.Dataset, value_name: str = 'value', var_name: str
 
 
 def _build_color_kwargs(colors: ColorType | None, labels: list[str]) -> dict[str, Any]:
-    """Build color kwargs for plotly based on color type.
+    """Build color kwargs for plotly based on color type (no smart defaults).
 
     Args:
         colors: Dict (color_discrete_map), list (color_discrete_sequence),
@@ -413,11 +354,49 @@ def _build_color_kwargs(colors: ColorType | None, labels: list[str]) -> dict[str
     return {}
 
 
+def _merge_color_kwargs(
+    colors: ColorType | None,
+    labels: list[str],
+    smart_defaults: dict[str, str],
+) -> dict[str, Any]:
+    """Build color kwargs, merging user colors with smart defaults.
+
+    Args:
+        colors: User-provided colors (dict, list, str colorscale, or None).
+        labels: Variable labels (used for colorscale conversion).
+        smart_defaults: Pre-computed smart default color map.
+
+    Returns:
+        Dict with 'color_discrete_map' or 'color_discrete_sequence'.
+
+    Behavior:
+        - None: Use smart_defaults
+        - dict: Merge with smart_defaults (user overrides win)
+        - list: Use as color_discrete_sequence (no smart defaults)
+        - str: Convert colorscale to map (no smart defaults)
+    """
+    if colors is None:
+        return {'color_discrete_map': smart_defaults}
+
+    if isinstance(colors, dict):
+        merged = smart_defaults.copy()
+        merged.update(colors)  # User overrides win
+        return {'color_discrete_map': merged}
+
+    if isinstance(colors, list):
+        return {'color_discrete_sequence': colors}
+
+    if isinstance(colors, str):
+        return {'color_discrete_map': process_colors(colors, labels)}
+
+    return {'color_discrete_map': smart_defaults}
+
+
 # --- Statistics Accessor (data only) ---
 
 
 class StatisticsAccessor:
-    """Statistics accessor for FlowSystem. Access via ``flow_system.statistics``.
+    """Statistics accessor for FlowSystem. Access via ``flow_system.stats``.
 
     This accessor provides cached data properties for optimization results.
     Use ``.plot`` for visualization methods.
@@ -442,8 +421,8 @@ class StatisticsAccessor:
 
     Examples:
         >>> flow_system.optimize(solver)
-        >>> flow_system.statistics.flow_rates  # Get data
-        >>> flow_system.statistics.plot.balance('Bus')  # Plot
+        >>> flow_system.stats.flow_rates  # Get data
+        >>> flow_system.stats.plot.balance('Bus')  # Plot
     """
 
     def __init__(self, flow_system: FlowSystem) -> None:
@@ -491,6 +470,17 @@ class StatisticsAccessor:
         return self._fs.topology.component_colors
 
     @property
+    def flow_colors(self) -> dict[str, str]:
+        """Cached mapping of flow label_full to color (from parent component).
+
+        Delegates to topology accessor for centralized color caching.
+
+        Returns:
+            Dict mapping flow labels (e.g., 'Boiler(Q_th)') to hex color strings.
+        """
+        return self._fs.topology.flow_colors
+
+    @property
     def bus_colors(self) -> dict[str, str]:
         """Cached mapping of bus label to color (from carrier).
 
@@ -531,8 +521,8 @@ class StatisticsAccessor:
             A StatisticsPlotAccessor instance.
 
         Examples:
-            >>> flow_system.statistics.plot.balance('ElectricityBus')
-            >>> flow_system.statistics.plot.heatmap('Boiler|on')
+            >>> flow_system.stats.plot.balance('ElectricityBus')
+            >>> flow_system.stats.plot.heatmap('Boiler|on')
         """
         if self._plot is None:
             self._plot = StatisticsPlotAccessor(self)
@@ -548,18 +538,18 @@ class StatisticsAccessor:
         """
         self._require_solution()
         if self._flow_rates is None:
-            solution = self._fs.solution
+            flow_rate_vars = self._fs.get_variables_by_category(VariableCategory.FLOW_RATE)
             flow_carriers = self._fs.flow_carriers  # Cached lookup
             carrier_units = self.carrier_units  # Cached lookup
             data_vars = {}
-            if 'flow|rate' in solution:
-                rate_var = solution['flow|rate']
-                for flow_label in rate_var.coords['flow'].values:
-                    da = rate_var.sel(flow=flow_label, drop=True).copy()
-                    carrier = flow_carriers.get(flow_label)
-                    da.attrs['carrier'] = carrier
-                    da.attrs['unit'] = carrier_units.get(carrier, '') if carrier else ''
-                    data_vars[flow_label] = da
+            for v in flow_rate_vars:
+                flow_label = v.rsplit('|', 1)[0]  # Extract label from 'label|flow_rate'
+                da = self._fs.solution[v].copy()
+                # Add carrier and unit as attributes
+                carrier = flow_carriers.get(flow_label)
+                da.attrs['carrier'] = carrier
+                da.attrs['unit'] = carrier_units.get(carrier, '') if carrier else ''
+                data_vars[flow_label] = da
             self._flow_rates = xr.Dataset(data_vars)
         return self._flow_rates
 
@@ -592,17 +582,8 @@ class StatisticsAccessor:
         """Flow sizes as a Dataset with flow labels as variable names."""
         self._require_solution()
         if self._flow_sizes is None:
-            solution = self._fs.solution
-            data_vars = {}
-            if 'flow|size' in solution:
-                size_var = solution['flow|size']
-                from .interface import InvestParameters
-
-                for flow_label in size_var.coords['flow'].values:
-                    flow = self._fs.flows.get(flow_label)
-                    if flow is not None and isinstance(flow.size, InvestParameters):
-                        data_vars[flow_label] = size_var.sel(flow=flow_label, drop=True)
-            self._flow_sizes = xr.Dataset(data_vars)
+            flow_size_vars = self._fs.get_variables_by_category(VariableCategory.FLOW_SIZE)
+            self._flow_sizes = xr.Dataset({v.rsplit('|', 1)[0]: self._fs.solution[v] for v in flow_size_vars})
         return self._flow_sizes
 
     @property
@@ -610,13 +591,8 @@ class StatisticsAccessor:
         """Storage capacity sizes as a Dataset with storage labels as variable names."""
         self._require_solution()
         if self._storage_sizes is None:
-            solution = self._fs.solution
-            data_vars = {}
-            if 'storage|size' in solution:
-                size_var = solution['storage|size']
-                for storage_label in size_var.coords['storage'].values:
-                    data_vars[storage_label] = size_var.sel(storage=storage_label, drop=True)
-            self._storage_sizes = xr.Dataset(data_vars)
+            storage_size_vars = self._fs.get_variables_by_category(VariableCategory.STORAGE_SIZE)
+            self._storage_sizes = xr.Dataset({v.rsplit('|', 1)[0]: self._fs.solution[v] for v in storage_size_vars})
         return self._storage_sizes
 
     @property
@@ -631,13 +607,8 @@ class StatisticsAccessor:
         """All storage charge states as a Dataset with storage labels as variable names."""
         self._require_solution()
         if self._charge_states is None:
-            solution = self._fs.solution
-            data_vars = {}
-            if 'storage|charge' in solution:
-                charge_var = solution['storage|charge']
-                for storage_label in charge_var.coords['storage'].values:
-                    data_vars[storage_label] = charge_var.sel(storage=storage_label, drop=True)
-            self._charge_states = xr.Dataset(data_vars)
+            charge_vars = self._fs.get_variables_by_category(VariableCategory.CHARGE_STATE)
+            self._charge_states = xr.Dataset({v.rsplit('|', 1)[0]: self._fs.solution[v] for v in charge_vars})
         return self._charge_states
 
     @property
@@ -788,20 +759,9 @@ class StatisticsAccessor:
             raise ValueError(f'Mode {mode} is not available. Choose between "temporal" and "periodic".')
 
         ds = xr.Dataset()
-        share_var_name = f'share|{mode}'
-        if share_var_name in self._fs.solution:
-            share_var = self._fs.solution[share_var_name]
-            # Find the contributor dimension
-            contributor_dim = None
-            for dim in ['contributor', 'flow', 'storage', 'component', 'source']:
-                if dim in share_var.dims:
-                    contributor_dim = dim
-                    break
-            if contributor_dim is not None and element in share_var.coords[contributor_dim].values:
-                if effect in share_var.coords['effect'].values:
-                    selected = share_var.sel({contributor_dim: element, 'effect': effect}, drop=True)
-                    label = f'{element}->{effect}({mode})'
-                    ds = xr.Dataset({label: selected})
+        label = f'{element}->{effect}({mode})'
+        if label in self._fs.solution:
+            ds = xr.Dataset({label: self._fs.solution[label]})
 
         if include_flows:
             if element not in self._fs.components:
@@ -842,30 +802,27 @@ class StatisticsAccessor:
     def _create_effects_dataset(self, mode: Literal['temporal', 'periodic', 'total']) -> xr.Dataset:
         """Create dataset containing effect totals for all contributors.
 
-        Detects contributors from batched share variables (share|temporal, share|periodic).
+        Detects contributors (flows, components, etc.) from solution data variables.
         Excludes effect-to-effect shares which are intermediate conversions.
         Provides component and component_type coordinates for flexible groupby operations.
         """
         solution = self._fs.solution
         template = self._create_template_for_mode(mode)
 
+        # Detect contributors from solution data variables
+        # Pattern: {contributor}->{effect}(temporal) or {contributor}->{effect}(periodic)
+        contributor_pattern = re.compile(r'^(.+)->(.+)\((temporal|periodic)\)$')
         effect_labels = set(self._fs.effects.keys())
 
-        # Detect contributors from batched share variables
         detected_contributors: set[str] = set()
-        for share_mode in ['temporal', 'periodic'] if mode == 'total' else [mode]:
-            share_var_name = f'share|{share_mode}'
-            if share_var_name in solution:
-                share_var = solution[share_var_name]
-                # Find the contributor dimension
-                for dim in ['contributor', 'flow', 'storage', 'component', 'source']:
-                    if dim in share_var.dims:
-                        for contributor_id in share_var.coords[dim].values:
-                            # Exclude effect-to-effect shares
-                            base_name = contributor_id.split('(')[0] if '(' in contributor_id else contributor_id
-                            if base_name not in effect_labels:
-                                detected_contributors.add(str(contributor_id))
-                        break
+        for var in solution.data_vars:
+            match = contributor_pattern.match(str(var))
+            if match:
+                contributor = match.group(1)
+                # Exclude effect-to-effect shares (e.g., costs(temporal) -> Effect1(temporal))
+                base_name = contributor.split('(')[0] if '(' in contributor else contributor
+                if base_name not in effect_labels:
+                    detected_contributors.add(contributor)
 
         contributors = sorted(detected_contributors)
 
@@ -910,33 +867,20 @@ class StatisticsAccessor:
                     }
                     conversion_factors[effect] = 1  # Direct contribution
 
-                    share_var_name = f'share|{current_mode}'
-                    if share_var_name not in solution:
-                        continue
-                    share_var = solution[share_var_name]
-                    # Find the contributor dimension
-                    contributor_dim = None
-                    for dim in ['contributor', 'flow', 'storage', 'component', 'source']:
-                        if dim in share_var.dims:
-                            contributor_dim = dim
-                            break
-                    if contributor_dim is None or contributor not in share_var.coords[contributor_dim].values:
-                        continue
-
                     for source_effect, factor in conversion_factors.items():
-                        if source_effect not in share_var.coords['effect'].values:
-                            continue
-                        da = share_var.sel({contributor_dim: contributor, 'effect': source_effect}, drop=True) * factor
-                        # For total mode, sum temporal over time (apply cluster_weight for proper weighting)
-                        # Sum over all temporal dimensions (time, and cluster if present)
-                        if mode == 'total' and current_mode == 'temporal' and 'time' in da.dims:
-                            weighted = da * self._fs.weights.get('cluster', 1.0)
-                            temporal_dims = [d for d in weighted.dims if d not in ('period', 'scenario')]
-                            da = weighted.sum(temporal_dims)
-                        if share_total is None:
-                            share_total = da
-                        else:
-                            share_total = share_total + da
+                        label = f'{contributor}->{source_effect}({current_mode})'
+                        if label in solution:
+                            da = solution[label] * factor
+                            # For total mode, sum temporal over time (apply cluster_weight for proper weighting)
+                            # Sum over all temporal dimensions (time, and cluster if present)
+                            if mode == 'total' and current_mode == 'temporal' and 'time' in da.dims:
+                                weighted = da * self._fs.weights.get('cluster', 1.0)
+                                temporal_dims = [d for d in weighted.dims if d not in ('period', 'scenario')]
+                                da = weighted.sum(temporal_dims)
+                            if share_total is None:
+                                share_total = da
+                            else:
+                                share_total = share_total + da
 
                 # If no share found, use NaN template
                 if share_total is None:
@@ -957,17 +901,16 @@ class StatisticsAccessor:
         )
 
         # Validation: check totals match solution
-        batched_var_map = {'temporal': 'effect|per_timestep', 'periodic': 'effect|periodic', 'total': 'effect|total'}
-        batched_var = batched_var_map[mode]
-        if batched_var in solution and 'effect' in solution[batched_var].dims:
-            for effect in self._fs.effects:
-                if effect in solution[batched_var].coords['effect'].values:
-                    computed = ds[effect].sum('contributor')
-                    found = solution[batched_var].sel(effect=effect, drop=True)
-                    if not np.allclose(computed.fillna(0).values, found.fillna(0).values, equal_nan=True):
-                        logger.critical(
-                            f'Results for {effect}({mode}) in effects_dataset doesnt match {batched_var}\n{computed=}\n, {found=}'
-                        )
+        suffix_map = {'temporal': '(temporal)|per_timestep', 'periodic': '(periodic)', 'total': ''}
+        for effect in self._fs.effects:
+            label = f'{effect}{suffix_map[mode]}'
+            if label in solution:
+                computed = ds[effect].sum('contributor')
+                found = solution[label]
+                if not np.allclose(computed.fillna(0).values, found.fillna(0).values, equal_nan=True):
+                    logger.critical(
+                        f'Results for {effect}({mode}) in effects_dataset doesnt match {label}\n{computed=}\n, {found=}'
+                    )
 
         return ds
 
@@ -976,14 +919,14 @@ class StatisticsAccessor:
 
 
 class SankeyPlotAccessor:
-    """Sankey diagram accessor. Access via ``flow_system.statistics.plot.sankey``.
+    """Sankey diagram accessor. Access via ``flow_system.stats.plot.sankey``.
 
     Provides typed methods for different sankey diagram types.
 
     Examples:
-        >>> fs.statistics.plot.sankey.flows(select={'bus': 'HeatBus'})
-        >>> fs.statistics.plot.sankey.effects(select={'effect': 'costs'})
-        >>> fs.statistics.plot.sankey.sizes(select={'component': 'Boiler'})
+        >>> fs.stats.plot.sankey.flows(select={'bus': 'HeatBus'})
+        >>> fs.stats.plot.sankey.effects(select={'effect': 'costs'})
+        >>> fs.stats.plot.sankey.sizes(select={'component': 'Boiler'})
     """
 
     def __init__(self, plot_accessor: StatisticsPlotAccessor) -> None:
@@ -1410,7 +1353,7 @@ class SankeyPlotAccessor:
 
 
 class StatisticsPlotAccessor:
-    """Plot accessor for statistics. Access via ``flow_system.statistics.plot``.
+    """Plot accessor for statistics. Access via ``flow_system.stats.plot``.
 
     All methods return PlotResult with both data and figure.
     """
@@ -1428,45 +1371,51 @@ class StatisticsPlotAccessor:
             SankeyPlotAccessor with methods: flows(), sizes(), peak_flow(), effects()
 
         Examples:
-            >>> fs.statistics.plot.sankey.flows(select={'bus': 'HeatBus'})
-            >>> fs.statistics.plot.sankey.effects(select={'effect': 'costs'})
+            >>> fs.stats.plot.sankey.flows(select={'bus': 'HeatBus'})
+            >>> fs.stats.plot.sankey.effects(select={'effect': 'costs'})
         """
         if self._sankey is None:
             self._sankey = SankeyPlotAccessor(self)
         return self._sankey
 
-    def _get_color_map_for_balance(self, node: str, flow_labels: list[str]) -> dict[str, str]:
-        """Build color map for balance plot.
+    def _get_smart_color_defaults(
+        self,
+        labels: list[str],
+        color_by: Literal['component', 'carrier'] = 'component',
+    ) -> dict[str, str]:
+        """Build smart color defaults for labels.
 
-        - Bus balance: colors from component.color (using cached component_colors)
-        - Component balance: colors from flow's carrier (using cached carrier_colors)
+        Args:
+            labels: Variable or flow labels.
+            color_by: 'component' for component colors, 'carrier' for carrier colors.
 
-        Raises:
-            RuntimeError: If FlowSystem is not connected_and_transformed.
+        Returns:
+            Dict mapping labels to hex colors. Uncolored labels get fallback colors.
         """
-        if not self._fs.connected_and_transformed:
-            raise RuntimeError(
-                'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
-            )
+        component_colors = self._stats.component_colors
+        carrier_colors = self._stats.carrier_colors
+        flow_rates = self._stats.flow_rates
 
-        is_bus = node in self._fs.buses
         color_map = {}
         uncolored = []
 
-        # Get cached colors for efficient lookup
-        carrier_colors = self._stats.carrier_colors
-        component_colors = self._stats.component_colors
-        flow_rates = self._stats.flow_rates
+        for label in labels:
+            color = None
 
-        for label in flow_labels:
-            if is_bus:
-                # Use cached component colors
-                comp_label = self._fs.flows[label].component
-                color = component_colors.get(comp_label)
-            else:
-                # Use carrier name from xarray attribute (already computed) + cached colors
+            if color_by == 'carrier':
+                # Get carrier from flow attributes
                 carrier_name = flow_rates[label].attrs.get('carrier') if label in flow_rates else None
                 color = carrier_colors.get(carrier_name) if carrier_name else None
+            else:  # color_by == 'component'
+                # Try to get component from flow first
+                flow = self._fs.flows.get(label)
+                if flow:
+                    color = component_colors.get(flow.component)
+                else:
+                    # Extract component name from label
+                    # Patterns: 'Component(flow)' → 'Component', 'Component (production)' → 'Component'
+                    comp_name = label.split('(')[0].strip() if '(' in label else label
+                    color = component_colors.get(comp_name)
 
             if color:
                 color_map[label] = color
@@ -1477,6 +1426,25 @@ class StatisticsPlotAccessor:
             color_map.update(process_colors(None, uncolored))
 
         return color_map
+
+    def _build_color_kwargs(
+        self,
+        colors: ColorType | None,
+        labels: list[str],
+        color_by: Literal['component', 'carrier'] = 'component',
+    ) -> dict[str, Any]:
+        """Build color kwargs with smart defaults.
+
+        Args:
+            colors: User-provided colors (dict, list, str colorscale, or None).
+            labels: Variable labels for color mapping.
+            color_by: 'component' for component colors, 'carrier' for carrier colors.
+
+        Returns:
+            Dict with 'color_discrete_map' or 'color_discrete_sequence'.
+        """
+        smart_defaults = self._get_smart_color_defaults(labels, color_by)
+        return _merge_color_kwargs(colors, labels, smart_defaults)
 
     def _resolve_variable_names(self, variables: list[str], solution: xr.Dataset) -> list[str]:
         """Resolve flow labels to variable names with fallback.
@@ -1523,6 +1491,8 @@ class StatisticsPlotAccessor:
         exclude: FilterType | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
+        round_decimals: int | None = 6,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -1532,10 +1502,14 @@ class StatisticsPlotAccessor:
         Args:
             node: Label of the Bus or Component to plot.
             select: xarray-style selection dict.
-            include: Only include flows containing these substrings.
-            exclude: Exclude flows containing these substrings.
+            include: Only include flows with these exact labels.
+            exclude: Exclude flows with these exact labels.
             unit: 'flow_rate' (power) or 'flow_hours' (energy).
             colors: Color specification (colorscale name, color list, or label-to-color dict).
+            round_decimals: Round values to this many decimal places to avoid numerical noise
+                (e.g., tiny negative values from solver precision). Set to None to disable.
+            threshold: Filter out variables where max absolute value is below this.
+                Useful for removing solver noise. Set to None to disable.
             show: Whether to display the plot.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to the plotly accessor (e.g.,
@@ -1549,16 +1523,18 @@ class StatisticsPlotAccessor:
         # Get the element
         if node in self._fs.buses:
             element = self._fs.buses[node]
+            is_bus = True
         elif node in self._fs.components:
             element = self._fs.components[node]
+            is_bus = False
         else:
             raise KeyError(f"'{node}' not found in buses or components")
 
-        input_labels = [f.label_full for f in element.inputs]
-        output_labels = [f.label_full for f in element.outputs]
+        input_labels = [f.label_full for f in element.inputs.values()]
+        output_labels = [f.label_full for f in element.outputs.values()]
         all_labels = input_labels + output_labels
 
-        filtered_labels = _filter_by_pattern(all_labels, include, exclude)
+        filtered_labels = _filter_by_labels(all_labels, include, exclude)
         if not filtered_labels:
             logger.warning(f'No flows remaining after filtering for node {node}')
             return PlotResult(data=xr.Dataset(), figure=go.Figure())
@@ -1576,15 +1552,23 @@ class StatisticsPlotAccessor:
 
         ds = _apply_selection(ds, select)
 
-        # Build color kwargs - use default colors from element attributes if not specified
-        if colors is None:
-            color_kwargs = {'color_discrete_map': self._get_color_map_for_balance(node, list(ds.data_vars))}
-        else:
-            color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
+        # Round to avoid numerical noise (tiny negative values from solver precision)
+        if round_decimals is not None:
+            ds = ds.round(round_decimals)
+
+        # Filter out variables below threshold
+        ds = _filter_small_variables(ds, threshold)
+
+        # Build color kwargs: bus balance → component colors, component balance → carrier colors
+        color_by: Literal['component', 'carrier'] = 'component' if is_bus else 'carrier'
+        color_kwargs = self._build_color_kwargs(colors, list(ds.data_vars), color_by)
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
+
+        # Sort for consistent plotting order
+        ds = _sort_dataset(ds)
 
         # Get unit label from first data variable's attributes
         unit_label = ''
@@ -1616,6 +1600,8 @@ class StatisticsPlotAccessor:
         exclude: FilterType | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
+        round_decimals: int | None = 6,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -1628,10 +1614,14 @@ class StatisticsPlotAccessor:
         Args:
             carrier: Carrier name (e.g., 'heat', 'electricity', 'gas').
             select: xarray-style selection dict.
-            include: Only include flows containing these substrings.
-            exclude: Exclude flows containing these substrings.
+            include: Only include flows with these exact labels.
+            exclude: Exclude flows with these exact labels.
             unit: 'flow_rate' (power) or 'flow_hours' (energy).
             colors: Color specification (colorscale name, color list, or label-to-color dict).
+            round_decimals: Round values to this many decimal places to avoid numerical noise
+                (e.g., tiny negative values from solver precision). Set to None to disable.
+            threshold: Filter out variables where max absolute value is below this.
+                Useful for removing solver noise. Set to None to disable.
             show: Whether to display the plot.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to the plotly accessor (e.g.,
@@ -1641,13 +1631,15 @@ class StatisticsPlotAccessor:
             PlotResult with .data and .figure.
 
         Examples:
-            >>> fs.statistics.plot.carrier_balance('heat')
-            >>> fs.statistics.plot.carrier_balance('electricity', unit='flow_hours')
+            >>> fs.stats.plot.carrier_balance('heat')
+            >>> fs.stats.plot.carrier_balance('electricity', unit='flow_hours')
 
         Notes:
-            - Inputs to carrier buses (from sources/converters) are shown as positive
-            - Outputs from carrier buses (to sinks/converters) are shown as negative
-            - Internal transfers between buses of the same carrier appear on both sides
+            - Data is aggregated by component (not individual flows)
+            - Supply (inputs to carrier buses) shown as positive
+            - Demand (outputs from carrier buses) shown as negative
+            - Components with both supply and demand get separate entries
+              (e.g., 'Storage (supply)' and 'Storage (demand)')
         """
         self._stats._require_solution()
         carrier = carrier.lower()
@@ -1657,57 +1649,81 @@ class StatisticsPlotAccessor:
         if not carrier_buses:
             raise KeyError(f"No buses found with carrier '{carrier}'")
 
-        # Collect all flows connected to these buses
+        # Collect all flows connected to these buses, grouped by component
         input_labels: list[str] = []  # Inputs to buses = production
         output_labels: list[str] = []  # Outputs from buses = consumption
+        component_inputs: dict[str, list[str]] = {}  # component -> input flow labels
+        component_outputs: dict[str, list[str]] = {}  # component -> output flow labels
 
         for bus in carrier_buses:
-            for flow in bus.inputs:
+            for flow in bus.inputs.values():
                 input_labels.append(flow.label_full)
-            for flow in bus.outputs:
+                component_inputs.setdefault(flow.component, []).append(flow.label_full)
+            for flow in bus.outputs.values():
                 output_labels.append(flow.label_full)
+                component_outputs.setdefault(flow.component, []).append(flow.label_full)
 
         all_labels = input_labels + output_labels
-        filtered_labels = _filter_by_pattern(all_labels, include, exclude)
+        filtered_labels = _filter_by_labels(all_labels, include, exclude)
         if not filtered_labels:
             logger.warning(f'No flows remaining after filtering for carrier {carrier}')
             return PlotResult(data=xr.Dataset(), figure=go.Figure())
 
-        # Get data from statistics
+        # Get source data
         if unit == 'flow_rate':
-            ds = self._stats.flow_rates[[lbl for lbl in filtered_labels if lbl in self._stats.flow_rates]]
+            source_ds = self._stats.flow_rates
         else:
-            ds = self._stats.flow_hours[[lbl for lbl in filtered_labels if lbl in self._stats.flow_hours]]
+            source_ds = self._stats.flow_hours
 
-        # Negate outputs (consumption) - opposite convention from bus balance
-        for label in output_labels:
-            if label in ds:
-                ds[label] = -ds[label]
+        # Find components with same carrier on both sides (supply and demand)
+        same_carrier_components = set(component_inputs.keys()) & set(component_outputs.keys())
+        filtered_set = set(filtered_labels)
+
+        # Aggregate by component with separate supply/demand entries
+        data_vars: dict[str, xr.DataArray] = {}
+
+        for comp_name, labels in component_inputs.items():
+            # Filter to only included labels
+            labels = [lbl for lbl in labels if lbl in filtered_set and lbl in source_ds]
+            if not labels:
+                continue
+            # Sum all supply flows for this component
+            supply = sum(source_ds[lbl] for lbl in labels)
+            # Use suffix only if component also has demand
+            var_name = f'{comp_name} (supply)' if comp_name in same_carrier_components else comp_name
+            data_vars[var_name] = supply
+
+        for comp_name, labels in component_outputs.items():
+            # Filter to only included labels
+            labels = [lbl for lbl in labels if lbl in filtered_set and lbl in source_ds]
+            if not labels:
+                continue
+            # Sum all demand flows for this component (negative)
+            demand = -sum(source_ds[lbl] for lbl in labels)
+            # Use suffix only if component also has supply
+            var_name = f'{comp_name} (demand)' if comp_name in same_carrier_components else comp_name
+            data_vars[var_name] = demand
+
+        ds = xr.Dataset(data_vars)
 
         ds = _apply_selection(ds, select)
 
-        # Build color kwargs
-        if colors is None:
-            component_colors = self._stats.component_colors
-            color_map = {}
-            uncolored = []
-            for label in ds.data_vars:
-                flow = self._fs.flows.get(label)
-                if flow:
-                    color = component_colors.get(flow.component)
-                    if color:
-                        color_map[label] = color
-                        continue
-                uncolored.append(label)
-            if uncolored:
-                color_map.update(process_colors(None, uncolored))
-            color_kwargs = {'color_discrete_map': color_map}
-        else:
-            color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
+        # Round to avoid numerical noise (tiny negative values from solver precision)
+        if round_decimals is not None:
+            ds = ds.round(round_decimals)
+
+        # Filter out variables below threshold
+        ds = _filter_small_variables(ds, threshold)
+
+        # Build color kwargs with component colors (flows colored by their parent component)
+        color_kwargs = self._build_color_kwargs(colors, list(ds.data_vars), color_by='component')
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
+
+        # Sort for consistent plotting order
+        ds = _sort_dataset(ds)
 
         # Get unit label from carrier or first data variable
         unit_label = ''
@@ -1737,6 +1753,7 @@ class StatisticsPlotAccessor:
         select: SelectType | None = None,
         reshape: tuple[str, str] | Literal['auto'] | None = ('D', 'h'),
         colors: str | list[str] | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -1759,6 +1776,8 @@ class StatisticsPlotAccessor:
                 data dimensions directly.
             colors: Colorscale name (str) or list of colors for heatmap coloring.
                 Dicts are not supported for heatmaps (use str or list[str]).
+            threshold: Filter out variables where max absolute value is below this.
+                Useful for removing solver noise. Set to None to disable.
             show: Whether to display the figure.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to plotly accessor (e.g.,
@@ -1774,6 +1793,8 @@ class StatisticsPlotAccessor:
         # Resolve, select, and stack into single DataArray
         resolved = self._resolve_variable_names(variables, solution)
         ds = _apply_selection(solution[resolved], select)
+        ds = _filter_small_variables(ds, threshold)
+        ds = _sort_dataset(ds)  # Sort for consistent plotting order
         da = xr.concat([ds[v] for v in ds.data_vars], dim=pd.Index(list(ds.data_vars), name='variable'))
 
         # Prepare for heatmap (reshape, transpose, squeeze)
@@ -1804,6 +1825,7 @@ class StatisticsPlotAccessor:
         select: SelectType | None = None,
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -1817,6 +1839,8 @@ class StatisticsPlotAccessor:
             select: xarray-style selection.
             unit: 'flow_rate' or 'flow_hours'.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
+            threshold: Filter out variables where max absolute value is below this.
+                Useful for removing solver noise. Set to None to disable.
             show: Whether to display.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to the plotly accessor (e.g.,
@@ -1863,9 +1887,15 @@ class StatisticsPlotAccessor:
 
         ds = _apply_selection(ds, select)
 
+        # Filter out variables below threshold
+        ds = _filter_small_variables(ds, threshold)
+
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
+
+        # Sort for consistent plotting order
+        ds = _sort_dataset(ds)
 
         # Get unit label from first data variable's attributes
         unit_label = ''
@@ -1873,8 +1903,8 @@ class StatisticsPlotAccessor:
             first_var = next(iter(ds.data_vars))
             unit_label = ds[first_var].attrs.get('unit', '')
 
-        # Build color kwargs
-        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
+        # Build color kwargs with smart defaults from component colors
+        color_kwargs = self._build_color_kwargs(colors, list(ds.data_vars))
 
         _apply_slot_defaults(plotly_kwargs, 'flows')
         fig = ds.plotly.line(
@@ -1896,6 +1926,7 @@ class StatisticsPlotAccessor:
         max_size: float | None = 1e6,
         select: SelectType | None = None,
         colors: ColorType | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -1906,6 +1937,8 @@ class StatisticsPlotAccessor:
             max_size: Maximum size to include (filters defaults).
             select: xarray-style selection.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
+            threshold: Filter out variables where max absolute value is below this.
+                Useful for removing non-invested components. Set to None to disable.
             show: Whether to display.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to the plotly accessor (e.g.,
@@ -1923,6 +1956,9 @@ class StatisticsPlotAccessor:
             valid_labels = [lbl for lbl in ds.data_vars if float(ds[lbl].max()) < max_size]
             ds = ds[valid_labels]
 
+        # Filter out variables below threshold
+        ds = _filter_small_variables(ds, threshold)
+
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
@@ -1930,8 +1966,10 @@ class StatisticsPlotAccessor:
         if not ds.data_vars:
             fig = go.Figure()
         else:
-            # Build color kwargs
-            color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
+            # Sort for consistent plotting order
+            ds = _sort_dataset(ds)
+            # Build color kwargs with smart defaults from component colors
+            color_kwargs = self._build_color_kwargs(colors, list(ds.data_vars))
             _apply_slot_defaults(plotly_kwargs, 'sizes')
             fig = ds.plotly.bar(
                 title='Investment Sizes',
@@ -1954,6 +1992,7 @@ class StatisticsPlotAccessor:
         select: SelectType | None = None,
         normalize: bool = False,
         colors: ColorType | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -1968,6 +2007,8 @@ class StatisticsPlotAccessor:
             select: xarray-style selection.
             normalize: If True, normalize x-axis to 0-100%.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
+            threshold: Filter out variables where max absolute value is below this.
+                Useful for removing solver noise. Set to None to disable.
             show: Whether to display.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to the plotly accessor (e.g.,
@@ -2010,9 +2051,15 @@ class StatisticsPlotAccessor:
 
         result_ds = ds.fxstats.to_duration_curve(normalize=normalize)
 
+        # Filter out variables below threshold
+        result_ds = _filter_small_variables(result_ds, threshold)
+
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
             return PlotResult(data=result_ds, figure=go.Figure())
+
+        # Sort for consistent plotting order
+        result_ds = _sort_dataset(result_ds)
 
         # Get unit label from first data variable's attributes
         unit_label = ''
@@ -2020,8 +2067,8 @@ class StatisticsPlotAccessor:
             first_var = next(iter(ds.data_vars))
             unit_label = ds[first_var].attrs.get('unit', '')
 
-        # Build color kwargs
-        color_kwargs = _build_color_kwargs(colors, list(result_ds.data_vars))
+        # Build color kwargs with smart defaults from component colors
+        color_kwargs = self._build_color_kwargs(colors, list(result_ds.data_vars))
 
         plotly_kwargs.setdefault('x', 'duration_pct' if normalize else 'duration')
         _apply_slot_defaults(plotly_kwargs, 'duration_curve')
@@ -2049,6 +2096,7 @@ class StatisticsPlotAccessor:
         by: Literal['component', 'contributor', 'time'] | None = None,
         select: SelectType | None = None,
         colors: ColorType | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -2063,6 +2111,8 @@ class StatisticsPlotAccessor:
                 or None to show aggregated totals per effect.
             select: xarray-style selection.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
+            threshold: Filter out variables where max absolute value is below this.
+                Useful for removing solver noise. Set to None to disable.
             show: Whether to display.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to the plotly accessor (e.g.,
@@ -2072,11 +2122,11 @@ class StatisticsPlotAccessor:
             PlotResult with effect breakdown data.
 
         Examples:
-            >>> flow_system.statistics.plot.effects()  # Aggregated totals per effect
-            >>> flow_system.statistics.plot.effects(effect='costs')  # Just costs
-            >>> flow_system.statistics.plot.effects(by='component')  # Breakdown by component
-            >>> flow_system.statistics.plot.effects(by='contributor')  # By individual flows
-            >>> flow_system.statistics.plot.effects(aspect='temporal', by='time')  # Over time
+            >>> flow_system.stats.plot.effects()  # Aggregated totals per effect
+            >>> flow_system.stats.plot.effects(effect='costs')  # Just costs
+            >>> flow_system.stats.plot.effects(by='component')  # Breakdown by component
+            >>> flow_system.stats.plot.effects(by='contributor')  # By individual flows
+            >>> flow_system.stats.plot.effects(aspect='temporal', by='time')  # Over time
         """
         self._stats._require_solution()
 
@@ -2130,9 +2180,15 @@ class StatisticsPlotAccessor:
         else:
             raise ValueError(f"'by' must be one of 'component', 'contributor', 'time', or None, got {by!r}")
 
+        # Filter out variables below threshold
+        ds = _filter_small_variables(ds, threshold)
+
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
+
+        # Sort for consistent plotting order
+        ds = _sort_dataset(ds)
 
         # Build title
         effect_label = effect or 'Effects'
@@ -2141,7 +2197,7 @@ class StatisticsPlotAccessor:
         # Allow user override of color via plotly_kwargs
         color = plotly_kwargs.pop('color', color_col)
 
-        # Build color kwargs
+        # Build color kwargs with smart defaults from component colors
         color_dim = color or color_col or 'variable'
         if color_dim in ds.coords:
             labels = list(ds.coords[color_dim].values)
@@ -2149,7 +2205,7 @@ class StatisticsPlotAccessor:
             labels = list(ds.data_vars)
         else:
             labels = []
-        color_kwargs = _build_color_kwargs(colors, labels) if labels else {}
+        color_kwargs = self._build_color_kwargs(colors, labels) if labels else {}
 
         plotly_kwargs.setdefault('x', x_col)
         _apply_slot_defaults(plotly_kwargs, 'effects')
@@ -2175,6 +2231,7 @@ class StatisticsPlotAccessor:
         *,
         select: SelectType | None = None,
         colors: ColorType | None = None,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -2185,6 +2242,8 @@ class StatisticsPlotAccessor:
             storages: Storage label(s) to plot. If None, plots all storages.
             select: xarray-style selection.
             colors: Color specification (colorscale name, color list, or label-to-color dict).
+            threshold: Filter out variables where max absolute value is below this.
+                Useful for removing non-invested storages. Set to None to disable.
             show: Whether to display.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to the plotly accessor (e.g.,
@@ -2203,12 +2262,18 @@ class StatisticsPlotAccessor:
 
         ds = _apply_selection(ds, select)
 
+        # Filter out variables below threshold
+        ds = _filter_small_variables(ds, threshold)
+
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
             return PlotResult(data=ds, figure=go.Figure())
 
-        # Build color kwargs
-        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
+        # Sort for consistent plotting order
+        ds = _sort_dataset(ds)
+
+        # Build color kwargs with smart defaults from component colors
+        color_kwargs = self._build_color_kwargs(colors, list(ds.data_vars))
 
         _apply_slot_defaults(plotly_kwargs, 'charge_states')
         fig = ds.plotly.line(
@@ -2233,6 +2298,8 @@ class StatisticsPlotAccessor:
         unit: Literal['flow_rate', 'flow_hours'] = 'flow_rate',
         colors: ColorType | None = None,
         charge_state_color: str = 'black',
+        round_decimals: int | None = 6,
+        threshold: float | None = 1e-5,
         show: bool | None = None,
         data_only: bool = False,
         **plotly_kwargs: Any,
@@ -2249,6 +2316,10 @@ class StatisticsPlotAccessor:
             unit: 'flow_rate' (power) or 'flow_hours' (energy).
             colors: Color specification for flow bars.
             charge_state_color: Color for the charge state line overlay.
+            round_decimals: Round values to this many decimal places to avoid numerical noise
+                (e.g., tiny negative values from solver precision). Set to None to disable.
+            threshold: Filter out flow variables where max absolute value is below this.
+                Useful for removing solver noise. Set to None to disable.
             show: Whether to display.
             data_only: If True, skip figure creation and return only data (for performance).
             **plotly_kwargs: Additional arguments passed to the plotly accessor (e.g.,
@@ -2275,8 +2346,8 @@ class StatisticsPlotAccessor:
             raise ValueError(f"'{storage}' is not a storage (no charge_state variable found)")
 
         # Get flow data
-        input_labels = [f.label_full for f in component.inputs]
-        output_labels = [f.label_full for f in component.outputs]
+        input_labels = [f.label_full for f in component.inputs.values()]
+        output_labels = [f.label_full for f in component.outputs.values()]
         all_labels = input_labels + output_labels
 
         if unit == 'flow_rate':
@@ -2296,20 +2367,29 @@ class StatisticsPlotAccessor:
         # Apply selection
         ds = _apply_selection(ds, select)
 
-        # Early return for data_only mode (skip figure creation for performance)
-        if data_only:
-            return PlotResult(data=ds, figure=go.Figure())
-
         # Separate flow data from charge_state
         flow_labels = [lbl for lbl in ds.data_vars if lbl != 'charge_state']
         flow_ds = ds[flow_labels]
         charge_da = ds['charge_state']
 
-        # Build color kwargs - use default colors from element attributes if not specified
-        if colors is None:
-            color_kwargs = {'color_discrete_map': self._get_color_map_for_balance(storage, flow_labels)}
-        else:
-            color_kwargs = _build_color_kwargs(colors, flow_labels)
+        # Round to avoid numerical noise (tiny negative values from solver precision)
+        if round_decimals is not None:
+            flow_ds = flow_ds.round(round_decimals)
+
+        # Filter out flow variables below threshold
+        flow_ds = _filter_small_variables(flow_ds, threshold)
+
+        # Early return for data_only mode (skip figure creation for performance)
+        if data_only:
+            result_ds = flow_ds.copy()
+            result_ds['charge_state'] = charge_da
+            return PlotResult(data=result_ds, figure=go.Figure())
+
+        # Sort for consistent plotting order
+        flow_ds = _sort_dataset(flow_ds)
+
+        # Build color kwargs with carrier colors (storage is a component, flows colored by carrier)
+        color_kwargs = self._build_color_kwargs(colors, list(flow_ds.data_vars), color_by='carrier')
 
         # Get unit label from flow data
         unit_label = ''
@@ -2327,19 +2407,22 @@ class StatisticsPlotAccessor:
         _apply_unified_hover(fig, unit=unit_label)
 
         # Add charge state as line on secondary y-axis
-        # Only pass faceting kwargs that add_line_overlay accepts
-        overlay_kwargs = {
-            k: v for k, v in plotly_kwargs.items() if k in ('x', 'facet_col', 'facet_row', 'animation_frame')
-        }
-        add_line_overlay(
-            fig,
-            charge_da,
-            line_color=charge_state_color,
+        # Filter out bar-only kwargs, then apply line-specific defaults
+        line_kwargs = {k: v for k, v in plotly_kwargs.items() if k not in ('pattern_shape', 'color')}
+        _apply_slot_defaults(line_kwargs, 'storage_line')
+        line_fig = charge_da.plotly.line(**line_kwargs)
+        # Style all traces including animation frames
+        update_traces(
+            line_fig,
+            line=dict(color=charge_state_color, width=2),
             name='charge_state',
-            secondary_y=True,
-            y_title='Charge State',
-            **overlay_kwargs,
+            legendgroup='charge_state',
+            showlegend=False,
         )
+        if line_fig.data:
+            line_fig.data[0].showlegend = True
+        # Combine using xarray_plotly's add_secondary_y which handles facets correctly
+        fig = add_secondary_y(fig, line_fig, secondary_y_title='Charge State')
 
         if show is None:
             show = CONFIG.Plotting.default_show

@@ -40,7 +40,7 @@ heat_bus = fx.Bus('HeatNetwork', carrier='heat')  # Uses default heat color
 elec_bus = fx.Bus('Grid', carrier='electricity')
 ```
 
-See [Color Management](results-plotting.md#color-management) for details.
+See [Color Management](colors.md) for details.
 
 ## Flows: What Moves Between Elements
 

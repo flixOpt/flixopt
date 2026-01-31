@@ -4,6 +4,7 @@ It provides Datatypes, logging functionality, and some functions to transform da
 """
 
 import logging
+import warnings
 from itertools import permutations
 from typing import Any, Literal
 
@@ -644,7 +645,8 @@ def drop_constant_arrays(
         axis = var.dims.index(dim)
         data = var.values
         # Use numpy operations directly for speed
-        with np.errstate(invalid='ignore'):  # Ignore NaN warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=RuntimeWarning, message='All-NaN slice')
             ptp = np.nanmax(data, axis=axis) - np.nanmin(data, axis=axis)
         if np.all(ptp < atol):
             drop_vars.append(name)

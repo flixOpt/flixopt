@@ -21,7 +21,7 @@ flow_system.add_carrier(biogas)
 gas_bus = fx.Bus('BiogasNetwork', carrier='biogas')
 ```
 
-See [Color Management](../../../user-guide/results-plotting.md#color-management) for more on how carriers affect visualization.
+See [Color Management](../../colors.md) for more on how carriers affect visualization.
 
 ---
 

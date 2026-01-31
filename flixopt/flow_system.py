@@ -1248,7 +1248,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return TransformAccessor(self)
 
     @property
-    def statistics(self) -> StatisticsAccessor:
+    def stats(self) -> StatisticsAccessor:
         """
         Access statistics and plotting methods for optimization results.
 
@@ -1266,13 +1266,23 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             After optimization:
 
             >>> flow_system.optimize(solver)
-            >>> flow_system.statistics.plot.balance('ElectricityBus')
-            >>> flow_system.statistics.plot.heatmap('Boiler|on')
-            >>> ds = flow_system.statistics.flow_rates  # Get data for analysis
+            >>> flow_system.stats.plot.balance('ElectricityBus')
+            >>> flow_system.stats.plot.heatmap('Boiler|on')
+            >>> ds = flow_system.stats.flow_rates  # Get data for analysis
         """
         if self._statistics is None:
             self._statistics = StatisticsAccessor(self)
         return self._statistics
+
+    @property
+    def statistics(self) -> StatisticsAccessor:
+        """Deprecated: Use :attr:`stats` instead."""
+        warnings.warn(
+            "The 'statistics' accessor is deprecated. Use 'stats' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.stats
 
     @property
     def topology(self) -> TopologyAccessor:

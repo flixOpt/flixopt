@@ -47,7 +47,7 @@ dependencies = [
     # Visualization
     "matplotlib >= 3.5.2, < 4",
     "plotly >= 5.15.0, < 7",
-    "xarray_plotly >= 0.0.10, < 1",
+    "xarray_plotly >= 0.0.13, < 1",
 ]
 
 [project.optional-dependencies]
@@ -63,7 +63,7 @@ network_viz = [
 
 # Full feature set (everything except dev tools)
 # NOTE: For clustering features, install tsam v3 manually (not yet on PyPI):
-#   pip install "tsam @ git+https://github.com/FBumann/tsam.git@a5e2ac516fb8470377a1893742df6696668539aa"
+#   pip install "tsam @ git+https://github.com/FBumann/tsam.git@71177ec3fa1b16fcecdd039ca18ceddcdfa2064a"
 # This will be added back when tsam v3.0 is released on PyPI
 full = [
     "pyvis==0.3.2",  # Visualizing FlowSystem Network
@@ -79,7 +79,7 @@ full = [
 
 # Development tools and testing
 # NOTE: For clustering features, install tsam v3 manually (not yet on PyPI):
-#   pip install "tsam @ git+https://github.com/FBumann/tsam.git@a5e2ac516fb8470377a1893742df6696668539aa"
+#   pip install "tsam @ git+https://github.com/FBumann/tsam.git@71177ec3fa1b16fcecdd039ca18ceddcdfa2064a"
 dev = [
     "pytest==8.4.2",
     "pytest-xdist==3.8.0",

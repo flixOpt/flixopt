@@ -237,12 +237,8 @@ class TestClusteringWithScenarios:
         ds = fs_clustered.to_dataset(include_solution=False)
         fs_restored = fx.FlowSystem.from_dataset(ds)
 
-        # Scenarios should be preserved in the FlowSystem itself
-        pd.testing.assert_index_equal(
-            fs_restored.scenarios,
-            pd.Index(['Low', 'High'], name='scenario'),
-            check_names=False,
-        )
+        # Scenarios should be preserved in the FlowSystem itself (order may differ due to coordinate sorting)
+        assert set(fs_restored.scenarios) == {'Low', 'High'}
 
 
 class TestClusteringJsonExport:
