@@ -389,6 +389,13 @@ class _ComponentConstraint:
 ComponentVarName.Constraint = _ComponentConstraint
 
 
+class BusVarName:
+    """Central variable naming for Bus type-level models."""
+
+    VIRTUAL_SUPPLY = 'bus|virtual_supply'
+    VIRTUAL_DEMAND = 'bus|virtual_demand'
+
+
 class StorageVarName:
     """Central variable naming for Storage type-level models.
 
@@ -400,6 +407,16 @@ class StorageVarName:
     NETTO = 'storage|netto'
     SIZE = 'storage|size'
     INVESTED = 'storage|invested'
+
+
+class InterclusterStorageVarName:
+    """Central variable naming for InterclusterStoragesModel."""
+
+    CHARGE_STATE = 'intercluster_storage|charge_state'
+    NETTO_DISCHARGE = 'intercluster_storage|netto_discharge'
+    SOC_BOUNDARY = 'intercluster_storage|SOC_boundary'
+    SIZE = 'intercluster_storage|size'
+    INVESTED = 'intercluster_storage|invested'
 
 
 class ConverterVarName:

@@ -19,6 +19,7 @@ from .features import MaskHelpers, fast_notnull
 from .interface import InvestParameters, StatusParameters
 from .modeling import ModelingUtilitiesAbstract
 from .structure import (
+    BusVarName,
     ComponentVarName,
     ConverterVarName,
     Element,
@@ -79,7 +80,7 @@ def _add_prevent_simultaneous_constraints(
         membership=membership,
     )
 
-    status = flows_model['flow|status']
+    status = flows_model[FlowVarName.STATUS]
     model.add_constraints(
         (status * mask).sum('flow') <= 1,
         name=constraint_name,
@@ -714,7 +715,7 @@ class Flow(Element):
         """
         if self._flows_model is None:
             return None
-        return self._flows_model.get_variable('flow|rate', self.label_full)
+        return self._flows_model.get_variable(FlowVarName.RATE, self.label_full)
 
     @property
     def total_flow_hours_from_type_model(self) -> linopy.Variable | None:
@@ -726,11 +727,11 @@ class Flow(Element):
     @property
     def status_from_type_model(self) -> linopy.Variable | None:
         """Get status from FlowsModel (if using type-level modeling)."""
-        if self._flows_model is None or 'flow|status' not in self._flows_model:
+        if self._flows_model is None or FlowVarName.STATUS not in self._flows_model:
             return None
         if self.label_full not in self._flows_model.status_ids:
             return None
-        return self._flows_model.get_variable('flow|status', self.label_full)
+        return self._flows_model.get_variable(FlowVarName.STATUS, self.label_full)
 
     @property
     def size_is_fixed(self) -> bool:
@@ -768,7 +769,7 @@ class FlowsModel(TypeModel):
         >>> flows_model.create_variables()
         >>> flows_model.create_constraints()
         >>> # Access individual flow's variable:
-        >>> boiler_rate = flows_model.get_variable('flow|rate', 'Boiler(gas_in)')
+        >>> boiler_rate = flows_model.get_variable(FlowVarName.RATE, 'Boiler(gas_in)')
     """
 
     element_type = ElementType.FLOW
@@ -784,7 +785,7 @@ class FlowsModel(TypeModel):
     def rate(self) -> linopy.Variable:
         """(flow, time, ...) - flow rate variable for ALL flows."""
         return self.add_variables(
-            'flow|rate',
+            FlowVarName.RATE,
             VariableType.FLOW_RATE,
             lower=self.data.absolute_lower_bounds,
             upper=self.data.absolute_upper_bounds,
@@ -797,7 +798,7 @@ class FlowsModel(TypeModel):
         if not self.data.with_status:
             return None
         return self.add_variables(
-            'flow|status',
+            FlowVarName.STATUS,
             VariableType.STATUS,
             dims=None,
             mask=self.data.has_status,
@@ -810,7 +811,7 @@ class FlowsModel(TypeModel):
         if not self.data.with_investment:
             return None
         return self.add_variables(
-            'flow|size',
+            FlowVarName.SIZE,
             VariableType.FLOW_SIZE,
             lower=self.data.size_minimum_all,
             upper=self.data.size_maximum_all,
@@ -824,7 +825,7 @@ class FlowsModel(TypeModel):
         if not self.data.with_optional_investment:
             return None
         return self.add_variables(
-            'flow|invested',
+            FlowVarName.INVESTED,
             dims=('period', 'scenario'),
             mask=self.data.has_optional_investment,
             binary=True,
@@ -1114,8 +1115,8 @@ class FlowsModel(TypeModel):
         from .features import PiecewiseHelpers
 
         dim = self.dim_name
-        size_var = self.get('flow|size')
-        invested_var = self.get('flow|invested')
+        size_var = self.get(FlowVarName.SIZE)
+        invested_var = self.get(FlowVarName.INVESTED)
 
         if size_var is None:
             return
@@ -1286,7 +1287,7 @@ class FlowsModel(TypeModel):
         upper = xr.where(has_max, raw_max, total_hours)
 
         return self.add_variables(
-            'flow|active_hours',
+            FlowVarName.ACTIVE_HOURS,
             lower=lower,
             upper=upper,
             dims=('period', 'scenario'),
@@ -1299,7 +1300,7 @@ class FlowsModel(TypeModel):
         ids = self.data.with_startup_tracking
         if not ids:
             return None
-        return self.add_variables('flow|startup', dims=None, element_ids=ids, binary=True)
+        return self.add_variables(FlowVarName.STARTUP, dims=None, element_ids=ids, binary=True)
 
     @cached_property
     def shutdown(self) -> linopy.Variable | None:
@@ -1307,7 +1308,7 @@ class FlowsModel(TypeModel):
         ids = self.data.with_startup_tracking
         if not ids:
             return None
-        return self.add_variables('flow|shutdown', dims=None, element_ids=ids, binary=True)
+        return self.add_variables(FlowVarName.SHUTDOWN, dims=None, element_ids=ids, binary=True)
 
     @cached_property
     def inactive(self) -> linopy.Variable | None:
@@ -1315,7 +1316,7 @@ class FlowsModel(TypeModel):
         ids = self.data.with_downtime_tracking
         if not ids:
             return None
-        return self.add_variables('flow|inactive', dims=None, element_ids=ids, binary=True)
+        return self.add_variables(FlowVarName.INACTIVE, dims=None, element_ids=ids, binary=True)
 
     @cached_property
     def startup_count(self) -> linopy.Variable | None:
@@ -1324,7 +1325,7 @@ class FlowsModel(TypeModel):
         if not ids:
             return None
         return self.add_variables(
-            'flow|startup_count',
+            FlowVarName.STARTUP_COUNT,
             lower=0,
             upper=self.data.startup_limit_values,
             dims=('period', 'scenario'),
@@ -1350,7 +1351,7 @@ class FlowsModel(TypeModel):
             maximum_duration=sd.max_uptime,
             previous_duration=prev if prev is not None and fast_notnull(prev).any() else None,
         )
-        self._variables['flow|uptime'] = var
+        self._variables[FlowVarName.UPTIME] = var
         return var
 
     @cached_property
@@ -1372,7 +1373,7 @@ class FlowsModel(TypeModel):
             maximum_duration=sd.max_downtime,
             previous_duration=prev if prev is not None and fast_notnull(prev).any() else None,
         )
-        self._variables['flow|downtime'] = var
+        self._variables[FlowVarName.DOWNTIME] = var
         return var
 
     # === Status Constraints ===
@@ -1603,7 +1604,7 @@ class BusesModel(TypeModel):
         if self.buses_with_imbalance:
             # virtual_supply: allows adding flow to meet demand
             self.add_variables(
-                'bus|virtual_supply',
+                BusVarName.VIRTUAL_SUPPLY,
                 VariableType.VIRTUAL_FLOW,
                 lower=0.0,
                 dims=self.model.temporal_dims,
@@ -1612,7 +1613,7 @@ class BusesModel(TypeModel):
 
             # virtual_demand: allows removing excess flow
             self.add_variables(
-                'bus|virtual_demand',
+                BusVarName.VIRTUAL_DEMAND,
                 VariableType.VIRTUAL_FLOW,
                 lower=0.0,
                 dims=self.model.temporal_dims,
@@ -1633,7 +1634,7 @@ class BusesModel(TypeModel):
         Uses dense coefficient matrix approach for fast vectorized computation.
         The coefficient matrix has +1 for inputs, -1 for outputs, 0 for unconnected flows.
         """
-        flow_rate = self._flows_model['flow|rate']
+        flow_rate = self._flows_model[FlowVarName.RATE]
         flow_dim = self._flows_model.dim_name  # 'flow'
         bus_dim = self.dim_name  # 'bus'
 
@@ -1669,7 +1670,7 @@ class BusesModel(TypeModel):
 
             # Buses with imbalance: balance + virtual_supply - virtual_demand == 0
             balance_imbalance = balance.sel({bus_dim: imbalance_ids})
-            virtual_balance = balance_imbalance + self['bus|virtual_supply'] - self['bus|virtual_demand']
+            virtual_balance = balance_imbalance + self[BusVarName.VIRTUAL_SUPPLY] - self[BusVarName.VIRTUAL_DEMAND]
             self.model.add_constraints(virtual_balance == 0, name='bus|balance_imbalance')
         else:
             self.model.add_constraints(balance == 0, name='bus|balance')
@@ -1691,8 +1692,8 @@ class BusesModel(TypeModel):
             bus_label = bus.label_full
             imbalance_penalty = bus.imbalance_penalty_per_flow_hour * self.model.timestep_duration
 
-            virtual_supply = self['bus|virtual_supply'].sel({dim: bus_label})
-            virtual_demand = self['bus|virtual_demand'].sel({dim: bus_label})
+            virtual_supply = self[BusVarName.VIRTUAL_SUPPLY].sel({dim: bus_label})
+            virtual_demand = self[BusVarName.VIRTUAL_DEMAND].sel({dim: bus_label})
 
             total_imbalance_penalty = (virtual_supply + virtual_demand) * imbalance_penalty
             penalty_specs.append((bus_label, total_imbalance_penalty))
@@ -1718,7 +1719,7 @@ class BusesModel(TypeModel):
         """Get a variable, optionally selecting a specific element.
 
         Args:
-            name: Variable name (e.g., 'bus|virtual_supply').
+            name: Variable name (e.g., BusVarName.VIRTUAL_SUPPLY).
             element_id: Optional element label_full. If provided, returns slice for that element.
 
         Returns:
@@ -1849,7 +1850,7 @@ class ComponentsModel(TypeModel):
         if not self.components:
             return
 
-        self.add_variables('component|status', dims=None, binary=True)
+        self.add_variables(ComponentVarName.STATUS, dims=None, binary=True)
         self._logger.debug(f'ComponentsModel created status variable for {len(self.components)} components')
 
     def create_constraints(self) -> None:
@@ -1862,8 +1863,8 @@ class ComponentsModel(TypeModel):
         if not self.components:
             return
 
-        comp_status = self['component|status']
-        flow_status = self._flows_model['flow|status']
+        comp_status = self[ComponentVarName.STATUS]
+        flow_status = self._flows_model[FlowVarName.STATUS]
         mask = self._flow_mask
         n_flows = self._flow_count
 
@@ -1983,7 +1984,7 @@ class ComponentsModel(TypeModel):
         upper = xr.where(has_max, raw_max, total_hours)
 
         return self.add_variables(
-            'component|active_hours',
+            ComponentVarName.ACTIVE_HOURS,
             lower=lower,
             upper=upper,
             dims=('period', 'scenario'),
@@ -1996,7 +1997,7 @@ class ComponentsModel(TypeModel):
         ids = self._status_data.with_startup_tracking
         if not ids:
             return None
-        return self.add_variables('component|startup', dims=None, element_ids=ids, binary=True)
+        return self.add_variables(ComponentVarName.STARTUP, dims=None, element_ids=ids, binary=True)
 
     @cached_property
     def shutdown(self) -> linopy.Variable | None:
@@ -2004,7 +2005,7 @@ class ComponentsModel(TypeModel):
         ids = self._status_data.with_startup_tracking
         if not ids:
             return None
-        return self.add_variables('component|shutdown', dims=None, element_ids=ids, binary=True)
+        return self.add_variables(ComponentVarName.SHUTDOWN, dims=None, element_ids=ids, binary=True)
 
     @cached_property
     def inactive(self) -> linopy.Variable | None:
@@ -2012,7 +2013,7 @@ class ComponentsModel(TypeModel):
         ids = self._status_data.with_downtime_tracking
         if not ids:
             return None
-        return self.add_variables('component|inactive', dims=None, element_ids=ids, binary=True)
+        return self.add_variables(ComponentVarName.INACTIVE, dims=None, element_ids=ids, binary=True)
 
     @cached_property
     def startup_count(self) -> linopy.Variable | None:
@@ -2021,7 +2022,7 @@ class ComponentsModel(TypeModel):
         if not ids:
             return None
         return self.add_variables(
-            'component|startup_count',
+            ComponentVarName.STARTUP_COUNT,
             lower=0,
             upper=self._status_data.startup_limit,
             dims=('period', 'scenario'),
@@ -2039,7 +2040,7 @@ class ComponentsModel(TypeModel):
         prev = sd.previous_uptime
         var = StatusHelpers.add_batched_duration_tracking(
             model=self.model,
-            state=self['component|status'].sel({self.dim_name: sd.with_uptime_tracking}),
+            state=self[ComponentVarName.STATUS].sel({self.dim_name: sd.with_uptime_tracking}),
             name=ComponentVarName.UPTIME,
             dim_name=self.dim_name,
             timestep_duration=self.model.timestep_duration,
@@ -2047,7 +2048,7 @@ class ComponentsModel(TypeModel):
             maximum_duration=sd.max_uptime,
             previous_duration=prev if prev is not None and fast_notnull(prev).any() else None,
         )
-        self._variables['component|uptime'] = var
+        self._variables[ComponentVarName.UPTIME] = var
         return var
 
     @cached_property
@@ -2070,21 +2071,21 @@ class ComponentsModel(TypeModel):
             maximum_duration=sd.max_downtime,
             previous_duration=prev if prev is not None and fast_notnull(prev).any() else None,
         )
-        self._variables['component|downtime'] = var
+        self._variables[ComponentVarName.DOWNTIME] = var
         return var
 
     # === Status Constraints ===
 
     def _status_sel(self, element_ids: list[str]) -> linopy.Variable:
         """Select status variable for a subset of component IDs."""
-        return self['component|status'].sel({self.dim_name: element_ids})
+        return self[ComponentVarName.STATUS].sel({self.dim_name: element_ids})
 
     def constraint_active_hours(self) -> None:
         """Constrain active_hours == sum_temporal(status)."""
         if self.active_hours is None:
             return
         self.model.add_constraints(
-            self.active_hours == self.model.sum_temporal(self['component|status']),
+            self.active_hours == self.model.sum_temporal(self[ComponentVarName.STATUS]),
             name=ComponentVarName.Constraint.ACTIVE_HOURS,
         )
 
@@ -2206,7 +2207,9 @@ class ComponentsModel(TypeModel):
     @property
     def status(self) -> linopy.Variable | None:
         """Batched component status variable with (component, time) dims."""
-        return self.model.variables['component|status'] if 'component|status' in self.model.variables else None
+        return (
+            self.model.variables[ComponentVarName.STATUS] if ComponentVarName.STATUS in self.model.variables else None
+        )
 
     def get_variable(self, var_name: str, component_id: str):
         """Get variable slice for a specific component."""
@@ -2437,7 +2440,7 @@ class ConvertersModel:
             return
 
         coefficients = self._coefficients
-        flow_rate = self._flows_model['flow|rate']
+        flow_rate = self._flows_model[FlowVarName.RATE]
         sign = self._flow_sign
 
         # Pre-combine coefficients and sign (both are xr.DataArrays, not linopy)
@@ -2661,7 +2664,7 @@ class ConvertersModel:
         if bp is None:
             return
 
-        flow_rate = self._flows_model['flow|rate']
+        flow_rate = self._flows_model[FlowVarName.RATE]
         lambda0 = self._piecewise_variables['lambda0']
         lambda1 = self._piecewise_variables['lambda1']
 
@@ -2879,7 +2882,7 @@ class TransmissionsModel:
             return
 
         con = TransmissionVarName.Constraint
-        flow_rate = self._flows_model['flow|rate']
+        flow_rate = self._flows_model[FlowVarName.RATE]
 
         # === Direction 1: All transmissions (batched) ===
         # Use masks to batch flow selection: (flow_rate * mask).sum('flow') -> (transmission, time, ...)
@@ -2893,7 +2896,7 @@ class TransmissionsModel:
 
         # Add absolute losses term if any transmission has them
         if self._transmissions_with_abs_losses:
-            flow_status = self._flows_model['flow|status']
+            flow_status = self._flows_model[FlowVarName.STATUS]
             in1_status = (flow_status * self._in1_mask).sum('flow')
             efficiency_expr = efficiency_expr - in1_status * abs_losses
 
@@ -2916,7 +2919,7 @@ class TransmissionsModel:
             # Add absolute losses for bidirectional if any have them
             bidir_with_abs = [t.label for t in self._bidirectional if t.label in self._transmissions_with_abs_losses]
             if bidir_with_abs:
-                flow_status = self._flows_model['flow|status']
+                flow_status = self._flows_model[FlowVarName.STATUS]
                 in2_status = (flow_status * self._in2_mask).sum('flow')
                 efficiency_expr_2 = efficiency_expr_2 - in2_status * abs_losses_bidir
 
@@ -2928,7 +2931,7 @@ class TransmissionsModel:
 
         # === Balanced constraints: in1.size == in2.size (batched) ===
         if self._balanced:
-            flow_size = self._flows_model['flow|size']
+            flow_size = self._flows_model[FlowVarName.SIZE]
             # Build masks for balanced transmissions only
             in1_size_mask = self._build_flow_mask(self._balanced_ids, lambda t: t.in1.label_full)
             in2_size_mask = self._build_flow_mask(self._balanced_ids, lambda t: t.in2.label_full)
