@@ -7,6 +7,7 @@ transformations on FlowSystem like clustering, selection, and resampling.
 
 from __future__ import annotations
 
+import functools
 import logging
 import warnings
 from collections import defaultdict
@@ -428,36 +429,50 @@ class _Expander:
             self._n_original_clusters - 1,
         )
 
-        # Build variable sets from NAME_TO_EXPANSION
+        # Build consume vars for intercluster post-processing
+        from .structure import InterclusterStorageVarName
+
+        soc_boundary_suffix = InterclusterStorageVarName.SOC_BOUNDARY
         solution_names = set(fs.solution)
-        self._state_vars: set[str] = set()
-        self._first_timestep_vars: set[str] = set()
-        self._segment_total_vars: set[str] = set()
-        self._consume_vars: set[str] = set()
-        mode_to_set = {
-            ExpansionMode.INTERPOLATE: self._state_vars,
-            ExpansionMode.FIRST_TIMESTEP: self._first_timestep_vars,
-            ExpansionMode.DIVIDE: self._segment_total_vars,
-            ExpansionMode.CONSUME: self._consume_vars,
+        self._consume_vars: set[str] = {
+            s for s in solution_names if s == soc_boundary_suffix or s.endswith(soc_boundary_suffix)
         }
-        for var_name, mode in NAME_TO_EXPANSION.items():
-            matching = {s for s in solution_names if s == var_name or s.endswith(var_name)}
-            target = mode_to_set.get(mode)
-            if target is not None:
-                target.update(matching)
 
         # Build expansion divisor for segmented systems
         self._expansion_divisor = None
         if clustering.is_segmented:
             self._expansion_divisor = clustering.build_expansion_divisor(original_time=self._original_timesteps)
 
-    def _is_state_variable(self, var_name: str) -> bool:
-        """Check if variable is a state variable requiring interpolation."""
-        return var_name in self._state_vars
+    @functools.cached_property
+    def _original_period_indices(self) -> np.ndarray:
+        """Original period index for each original timestep."""
+        return np.minimum(
+            np.arange(self._n_original_timesteps) // self._timesteps_per_cluster,
+            self._n_original_clusters - 1,
+        )
 
-    def _is_first_timestep_variable(self, var_name: str) -> bool:
-        """Check if variable is a first-timestep-only variable (startup/shutdown)."""
-        return var_name in self._first_timestep_vars
+    @functools.cached_property
+    def _positions_in_period(self) -> np.ndarray:
+        """Position within period for each original timestep."""
+        return np.arange(self._n_original_timesteps) % self._timesteps_per_cluster
+
+    @functools.cached_property
+    def _original_period_da(self) -> xr.DataArray:
+        """DataArray of original period indices."""
+        return xr.DataArray(self._original_period_indices, dims=['original_time'])
+
+    @functools.cached_property
+    def _cluster_indices_per_timestep(self) -> xr.DataArray:
+        """Cluster index for each original timestep."""
+        return self._clustering.cluster_assignments.isel(original_cluster=self._original_period_da)
+
+    @staticmethod
+    def _get_mode(var_name: str) -> ExpansionMode:
+        """Look up expansion mode for a variable name via suffix matching."""
+        for suffix, mode in NAME_TO_EXPANSION.items():
+            if var_name == suffix or var_name.endswith(suffix):
+                return mode
+        return ExpansionMode.REPEAT
 
     def _append_final_state(self, expanded: xr.DataArray, da: xr.DataArray) -> xr.DataArray:
         """Append final state value from original data to expanded data."""
@@ -491,21 +506,10 @@ class _Expander:
         segment_assignments = clustering.results.segment_assignments
         segment_durations = clustering.results.segment_durations
         position_within_segment = clustering.results.position_within_segment
-        cluster_assignments = clustering.cluster_assignments
 
-        # Compute original period index and position within period
-        original_period_indices = np.minimum(
-            np.arange(self._n_original_timesteps) // self._timesteps_per_cluster,
-            self._n_original_clusters - 1,
-        )
-        positions_in_period = np.arange(self._n_original_timesteps) % self._timesteps_per_cluster
-
-        # Create DataArrays for indexing
-        original_period_da = xr.DataArray(original_period_indices, dims=['original_time'])
-        position_in_period_da = xr.DataArray(positions_in_period, dims=['original_time'])
-
-        # Map original period to cluster
-        cluster_indices = cluster_assignments.isel(original_cluster=original_period_da)
+        # Use cached period-to-cluster mapping
+        position_in_period_da = xr.DataArray(self._positions_in_period, dims=['original_time'])
+        cluster_indices = self._cluster_indices_per_timestep
 
         # Get segment index and position for each original timestep
         seg_indices = segment_assignments.isel(cluster=cluster_indices, time=position_in_period_da)
@@ -548,21 +552,10 @@ class _Expander:
 
         # Build mask: True only at first timestep of each segment
         position_within_segment = clustering.results.position_within_segment
-        cluster_assignments = clustering.cluster_assignments
 
-        # Compute original period index and position within period
-        original_period_indices = np.minimum(
-            np.arange(self._n_original_timesteps) // self._timesteps_per_cluster,
-            self._n_original_clusters - 1,
-        )
-        positions_in_period = np.arange(self._n_original_timesteps) % self._timesteps_per_cluster
-
-        # Create DataArrays for indexing
-        original_period_da = xr.DataArray(original_period_indices, dims=['original_time'])
-        position_in_period_da = xr.DataArray(positions_in_period, dims=['original_time'])
-
-        # Map to cluster and get position within segment
-        cluster_indices = cluster_assignments.isel(original_cluster=original_period_da)
+        # Use cached period-to-cluster mapping
+        position_in_period_da = xr.DataArray(self._positions_in_period, dims=['original_time'])
+        cluster_indices = self._cluster_indices_per_timestep
         pos_in_segment = position_within_segment.isel(cluster=cluster_indices, time=position_in_period_da)
 
         # Clean up and create mask
@@ -590,24 +583,24 @@ class _Expander:
         if 'time' not in da.dims:
             return da.copy()
 
-        clustering = self._clustering
-        has_cluster_dim = 'cluster' in da.dims
-        is_state = self._is_state_variable(var_name) and has_cluster_dim
-        is_first_timestep = self._is_first_timestep_variable(var_name) and has_cluster_dim
-        is_segment_total = is_solution and var_name in self._segment_total_vars
+        has_cluster = 'cluster' in da.dims
+        mode = self._get_mode(var_name)
 
-        # Choose expansion method
-        if is_state and clustering.is_segmented:
-            expanded = self._interpolate_charge_state_segmented(da)
-        elif is_first_timestep and is_solution and clustering.is_segmented:
-            return self._expand_first_timestep_only(da)
-        else:
-            expanded = clustering.expand_data(da, original_time=self._original_timesteps)
-            if is_segment_total and self._expansion_divisor is not None:
-                expanded = expanded / self._expansion_divisor
+        match mode:
+            case ExpansionMode.INTERPOLATE if has_cluster and self._clustering.is_segmented:
+                expanded = self._interpolate_charge_state_segmented(da)
+            case ExpansionMode.INTERPOLATE if has_cluster:
+                expanded = self._clustering.expand_data(da, original_time=self._original_timesteps)
+            case ExpansionMode.FIRST_TIMESTEP if has_cluster and is_solution and self._clustering.is_segmented:
+                return self._expand_first_timestep_only(da)
+            case ExpansionMode.DIVIDE if is_solution:
+                expanded = self._clustering.expand_data(da, original_time=self._original_timesteps)
+                if self._expansion_divisor is not None:
+                    expanded = expanded / self._expansion_divisor
+            case _:
+                expanded = self._clustering.expand_data(da, original_time=self._original_timesteps)
 
-        # State variables need final state appended
-        if is_state:
+        if mode == ExpansionMode.INTERPOLATE and has_cluster:
             expanded = self._append_final_state(expanded, da)
 
         return expanded

@@ -90,7 +90,6 @@ class ExpansionMode(Enum):
     INTERPOLATE = 'interpolate'
     DIVIDE = 'divide'
     FIRST_TIMESTEP = 'first_timestep'
-    CONSUME = 'consume'
 
 
 # =============================================================================
@@ -367,7 +366,6 @@ NAME_TO_EXPANSION: dict[str, ExpansionMode] = {
     ComponentVarName.SHUTDOWN: ExpansionMode.FIRST_TIMESTEP,
     EffectVarName.PER_TIMESTEP: ExpansionMode.DIVIDE,
     'share|temporal': ExpansionMode.DIVIDE,
-    InterclusterStorageVarName.SOC_BOUNDARY: ExpansionMode.CONSUME,
 }
 
 
