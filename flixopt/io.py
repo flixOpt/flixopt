@@ -1779,7 +1779,7 @@ class FlowSystemDatasetIO:
             carriers_structure = json.loads(reference_structure['carriers'])
             for carrier_data in carriers_structure.values():
                 carrier = cls._resolve_reference_structure(carrier_data, {})
-                flow_system._carriers.add(carrier)
+                flow_system.carriers.add(carrier)
 
     # --- Serialization (FlowSystem -> Dataset) ---
 
@@ -1813,7 +1813,7 @@ class FlowSystemDatasetIO:
         ds = cls._add_solution_to_dataset(ds, flow_system.solution, include_solution)
 
         # Add carriers
-        ds = cls._add_carriers_to_dataset(ds, flow_system._carriers)
+        ds = cls._add_carriers_to_dataset(ds, flow_system.carriers)
 
         # Add clustering
         ds = cls._add_clustering_to_dataset(ds, flow_system.clustering, include_original_data)
