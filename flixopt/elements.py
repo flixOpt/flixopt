@@ -2217,71 +2217,53 @@ class ComponentsModel(TypeModel):
             raise KeyError(f'Variable {var_name} not found in ComponentsModel')
 
 
-class ConvertersModel:
+class ConvertersModel(TypeModel):
     """Type-level model for ALL converter constraints.
 
     Handles LinearConverters with:
     1. Linear conversion factors: sum(flow * coeff * sign) == 0
     2. Piecewise conversion: inside_piece, lambda0, lambda1 + coupling constraints
-
-    This consolidates converter logic that was previously split between
-    LinearConvertersModel (linear) and ComponentsModel (piecewise).
-
-    Example:
-        >>> converters_model = ConvertersModel(
-        ...     model=flow_system_model,
-        ...     converters_with_factors=converters_with_linear_factors,
-        ...     converters_with_piecewise=converters_with_piecewise,
-        ...     flows_model=flows_model,
-        ... )
-        >>> converters_model.create_linear_constraints()
-        >>> converters_model.create_piecewise_variables()
-        >>> converters_model.create_piecewise_constraints()
     """
+
+    element_type = ElementType.CONVERTER
 
     def __init__(
         self,
         model: FlowSystemModel,
-        all_components: list,
+        converters: list,
         flows_model: FlowsModel,
     ):
         """Initialize the converter model.
 
         Args:
             model: The FlowSystemModel to create variables/constraints in.
-            all_components: List of all components (LinearConverters are filtered internally).
+            converters: List of LinearConverter instances.
             flows_model: The FlowsModel that owns flow variables.
         """
-        from .components import LinearConverter
         from .features import PiecewiseHelpers
 
-        self._logger = logging.getLogger('flixopt')
-        self.model = model
-        self.converters_with_factors = [
-            c for c in all_components if isinstance(c, LinearConverter) and c.conversion_factors
-        ]
-        self.converters_with_piecewise = [
-            c for c in all_components if isinstance(c, LinearConverter) and c.piecewise_conversion
-        ]
+        super().__init__(model, converters)
+        self.converters_with_factors = [c for c in converters if c.conversion_factors]
+        self.converters_with_piecewise = [c for c in converters if c.piecewise_conversion]
         self._flows_model = flows_model
         self._PiecewiseHelpers = PiecewiseHelpers
-
-        # Element IDs for linear conversion
-        self.element_ids: list[str] = [c.label for c in self.converters_with_factors]
-        self.dim_name = 'converter'
 
         # Piecewise conversion variables
         self._piecewise_variables: dict[str, linopy.Variable] = {}
 
-        self._logger.debug(
+        logger.debug(
             f'ConvertersModel initialized: {len(self.converters_with_factors)} with factors, '
             f'{len(self.converters_with_piecewise)} with piecewise'
         )
-        self.create_linear_constraints()
-        self.create_piecewise_variables()
-        self.create_piecewise_constraints()
+        self.create_variables()
+        self.create_constraints()
 
     # === Linear Conversion Properties (from LinearConvertersModel) ===
+
+    @cached_property
+    def _factor_element_ids(self) -> list[str]:
+        """Element IDs for converters with linear conversion factors."""
+        return [c.label for c in self.converters_with_factors]
 
     @cached_property
     def _max_equations(self) -> int:
@@ -2296,7 +2278,7 @@ class ConvertersModel:
         all_flow_ids = self._flows_model.element_ids
 
         # Build sign array
-        sign_data = np.zeros((len(self.element_ids), len(all_flow_ids)))
+        sign_data = np.zeros((len(self._factor_element_ids), len(all_flow_ids)))
         for i, conv in enumerate(self.converters_with_factors):
             for flow in conv.inputs:
                 if flow.label_full in all_flow_ids:
@@ -2310,14 +2292,14 @@ class ConvertersModel:
         return xr.DataArray(
             sign_data,
             dims=['converter', 'flow'],
-            coords={'converter': self.element_ids, 'flow': all_flow_ids},
+            coords={'converter': self._factor_element_ids, 'flow': all_flow_ids},
         )
 
     @cached_property
     def _equation_mask(self) -> xr.DataArray:
         """(converter, equation_idx) mask: 1 if equation exists, 0 otherwise."""
         max_eq = self._max_equations
-        mask_data = np.zeros((len(self.element_ids), max_eq))
+        mask_data = np.zeros((len(self._factor_element_ids), max_eq))
 
         for i, conv in enumerate(self.converters_with_factors):
             for eq_idx in range(len(conv.conversion_factors)):
@@ -2326,7 +2308,7 @@ class ConvertersModel:
         return xr.DataArray(
             mask_data,
             dims=['converter', 'equation_idx'],
-            coords={'converter': self.element_ids, 'equation_idx': list(range(max_eq))},
+            coords={'converter': self._factor_element_ids, 'equation_idx': list(range(max_eq))},
         )
 
     @cached_property
@@ -2339,7 +2321,7 @@ class ConvertersModel:
         """
         max_eq = self._max_equations
         all_flow_ids = self._flows_model.element_ids
-        n_conv = len(self.element_ids)
+        n_conv = len(self._factor_element_ids)
         n_flows = len(all_flow_ids)
 
         # Build flow_label -> flow_id mapping for each converter
@@ -2382,7 +2364,7 @@ class ConvertersModel:
                 data,
                 dims=['converter', 'equation_idx', 'flow'],
                 coords={
-                    'converter': self.element_ids,
+                    'converter': self._factor_element_ids,
                     'equation_idx': list(range(max_eq)),
                     'flow': all_flow_ids,
                 },
@@ -2412,7 +2394,7 @@ class ConvertersModel:
                     data[i, eq_idx, j, ...] = float(val)
 
             full_coords = {
-                'converter': self.element_ids,
+                'converter': self._factor_element_ids,
                 'equation_idx': list(range(max_eq)),
                 'flow': all_flow_ids,
             }
@@ -2458,7 +2440,7 @@ class ConvertersModel:
         n_equations_per_converter = xr.DataArray(
             [len(c.conversion_factors) for c in self.converters_with_factors],
             dims=['converter'],
-            coords={'converter': self.element_ids},
+            coords={'converter': self._factor_element_ids},
         )
         equation_indices = xr.DataArray(
             list(range(self._max_equations)),
@@ -2469,15 +2451,13 @@ class ConvertersModel:
 
         # Add all constraints at once using linopy's mask parameter
         # mask=True means KEEP constraint for that (converter, equation_idx) pair
-        self.model.add_constraints(
+        self.add_constraints(
             flow_sum == 0,
             name=ConverterVarName.Constraint.CONVERSION,
             mask=valid_mask,
         )
 
-        self._logger.debug(
-            f'ConvertersModel created linear constraints for {len(self.converters_with_factors)} converters'
-        )
+        logger.debug(f'ConvertersModel created linear constraints for {len(self.converters_with_factors)} converters')
 
     # === Piecewise Conversion Properties (from ComponentsModel) ===
 
@@ -2608,7 +2588,16 @@ class ConvertersModel:
 
         return xr.Dataset({'starts': starts_combined, 'ends': ends_combined})
 
-    def create_piecewise_variables(self) -> dict[str, linopy.Variable]:
+    def create_variables(self) -> None:
+        """Create all batched variables for converters (piecewise variables)."""
+        self._create_piecewise_variables()
+
+    def create_constraints(self) -> None:
+        """Create all batched constraints for converters."""
+        self.create_linear_constraints()
+        self._create_piecewise_constraints()
+
+    def _create_piecewise_variables(self) -> dict[str, linopy.Variable]:
         """Create batched piecewise conversion variables.
 
         Returns:
@@ -2629,12 +2618,12 @@ class ConvertersModel:
             ConverterVarName.PIECEWISE_PREFIX,
         )
 
-        self._logger.debug(
+        logger.debug(
             f'ConvertersModel created piecewise variables for {len(self.converters_with_piecewise)} converters'
         )
         return self._piecewise_variables
 
-    def create_piecewise_constraints(self) -> None:
+    def _create_piecewise_constraints(self) -> None:
         """Create batched piecewise constraints and coupling constraints."""
         if not self.converters_with_piecewise:
             return
@@ -2676,17 +2665,17 @@ class ConvertersModel:
         piecewise_flow_rate = flow_rate.sel(flow=flow_ids)
 
         # Add single batched constraint
-        self.model.add_constraints(
+        self.add_constraints(
             piecewise_flow_rate == reconstructed_per_flow,
             name=ConverterVarName.Constraint.PIECEWISE_COUPLING,
         )
 
-        self._logger.debug(
+        logger.debug(
             f'ConvertersModel created piecewise constraints for {len(self.converters_with_piecewise)} converters'
         )
 
 
-class TransmissionsModel:
+class TransmissionsModel(TypeModel):
     """Type-level model for batched transmission efficiency constraints.
 
     Handles Transmission components with batched constraints:
@@ -2694,39 +2683,29 @@ class TransmissionsModel:
     - Balanced size: in1.size == in2.size
 
     All constraints have a 'transmission' dimension for proper batching.
-
-    Example:
-        >>> transmissions_model = TransmissionsModel(
-        ...     model=flow_system_model,
-        ...     transmissions=transmissions,
-        ...     flows_model=flows_model,
-        ... )
-        >>> transmissions_model.create_constraints()
     """
+
+    element_type = ElementType.TRANSMISSION
 
     def __init__(
         self,
         model: FlowSystemModel,
-        all_components: list,
+        transmissions: list,
         flows_model: FlowsModel,
     ):
         """Initialize the transmission model.
 
         Args:
             model: The FlowSystemModel to create constraints in.
-            all_components: List of all components (Transmissions are filtered internally).
+            transmissions: List of Transmission instances.
             flows_model: The FlowsModel that owns flow variables.
         """
-        from .components import Transmission
-
-        self._logger = logging.getLogger('flixopt')
-        self.model = model
-        self.transmissions = [c for c in all_components if isinstance(c, Transmission)]
+        super().__init__(model, transmissions)
+        self.transmissions = list(self.elements.values())
         self._flows_model = flows_model
-        self.element_ids: list[str] = [t.label for t in self.transmissions]
-        self.dim_name = 'transmission'
 
-        self._logger.debug(f'TransmissionsModel initialized: {len(self.transmissions)} transmissions')
+        logger.debug(f'TransmissionsModel initialized: {len(self.transmissions)} transmissions')
+        self.create_variables()
         self.create_constraints()
         _add_prevent_simultaneous_constraints(
             self.transmissions, self._flows_model, self.model, 'transmission|prevent_simultaneous'
@@ -2861,6 +2840,10 @@ class TransmissionsModel:
 
         return xr.concat(arrays, dim=self.dim_name)
 
+    def create_variables(self) -> None:
+        """No variables needed for transmissions (constraint-only model)."""
+        pass
+
     def create_constraints(self) -> None:
         """Create batched transmission efficiency constraints.
 
@@ -2895,7 +2878,7 @@ class TransmissionsModel:
             efficiency_expr = efficiency_expr - in1_status * abs_losses
 
         # out1 == in1 * (1 - rel_losses) - in1_status * abs_losses
-        self.model.add_constraints(
+        self.add_constraints(
             out1_rate == efficiency_expr,
             name=con.DIR1,
         )
@@ -2918,7 +2901,7 @@ class TransmissionsModel:
                 efficiency_expr_2 = efficiency_expr_2 - in2_status * abs_losses_bidir
 
             # out2 == in2 * (1 - rel_losses) - in2_status * abs_losses
-            self.model.add_constraints(
+            self.add_constraints(
                 out2_rate == efficiency_expr_2,
                 name=con.DIR2,
             )
@@ -2933,11 +2916,9 @@ class TransmissionsModel:
             in1_size_batched = (flow_size * in1_size_mask).sum('flow')
             in2_size_batched = (flow_size * in2_size_mask).sum('flow')
 
-            self.model.add_constraints(
+            self.add_constraints(
                 in1_size_batched == in2_size_batched,
                 name=con.BALANCED,
             )
 
-        self._logger.debug(
-            f'TransmissionsModel created batched constraints for {len(self.transmissions)} transmissions'
-        )
+        logger.debug(f'TransmissionsModel created batched constraints for {len(self.transmissions)} transmissions')

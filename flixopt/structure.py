@@ -108,6 +108,7 @@ class ElementType(Enum):
     STORAGE = 'storage'
     CONVERTER = 'converter'
     INTERCLUSTER_STORAGE = 'intercluster_storage'
+    TRANSMISSION = 'transmission'
     EFFECT = 'effect'
     COMPONENT = 'component'
 
@@ -317,12 +318,12 @@ class _ConverterConstraint:
     """
 
     # Linear conversion constraints (indexed by equation number)
-    CONVERSION = 'converter|conversion'  # Base name, actual: converter|conversion_{eq_idx}
+    CONVERSION = 'conversion'
 
     # Piecewise conversion constraints
-    PIECEWISE_LAMBDA_SUM = 'converter|piecewise_conversion|lambda_sum'
-    PIECEWISE_SINGLE_SEGMENT = 'converter|piecewise_conversion|single_segment'
-    PIECEWISE_COUPLING = 'converter|piecewise_conversion|coupling'  # Per-flow: {base}|{flow_id}|coupling
+    PIECEWISE_LAMBDA_SUM = 'piecewise_conversion|lambda_sum'
+    PIECEWISE_SINGLE_SEGMENT = 'piecewise_conversion|single_segment'
+    PIECEWISE_COUPLING = 'piecewise_conversion|coupling'
 
 
 ConverterVarName.Constraint = _ConverterConstraint
@@ -348,15 +349,15 @@ class _TransmissionConstraint:
     """
 
     # Efficiency constraints (batched with transmission dimension)
-    DIR1 = 'transmission|dir1'  # Direction 1: out1 == in1 * (1 - rel_losses) [+ abs_losses]
-    DIR2 = 'transmission|dir2'  # Direction 2: out2 == in2 * (1 - rel_losses) [+ abs_losses]
+    DIR1 = 'dir1'
+    DIR2 = 'dir2'
 
     # Size constraints
-    BALANCED = 'transmission|balanced'  # in1.size == in2.size
+    BALANCED = 'balanced'
 
     # Status coupling (for absolute losses)
-    IN1_STATUS_COUPLING = 'transmission|in1_status_coupling'
-    IN2_STATUS_COUPLING = 'transmission|in2_status_coupling'
+    IN1_STATUS_COUPLING = 'in1_status_coupling'
+    IN2_STATUS_COUPLING = 'in2_status_coupling'
 
 
 TransmissionVarName.Constraint = _TransmissionConstraint
@@ -996,10 +997,14 @@ class FlowSystemModel(linopy.Model):
         self._components_model = ComponentsModel(self, all_components, self._flows_model)
         record('components')
 
-        self._converters_model = ConvertersModel(self, all_components, self._flows_model)
+        from .components import LinearConverter, Transmission
+
+        converters = [c for c in all_components if isinstance(c, LinearConverter)]
+        self._converters_model = ConvertersModel(self, converters, self._flows_model)
         record('converters')
 
-        self._transmissions_model = TransmissionsModel(self, all_components, self._flows_model)
+        transmissions = [c for c in all_components if isinstance(c, Transmission)]
+        self._transmissions_model = TransmissionsModel(self, transmissions, self._flows_model)
         record('transmissions')
 
         self._add_scenario_equality_constraints()
