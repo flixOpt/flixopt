@@ -614,21 +614,25 @@ class EffectsModel:
         return self.total.sel(effect=effect_id)
 
     def _add_share_between_effects(self):
-        """Add cross-effect shares between effects."""
+        """Register cross-effect shares as contributions (tracked in share variables).
+
+        Effect-to-effect shares are registered via add_temporal/periodic_contribution()
+        so they appear in the share variables and can be reconstructed by statistics.
+        """
         for target_effect in self.data.values():
             target_id = target_effect.label
             # 1. temporal: <- receiving temporal shares from other effects
             for source_effect, time_series in target_effect.share_from_temporal.items():
                 source_id = self.data[source_effect].label
                 source_per_timestep = self.get_per_timestep(source_id)
-                expr = (source_per_timestep * time_series).expand_dims(effect=[target_id])
-                self.add_share_temporal(expr)
+                expr = (source_per_timestep * time_series).expand_dims(effect=[target_id], contributor=[source_id])
+                self.add_temporal_contribution(expr)
             # 2. periodic: <- receiving periodic shares from other effects
             for source_effect, factor in target_effect.share_from_periodic.items():
                 source_id = self.data[source_effect].label
                 source_periodic = self.get_periodic(source_id)
-                expr = (source_periodic * factor).expand_dims(effect=[target_id])
-                self.add_share_periodic(expr)
+                expr = (source_periodic * factor).expand_dims(effect=[target_id], contributor=[source_id])
+                self.add_periodic_contribution(expr)
 
     def _set_objective(self):
         """Set the optimization objective function."""
