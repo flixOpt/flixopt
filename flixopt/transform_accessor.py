@@ -17,7 +17,7 @@ import pandas as pd
 import xarray as xr
 
 from .modeling import _scalar_safe_reduce
-from .structure import EXPAND_DIVIDE, EXPAND_FIRST_TIMESTEP, EXPAND_INTERPOLATE, VariableCategory
+from .structure import NAME_TO_EXPANSION, ExpansionMode
 
 if TYPE_CHECKING:
     from tsam import ClusterConfig, ExtremeConfig, SegmentConfig
@@ -418,10 +418,9 @@ class _Expander:
         self._original_timesteps = clustering.original_timesteps
         self._n_original_timesteps = len(self._original_timesteps)
 
-        # Import here to avoid circular import
-        from .flow_system import FlowSystem
+        from .model_coordinates import ModelCoordinates
 
-        self._original_timesteps_extra = FlowSystem._create_timesteps_with_extra(self._original_timesteps, None)
+        self._original_timesteps_extra = ModelCoordinates._create_timesteps_with_extra(self._original_timesteps, None)
 
         # Index of last valid original cluster (for final state)
         self._last_original_cluster_idx = min(
@@ -429,19 +428,23 @@ class _Expander:
             self._n_original_clusters - 1,
         )
 
-        # Build variable category sets
-        self._variable_categories = getattr(fs, '_variable_categories', {})
-        if self._variable_categories:
-            self._state_vars = {name for name, cat in self._variable_categories.items() if cat in EXPAND_INTERPOLATE}
-            self._first_timestep_vars = {
-                name for name, cat in self._variable_categories.items() if cat in EXPAND_FIRST_TIMESTEP
-            }
-            self._segment_total_vars = {name for name, cat in self._variable_categories.items() if cat in EXPAND_DIVIDE}
-        else:
-            # Fallback to pattern matching for old FlowSystems without categories
-            self._state_vars = set()
-            self._first_timestep_vars = set()
-            self._segment_total_vars = self._build_segment_total_varnames() if clustering.is_segmented else set()
+        # Build variable sets from NAME_TO_EXPANSION
+        solution_names = set(fs.solution)
+        self._state_vars: set[str] = set()
+        self._first_timestep_vars: set[str] = set()
+        self._segment_total_vars: set[str] = set()
+        self._consume_vars: set[str] = set()
+        mode_to_set = {
+            ExpansionMode.INTERPOLATE: self._state_vars,
+            ExpansionMode.FIRST_TIMESTEP: self._first_timestep_vars,
+            ExpansionMode.DIVIDE: self._segment_total_vars,
+            ExpansionMode.CONSUME: self._consume_vars,
+        }
+        for var_name, mode in NAME_TO_EXPANSION.items():
+            matching = {s for s in solution_names if s == var_name or s.endswith(var_name)}
+            target = mode_to_set.get(mode)
+            if target is not None:
+                target.update(matching)
 
         # Build expansion divisor for segmented systems
         self._expansion_divisor = None
@@ -450,13 +453,11 @@ class _Expander:
 
     def _is_state_variable(self, var_name: str) -> bool:
         """Check if variable is a state variable requiring interpolation."""
-        return var_name in self._state_vars or (not self._variable_categories and var_name.endswith('|charge_state'))
+        return var_name in self._state_vars
 
     def _is_first_timestep_variable(self, var_name: str) -> bool:
         """Check if variable is a first-timestep-only variable (startup/shutdown)."""
-        return var_name in self._first_timestep_vars or (
-            not self._variable_categories and (var_name.endswith('|startup') or var_name.endswith('|shutdown'))
-        )
+        return var_name in self._first_timestep_vars
 
     def _build_segment_total_varnames(self) -> set[str]:
         """Build segment total variable names - BACKWARDS COMPATIBILITY FALLBACK.
@@ -666,7 +667,7 @@ class _Expander:
             reduced_solution: The original reduced solution dataset.
         """
         n_original_timesteps_extra = len(self._original_timesteps_extra)
-        soc_boundary_vars = self._fs.get_variables_by_category(VariableCategory.SOC_BOUNDARY)
+        soc_boundary_vars = list(self._consume_vars)
 
         for soc_boundary_name in soc_boundary_vars:
             storage_name = soc_boundary_name.rsplit('|', 1)[0]
