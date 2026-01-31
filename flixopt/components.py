@@ -1845,32 +1845,31 @@ class InterclusterStoragesModel(TypeModel):
         )
 
     def _add_energy_balance_constraints(self) -> None:
-        """Add energy balance constraints for all storages.
-
-        Due to dimension complexity in clustered systems, constraints are added
-        per-storage rather than fully batched.
-        """
+        """Add energy balance constraints for all storages."""
         charge_state = self._variables['charge_state']
         timestep_duration = self.model.timestep_duration
         dim = self.dim_name
 
-        # Add constraint per storage (dimension alignment is complex in clustered systems)
-        for storage in self.elements.values():
-            cs = charge_state.sel({dim: storage.label_full})
-            charge_rate = self._flows_model.get_variable('rate', storage.charging.label_full)
-            discharge_rate = self._flows_model.get_variable('rate', storage.discharging.label_full)
+        # Select and rename flow rates to storage dimension
+        flow_rate = self._flows_model._variables['rate']
+        flow_dim = 'flow' if 'flow' in flow_rate.dims else 'element'
 
-            rel_loss = storage.relative_loss_per_hour
-            eff_charge = storage.eta_charge
-            eff_discharge = storage.eta_discharge
+        charge_rates = flow_rate.sel({flow_dim: self.data.charging_flow_ids})
+        charge_rates = charge_rates.rename({flow_dim: dim}).assign_coords({dim: self.element_ids})
+        discharge_rates = flow_rate.sel({flow_dim: self.data.discharging_flow_ids})
+        discharge_rates = discharge_rates.rename({flow_dim: dim}).assign_coords({dim: self.element_ids})
 
-            lhs = (
-                cs.isel(time=slice(1, None))
-                - cs.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
-                - charge_rate * eff_charge * timestep_duration
-                + discharge_rate * timestep_duration / eff_discharge
-            )
-            self.model.add_constraints(lhs == 0, name=f'{storage.label_full}|charge_state')
+        rel_loss = self.data.relative_loss_per_hour
+        eta_charge = self.data.eta_charge
+        eta_discharge = self.data.eta_discharge
+
+        lhs = (
+            charge_state.isel(time=slice(1, None))
+            - charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
+            - charge_rates * eta_charge * timestep_duration
+            + discharge_rates * timestep_duration / eta_discharge
+        )
+        self.model.add_constraints(lhs == 0, name=f'{self.dim_name}|energy_balance')
 
     def _add_cluster_start_constraints(self) -> None:
         """Constrain ΔE = 0 at the start of each cluster for all storages."""
@@ -1903,21 +1902,10 @@ class InterclusterStoragesModel(TypeModel):
         # Get delta_soc for each original period using cluster_assignments
         delta_soc_ordered = delta_soc.isel(cluster=cluster_assignments)
 
-        # Build decay factors per storage
-        decay_factors = []
-        for storage in self.elements.values():
-            rel_loss = _scalar_safe_reduce(storage.relative_loss_per_hour, 'time', 'mean')
-            total_hours = _scalar_safe_reduce(self.model.timestep_duration, 'time', 'sum')
-            decay = (1 - rel_loss) ** total_hours
-            decay_factors.append(decay)
-
-        # Stack decay factors
-        if len(decay_factors) > 1 or isinstance(decay_factors[0], xr.DataArray):
-            decay_stacked = xr.concat(
-                [xr.DataArray(d) if not isinstance(d, xr.DataArray) else d for d in decay_factors], dim=self.dim_name
-            ).assign_coords({self.dim_name: self.element_ids})
-        else:
-            decay_stacked = decay_factors[0]
+        # Decay factor: (1 - mean_loss)^total_hours, stacked across storages
+        rel_loss = _scalar_safe_reduce(self.data.relative_loss_per_hour, 'time', 'mean')
+        total_hours = _scalar_safe_reduce(self.model.timestep_duration, 'time', 'sum')
+        decay_stacked = (1 - rel_loss) ** total_hours
 
         lhs = soc_after - soc_before * decay_stacked - delta_soc_ordered
         self.model.add_constraints(lhs == 0, name=f'{self.dim_name}|link')
@@ -1985,22 +1973,10 @@ class InterclusterStoragesModel(TypeModel):
                 cs_t = cs_t.rename({'cluster': 'original_cluster'})
             cs_t = cs_t.assign_coords(original_cluster=np.arange(n_original_clusters))
 
-            # Build decay factors per storage
-            decay_factors = []
-            for storage in self.elements.values():
-                rel_loss = _scalar_safe_reduce(storage.relative_loss_per_hour, 'time', 'mean')
-                mean_dt = _scalar_safe_reduce(self.model.timestep_duration, 'time', 'mean')
-                hours_offset = offset * mean_dt
-                decay = (1 - rel_loss) ** hours_offset
-                decay_factors.append(decay)
-
-            if len(decay_factors) > 1 or isinstance(decay_factors[0], xr.DataArray):
-                decay_stacked = xr.concat(
-                    [xr.DataArray(d) if not isinstance(d, xr.DataArray) else d for d in decay_factors],
-                    dim=self.dim_name,
-                ).assign_coords({self.dim_name: self.element_ids})
-            else:
-                decay_stacked = decay_factors[0]
+            # Decay factor at offset: (1 - mean_loss)^(offset * mean_dt)
+            rel_loss = _scalar_safe_reduce(self.data.relative_loss_per_hour, 'time', 'mean')
+            mean_dt = _scalar_safe_reduce(self.model.timestep_duration, 'time', 'mean')
+            decay_stacked = (1 - rel_loss) ** (offset * mean_dt)
 
             combined = soc_d * decay_stacked + cs_t
 
