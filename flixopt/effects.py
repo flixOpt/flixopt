@@ -345,9 +345,9 @@ class EffectsModel:
         self.share_periodic: linopy.Variable | None = None
 
         # Registered contributions from type models (FlowsModel, StoragesModel, etc.)
-        # Each entry: a defining_expr with 'contributor' dim
-        self._temporal_share_defs: list[linopy.LinearExpression] = []
-        self._periodic_share_defs: list[linopy.LinearExpression] = []
+        # Per-contributor accumulation: contributor_id -> LinearExpression (1-element contributor dim)
+        self._temporal_shares: dict[str, linopy.LinearExpression] = {}
+        self._periodic_shares: dict[str, linopy.LinearExpression] = {}
         # Constant (xr.DataArray) contributions with 'contributor' + 'effect' dims
         self._temporal_constant_defs: list[xr.DataArray] = []
         self._periodic_constant_defs: list[xr.DataArray] = []
@@ -374,7 +374,7 @@ class EffectsModel:
         if isinstance(defining_expr, xr.DataArray):
             self._temporal_constant_defs.append(defining_expr)
         else:
-            self._temporal_share_defs.append(defining_expr)
+            self._accumulate_shares(self._temporal_shares, self._as_expression(defining_expr))
 
     def add_periodic_contribution(self, defining_expr, contributor_dim: str = 'contributor') -> None:
         """Register contributors for the share|periodic variable.
@@ -389,7 +389,21 @@ class EffectsModel:
         if isinstance(defining_expr, xr.DataArray):
             self._periodic_constant_defs.append(defining_expr)
         else:
-            self._periodic_share_defs.append(defining_expr)
+            self._accumulate_shares(self._periodic_shares, self._as_expression(defining_expr))
+
+    @staticmethod
+    def _accumulate_shares(
+        accum: dict[str, linopy.LinearExpression],
+        expr: linopy.LinearExpression,
+    ) -> None:
+        """Split expression by contributor and accumulate per-contributor."""
+        for cid in expr.data.coords['contributor'].values:
+            cid_str = str(cid)
+            single = expr.sel(contributor=[cid])
+            if cid_str in accum:
+                accum[cid_str] = accum[cid_str] + single
+            else:
+                accum[cid_str] = single
 
     def create_variables(self) -> None:
         """Create batched effect variables with 'effect' dimension."""
@@ -543,8 +557,8 @@ class EffectsModel:
             sm.add_effect_contributions(self)
 
         # === Create share|temporal variable ===
-        if self._temporal_share_defs:
-            self.share_temporal = self._create_share_var(self._temporal_share_defs, 'share|temporal', temporal=True)
+        if self._temporal_shares:
+            self.share_temporal = self._create_share_var(self._temporal_shares, 'share|temporal', temporal=True)
             self._eq_per_timestep.lhs -= self.share_temporal.sum('contributor')
 
         # === Apply temporal constants directly ===
@@ -552,8 +566,8 @@ class EffectsModel:
             self._eq_per_timestep.lhs -= const.sum('contributor').reindex({'effect': self.data.effect_index})
 
         # === Create share|periodic variable ===
-        if self._periodic_share_defs:
-            self.share_periodic = self._create_share_var(self._periodic_share_defs, 'share|periodic', temporal=False)
+        if self._periodic_shares:
+            self.share_periodic = self._create_share_var(self._periodic_shares, 'share|periodic', temporal=False)
             self._eq_periodic.lhs -= self.share_periodic.sum('contributor').reindex({'effect': self.data.effect_index})
 
         # === Apply periodic constants directly ===
@@ -573,35 +587,32 @@ class EffectsModel:
 
     def _create_share_var(
         self,
-        share_defs: list[linopy.LinearExpression],
+        shares: dict[str, linopy.LinearExpression],
         name: str,
         temporal: bool,
     ) -> linopy.Variable:
-        """Create a share variable from registered contributor definitions.
+        """Create a share variable from per-contributor expressions.
 
-        Aligns all contributor expressions (outer join on contributor dimension),
-        then sums them to produce a single expression with the full contributor dimension.
+        Each entry in shares is a single-contributor LinearExpression (already
+        accumulated). Uses linopy.merge along 'contributor' to combine them.
         """
         import pandas as pd
 
-        # Ensure all share defs have canonical effect order before alignment.
-        # linopy merge uses join="override" when shapes match, which aligns by
-        # position not label — mismatched effect order silently shuffles coefficients.
         effect_index = self.data.effect_index
-        normalized = []
-        for expr in share_defs:
+
+        # Normalize effect order
+        exprs: list[linopy.LinearExpression] = []
+        for expr in shares.values():
             if 'effect' in expr.dims:
-                expr_effects = list(expr.data.coords['effect'].values)
+                expr_effects = list(expr.coords['effect'].values)
                 if expr_effects != list(effect_index):
-                    expr = linopy.LinearExpression(expr.data.reindex(effect=effect_index), expr.model)
-            normalized.append(expr)
+                    expr = expr.reindex(effect=effect_index)
+            exprs.append(expr)
 
-        aligned = linopy.align(*normalized, join='outer', fill_value=0)
-        combined_expr = sum(aligned[1:], start=aligned[0])
+        combined_expr = linopy.merge(exprs, dim='contributor')
 
-        # Extract contributor IDs from the combined expression
-        all_ids = [str(cid) for cid in combined_expr.data.coords['contributor'].values]
-        contributor_index = pd.Index(all_ids, name='contributor')
+        # Create variable and constraint
+        contributor_index = pd.Index(list(shares.keys()), name='contributor')
         coords = self._share_coords('contributor', contributor_index, temporal=temporal)
         var = self.model.add_variables(lower=-np.inf, upper=np.inf, coords=coords, name=name)
 
