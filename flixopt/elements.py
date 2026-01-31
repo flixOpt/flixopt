@@ -15,7 +15,7 @@ import xarray as xr
 from . import io as fx_io
 from .config import CONFIG
 from .core import PlausibilityError
-from .features import MaskHelpers, StatusBuilder, fast_notnull, stack_along_dim
+from .features import MaskHelpers, StatusBuilder, fast_notnull, sparse_weighted_sum, stack_along_dim
 from .interface import InvestParameters, StatusParameters
 from .modeling import ModelingUtilitiesAbstract
 from .structure import (
@@ -80,7 +80,7 @@ def _add_prevent_simultaneous_constraints(
 
     status = flows_model[FlowVarName.STATUS]
     model.add_constraints(
-        (status * mask).sum('flow') <= 1,
+        sparse_weighted_sum(status, mask, sum_dim='flow', group_dim='component') <= 1,
         name=constraint_name,
     )
 
@@ -1860,7 +1860,7 @@ class ComponentsModel(TypeModel):
         n_flows = self._flow_count
 
         # Sum of flow statuses for each component: (component, time, ...)
-        flow_sum = (flow_status * mask).sum('flow')
+        flow_sum = sparse_weighted_sum(flow_status, mask, sum_dim='flow', group_dim='component')
 
         # Separate single-flow vs multi-flow components
         single_flow_ids = [c.label for c in self.components if len(c.inputs) + len(c.outputs) == 1]

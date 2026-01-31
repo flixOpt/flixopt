@@ -24,6 +24,87 @@ if TYPE_CHECKING:
 # =============================================================================
 
 
+def sparse_weighted_sum(var, coeffs: xr.DataArray, sum_dim: str, group_dim: str):
+    """Compute (var * coeffs).sum(sum_dim) efficiently using sparse groupby.
+
+    When coeffs is a sparse array (most entries zero) with dims (group_dim, sum_dim, ...),
+    the naive dense broadcast creates a huge intermediate linopy expression.
+    This function selects only the non-zero (group, sum_dim) pairs and uses
+    groupby to aggregate, avoiding the dense broadcast entirely.
+
+    Args:
+        var: linopy Variable or LinearExpression with sum_dim as a dimension.
+        coeffs: xr.DataArray with at least (group_dim, sum_dim) dims.
+            Additional dims (e.g., equation_idx, time) are preserved.
+        sum_dim: Dimension to sum over (e.g., 'flow').
+        group_dim: Dimension to group by (e.g., 'converter', 'component').
+
+    Returns:
+        linopy expression with sum_dim removed, group_dim present.
+    """
+    import linopy
+
+    coeffs_values = coeffs.values
+    group_ids = list(coeffs.coords[group_dim].values)
+    sum_ids = list(coeffs.coords[sum_dim].values)
+
+    # Find which (group, sum_dim) pairs have any non-zero coefficient.
+    # The group_dim and sum_dim may not be the first two axes, so locate them.
+    group_axis = coeffs.dims.index(group_dim)
+    sum_axis = coeffs.dims.index(sum_dim)
+
+    # Collapse all axes except group and sum to find any non-zero entry
+    reduce_axes = tuple(i for i in range(coeffs_values.ndim) if i not in (group_axis, sum_axis))
+    if reduce_axes:
+        nonzero_2d = np.any(coeffs_values != 0, axis=reduce_axes)
+    else:
+        nonzero_2d = coeffs_values != 0
+
+    # Ensure shape is (group, sum_dim) regardless of original axis order
+    if group_axis > sum_axis:
+        nonzero_2d = nonzero_2d.T
+    group_idx, sum_idx = np.nonzero(nonzero_2d)
+
+    if len(group_idx) == 0:
+        return (var * coeffs).sum(sum_dim)
+
+    pair_sum_ids = [sum_ids[s] for s in sum_idx]
+    pair_group_ids = [group_ids[g] for g in group_idx]
+
+    # Extract per-pair coefficients: select along group_dim and sum_dim axes
+    # Build indexing tuple for the original array
+    idx = [slice(None)] * coeffs_values.ndim
+    pair_coeffs_list = []
+    for g, s in zip(group_idx, sum_idx, strict=False):
+        idx[group_axis] = g
+        idx[sum_axis] = s
+        pair_coeffs_list.append(coeffs_values[tuple(idx)])
+    pair_coeffs_data = np.array(pair_coeffs_list)
+
+    # Build DataArray for pair coefficients with remaining dims
+    remaining_dims = [d for d in coeffs.dims if d not in (group_dim, sum_dim)]
+    remaining_coords = {d: coeffs.coords[d] for d in remaining_dims if d in coeffs.coords}
+    pair_coeffs = xr.DataArray(
+        pair_coeffs_data,
+        dims=['pair'] + remaining_dims,
+        coords=remaining_coords,
+    )
+
+    # Select var for active pairs and multiply by coefficients.
+    # Convert to LinearExpression first to avoid linopy Variable coord issues.
+    selected = (var * 1).sel({sum_dim: xr.DataArray(pair_sum_ids, dims=['pair'])})
+    # Drop the dangling sum_dim coordinate that sel() leaves behind
+    selected = linopy.LinearExpression(selected.data.drop_vars(sum_dim, errors='ignore'), selected.model)
+    weighted = selected * pair_coeffs
+
+    # Groupby to sum back to group dimension
+    mapping = xr.DataArray(pair_group_ids, dims=['pair'], name=group_dim)
+    result = weighted.groupby(mapping).sum()
+
+    # Reindex to original group order (groupby sorts alphabetically)
+    return result.sel({group_dim: group_ids})
+
+
 def fast_notnull(arr: xr.DataArray) -> xr.DataArray:
     """Fast notnull check using numpy (~55x faster than xr.DataArray.notnull()).
 
