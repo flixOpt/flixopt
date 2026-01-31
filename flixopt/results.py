@@ -18,6 +18,7 @@ from . import plotting
 from .color_processing import process_colors
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
 from .flow_system import FlowSystem
+from .model_coordinates import ModelCoordinates
 from .structure import CompositeContainerMixin, ResultsContainer
 
 if TYPE_CHECKING:
@@ -285,7 +286,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         self.flows = ResultsContainer(elements=flows_dict, element_type_name='flow results', truncate_repr=10)
 
         self.timesteps_extra = self.solution.indexes['time']
-        self.timestep_duration = FlowSystem.calculate_timestep_duration(self.timesteps_extra)
+        self.timestep_duration = ModelCoordinates.calculate_timestep_duration(self.timesteps_extra)
         self.scenarios = self.solution.indexes['scenario'] if 'scenario' in self.solution.indexes else None
         self.periods = self.solution.indexes['period'] if 'period' in self.solution.indexes else None
 

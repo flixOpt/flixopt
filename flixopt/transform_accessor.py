@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from .model_coordinates import ModelCoordinates
 from .modeling import _scalar_safe_reduce
 from .structure import NAME_TO_EXPANSION, ExpansionMode
 
@@ -824,7 +825,6 @@ class TransformAccessor:
         Returns:
             xr.Dataset: Selected dataset
         """
-        from .flow_system import FlowSystem
 
         indexers = {}
         if time is not None:
@@ -840,13 +840,13 @@ class TransformAccessor:
         result = dataset.sel(**indexers)
 
         if 'time' in indexers:
-            result = FlowSystem._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+            result = ModelCoordinates._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
 
         if 'period' in indexers:
-            result = FlowSystem._update_period_metadata(result)
+            result = ModelCoordinates._update_period_metadata(result)
 
         if 'scenario' in indexers:
-            result = FlowSystem._update_scenario_metadata(result)
+            result = ModelCoordinates._update_scenario_metadata(result)
 
         return result
 
@@ -874,7 +874,6 @@ class TransformAccessor:
         Returns:
             xr.Dataset: Selected dataset
         """
-        from .flow_system import FlowSystem
 
         indexers = {}
         if time is not None:
@@ -890,13 +889,13 @@ class TransformAccessor:
         result = dataset.isel(**indexers)
 
         if 'time' in indexers:
-            result = FlowSystem._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+            result = ModelCoordinates._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
 
         if 'period' in indexers:
-            result = FlowSystem._update_period_metadata(result)
+            result = ModelCoordinates._update_period_metadata(result)
 
         if 'scenario' in indexers:
-            result = FlowSystem._update_scenario_metadata(result)
+            result = ModelCoordinates._update_scenario_metadata(result)
 
         return result
 
@@ -932,7 +931,6 @@ class TransformAccessor:
         Raises:
             ValueError: If resampling creates gaps and fill_gaps is not specified.
         """
-        from .flow_system import FlowSystem
 
         available_methods = ['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count']
         if method not in available_methods:
@@ -961,7 +959,7 @@ class TransformAccessor:
             result = dataset.copy()
             result = result.assign_coords(time=resampled_time)
             result.attrs.update(original_attrs)
-            return FlowSystem._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+            return ModelCoordinates._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
 
         time_dataset = dataset[time_var_names]
         resampled_time_dataset = cls._resample_by_dimension_groups(time_dataset, freq, method, **kwargs)
@@ -1003,7 +1001,7 @@ class TransformAccessor:
                 result = result.assign_coords({coord_name: coord_val})
 
         result.attrs.update(original_attrs)
-        return FlowSystem._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+        return ModelCoordinates._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
 
     @staticmethod
     def _resample_by_dimension_groups(
@@ -2094,7 +2092,7 @@ class TransformAccessor:
         # Get original timesteps and dimensions
         original_timesteps = clustering.original_timesteps
         n_original_timesteps = len(original_timesteps)
-        original_timesteps_extra = FlowSystem._create_timesteps_with_extra(original_timesteps, None)
+        original_timesteps_extra = ModelCoordinates._create_timesteps_with_extra(original_timesteps, None)
 
         # For charge_state expansion: index of last valid original cluster
         last_original_cluster_idx = min(
@@ -2177,7 +2175,7 @@ class TransformAccessor:
         expanded_ds = xr.Dataset(data_vars, attrs=attrs)
 
         # Update timestep_duration for original timesteps
-        timestep_duration = FlowSystem.calculate_timestep_duration(original_timesteps_extra)
+        timestep_duration = ModelCoordinates.calculate_timestep_duration(original_timesteps_extra)
         expanded_ds.attrs['timestep_duration'] = timestep_duration.values.tolist()
 
         expanded_fs = FlowSystem.from_dataset(expanded_ds)
