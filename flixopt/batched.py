@@ -12,7 +12,7 @@ Usage:
 from __future__ import annotations
 
 from functools import cached_property
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -31,32 +31,30 @@ if TYPE_CHECKING:
 
 
 def build_effects_array(
-    params: dict[str, Any],
-    attr: str,
-    ids: list[str],
+    effect_dicts: dict[str, dict[str, float | xr.DataArray]],
     effect_ids: list[str],
     dim_name: str,
 ) -> xr.DataArray | None:
     """Build effect factors array from per-element effect dicts.
 
     Args:
-        params: Dict mapping element_id -> parameter object with effect attributes.
-        attr: Attribute name on the parameter object (e.g., 'effects_per_startup').
-        ids: Element IDs to include (must have truthy attr values).
+        effect_dicts: Dict mapping element_id -> {effect_id -> factor}.
+            Missing effects default to 0.
         effect_ids: List of effect IDs for the effect dimension.
         dim_name: Element dimension name ('flow', 'storage', etc.).
 
     Returns:
-        DataArray with (dim_name, effect, ...) or None if ids or effect_ids empty.
+        DataArray with (dim_name, effect, ...) or None if empty.
     """
-    if not ids or not effect_ids:
+    if not effect_dicts or not effect_ids:
         return None
+
+    ids = list(effect_dicts.keys())
 
     # Scan for extra dimensions from time-varying effect values
     extra_dims: dict[str, np.ndarray] = {}
-    for eid in ids:
-        effect_dict = getattr(params[eid], attr)
-        for val in effect_dict.values():
+    for ed in effect_dicts.values():
+        for val in ed.values():
             if isinstance(val, xr.DataArray) and val.ndim > 0:
                 for d in val.dims:
                     if d not in extra_dims:
@@ -67,10 +65,9 @@ def build_effects_array(
     data = np.zeros(shape)
 
     # Fill values directly
-    for i, eid in enumerate(ids):
-        effect_dict = getattr(params[eid], attr)
+    for i, ed in enumerate(effect_dicts.values()):
         for j, eff in enumerate(effect_ids):
-            val = effect_dict.get(eff, 0.0)
+            val = ed.get(eff, 0.0)
             if isinstance(val, xr.DataArray):
                 if val.ndim == 0:
                     data[i, j, ...] = float(val.values)
@@ -263,7 +260,8 @@ class StatusData:
     def _build_effects(self, attr: str) -> xr.DataArray | None:
         """Build effect factors array for a status effect attribute."""
         ids = self._categorize(lambda p: getattr(p, attr))
-        return build_effects_array(self._params, attr, ids, self._effect_ids, self._dim)
+        dicts = {eid: getattr(self._params[eid], attr) for eid in ids}
+        return build_effects_array(dicts, self._effect_ids, self._dim)
 
     @cached_property
     def effects_per_active_hour(self) -> xr.DataArray | None:
@@ -396,7 +394,8 @@ class InvestmentData:
         """Build effect factors array for an investment effect attribute."""
         if ids is None:
             ids = self._categorize(lambda p: getattr(p, attr))
-        return build_effects_array(self._params, attr, ids, self._effect_ids, self._dim)
+        dicts = {eid: getattr(self._params[eid], attr) for eid in ids}
+        return build_effects_array(dicts, self._effect_ids, self._dim)
 
     @cached_property
     def effects_per_size(self) -> xr.DataArray | None:
@@ -1288,51 +1287,8 @@ class FlowsData:
         if not effect_ids:
             return None
 
-        flow_ids = self.with_effects
-
-        # Determine required dimensions by scanning all effect values
-        extra_dims: dict[str, pd.Index] = {}
-        for fid in flow_ids:
-            flow_effects = self[fid].effects_per_flow_hour
-            for val in flow_effects.values():
-                if isinstance(val, xr.DataArray) and val.ndim > 0:
-                    for dim in val.dims:
-                        if dim not in extra_dims:
-                            extra_dims[dim] = val.coords[dim].values
-
-        # Build shape and coords
-        shape = [len(flow_ids), len(effect_ids)]
-        dims = ['flow', 'effect']
-        coords: dict = {'flow': pd.Index(flow_ids), 'effect': pd.Index(effect_ids)}
-
-        for dim, coord_vals in extra_dims.items():
-            shape.append(len(coord_vals))
-            dims.append(dim)
-            coords[dim] = pd.Index(coord_vals)
-
-        # Pre-allocate numpy array with zeros (pre-filled, avoids fillna later)
-        data = np.zeros(shape)
-
-        # Fill in values
-        for i, fid in enumerate(flow_ids):
-            flow_effects = self[fid].effects_per_flow_hour
-            for j, eff in enumerate(effect_ids):
-                val = flow_effects.get(eff)
-                if val is None:
-                    continue
-                elif isinstance(val, xr.DataArray):
-                    if val.ndim == 0:
-                        # Scalar DataArray - broadcast to all extra dims
-                        data[i, j, ...] = float(val.values)
-                    else:
-                        # Multi-dimensional - place in correct position
-                        # Build slice for this value's dimensions
-                        data[i, j, ...] = val.values
-                else:
-                    # Python scalar - broadcast to all extra dims
-                    data[i, j, ...] = float(val)
-
-        return xr.DataArray(data, coords=coords, dims=dims)
+        dicts = {fid: self[fid].effects_per_flow_hour for fid in self.with_effects}
+        return build_effects_array(dicts, effect_ids, 'flow')
 
     # --- Investment Parameters ---
 
