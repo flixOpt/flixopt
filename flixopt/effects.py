@@ -379,6 +379,10 @@ class EffectsModel:
         if isinstance(defining_expr, xr.DataArray):
             if effect is not None:
                 defining_expr = defining_expr.expand_dims(effect=[effect])
+            elif 'effect' not in defining_expr.dims:
+                raise ValueError(
+                    "DataArray contribution must have an 'effect' dimension or an explicit effect= argument."
+                )
             self._temporal_constant_defs.append(defining_expr)
         else:
             self._accumulate_shares(self._temporal_shares, self._as_expression(defining_expr), effect)
@@ -401,6 +405,10 @@ class EffectsModel:
         if isinstance(defining_expr, xr.DataArray):
             if effect is not None:
                 defining_expr = defining_expr.expand_dims(effect=[effect])
+            elif 'effect' not in defining_expr.dims:
+                raise ValueError(
+                    "DataArray contribution must have an 'effect' dimension or an explicit effect= argument."
+                )
             self._periodic_constant_defs.append(defining_expr)
         else:
             self._accumulate_shares(self._periodic_shares, self._as_expression(defining_expr), effect)

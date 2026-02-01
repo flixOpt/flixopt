@@ -819,6 +819,9 @@ class StatisticsAccessor:
 
         contributors = sorted(detected_contributors)
 
+        if not contributors:
+            return xr.Dataset()
+
         # Build metadata for each contributor
         def get_parent_component(contributor: str) -> str:
             if contributor in self._fs.flows:
