@@ -103,7 +103,7 @@ class TestFlowModel:
 
         # Batched temporal shares are managed by the EffectsModel
         assert any(c.startswith('share|temporal') for c in model.constraints), (
-            'Batched temporal share constraint(s) should exist'
+            'Temporal share constraint(s) should exist'
         )
 
         # Check batched effect variables exist
@@ -357,7 +357,7 @@ class TestFlowInvestModel:
         assert 'effect|periodic' in model.variables
 
         # Check that temporal share exists for the flow's effects
-        assert any(v.startswith('share|temporal') for v in model.variables)
+        assert 'share|temporal' in model.variables
 
 
 class TestFlowOnModel:

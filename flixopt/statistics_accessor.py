@@ -805,22 +805,17 @@ class StatisticsAccessor:
 
         # Determine modes to process
         modes_to_process = ['temporal', 'periodic'] if mode == 'total' else [mode]
-        # Detect contributors from per-effect share variables (share|temporal|{effect}, share|periodic|{effect})
+        # Detect contributors from combined share variables (share|temporal, share|periodic)
         detected_contributors: set[str] = set()
-        share_var_names: dict[str, list[str]] = {'temporal': [], 'periodic': []}
-        for var_name in solution:
-            for mode_key in ('temporal', 'periodic'):
-                prefix = f'share|{mode_key}('
-                if str(var_name).startswith(prefix):
-                    share_var_names[mode_key].append(str(var_name))
-
         for current_mode in modes_to_process:
-            for share_name in share_var_names[current_mode]:
-                share_da = solution[share_name]
-                for c in share_da.coords['contributor'].values:
-                    base_name = str(c).split('(')[0] if '(' in str(c) else str(c)
-                    if base_name not in effect_labels:
-                        detected_contributors.add(str(c))
+            share_name = f'share|{current_mode}'
+            if share_name not in solution:
+                continue
+            share_da = solution[share_name]
+            for c in share_da.coords['contributor'].values:
+                base_name = str(c).split('(')[0] if '(' in str(c) else str(c)
+                if base_name not in effect_labels:
+                    detected_contributors.add(str(c))
 
         contributors = sorted(detected_contributors)
 
@@ -863,13 +858,15 @@ class StatisticsAccessor:
                     conversion_factors[effect] = 1  # Direct contribution
 
                     for source_effect, factor in conversion_factors.items():
-                        share_name = f'share|{current_mode}({source_effect})'
+                        share_name = f'share|{current_mode}'
                         if share_name not in solution:
                             continue
                         share_da = solution[share_name]
+                        if source_effect not in share_da.coords['effect'].values:
+                            continue
                         if contributor not in share_da.coords['contributor'].values:
                             continue
-                        da = share_da.sel(contributor=contributor) * factor
+                        da = share_da.sel(effect=source_effect, contributor=contributor, drop=True) * factor
                         # For total mode, sum temporal over time (apply cluster_weight for proper weighting)
                         if mode == 'total' and current_mode == 'temporal' and 'time' in da.dims:
                             weighted = da * self._fs.weights.get('cluster', 1.0)

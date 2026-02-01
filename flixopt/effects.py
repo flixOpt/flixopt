@@ -575,23 +575,19 @@ class EffectsModel:
         if (sm := self.model._storages_model) is not None:
             sm.add_effect_contributions(self)
 
-        # === Create share|temporal variables (one per effect) ===
+        # === Create share|temporal variable (one combined with contributor × effect dims) ===
         if self._temporal_shares:
-            self.share_temporal = self._create_share_vars(self._temporal_shares, 'share|temporal', temporal=True)
-            for eid, var in self.share_temporal.items():
-                summed = var.sum('contributor').expand_dims(effect=[eid])
-                self._eq_per_timestep.lhs -= summed.reindex({'effect': self.data.effect_index}, fill_value=0)
+            self.share_temporal = self._create_share_var(self._temporal_shares, 'share|temporal', temporal=True)
+            self._eq_per_timestep.lhs -= self.share_temporal.sum('contributor')
 
         # === Apply temporal constants directly ===
         for const in self._temporal_constant_defs:
             self._eq_per_timestep.lhs -= const.sum('contributor').reindex({'effect': self.data.effect_index})
 
-        # === Create share|periodic variables (one per effect) ===
+        # === Create share|periodic variable (one combined with contributor × effect dims) ===
         if self._periodic_shares:
-            self.share_periodic = self._create_share_vars(self._periodic_shares, 'share|periodic', temporal=False)
-            for eid, var in self.share_periodic.items():
-                summed = var.sum('contributor').expand_dims(effect=[eid])
-                self._eq_periodic.lhs -= summed.reindex({'effect': self.data.effect_index}, fill_value=0)
+            self.share_periodic = self._create_share_var(self._periodic_shares, 'share|periodic', temporal=False)
+            self._eq_periodic.lhs -= self.share_periodic.sum('contributor')
 
         # === Apply periodic constants directly ===
         for const in self._periodic_constant_defs:
@@ -608,30 +604,43 @@ class EffectsModel:
             }
         )
 
-    def _create_share_vars(
+    def _create_share_var(
         self,
         accum: dict[str, list[linopy.LinearExpression]],
         name: str,
         temporal: bool,
-    ) -> dict[str, linopy.Variable]:
-        """Create one share variable per effect from accumulated per-effect expression lists.
+    ) -> linopy.Variable:
+        """Create one share variable with (contributor, effect, ...) dims.
 
         accum structure: {effect_id: [expr1, expr2, ...]} where each expr has
         (contributor, ...other_dims) dims — no effect dim.
 
-        Within a single effect, all expressions share the same non-helper dims,
-        so linopy.merge along 'contributor' is cheap (no cross-dim alignment).
+        Constraints are added per-effect: var.sel(effect=eid) == merged_for_eid,
+        which avoids cross-effect alignment.
 
         Returns:
-            dict mapping effect_id -> linopy.Variable with dims (contributor, time/period).
+            linopy.Variable with dims (contributor, effect, time/period).
         """
         import pandas as pd
 
         if not accum:
-            return {}
+            return None
 
-        result: dict[str, linopy.Variable] = {}
+        # Collect all contributor IDs across all effects
+        all_contributor_ids: set[str] = set()
+        for expr_list in accum.values():
+            for expr in expr_list:
+                all_contributor_ids.update(str(c) for c in expr.data.coords['contributor'].values)
 
+        contributor_index = pd.Index(sorted(all_contributor_ids), name='contributor')
+        effect_index = self.data.effect_index
+        coords = self._share_coords('contributor', contributor_index, temporal=temporal)
+        var = self.model.add_variables(lower=-np.inf, upper=np.inf, coords=coords, name=name)
+
+        # Track which (effect, contributor) combos are constrained
+        constrained: dict[str, set[str]] = {}
+
+        # Add per-effect constraints
         for eid, expr_list in accum.items():
             # Sum expressions that share the same contributors (e.g. rate + status + startup)
             combined: dict[str, linopy.LinearExpression] = {}
@@ -644,22 +653,27 @@ class EffectsModel:
                     else:
                         combined[cid_str] = single
 
-            contributor_ids = list(combined.keys())
-            contributor_index = pd.Index(contributor_ids, name='contributor')
-            base_dims = None if temporal else ['period', 'scenario']
-            model_coords = self.model.get_coords(base_dims) or {}
-            coords = xr.Coordinates({'contributor': contributor_index, **{k: v for k, v in model_coords.items()}})
-            var_name = f'{name}({eid})'
-            var = self.model.add_variables(lower=-np.inf, upper=np.inf, coords=coords, name=var_name)
-
-            # Merge all per-contributor expressions along 'contributor'
+            # Merge per-contributor expressions along 'contributor'
             merged = linopy.merge(list(combined.values()), dim='contributor')
-            self.model.add_constraints(var == merged, name=var_name)
+            # Constrain: var.sel(effect=eid, contributor=contributors) == merged
+            var_slice = var.sel(effect=eid, contributor=list(combined.keys()))
+            self.model.add_constraints(var_slice == merged, name=f'{name}({eid})')
+            constrained[eid] = set(combined.keys())
 
-            result[eid] = var
+        # Constrain uncovered (effect, contributor) combos to 0 to avoid unbounded vars
+        all_effects = [str(e) for e in effect_index]
+        all_contributors = [str(c) for c in contributor_index]
+        for eid in all_effects:
+            covered = constrained.get(eid, set())
+            uncovered = [c for c in all_contributors if c not in covered]
+            if uncovered:
+                self.model.add_constraints(
+                    var.sel(effect=eid, contributor=uncovered) == 0,
+                    name=f'{name}({eid})|zero',
+                )
 
         accum.clear()
-        return result
+        return var
 
     def get_periodic(self, effect_id: str) -> linopy.Variable:
         """Get periodic variable for a specific effect."""
