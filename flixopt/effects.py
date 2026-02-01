@@ -633,23 +633,24 @@ class EffectsModel:
                 all_contributor_ids.update(str(c) for c in expr.data.coords['contributor'].values)
 
         contributor_index = pd.Index(sorted(all_contributor_ids), name='contributor')
+        effect_index = self.data.effect_index
         coords = self._share_coords('contributor', contributor_index, temporal=temporal)
 
-        # Start with bounds fixed at 0; widen to -inf/+inf for covered (effect, contributor) combos
-        lower = xr.DataArray(0.0, coords=coords)
-        upper = xr.DataArray(0.0, coords=coords)
-
-        # Pre-scan to find covered combos and widen bounds
+        # Build mask: only create variables for (effect, contributor) combos that have expressions
+        mask = xr.DataArray(
+            np.zeros((len(contributor_index), len(effect_index)), dtype=bool),
+            dims=['contributor', 'effect'],
+            coords={'contributor': contributor_index, 'effect': effect_index},
+        )
         covered_map: dict[str, list[str]] = {}
         for eid, expr_list in accum.items():
             cids = set()
             for expr in expr_list:
                 cids.update(str(c) for c in expr.data.coords['contributor'].values)
             covered_map[eid] = sorted(cids)
-            lower.loc[dict(effect=eid, contributor=covered_map[eid])] = -np.inf
-            upper.loc[dict(effect=eid, contributor=covered_map[eid])] = np.inf
+            mask.loc[dict(effect=eid, contributor=covered_map[eid])] = True
 
-        var = self.model.add_variables(lower=lower, upper=upper, coords=coords, name=name)
+        var = self.model.add_variables(lower=-np.inf, upper=np.inf, coords=coords, name=name, mask=mask)
 
         # Add per-effect constraints (only for covered combos)
         for eid, expr_list in accum.items():
