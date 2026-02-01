@@ -623,8 +623,8 @@ class EffectsModel:
         accum structure: {effect_id: [expr1, expr2, ...]} where each expr has
         (contributor, ...other_dims) dims — no effect dim.
 
-        Constraints are added per-effect: var.sel(effect=eid) == merged_for_eid.
-        Uses linopy.merge for efficient multi-expression summation.
+        Constraints are added per-effect: var.sel(effect=eid) == merged_for_eid,
+        which avoids cross-effect alignment.
 
         Returns:
             linopy.Variable with dims (contributor, effect, time/period).
@@ -666,8 +666,11 @@ class EffectsModel:
             if len(expr_list) == 1:
                 merged = expr_list[0].reindex(contributor=contributors)
             else:
+                # Reindex all to common contributor set, then sum via linopy.merge (_term addition)
                 aligned = [e.reindex(contributor=contributors) for e in expr_list]
-                merged = linopy.merge(aligned)
+                merged = aligned[0]
+                for a in aligned[1:]:
+                    merged = merged + a
             var_slice = var.sel(effect=eid, contributor=contributors)
             self.model.add_constraints(var_slice == merged, name=f'{name}({eid})')
 
