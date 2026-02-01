@@ -563,7 +563,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Now previous_flow_rate=None means relaxed (no constraint at t=0)
         for comp in flow_system.components.values():
             if getattr(comp, 'status_parameters', None) is not None:
-                for flow in comp.inputs + comp.outputs:
+                for flow in comp.flows.values():
                     if flow.previous_flow_rate is None:
                         flow.previous_flow_rate = 0
 
@@ -1504,9 +1504,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def _connect_network(self):
         """Connects the network of components and buses. Can be rerun without changes if no elements were added"""
         for component in self.components.values():
-            for flow in component.inputs + component.outputs:
+            for flow in component.flows.values():
                 flow.component = component.label_full
-                flow.is_input_in_component = True if flow in component.inputs else False
+                flow.is_input_in_component = flow.label_full in component.inputs
 
                 # Connect Buses
                 bus = self.buses.get(flow.bus)
@@ -1516,9 +1516,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                         f'Please add it first.'
                     )
                 if flow.is_input_in_component and flow not in bus.outputs:
-                    bus.outputs.append(flow)
+                    bus.outputs.add(flow)
                 elif not flow.is_input_in_component and flow not in bus.inputs:
-                    bus.inputs.append(flow)
+                    bus.inputs.add(flow)
 
         # Count flows manually to avoid triggering cache rebuild
         flow_count = sum(len(c.inputs) + len(c.outputs) for c in self.components.values())
@@ -1602,7 +1602,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     @property
     def flows(self) -> ElementContainer[Flow]:
         if self._flows_cache is None:
-            flows = [f for c in self.components.values() for f in c.inputs + c.outputs]
+            flows = [f for c in self.components.values() for f in c.flows.values()]
             # Deduplicate by id and sort for reproducibility
             flows = sorted({id(f): f for f in flows}.values(), key=lambda f: f.label_full.lower())
             self._flows_cache = ElementContainer(flows, element_type_name='flows', truncate_repr=10)

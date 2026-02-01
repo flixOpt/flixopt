@@ -1030,7 +1030,7 @@ class StoragesModel(TypeModel):
         """(storage, flow) mask: 1 if flow belongs to storage."""
         membership = MaskHelpers.build_flow_membership(
             self.elements,
-            lambda s: s.inputs + s.outputs,
+            lambda s: list(s.flows.values()),
         )
         return MaskHelpers.build_mask(
             row_dim='storage',

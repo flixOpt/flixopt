@@ -31,6 +31,7 @@ from .structure import (
     ComponentVarName,
     ConverterVarName,
     Element,
+    FlowContainer,
     FlowSystemModel,
     FlowVarName,
     TransmissionVarName,
@@ -143,23 +144,43 @@ class Component(Element):
     def __init__(
         self,
         label: str,
-        inputs: list[Flow] | None = None,
-        outputs: list[Flow] | None = None,
+        inputs: list[Flow] | dict[str, Flow] | None = None,
+        outputs: list[Flow] | dict[str, Flow] | None = None,
         status_parameters: StatusParameters | None = None,
         prevent_simultaneous_flows: list[Flow] | None = None,
         meta_data: dict | None = None,
         color: str | None = None,
     ):
         super().__init__(label, meta_data=meta_data, color=color)
-        self.inputs: list[Flow] = inputs or []
-        self.outputs: list[Flow] = outputs or []
         self.status_parameters = status_parameters
         self.prevent_simultaneous_flows: list[Flow] = prevent_simultaneous_flows or []
 
-        self._check_unique_flow_labels()
-        self._connect_flows()
+        # FlowContainers serialize as dicts, but constructor expects lists
+        if isinstance(inputs, dict):
+            inputs = list(inputs.values())
+        if isinstance(outputs, dict):
+            outputs = list(outputs.values())
 
-        self.flows: dict[str, Flow] = {flow.label: flow for flow in self.inputs + self.outputs}
+        _inputs = inputs or []
+        _outputs = outputs or []
+
+        # Check uniqueness on raw lists (before connecting)
+        all_flow_labels = [flow.label for flow in _inputs + _outputs]
+        if len(set(all_flow_labels)) != len(all_flow_labels):
+            duplicates = {label for label in all_flow_labels if all_flow_labels.count(label) > 1}
+            raise ValueError(f'Flow names must be unique! "{self.label_full}" got 2 or more of: {duplicates}')
+
+        # Connect flows (sets component name / label_full) before creating FlowContainers
+        self._connect_flows(_inputs, _outputs)
+
+        # Now label_full is set, so FlowContainer can key by it
+        self.inputs: FlowContainer = FlowContainer(_inputs, element_type_name='inputs')
+        self.outputs: FlowContainer = FlowContainer(_outputs, element_type_name='outputs')
+
+    @cached_property
+    def flows(self) -> FlowContainer:
+        """All flows (inputs and outputs) as a FlowContainer."""
+        return self.inputs + self.outputs
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested Interface objects and flows.
@@ -169,7 +190,7 @@ class Component(Element):
         super().link_to_flow_system(flow_system, self.label_full)
         if self.status_parameters is not None:
             self.status_parameters.link_to_flow_system(flow_system, self._sub_prefix('status_parameters'))
-        for flow in self.inputs + self.outputs:
+        for flow in self.flows.values():
             flow.link_to_flow_system(flow_system)
 
     def transform_data(self) -> None:
@@ -178,7 +199,7 @@ class Component(Element):
         if self.status_parameters is not None:
             self.status_parameters.transform_data()
 
-        for flow in self.inputs + self.outputs:
+        for flow in self.flows.values():
             flow.transform_data()
 
     def _propagate_status_parameters(self) -> None:
@@ -191,7 +212,7 @@ class Component(Element):
         from .interface import StatusParameters
 
         if self.status_parameters:
-            for flow in self.inputs + self.outputs:
+            for flow in self.flows.values():
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
                     flow.status_parameters.link_to_flow_system(
@@ -205,8 +226,12 @@ class Component(Element):
                         self._flow_system, f'{flow.label_full}|status_parameters'
                     )
 
-    def _check_unique_flow_labels(self):
-        all_flow_labels = [flow.label for flow in self.inputs + self.outputs]
+    def _check_unique_flow_labels(self, inputs: list = None, outputs: list = None):
+        if inputs is None:
+            inputs = list(self.inputs.values())
+        if outputs is None:
+            outputs = list(self.outputs.values())
+        all_flow_labels = [flow.label for flow in inputs + outputs]
 
         if len(set(all_flow_labels)) != len(all_flow_labels):
             duplicates = {label for label in all_flow_labels if all_flow_labels.count(label) > 1}
@@ -218,7 +243,7 @@ class Component(Element):
         # Component with status_parameters requires all flows to have sizes set
         # (status_parameters are propagated to flows in _do_modeling, which need sizes for big-M constraints)
         if self.status_parameters is not None:
-            flows_without_size = [flow.label for flow in self.inputs + self.outputs if flow.size is None]
+            flows_without_size = [flow.label for flow in self.flows.values() if flow.size is None]
             if flows_without_size:
                 raise PlausibilityError(
                     f'Component "{self.label_full}" has status_parameters, but the following flows have no size: '
@@ -226,9 +251,13 @@ class Component(Element):
                     f'(required for big-M constraints).'
                 )
 
-    def _connect_flows(self):
+    def _connect_flows(self, inputs=None, outputs=None):
+        if inputs is None:
+            inputs = list(self.inputs.values())
+        if outputs is None:
+            outputs = list(self.outputs.values())
         # Inputs
-        for flow in self.inputs:
+        for flow in inputs:
             if flow.component not in ('UnknownComponent', self.label_full):
                 raise ValueError(
                     f'Flow "{flow.label}" already assigned to component "{flow.component}". '
@@ -237,7 +266,7 @@ class Component(Element):
             flow.component = self.label_full
             flow.is_input_in_component = True
         # Outputs
-        for flow in self.outputs:
+        for flow in outputs:
             if flow.component not in ('UnknownComponent', self.label_full):
                 raise ValueError(
                     f'Flow "{flow.label}" already assigned to component "{flow.component}". '
@@ -253,7 +282,7 @@ class Component(Element):
             self.prevent_simultaneous_flows = [
                 f for f in self.prevent_simultaneous_flows if id(f) not in seen and not seen.add(id(f))
             ]
-            local = set(self.inputs + self.outputs)
+            local = set(inputs + outputs)
             foreign = [f for f in self.prevent_simultaneous_flows if f not in local]
             if foreign:
                 names = ', '.join(f.label_full for f in foreign)
@@ -348,8 +377,13 @@ class Bus(Element):
         self._validate_kwargs(kwargs)
         self.carrier = carrier.lower() if carrier else None  # Store as lowercase string
         self.imbalance_penalty_per_flow_hour = imbalance_penalty_per_flow_hour
-        self.inputs: list[Flow] = []
-        self.outputs: list[Flow] = []
+        self.inputs: FlowContainer = FlowContainer(element_type_name='inputs')
+        self.outputs: FlowContainer = FlowContainer(element_type_name='outputs')
+
+    @property
+    def flows(self) -> FlowContainer:
+        """All flows (inputs and outputs) as a FlowContainer."""
+        return self.inputs + self.outputs
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested flows.
@@ -357,7 +391,7 @@ class Bus(Element):
         Elements use their label_full as prefix by default, ignoring the passed prefix.
         """
         super().link_to_flow_system(flow_system, self.label_full)
-        for flow in self.inputs + self.outputs:
+        for flow in self.flows.values():
             flow.link_to_flow_system(flow_system)
 
     def transform_data(self) -> None:
@@ -1715,9 +1749,9 @@ class BusesModel(TypeModel):
         # Build sparse coefficients: +1 for inputs, -1 for outputs
         coefficients: dict[tuple[str, str], float] = {}
         for bus in self.elements.values():
-            for f in bus.inputs:
+            for f in bus.inputs.values():
                 coefficients[(bus.label_full, f.label_full)] = 1.0
-            for f in bus.outputs:
+            for f in bus.outputs.values():
                 coefficients[(bus.label_full, f.label_full)] = -1.0
 
         balance = sparse_multiply_sum(flow_rate, coefficients, sum_dim=flow_dim, group_dim=bus_dim)
@@ -1884,7 +1918,7 @@ class ComponentsModel(TypeModel):
         """(component, flow) mask: 1 if flow belongs to component."""
         membership = MaskHelpers.build_flow_membership(
             self.components,
-            lambda c: c.inputs + c.outputs,
+            lambda c: list(c.flows.values()),
         )
         return MaskHelpers.build_mask(
             row_dim='component',
@@ -1972,9 +2006,8 @@ class ComponentsModel(TypeModel):
         components_with_previous = []
 
         for component in self.components:
-            all_flows = component.inputs + component.outputs
             previous_status = []
-            for flow in all_flows:
+            for flow in component.flows.values():
                 prev = self._flows_model.get_previous_status(flow)
                 if prev is not None:
                     previous_status.append(prev)
@@ -2005,9 +2038,8 @@ class ComponentsModel(TypeModel):
         Returns:
             DataArray of previous status, or None if no flows have previous status.
         """
-        all_flows = component.inputs + component.outputs
         previous_status = []
-        for flow in all_flows:
+        for flow in component.flows.values():
             prev = self._flows_model.get_previous_status(flow)
             if prev is not None:
                 previous_status.append(prev)
@@ -2380,8 +2412,8 @@ class ConvertersModel(TypeModel):
         for conv in self.converters_with_factors:
             flow_map = {fl.label: fl.label_full for fl in conv.flows.values()}
             # +1 for inputs, -1 for outputs
-            flow_signs = {f.label_full: 1.0 for f in conv.inputs if f.label_full in all_flow_ids_set}
-            flow_signs.update({f.label_full: -1.0 for f in conv.outputs if f.label_full in all_flow_ids_set})
+            flow_signs = {f.label_full: 1.0 for f in conv.inputs.values() if f.label_full in all_flow_ids_set}
+            flow_signs.update({f.label_full: -1.0 for f in conv.outputs.values() if f.label_full in all_flow_ids_set})
 
             for eq_idx, conv_factors in enumerate(conv.conversion_factors):
                 for flow_label, coeff in conv_factors.items():

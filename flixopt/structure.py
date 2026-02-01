@@ -804,7 +804,7 @@ class FlowSystemModel(linopy.Model):
                 comp._variable_names = _find_vars_for_element(comp.label_full, 'storage')
                 comp._constraint_names = _find_constraints_for_element(comp.label_full, 'storage')
                 # Also add flow variables (storages have charging/discharging flows)
-                for flow in comp.inputs + comp.outputs:
+                for flow in comp.flows.values():
                     comp._variable_names.extend(flow._variable_names)
                     comp._constraint_names.extend(flow._constraint_names)
             else:
@@ -815,7 +815,7 @@ class FlowSystemModel(linopy.Model):
                 comp._variable_names.extend(_find_vars_for_element(comp.label_full, 'component'))
                 comp._constraint_names.extend(_find_constraints_for_element(comp.label_full, 'component'))
                 # Add flow variables
-                for flow in comp.inputs + comp.outputs:
+                for flow in comp.flows.values():
                     comp._variable_names.extend(flow._variable_names)
                     comp._constraint_names.extend(flow._constraint_names)
 
@@ -836,13 +836,13 @@ class FlowSystemModel(linopy.Model):
 
         # Components
         for comp in sorted(self.flow_system.components.values(), key=lambda c: c.label_full.upper()):
-            flow_labels = [f.label_full for f in comp.inputs + comp.outputs]
+            flow_labels = [f.label_full for f in comp.flows.values()]
             results['Components'][comp.label_full] = {
                 'label': comp.label_full,
                 'variables': comp._variable_names,
                 'constraints': comp._constraint_names,
-                'inputs': ['flow|rate' for f in comp.inputs],  # Variable names for inputs
-                'outputs': ['flow|rate' for f in comp.outputs],  # Variable names for outputs
+                'inputs': ['flow|rate'] * len(comp.inputs),
+                'outputs': ['flow|rate'] * len(comp.outputs),
                 'flows': flow_labels,
             }
 
@@ -859,7 +859,7 @@ class FlowSystemModel(linopy.Model):
                 'constraints': bus._constraint_names,
                 'inputs': input_vars,
                 'outputs': output_vars,
-                'flows': [f.label_full for f in bus.inputs + bus.outputs],
+                'flows': [f.label_full for f in bus.flows.values()],
             }
 
         # Effects
@@ -2257,9 +2257,79 @@ class ContainerMixin(dict[str, T]):
 
         return r
 
+    def __add__(self, other: ContainerMixin[T]) -> ContainerMixin[T]:
+        """Concatenate two containers."""
+        result = self.__class__(element_type_name=self._element_type_name)
+        for element in self.values():
+            result.add(element)
+        for element in other.values():
+            result.add(element)
+        return result
+
     def __repr__(self) -> str:
         """Return a string representation using the instance's truncate_repr setting."""
         return self._get_repr()
+
+
+class FlowContainer(ContainerMixin[T]):
+    """Container for Flow objects with dual access: by index or by label_full.
+
+    Supports:
+        - container['Boiler(Q_th)']  # label_full-based access
+        - container['Q_th']          # short-label access (when all flows share same component)
+        - container[0]               # index-based access
+        - container.add(flow)
+        - for flow in container.values()
+        - container1 + container2    # concatenation
+
+    Examples:
+        >>> boiler = Boiler(label='Boiler', inputs=[Flow('Q_th', bus=heat_bus)])
+        >>> boiler.inputs[0]  # Index access
+        >>> boiler.inputs['Boiler(Q_th)']  # Full label access
+        >>> boiler.inputs['Q_th']  # Short label access (same component)
+        >>> for flow in boiler.inputs.values():
+        ...     print(flow.label_full)
+    """
+
+    def _get_label(self, flow: T) -> str:
+        """Extract label_full from Flow."""
+        return flow.label_full
+
+    def __getitem__(self, key: str | int) -> T:
+        """Get flow by label_full, short label, or index."""
+        if isinstance(key, int):
+            try:
+                return list(self.values())[key]
+            except IndexError:
+                raise IndexError(f'Flow index {key} out of range (container has {len(self)} flows)') from None
+
+        if dict.__contains__(self, key):
+            return super().__getitem__(key)
+
+        # Try short-label match if all flows share the same component
+        if len(self) > 0:
+            components = {flow.component for flow in self.values()}
+            if len(components) == 1:
+                component = next(iter(components))
+                full_key = f'{component}({key})'
+                if dict.__contains__(self, full_key):
+                    return super().__getitem__(full_key)
+
+        raise KeyError(f"'{key}' not found in {self._element_type_name}")
+
+    def __contains__(self, key: object) -> bool:
+        """Check if key exists (supports label_full or short label)."""
+        if not isinstance(key, str):
+            return False
+        if dict.__contains__(self, key):
+            return True
+        if len(self) > 0:
+            components = {flow.component for flow in self.values()}
+            if len(components) == 1:
+                component = next(iter(components))
+                full_key = f'{component}({key})'
+                return dict.__contains__(self, full_key)
+        return False
 
 
 class ElementContainer(ContainerMixin[T]):
