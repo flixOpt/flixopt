@@ -164,7 +164,7 @@ class TestEffectModel:
 
         # Check share allocation variables exist (e.g., share|temporal_from_effect for effect-to-effect shares)
         # These are managed by the EffectsModel
-        assert 'share|temporal' in model.variables, 'Temporal share variable should exist'
+        assert any(v.startswith('share|temporal') for v in model.variables), 'Temporal share variable(s) should exist'
 
         # Access individual effect variables using batched model + sel
         _effect2_periodic = model.variables['effect|periodic'].sel(effect='Effect2')

@@ -357,7 +357,7 @@ class TestFlowInvestModel:
         assert 'effect|periodic' in model.variables
 
         # Check that temporal share exists for the flow's effects
-        assert 'share|temporal' in model.variables
+        assert any(v.startswith('share|temporal') for v in model.variables)
 
 
 class TestFlowOnModel:

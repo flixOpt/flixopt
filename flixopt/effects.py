@@ -345,9 +345,9 @@ class EffectsModel:
         self.share_periodic: linopy.Variable | None = None
 
         # Registered contributions from type models (FlowsModel, StoragesModel, etc.)
-        # Per-contributor accumulation: contributor_id -> LinearExpression (1-element contributor dim)
-        self._temporal_shares: dict[str, linopy.LinearExpression] = {}
-        self._periodic_shares: dict[str, linopy.LinearExpression] = {}
+        # Per-effect, per-contributor accumulation: effect_id -> {contributor_id -> expr (no effect dim)}
+        self._temporal_shares: dict[str, dict[str, linopy.LinearExpression]] = {}
+        self._periodic_shares: dict[str, dict[str, linopy.LinearExpression]] = {}
         # Constant (xr.DataArray) contributions with 'contributor' + 'effect' dims
         self._temporal_constant_defs: list[xr.DataArray] = []
         self._periodic_constant_defs: list[xr.DataArray] = []
@@ -393,17 +393,24 @@ class EffectsModel:
 
     @staticmethod
     def _accumulate_shares(
-        accum: dict[str, linopy.LinearExpression],
+        accum: dict[str, dict[str, linopy.LinearExpression]],
         expr: linopy.LinearExpression,
     ) -> None:
-        """Split expression by contributor and accumulate per-contributor."""
-        for cid in expr.data.coords['contributor'].values:
-            cid_str = str(cid)
-            single = expr.sel(contributor=[cid])
-            if cid_str in accum:
-                accum[cid_str] = accum[cid_str] + single
-            else:
-                accum[cid_str] = single
+        """Split expression by effect and contributor, accumulate per pair."""
+        effects = list(expr.data.coords['effect'].values) if 'effect' in expr.dims else [None]
+        for eid in effects:
+            eid_str = str(eid) if eid is not None else None
+            for cid in expr.data.coords['contributor'].values:
+                cid_str = str(cid)
+                single = expr.sel(contributor=[cid])
+                if eid is not None:
+                    single = single.sel(effect=eid, drop=True)
+                if eid_str not in accum:
+                    accum[eid_str] = {}
+                if cid_str in accum[eid_str]:
+                    accum[eid_str][cid_str] = accum[eid_str][cid_str] + single
+                else:
+                    accum[eid_str][cid_str] = single
 
     def create_variables(self) -> None:
         """Create batched effect variables with 'effect' dimension."""
@@ -556,20 +563,23 @@ class EffectsModel:
         if (sm := self.model._storages_model) is not None:
             sm.add_effect_contributions(self)
 
-        # === Create share|temporal variable ===
+        # === Create share|temporal variables (one per effect) ===
         if self._temporal_shares:
-            self.share_temporal = self._create_share_var(self._temporal_shares, 'share|temporal', temporal=True)
-            # Sum expressions directly instead of summing the variable (avoids NaN-padded where())
-            self._eq_per_timestep.lhs -= self._sum_share_expressions(self._temporal_shares)
+            self.share_temporal = self._create_share_vars(self._temporal_shares, 'share|temporal', temporal=True)
+            for eid, var in self.share_temporal.items():
+                summed = var.sum('contributor').expand_dims(effect=[eid])
+                self._eq_per_timestep.lhs -= summed.reindex({'effect': self.data.effect_index}, fill_value=0)
 
         # === Apply temporal constants directly ===
         for const in self._temporal_constant_defs:
             self._eq_per_timestep.lhs -= const.sum('contributor').reindex({'effect': self.data.effect_index})
 
-        # === Create share|periodic variable ===
+        # === Create share|periodic variables (one per effect) ===
         if self._periodic_shares:
-            self.share_periodic = self._create_share_var(self._periodic_shares, 'share|periodic', temporal=False)
-            self._eq_periodic.lhs -= self._sum_share_expressions(self._periodic_shares)
+            self.share_periodic = self._create_share_vars(self._periodic_shares, 'share|periodic', temporal=False)
+            for eid, var in self.share_periodic.items():
+                summed = var.sum('contributor').expand_dims(effect=[eid])
+                self._eq_periodic.lhs -= summed.reindex({'effect': self.data.effect_index}, fill_value=0)
 
         # === Apply periodic constants directly ===
         for const in self._periodic_constant_defs:
@@ -586,54 +596,44 @@ class EffectsModel:
             }
         )
 
-    def _sum_share_expressions(self, shares: dict[str, linopy.LinearExpression]) -> linopy.LinearExpression:
-        """Sum per-contributor expressions, dropping the contributor dim.
-
-        Uses linopy.merge along _term (default), which is cheap when all
-        expressions have the same non-helper dimensions. This avoids
-        Variable.sum('contributor') which triggers expensive nansum/where().
-        """
-        effect_index = self.data.effect_index
-        flat = []
-        for cid, expr in shares.items():
-            e = expr.sel(contributor=cid)  # drop contributor dim
-            if 'effect' in e.dims:
-                expr_effects = list(e.coords['effect'].values)
-                if expr_effects != list(effect_index):
-                    e = e.reindex(effect=effect_index)
-            flat.append(e)
-        return linopy.merge(flat)  # default dim=_term = addition
-
-    def _create_share_var(
+    def _create_share_vars(
         self,
-        shares: dict[str, linopy.LinearExpression],
+        shares_by_effect: dict[str, dict[str, linopy.LinearExpression]],
         name: str,
         temporal: bool,
-    ) -> linopy.Variable:
-        """Create a share variable from per-contributor expressions.
+    ) -> dict[str, linopy.Variable]:
+        """Create one share variable per effect, each with only its contributors.
 
-        Each entry is a single-contributor LinearExpression. Creates one
-        constraint per contributor to avoid expensive alignment/merge.
+        Within a single effect, all expressions have the same non-helper dims
+        (no effect dim), so linopy.merge along 'contributor' is cheap.
+
+        Returns:
+            dict mapping effect_id -> linopy.Variable with dims (contributor, time/period).
         """
         import pandas as pd
 
-        effect_index = self.data.effect_index
+        result: dict[str, linopy.Variable] = {}
 
-        contributor_index = pd.Index(list(shares.keys()), name='contributor')
-        coords = self._share_coords('contributor', contributor_index, temporal=temporal)
-        var = self.model.add_variables(lower=-np.inf, upper=np.inf, coords=coords, name=name)
-
-        for cid, expr in shares.items():
-            if 'effect' in expr.dims:
-                expr_effects = list(expr.coords['effect'].values)
-                if expr_effects != list(effect_index):
-                    expr = expr.reindex(effect=effect_index)
-            self.model.add_constraints(
-                var.sel(contributor=cid) == expr.sel(contributor=cid),
-                name=f'{name}|{cid}',
+        for eid, contributors in shares_by_effect.items():
+            contributor_index = pd.Index(list(contributors.keys()), name='contributor')
+            base_dims = None if temporal else ['period', 'scenario']
+            coords = xr.Coordinates(
+                {
+                    'contributor': contributor_index,
+                    **{k: v for k, v in (self.model.get_coords(base_dims) or {}).items()},
+                }
             )
+            var_name = f'{name}({eid})'
+            var = self.model.add_variables(lower=-np.inf, upper=np.inf, coords=coords, name=var_name)
 
-        return var
+            # Merge all contributor expressions into one constraint
+            exprs = [expr.sel(contributor=cid) for cid, expr in contributors.items()]
+            combined = linopy.merge(exprs, dim='contributor')
+            self.model.add_constraints(var == combined, name=var_name)
+
+            result[eid] = var
+
+        return result
 
     def get_periodic(self, effect_id: str) -> linopy.Variable:
         """Get periodic variable for a specific effect."""

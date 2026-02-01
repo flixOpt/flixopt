@@ -129,7 +129,7 @@ def test_minimal_model(solver_fixture, time_steps_fixture):
     )
 
     assert_allclose(
-        flow_system.solution['share|temporal'].sel(contributor='Gastarif(Gas)', effect='costs').values[:-1],
+        flow_system.solution['share|temporal(costs)'].sel(contributor='Gastarif(Gas)').values[:-1],
         [-0.0, 20.0, 40.0, -0.0, 20.0],
         rtol=1e-5,
         atol=1e-10,

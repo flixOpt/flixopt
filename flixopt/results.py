@@ -794,20 +794,18 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
         ds = xr.Dataset()
 
-        share_var_name = f'share|{mode}'
+        share_var_name = f'share|{mode}({effect})'
         if share_var_name in self.solution:
             share_var = self.solution[share_var_name]
-            # Find the contributor dimension
             contributor_dim = None
             for dim in ['contributor', 'flow', 'storage', 'component', 'source']:
                 if dim in share_var.dims:
                     contributor_dim = dim
                     break
             if contributor_dim is not None and element in share_var.coords[contributor_dim].values:
-                if effect in share_var.coords['effect'].values:
-                    selected = share_var.sel({contributor_dim: element, 'effect': effect}, drop=True)
-                    label = f'{element}->{effect}({mode})'
-                    ds = xr.Dataset({label: selected})
+                selected = share_var.sel({contributor_dim: element}, drop=True)
+                label = f'{element}->{effect}({mode})'
+                ds = xr.Dataset({label: selected})
 
         if include_flows:
             if element not in self.components:

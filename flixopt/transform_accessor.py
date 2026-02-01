@@ -471,7 +471,7 @@ class _Expander:
     def _get_mode(var_name: str) -> ExpansionMode:
         """Look up expansion mode for a variable name via suffix matching."""
         for suffix, mode in NAME_TO_EXPANSION.items():
-            if var_name == suffix or var_name.endswith(suffix):
+            if var_name == suffix or var_name.endswith(suffix) or var_name.startswith(suffix):
                 return mode
         return ExpansionMode.REPEAT
 
