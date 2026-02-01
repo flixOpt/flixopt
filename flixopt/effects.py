@@ -345,9 +345,9 @@ class EffectsModel:
         self.share_periodic: linopy.Variable | None = None
 
         # Registered contributions from type models (FlowsModel, StoragesModel, etc.)
-        # Each entry: a defining_expr with 'contributor' dim
-        self._temporal_share_defs: list[linopy.LinearExpression] = []
-        self._periodic_share_defs: list[linopy.LinearExpression] = []
+        # Per-effect, per-contributor accumulation: effect_id -> {contributor_id -> expr (no effect dim)}
+        self._temporal_shares: dict[str, dict[str, linopy.LinearExpression]] = {}
+        self._periodic_shares: dict[str, dict[str, linopy.LinearExpression]] = {}
         # Constant (xr.DataArray) contributions with 'contributor' + 'effect' dims
         self._temporal_constant_defs: list[xr.DataArray] = []
         self._periodic_constant_defs: list[xr.DataArray] = []
@@ -361,35 +361,76 @@ class EffectsModel:
         """Public access to the effect index for type models."""
         return self.data.effect_index
 
-    def add_temporal_contribution(self, defining_expr, contributor_dim: str = 'contributor') -> None:
+    def add_temporal_contribution(
+        self,
+        defining_expr,
+        contributor_dim: str = 'contributor',
+        effect: str | None = None,
+    ) -> None:
         """Register contributors for the share|temporal variable.
 
         Args:
-            defining_expr: Expression with a contributor dimension.
-                Accepts linopy LinearExpression/Variable or plain xr.DataArray (constants).
+            defining_expr: Expression with a contributor dimension (no effect dim if effect is given).
             contributor_dim: Name of the element dimension to rename to 'contributor'.
+            effect: If provided, the expression is for this specific effect (no effect dim needed).
         """
         if contributor_dim != 'contributor':
             defining_expr = defining_expr.rename({contributor_dim: 'contributor'})
         if isinstance(defining_expr, xr.DataArray):
+            if effect is not None:
+                defining_expr = defining_expr.expand_dims(effect=[effect])
+            elif 'effect' not in defining_expr.dims:
+                raise ValueError(
+                    "DataArray contribution must have an 'effect' dimension or an explicit effect= argument."
+                )
             self._temporal_constant_defs.append(defining_expr)
         else:
-            self._temporal_share_defs.append(defining_expr)
+            self._accumulate_shares(self._temporal_shares, self._as_expression(defining_expr), effect)
 
-    def add_periodic_contribution(self, defining_expr, contributor_dim: str = 'contributor') -> None:
+    def add_periodic_contribution(
+        self,
+        defining_expr,
+        contributor_dim: str = 'contributor',
+        effect: str | None = None,
+    ) -> None:
         """Register contributors for the share|periodic variable.
 
         Args:
-            defining_expr: Expression with a contributor dimension.
-                Accepts linopy LinearExpression/Variable or plain xr.DataArray (constants).
+            defining_expr: Expression with a contributor dimension (no effect dim if effect is given).
             contributor_dim: Name of the element dimension to rename to 'contributor'.
+            effect: If provided, the expression is for this specific effect (no effect dim needed).
         """
         if contributor_dim != 'contributor':
             defining_expr = defining_expr.rename({contributor_dim: 'contributor'})
         if isinstance(defining_expr, xr.DataArray):
+            if effect is not None:
+                defining_expr = defining_expr.expand_dims(effect=[effect])
+            elif 'effect' not in defining_expr.dims:
+                raise ValueError(
+                    "DataArray contribution must have an 'effect' dimension or an explicit effect= argument."
+                )
             self._periodic_constant_defs.append(defining_expr)
         else:
-            self._periodic_share_defs.append(defining_expr)
+            self._accumulate_shares(self._periodic_shares, self._as_expression(defining_expr), effect)
+
+    @staticmethod
+    def _accumulate_shares(
+        accum: dict[str, list],
+        expr: linopy.LinearExpression,
+        effect: str | None = None,
+    ) -> None:
+        """Append expression to per-effect list."""
+        # accum structure: {effect_id: [(expr, contributor_ids), ...]}
+        if effect is not None:
+            # Expression has no effect dim — tagged with specific effect
+            accum.setdefault(effect, []).append(expr)
+        elif 'effect' in expr.dims:
+            # Expression has effect dim — split per effect (DataArray sel is cheap)
+            for eid in expr.data.coords['effect'].values:
+                eid_str = str(eid)
+                accum.setdefault(eid_str, []).append(expr.sel(effect=eid, drop=True))
+        else:
+            raise ValueError('Expression must have effect dim or effect parameter must be given')
 
     def create_variables(self) -> None:
         """Create batched effect variables with 'effect' dimension."""
@@ -542,19 +583,19 @@ class EffectsModel:
         if (sm := self.model._storages_model) is not None:
             sm.add_effect_contributions(self)
 
-        # === Create share|temporal variable ===
-        if self._temporal_share_defs:
-            self.share_temporal = self._create_share_var(self._temporal_share_defs, 'share|temporal', temporal=True)
+        # === Create share|temporal variable (one combined with contributor × effect dims) ===
+        if self._temporal_shares:
+            self.share_temporal = self._create_share_var(self._temporal_shares, 'share|temporal', temporal=True)
             self._eq_per_timestep.lhs -= self.share_temporal.sum('contributor')
 
         # === Apply temporal constants directly ===
         for const in self._temporal_constant_defs:
             self._eq_per_timestep.lhs -= const.sum('contributor').reindex({'effect': self.data.effect_index})
 
-        # === Create share|periodic variable ===
-        if self._periodic_share_defs:
-            self.share_periodic = self._create_share_var(self._periodic_share_defs, 'share|periodic', temporal=False)
-            self._eq_periodic.lhs -= self.share_periodic.sum('contributor').reindex({'effect': self.data.effect_index})
+        # === Create share|periodic variable (one combined with contributor × effect dims) ===
+        if self._periodic_shares:
+            self.share_periodic = self._create_share_var(self._periodic_shares, 'share|periodic', temporal=False)
+            self._eq_periodic.lhs -= self.share_periodic.sum('contributor')
 
         # === Apply periodic constants directly ===
         for const in self._periodic_constant_defs:
@@ -573,39 +614,67 @@ class EffectsModel:
 
     def _create_share_var(
         self,
-        share_defs: list[linopy.LinearExpression],
+        accum: dict[str, list[linopy.LinearExpression]],
         name: str,
         temporal: bool,
     ) -> linopy.Variable:
-        """Create a share variable from registered contributor definitions.
+        """Create one share variable with (contributor, effect, ...) dims.
 
-        Aligns all contributor expressions (outer join on contributor dimension),
-        then sums them to produce a single expression with the full contributor dimension.
+        accum structure: {effect_id: [expr1, expr2, ...]} where each expr has
+        (contributor, ...other_dims) dims — no effect dim.
+
+        Constraints are added per-effect: var.sel(effect=eid) == merged_for_eid,
+        which avoids cross-effect alignment.
+
+        Returns:
+            linopy.Variable with dims (contributor, effect, time/period).
         """
         import pandas as pd
 
-        # Ensure all share defs have canonical effect order before alignment.
-        # linopy merge uses join="override" when shapes match, which aligns by
-        # position not label — mismatched effect order silently shuffles coefficients.
+        if not accum:
+            return None
+
+        # Collect all contributor IDs across all effects
+        all_contributor_ids: set[str] = set()
+        for expr_list in accum.values():
+            for expr in expr_list:
+                all_contributor_ids.update(str(c) for c in expr.data.coords['contributor'].values)
+
+        contributor_index = pd.Index(sorted(all_contributor_ids), name='contributor')
         effect_index = self.data.effect_index
-        normalized = []
-        for expr in share_defs:
-            if 'effect' in expr.dims:
-                expr_effects = list(expr.data.coords['effect'].values)
-                if expr_effects != list(effect_index):
-                    expr = linopy.LinearExpression(expr.data.reindex(effect=effect_index), expr.model)
-            normalized.append(expr)
-
-        aligned = linopy.align(*normalized, join='outer', fill_value=0)
-        combined_expr = sum(aligned[1:], start=aligned[0])
-
-        # Extract contributor IDs from the combined expression
-        all_ids = [str(cid) for cid in combined_expr.data.coords['contributor'].values]
-        contributor_index = pd.Index(all_ids, name='contributor')
         coords = self._share_coords('contributor', contributor_index, temporal=temporal)
-        var = self.model.add_variables(lower=-np.inf, upper=np.inf, coords=coords, name=name)
 
-        self.model.add_constraints(var == combined_expr, name=name)
+        # Build mask: only create variables for (effect, contributor) combos that have expressions
+        mask = xr.DataArray(
+            np.zeros((len(contributor_index), len(effect_index)), dtype=bool),
+            dims=['contributor', 'effect'],
+            coords={'contributor': contributor_index, 'effect': effect_index},
+        )
+        covered_map: dict[str, list[str]] = {}
+        for eid, expr_list in accum.items():
+            cids = set()
+            for expr in expr_list:
+                cids.update(str(c) for c in expr.data.coords['contributor'].values)
+            covered_map[eid] = sorted(cids)
+            mask.loc[dict(effect=eid, contributor=covered_map[eid])] = True
+
+        var = self.model.add_variables(lower=-np.inf, upper=np.inf, coords=coords, name=name, mask=mask)
+
+        # Add per-effect constraints (only for covered combos)
+        for eid, expr_list in accum.items():
+            contributors = covered_map[eid]
+            if len(expr_list) == 1:
+                merged = expr_list[0].reindex(contributor=contributors)
+            else:
+                # Reindex all to common contributor set, then sum via linopy.merge (_term addition)
+                aligned = [e.reindex(contributor=contributors) for e in expr_list]
+                merged = aligned[0]
+                for a in aligned[1:]:
+                    merged = merged + a
+            var_slice = var.sel(effect=eid, contributor=contributors)
+            self.model.add_constraints(var_slice == merged, name=f'{name}({eid})')
+
+        accum.clear()
         return var
 
     def get_periodic(self, effect_id: str) -> linopy.Variable:

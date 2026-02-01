@@ -24,6 +24,9 @@ if TYPE_CHECKING:
 # =============================================================================
 
 
+Numeric = int | float | xr.DataArray
+
+
 def sparse_weighted_sum(var, coeffs: xr.DataArray, sum_dim: str, group_dim: str):
     """Compute (var * coeffs).sum(sum_dim) efficiently using sparse groupby.
 
@@ -97,6 +100,63 @@ def sparse_weighted_sum(var, coeffs: xr.DataArray, sum_dim: str, group_dim: str)
     result = result.sel({group_dim: group_ids})
 
     # Vectorized sel() leaves sum_dim as a non-dim coord — drop it
+    return result.drop_vars(sum_dim, errors='ignore')
+
+
+def sparse_multiply_sum(
+    var,
+    coefficients: dict[tuple[str, str], Numeric],
+    sum_dim: str,
+    group_dim: str,
+):
+    """Compute weighted sum of var over sum_dim, grouped by group_dim, from sparse coefficients.
+
+    Unlike sparse_weighted_sum (which takes a dense DataArray and finds nonzeros),
+    this function takes an already-sparse dict of coefficients, avoiding the need
+    to ever allocate a dense array.
+
+    Args:
+        var: linopy Variable with sum_dim as a dimension.
+        coefficients: dict mapping (group_id, sum_id) to scalar or DataArray coefficient.
+            Only non-zero entries should be included.
+        sum_dim: Dimension of var to select from and sum over (e.g. 'flow').
+        group_dim: Output dimension name (e.g. 'converter').
+
+    Returns:
+        linopy expression with sum_dim removed, group_dim present.
+    """
+    if not coefficients:
+        raise ValueError('coefficients dict is empty')
+
+    # Unzip the sparse dict into parallel lists
+    group_ids_seen: dict[str, None] = {}
+    pair_group_ids: list[str] = []
+    pair_sum_ids: list[str] = []
+    pair_coeffs_list: list[Numeric] = []
+
+    for (gid, sid), coeff in coefficients.items():
+        group_ids_seen[gid] = None
+        pair_group_ids.append(gid)
+        pair_sum_ids.append(sid)
+        pair_coeffs_list.append(coeff)
+
+    group_ids = list(group_ids_seen)
+
+    # Stack mixed scalar/DataArray coefficients into a single DataArray
+    pair_coords = list(range(len(pair_group_ids)))
+    pair_coeffs = stack_along_dim(pair_coeffs_list, dim='pair', coords=pair_coords)
+
+    # Select var for active pairs, multiply by coefficients, group-sum
+    selected = var.sel({sum_dim: xr.DataArray(pair_sum_ids, dims=['pair'])})
+    weighted = selected * pair_coeffs
+
+    mapping = xr.DataArray(pair_group_ids, dims=['pair'], name=group_dim)
+    result = weighted.groupby(mapping).sum()
+
+    # Reindex to original group order (groupby sorts alphabetically)
+    result = result.sel({group_dim: group_ids})
+
+    # Drop sum_dim coord left by vectorized sel
     return result.drop_vars(sum_dim, errors='ignore')
 
 

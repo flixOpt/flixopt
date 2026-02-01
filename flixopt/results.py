@@ -797,7 +797,6 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         share_var_name = f'share|{mode}'
         if share_var_name in self.solution:
             share_var = self.solution[share_var_name]
-            # Find the contributor dimension
             contributor_dim = None
             for dim in ['contributor', 'flow', 'storage', 'component', 'source']:
                 if dim in share_var.dims:
