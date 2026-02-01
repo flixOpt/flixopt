@@ -633,14 +633,25 @@ class EffectsModel:
                 all_contributor_ids.update(str(c) for c in expr.data.coords['contributor'].values)
 
         contributor_index = pd.Index(sorted(all_contributor_ids), name='contributor')
-        effect_index = self.data.effect_index
         coords = self._share_coords('contributor', contributor_index, temporal=temporal)
-        var = self.model.add_variables(lower=-np.inf, upper=np.inf, coords=coords, name=name)
 
-        # Track which (effect, contributor) combos are constrained
-        constrained: dict[str, set[str]] = {}
+        # Start with bounds fixed at 0; widen to -inf/+inf for covered (effect, contributor) combos
+        lower = xr.DataArray(0.0, coords=coords)
+        upper = xr.DataArray(0.0, coords=coords)
 
-        # Add per-effect constraints
+        # Pre-scan to find covered combos and widen bounds
+        covered_map: dict[str, list[str]] = {}
+        for eid, expr_list in accum.items():
+            cids = set()
+            for expr in expr_list:
+                cids.update(str(c) for c in expr.data.coords['contributor'].values)
+            covered_map[eid] = sorted(cids)
+            lower.loc[dict(effect=eid, contributor=covered_map[eid])] = -np.inf
+            upper.loc[dict(effect=eid, contributor=covered_map[eid])] = np.inf
+
+        var = self.model.add_variables(lower=lower, upper=upper, coords=coords, name=name)
+
+        # Add per-effect constraints (only for covered combos)
         for eid, expr_list in accum.items():
             # Sum expressions that share the same contributors (e.g. rate + status + startup)
             combined: dict[str, linopy.LinearExpression] = {}
@@ -656,21 +667,8 @@ class EffectsModel:
             # Merge per-contributor expressions along 'contributor'
             merged = linopy.merge(list(combined.values()), dim='contributor')
             # Constrain: var.sel(effect=eid, contributor=contributors) == merged
-            var_slice = var.sel(effect=eid, contributor=list(combined.keys()))
+            var_slice = var.sel(effect=eid, contributor=covered_map[eid])
             self.model.add_constraints(var_slice == merged, name=f'{name}({eid})')
-            constrained[eid] = set(combined.keys())
-
-        # Constrain uncovered (effect, contributor) combos to 0 to avoid unbounded vars
-        all_effects = [str(e) for e in effect_index]
-        all_contributors = [str(c) for c in contributor_index]
-        for eid in all_effects:
-            covered = constrained.get(eid, set())
-            uncovered = [c for c in all_contributors if c not in covered]
-            if uncovered:
-                self.model.add_constraints(
-                    var.sel(effect=eid, contributor=uncovered) == 0,
-                    name=f'{name}({eid})|zero',
-                )
 
         accum.clear()
         return var
