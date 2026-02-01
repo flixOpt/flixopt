@@ -578,7 +578,8 @@ class StatisticsAccessor:
         """Flow sizes as a Dataset with flow labels as variable names."""
         self._require_solution()
         if self._flow_sizes is None:
-            self._flow_sizes = self._fs.solution[FlowVarName.SIZE].to_dataset('flow')
+            ds = self._fs.solution[FlowVarName.SIZE].to_dataset('flow')
+            self._flow_sizes = ds[[v for v in ds.data_vars if not ds[v].isnull().all()]]
         return self._flow_sizes
 
     @property
@@ -586,7 +587,8 @@ class StatisticsAccessor:
         """Storage capacity sizes as a Dataset with storage labels as variable names."""
         self._require_solution()
         if self._storage_sizes is None:
-            self._storage_sizes = self._fs.solution[StorageVarName.SIZE].to_dataset('storage')
+            ds = self._fs.solution[StorageVarName.SIZE].to_dataset('storage')
+            self._storage_sizes = ds[[v for v in ds.data_vars if not ds[v].isnull().all()]]
         return self._storage_sizes
 
     @property
@@ -869,7 +871,7 @@ class StatisticsAccessor:
                             continue
                         if contributor not in share_da.coords['contributor'].values:
                             continue
-                        da = share_da.sel(effect=source_effect, contributor=contributor, drop=True) * factor
+                        da = share_da.sel(effect=source_effect, contributor=contributor, drop=True).fillna(0) * factor
                         # For total mode, sum temporal over time (apply cluster_weight for proper weighting)
                         if mode == 'total' and current_mode == 'temporal' and 'time' in da.dims:
                             weighted = da * self._fs.weights.get('cluster', 1.0)
