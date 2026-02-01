@@ -469,11 +469,8 @@ class _Expander:
 
     @staticmethod
     def _get_mode(var_name: str) -> ExpansionMode:
-        """Look up expansion mode for a variable name via suffix matching."""
-        for suffix, mode in NAME_TO_EXPANSION.items():
-            if var_name == suffix or var_name.endswith(suffix) or var_name.startswith(suffix):
-                return mode
-        return ExpansionMode.REPEAT
+        """Look up expansion mode for a variable name."""
+        return NAME_TO_EXPANSION.get(var_name, ExpansionMode.REPEAT)
 
     def _append_final_state(self, expanded: xr.DataArray, da: xr.DataArray) -> xr.DataArray:
         """Append final state value from original data to expanded data."""
