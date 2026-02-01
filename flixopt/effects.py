@@ -619,13 +619,12 @@ class EffectsModel:
         accum structure: {effect_id: [expr1, expr2, ...]} where each expr has
         (contributor, ...other_dims) dims — no effect dim.
 
-        Builds combined constraint arrays with numpy to avoid expensive linopy.merge.
+        Within a single effect, all expressions share the same non-helper dims,
+        so linopy.merge along 'contributor' is cheap (no cross-dim alignment).
 
         Returns:
             dict mapping effect_id -> linopy.Variable with dims (contributor, time/period).
         """
-        from collections import defaultdict
-
         import pandas as pd
 
         if not accum:
@@ -634,93 +633,28 @@ class EffectsModel:
         result: dict[str, linopy.Variable] = {}
 
         for eid, expr_list in accum.items():
-            # Determine canonical dim order from variable coords
+            # Sum expressions that share the same contributors (e.g. rate + status + startup)
+            combined: dict[str, linopy.LinearExpression] = {}
+            for expr in expr_list:
+                for cid in expr.data.coords['contributor'].values:
+                    cid_str = str(cid)
+                    single = expr.sel(contributor=[cid])
+                    if cid_str in combined:
+                        combined[cid_str] = linopy.merge([combined[cid_str], single])
+                    else:
+                        combined[cid_str] = single
+
+            contributor_ids = list(combined.keys())
+            contributor_index = pd.Index(contributor_ids, name='contributor')
             base_dims = None if temporal else ['period', 'scenario']
             model_coords = self.model.get_coords(base_dims) or {}
-
-            # Phase 1: Extract per-contributor term slices using xarray (handles dim order)
-            # contributor_id -> list of (coeffs_np, vars_np, const_np) in canonical order
-            contrib_terms: dict[str, list[tuple]] = defaultdict(list)
-
-            # Canonical other_dim order: from model coords (excludes contributor)
-            canonical_dims = list(model_coords.keys())
-
-            for expr in expr_list:
-                ds = expr.data
-                for cid in ds.coords['contributor'].values:
-                    cid_str = str(cid)
-                    # sel contributor, then transpose to canonical order
-                    c_da = ds['coeffs'].sel(contributor=cid)
-                    v_da = ds['vars'].sel(contributor=cid)
-                    k_da = ds['const'].sel(contributor=cid)
-                    # Transpose to canonical: (...canonical_dims, _term) for c/v, (...canonical_dims) for k
-                    c_order = [d for d in canonical_dims if d in c_da.dims] + ['_term']
-                    k_order = [d for d in canonical_dims if d in k_da.dims]
-                    contrib_terms[cid_str].append(
-                        (
-                            c_da.transpose(*c_order).values,
-                            v_da.transpose(*c_order).values,
-                            k_da.transpose(*k_order).values if k_order else k_da.values,
-                        )
-                    )
-
-            # Phase 2: Build combined numpy arrays
-            contributor_ids = list(contrib_terms.keys())
-            contributor_index = pd.Index(contributor_ids, name='contributor')
             coords = xr.Coordinates({'contributor': contributor_index, **{k: v for k, v in model_coords.items()}})
             var_name = f'{name}({eid})'
             var = self.model.add_variables(lower=-np.inf, upper=np.inf, coords=coords, name=var_name)
 
-            # Compute max total _term across contributors
-            max_nterm = 0
-            for terms in contrib_terms.values():
-                total = sum(t[0].shape[-1] for t in terms)
-                if total > max_nterm:
-                    max_nterm = total
-
-            total_terms = 1 + max_nterm
-
-            # other_shape from canonical dims
-            sample_const = next(iter(contrib_terms.values()))[0][2]
-            other_shape = sample_const.shape
-
-            n_contrib = len(contributor_ids)
-            all_coeffs = np.zeros((n_contrib, *other_shape, total_terms))
-            all_vars = np.full((n_contrib, *other_shape, total_terms), -1, dtype=np.int64)
-            all_const = np.zeros((n_contrib, *other_shape))
-
-            var_data = var.data
-            for i, cid in enumerate(contributor_ids):
-                var_label_da = var_data['labels'].sel(contributor=cid)
-                var_label = var_label_da.transpose(*canonical_dims).values
-                all_coeffs[i, ..., 0] = 1.0
-                all_vars[i, ..., 0] = var_label
-
-                offset = 1
-                for c_slice, v_slice, k_slice in contrib_terms[cid]:
-                    nt = c_slice.shape[-1]
-                    all_coeffs[i, ..., offset : offset + nt] = -c_slice
-                    all_vars[i, ..., offset : offset + nt] = v_slice
-                    all_const[i, ...] -= k_slice
-                    offset += nt
-
-            all_dims = ['contributor'] + canonical_dims + ['_term']
-            const_dims = ['contributor'] + canonical_dims
-
-            other_coords = {d: model_coords[d] for d in canonical_dims}
-            ds_coords = {'contributor': contributor_ids, **other_coords}
-
-            con_ds = xr.Dataset(
-                {
-                    'coeffs': (all_dims, all_coeffs),
-                    'vars': (all_dims, all_vars),
-                    'const': (const_dims, all_const),
-                },
-                coords=ds_coords,
-            )
-
-            lhs = linopy.LinearExpression(con_ds, self.model)
-            self.model.add_constraints(lhs == 0, name=var_name)
+            # Merge all per-contributor expressions along 'contributor'
+            merged = linopy.merge(list(combined.values()), dim='contributor')
+            self.model.add_constraints(var == merged, name=var_name)
 
             result[eid] = var
 
