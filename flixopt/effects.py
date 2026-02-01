@@ -654,21 +654,16 @@ class EffectsModel:
 
         # Add per-effect constraints (only for covered combos)
         for eid, expr_list in accum.items():
-            # Sum expressions that share the same contributors (e.g. rate + status + startup)
-            combined: dict[str, linopy.LinearExpression] = {}
-            for expr in expr_list:
-                for cid in expr.data.coords['contributor'].values:
-                    cid_str = str(cid)
-                    single = expr.sel(contributor=[cid])
-                    if cid_str in combined:
-                        combined[cid_str] = linopy.merge([combined[cid_str], single])
-                    else:
-                        combined[cid_str] = single
-
-            # Merge per-contributor expressions along 'contributor'
-            merged = linopy.merge(list(combined.values()), dim='contributor')
-            # Constrain: var.sel(effect=eid, contributor=contributors) == merged
-            var_slice = var.sel(effect=eid, contributor=covered_map[eid])
+            contributors = covered_map[eid]
+            if len(expr_list) == 1:
+                merged = expr_list[0].reindex(contributor=contributors)
+            else:
+                # Reindex all to common contributor set, then sum via linopy.merge (_term addition)
+                aligned = [e.reindex(contributor=contributors) for e in expr_list]
+                merged = aligned[0]
+                for a in aligned[1:]:
+                    merged = merged + a
+            var_slice = var.sel(effect=eid, contributor=contributors)
             self.model.add_constraints(var_slice == merged, name=f'{name}({eid})')
 
         accum.clear()
