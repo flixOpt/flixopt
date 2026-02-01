@@ -1515,9 +1515,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                         f'Bus {flow.bus} not found in the FlowSystem, but used by "{flow.label_full}". '
                         f'Please add it first.'
                     )
-                if flow.is_input_in_component and flow not in bus.outputs:
+                if flow.is_input_in_component and flow.label_full not in bus.outputs:
                     bus.outputs.add(flow)
-                elif not flow.is_input_in_component and flow not in bus.inputs:
+                elif not flow.is_input_in_component and flow.label_full not in bus.inputs:
                     bus.inputs.add(flow)
 
         # Count flows manually to avoid triggering cache rebuild
