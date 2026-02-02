@@ -160,9 +160,19 @@ def sweep(
     """
     global _results_dir  # noqa: PLW0603
 
+    # Import compare eagerly — after restoring the original branch the module
+    # may have been reloaded from disk; grabbing the functions now is safer.
+    from benchmarks.compare import load_results, sweep_plot  # noqa: F811
+
     original_ref = _git('rev-parse', '--abbrev-ref', 'HEAD')
     if original_ref == 'HEAD':
         original_ref = _git('rev-parse', 'HEAD')
+
+    # Stash any uncommitted changes so git checkout doesn't fail
+    stash_result = _git('stash', 'push', '-m', 'flixopt-bench-sweep', '--include-untracked')
+    did_stash = 'No local changes' not in stash_result
+    if did_stash:
+        print('Stashed uncommitted changes')
 
     shas = resolve_revisions(rev_range)
     if not shas:
@@ -180,6 +190,7 @@ def sweep(
     print(f'Results directory: {_results_dir}')
 
     all_result_files: list[Path] = []
+    last_was_injected = False
 
     with tempfile.TemporaryDirectory(prefix='flixopt_bench_') as tmpdir:
         # Snapshot the benchmark framework
@@ -195,20 +206,24 @@ def sweep(
                 print(f'[{i + 1}/{len(shas)}] {short} {subject}')
                 print('=' * 60)
 
+                # Only remove benchmarks/ before checkout if we injected it last iteration
+                repo_benchmarks = repo_root / 'benchmarks'
+                if last_was_injected and repo_benchmarks.exists():
+                    shutil.rmtree(repo_benchmarks)
+
                 _git('checkout', sha)
 
-                # Only inject benchmarks/ if the checked-out commit doesn't have it
+                # Inject benchmarks/ only if the checked-out commit doesn't have it
                 repo_benchmarks = repo_root / 'benchmarks'
-                injected = False
-                if not (repo_benchmarks / 'run.py').exists():
+                last_was_injected = not (repo_benchmarks / 'run.py').exists()
+                if last_was_injected:
                     if repo_benchmarks.exists():
                         shutil.rmtree(repo_benchmarks)
                     shutil.copytree(bench_copy, repo_benchmarks)
-                    injected = True
                     print('  (injected benchmark framework)')
 
                 subprocess.run(
-                    [sys.executable, '-m', 'pip', 'install', '-e', '.', '--quiet'],
+                    ['uv', 'pip', 'install', '-e', '.', '--quiet'],
                     check=True,
                 )
 
@@ -231,15 +246,19 @@ def sweep(
                         json.dump(r, f, indent=2)
                     all_result_files.append(out_path)
 
-                # Clean up injected framework so git checkout doesn't conflict
-                if injected and repo_benchmarks.exists():
-                    shutil.rmtree(repo_benchmarks)
-
         finally:
+            # Only remove benchmarks/ if the last commit had it injected
+            repo_benchmarks = repo_root / 'benchmarks'
+            if last_was_injected and repo_benchmarks.exists():
+                shutil.rmtree(repo_benchmarks)
+
             print(f'\nRestoring {original_ref}...')
             _git('checkout', original_ref)
+            if did_stash:
+                _git('stash', 'pop')
+                print('Restored stashed changes')
             subprocess.run(
-                [sys.executable, '-m', 'pip', 'install', '-e', '.', '--quiet'],
+                ['uv', 'pip', 'install', '-e', '.', '--quiet'],
                 check=True,
             )
             _results_dir = None
@@ -252,6 +271,11 @@ def sweep(
     final_files = [DEFAULT_RESULTS_DIR / f.name for f in all_result_files]
     print(f'\nSweep complete. {len(final_files)} result files in {DEFAULT_RESULTS_DIR}/')
     print(f'Persistent copy in {SWEEP_RESULTS_DIR}/')
+
+    # Auto-generate sweep plot
+    grouped = load_results([str(p) for p in final_files])
+    sweep_plot(grouped)
+
     return final_files
 
 
@@ -290,7 +314,7 @@ def main() -> None:
         return
 
     if args.sweep:
-        result_files = sweep(
+        sweep(
             args.sweep,
             args.iterations,
             model_names=args.model,
@@ -298,11 +322,6 @@ def main() -> None:
             sizes=args.sizes,
             quick=args.quick,
         )
-        # Auto-generate sweep plot
-        from benchmarks.compare import load_results, sweep_plot
-
-        grouped = load_results([str(p) for p in result_files])
-        sweep_plot(grouped)
         return
 
     if args.all or args.model or args.phase:
