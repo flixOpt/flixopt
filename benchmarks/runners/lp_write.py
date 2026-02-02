@@ -25,14 +25,14 @@ def run(model_module: ModuleType, size: int, iterations: int = DEFAULT_ITERATION
         lp_path = Path(tmpdir) / 'model.lp'
 
         # Warmup
-        fs.model.to_file(lp_path)
+        fs.model.to_file(lp_path, progress=False)
 
         times = []
         for _ in range(iterations):
             gc.collect()
             gc.disable()
             t0 = time.perf_counter()
-            fs.model.to_file(lp_path)
+            fs.model.to_file(lp_path, progress=False)
             elapsed = time.perf_counter() - t0
             gc.enable()
             times.append(elapsed)
