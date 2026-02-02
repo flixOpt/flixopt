@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below and consider citing the related publication."
 type: software
 title: "flixopt"
-version: 6.0.0rc16
-date-released: 2026-01-28
+version: 6.0.0rc17
+date-released: 2026-02-02
 url: "https://github.com/flixOpt/flixopt"
 repository-code: "https://github.com/flixOpt/flixopt"
 license: MIT
