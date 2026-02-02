@@ -50,7 +50,11 @@ def run_single(
         print(f'  size={size} ...', end=' ', flush=True)
         result = runner_mod.run(model_mod, size, iterations)
         results_by_size[size] = result
-        print(f'{result["median"] * 1000:.1f}ms')
+        unit = result.get('unit')
+        if unit:
+            print(f'{result["median"]:.1f} {unit}')
+        else:
+            print(f'{result["median"] * 1000:.1f}ms')
 
     output = {
         'name': name,
