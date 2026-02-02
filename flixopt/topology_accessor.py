@@ -267,12 +267,38 @@ class TopologyAccessor:
             - unit: Unit string from carrier
             - is_input: Whether the flow is an input to its component
 
-        Useful for filtering and groupby operations on flow data:
+        Useful for filtering and groupby operations on flow data.
 
         Examples:
+            Filter flow_rates by carrier:
+
             >>> topo = flow_system.topology
             >>> heat_flows = topo.flows.sel(flow=(topo.flows.carrier == 'heat')).flow.values
             >>> flow_system.stats.flow_rates.sel(flow=heat_flows)
+
+            Filter by component:
+
+            >>> boiler_flows = topo.flows.sel(flow=(topo.flows.component == 'Boiler')).flow.values
+            >>> flow_system.stats.flow_rates.sel(flow=boiler_flows)
+
+            Filter by bus:
+
+            >>> bus_flows = topo.flows.sel(flow=(topo.flows.bus == 'HeatBus')).flow.values
+
+            Get only input flows (into components):
+
+            >>> inputs = topo.flows.sel(flow=topo.flows.is_input).flow.values
+
+            Combine filters (heat carrier inputs only):
+
+            >>> mask = (topo.flows.carrier == 'heat') & topo.flows.is_input
+            >>> topo.flows.sel(flow=mask).flow.values
+
+            GroupBy component (assign coord from topology, then group):
+
+            >>> rates = flow_system.stats.flow_rates
+            >>> rates = rates.assign_coords(component=topo.flows.component.sel(flow=rates.flow))
+            >>> rates.groupby('component').sum()
         """
         flow_labels = []
         components = []
