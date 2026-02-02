@@ -144,15 +144,11 @@ class TopologyAccessor:
         """
         self._fs = flow_system
 
-        # Cached color mappings (lazily initialized)
+        # Cached color mappings (lazily initialized, invalidated by set_*_color methods)
         self._carrier_colors: dict[str, str] | None = None
         self._component_colors: dict[str, str] | None = None
         self._flow_colors: dict[str, str] | None = None
         self._bus_colors: dict[str, str] | None = None
-
-        # Cached unit mappings (lazily initialized)
-        self._carrier_units: dict[str, str] | None = None
-        self._effect_units: dict[str, str] | None = None
 
     @property
     def carrier_colors(self) -> dict[str, str]:
@@ -232,9 +228,9 @@ class TopologyAccessor:
                         self._bus_colors[label] = color
         return self._bus_colors
 
-    @property
+    @cached_property
     def carrier_units(self) -> dict[str, str]:
-        """Cached mapping of carrier name to unit string.
+        """Mapping of carrier name to unit string.
 
         Returns:
             Dict mapping carrier names (lowercase) to unit strings.
@@ -244,13 +240,11 @@ class TopologyAccessor:
             >>> fs.topology.carrier_units
             {'electricity': 'kW', 'heat': 'kW', 'gas': 'kW'}
         """
-        if self._carrier_units is None:
-            self._carrier_units = {name: carrier.unit or '' for name, carrier in self._fs.carriers.items()}
-        return self._carrier_units
+        return {name: carrier.unit or '' for name, carrier in self._fs.carriers.items()}
 
-    @property
+    @cached_property
     def effect_units(self) -> dict[str, str]:
-        """Cached mapping of effect label to unit string.
+        """Mapping of effect label to unit string.
 
         Returns:
             Dict mapping effect labels to unit strings.
@@ -260,9 +254,7 @@ class TopologyAccessor:
             >>> fs.topology.effect_units
             {'costs': '€', 'CO2': 'kg'}
         """
-        if self._effect_units is None:
-            self._effect_units = {effect.label: effect.unit or '' for effect in self._fs.effects.values()}
-        return self._effect_units
+        return {effect.label: effect.unit or '' for effect in self._fs.effects.values()}
 
     @cached_property
     def flows(self) -> xr.DataArray:
