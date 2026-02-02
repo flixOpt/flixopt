@@ -57,9 +57,6 @@ jobs:
       - name: Install dependencies
         run: uv pip install --system ".[docs,full]"
 
-      - name: Install tsam v3 (not yet on PyPI)
-        run: uv pip install --system "tsam @ git+https://github.com/FBumann/tsam.git@71177ec3fa1b16fcecdd039ca18ceddcdfa2064a"
-
       - name: Get notebook cache key
         id: notebook-cache-key
         run: |
@@ -123,9 +120,6 @@ jobs:
 
       - name: Install dependencies
         run: uv pip install --system ".[docs,full]"
-
-      - name: Install tsam v3 (not yet on PyPI)
-        run: uv pip install --system "tsam @ git+https://github.com/FBumann/tsam.git@71177ec3fa1b16fcecdd039ca18ceddcdfa2064a"
 
       - name: Get notebook cache key
         id: notebook-cache-key
