@@ -14,3 +14,4 @@ temp-plot.html
 site/
 *.egg-info
 uv.lock
+benchmarks/results/

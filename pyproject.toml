@@ -193,6 +193,7 @@ markers = [
     "examples: marks example tests (run only on releases)",
     "deprecated_api: marks tests using deprecated Optimization/Results API (remove in v6.0.0)",
 ]
+norecursedirs = ["benchmarks"]
 addopts = '-m "not examples"'  # Skip examples by default
 
 # Warning filter configuration for pytest
