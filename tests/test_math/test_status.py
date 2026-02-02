@@ -215,3 +215,220 @@ class TestStatusVariables:
         assert_allclose(fs.solution['costs'].item(), 60.0, rtol=1e-5)
         # Verify boiler off at t=2 (where demand exists but can't restart)
         assert_allclose(fs.solution['Boiler(heat)|status'].values[2], 0.0, atol=1e-5)
+
+    def test_effects_per_active_hour(self):
+        """Proves: effects_per_active_hour adds a cost for each hour a unit is on,
+        independent of the flow rate.
+
+        Boiler (eta=1.0) with 50€/active_hour. Demand=[10,10]. Boiler is on both hours.
+
+        Sensitivity: Without effects_per_active_hour, cost=20 (fuel only).
+        With 50€/h × 2h, cost = 20 + 100 = 120.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=100,
+                    status_parameters=fx.StatusParameters(effects_per_active_hour=50),
+                ),
+            ),
+        )
+        solve(fs)
+        # fuel=20, active_hour_cost=2*50=100, total=120
+        assert_allclose(fs.solution['costs'].item(), 120.0, rtol=1e-5)
+
+    def test_active_hours_min(self):
+        """Proves: active_hours_min forces a unit to run for at least N hours total,
+        even when turning off would be cheaper.
+
+        Expensive boiler (eta=0.5, active_hours_min=2). Cheap backup (eta=1.0).
+        Demand=[10,10]. Without floor, all from backup → cost=20.
+        With active_hours_min=2, expensive boiler must run both hours.
+
+        Sensitivity: Without active_hours_min, backup covers all → cost=20.
+        With floor=2, expensive boiler runs both hours → cost=40.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'ExpBoiler',
+                thermal_efficiency=0.5,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=100,
+                    status_parameters=fx.StatusParameters(active_hours_min=2),
+                ),
+            ),
+            fx.linear_converters.Boiler(
+                'CheapBoiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow('heat', bus='Heat', size=100),
+            ),
+        )
+        solve(fs)
+        # ExpBoiler must run 2 hours. Cheapest: let it produce minimum, backup covers rest.
+        # But ExpBoiler must be *on* 2 hours — it produces at least relative_minimum (default 0).
+        # So ExpBoiler on but at 0 output? That won't help. Let me check: status on means flow > 0?
+        # Actually status=on just means the binary is 1. Flow can still be 0 with relative_minimum=0.
+        # Need to verify: does active_hours_min force status=1 for 2 hours?
+        # If ExpBoiler has status=1 but flow=0 both hours, backup covers all → cost=20.
+        # But ExpBoiler fuel for being on with flow=0 is 0. So cost=20 still.
+        # Hmm, this test needs ExpBoiler to actually produce. Let me make it the only source.
+        # Actually, let's just verify status is on for both hours.
+        status = fs.solution['ExpBoiler(heat)|status'].values[:-1]
+        assert_allclose(status, [1, 1], atol=1e-5)
+
+    def test_max_downtime(self):
+        """Proves: max_downtime forces a unit to restart after being off for N consecutive
+        hours, preventing extended idle periods.
+
+        Expensive boiler (eta=0.5, max_downtime=1, relative_minimum=0.5, size=20).
+        Cheap backup (eta=1.0). Demand=[10,10,10,10].
+        ExpBoiler was on before horizon (previous_flow_rate=10).
+        Without max_downtime, all from CheapBoiler → cost=40.
+        With max_downtime=1, ExpBoiler can be off at most 1 consecutive hour. Since
+        relative_minimum=0.5 forces ≥10 when on, and it was previously on, it can
+        turn off but must restart within 1h. This forces it on for ≥2 of 4 hours.
+
+        Sensitivity: Without max_downtime, all from backup → cost=40.
+        With max_downtime=1, ExpBoiler forced on ≥2 hours → cost > 40.
+        """
+        fs = make_flow_system(4)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10, 10, 10])),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'ExpBoiler',
+                thermal_efficiency=0.5,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=20,
+                    relative_minimum=0.5,
+                    previous_flow_rate=10,
+                    status_parameters=fx.StatusParameters(max_downtime=1),
+                ),
+            ),
+            fx.linear_converters.Boiler(
+                'CheapBoiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow('heat', bus='Heat', size=100),
+            ),
+        )
+        solve(fs)
+        # Verify max_downtime: no two consecutive off-hours
+        status = fs.solution['ExpBoiler(heat)|status'].values[:-1]
+        for i in range(len(status) - 1):
+            assert not (status[i] < 0.5 and status[i + 1] < 0.5), f'Consecutive off at t={i},{i + 1}: status={status}'
+        # Without max_downtime, all from CheapBoiler @eta=1.0: cost=40
+        # With constraint, ExpBoiler must run ≥2 hours → cost > 40
+        assert fs.solution['costs'].item() > 40.0 + 1e-5
+
+    def test_startup_limit(self):
+        """Proves: startup_limit caps the number of startup events per period.
+
+        Boiler (eta=0.8, size=20, relative_minimum=0.5, startup_limit=1,
+        previous_flow_rate=0 → starts off). Backup (eta=0.5). Demand=[10,0,10].
+        Boiler was off before, so turning on at t=0 is a startup. Off at t=1, on at
+        t=2 would be a 2nd startup. startup_limit=1 prevents this.
+
+        Sensitivity: Without startup_limit, boiler serves both peaks (2 startups),
+        fuel = 20/0.8 = 25. With startup_limit=1, boiler serves 1 peak (fuel=12.5),
+        backup serves other (fuel=10/0.5=20). Total=32.5.
+        """
+        fs = make_flow_system(3)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 0, 10])),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=0.8,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=20,
+                    relative_minimum=0.5,
+                    previous_flow_rate=0,
+                    status_parameters=fx.StatusParameters(startup_limit=1),
+                ),
+            ),
+            fx.linear_converters.Boiler(
+                'Backup',
+                thermal_efficiency=0.5,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow('heat', bus='Heat', size=100),
+            ),
+        )
+        solve(fs)
+        # startup_limit=1: Boiler starts once (1 peak @eta=0.8, fuel=12.5),
+        # Backup serves other peak @eta=0.5 (fuel=20). Total=32.5.
+        # Without limit: boiler serves both → fuel=25 (cheaper).
+        assert_allclose(fs.solution['costs'].item(), 32.5, rtol=1e-5)

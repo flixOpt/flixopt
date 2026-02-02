@@ -157,3 +157,60 @@ class TestInvestment:
         assert_allclose(fs.solution['Boiler(heat)|size'].item(), 100.0, rtol=1e-5)
         # fuel=20, invest=100 → total=120
         assert_allclose(fs.solution['costs'].item(), 120.0, rtol=1e-5)
+
+    def test_invest_fixed_size(self):
+        """Proves: fixed_size creates a binary invest-or-not decision at exactly the
+        specified capacity — no continuous sizing.
+
+        FixedBoiler: fixed_size=80, invest_cost=10€, eta=1.0.
+        Backup: eta=0.5, no invest. Demand=[30,30], gas=1€/kWh.
+
+        Sensitivity: Without fixed_size (free continuous sizing), optimal size=30,
+        invest=10, fuel=60, total=70. With fixed_size=80, invest=10, fuel=60,
+        total=70 (same invest cost but size=80 not 30). The key assertion is that
+        invested size is exactly 80, not 30.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([30, 30])),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'FixedBoiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=fx.InvestParameters(
+                        fixed_size=80,
+                        effects_of_investment=10,
+                    ),
+                ),
+            ),
+            fx.linear_converters.Boiler(
+                'Backup',
+                thermal_efficiency=0.5,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow('heat', bus='Heat', size=100),
+            ),
+        )
+        solve(fs)
+        # FixedBoiler invested (10€ < savings from eta=1.0 vs 0.5)
+        # size must be exactly 80 (not optimized to 30)
+        assert_allclose(fs.solution['FixedBoiler(heat)|size'].item(), 80.0, rtol=1e-5)
+        assert_allclose(fs.solution['FixedBoiler(heat)|invested'].item(), 1.0, atol=1e-5)
+        # fuel=60 (all from FixedBoiler @eta=1), invest=10, total=70
+        assert_allclose(fs.solution['costs'].item(), 70.0, rtol=1e-5)

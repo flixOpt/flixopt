@@ -165,3 +165,133 @@ class TestStorage:
         # Can store max 50 at t=0 @1€ = 50€. Remaining 10 at t=1 @100€ = 1000€.
         # Total = 1050. Without SOC limit: 60@1€ = 60€ (different!)
         assert_allclose(fs.solution['costs'].item(), 1050.0, rtol=1e-5)
+
+    def test_storage_cyclic_charge_state(self):
+        """Proves: initial_charge_state='equals_final' forces the storage to end at the
+        same level it started, preventing free energy extraction.
+
+        Price=[1,100]. Demand=[0,50]. Without cyclic constraint, storage starts full
+        (initial=50) and discharges for free. With cyclic, must recharge what was used.
+
+        Sensitivity: Without cyclic, initial_charge_state=50 gives 50 free energy.
+        With cyclic, must buy 50 at some point to replenish → cost=50.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Elec'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([0, 50])),
+                ],
+            ),
+            fx.Source(
+                'Grid',
+                outputs=[
+                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([1, 100])),
+                ],
+            ),
+            fx.Storage(
+                'Battery',
+                charging=fx.Flow('charge', bus='Elec', size=200),
+                discharging=fx.Flow('discharge', bus='Elec', size=200),
+                capacity_in_flow_hours=100,
+                initial_charge_state='equals_final',
+                eta_charge=1,
+                eta_discharge=1,
+                relative_loss_per_hour=0,
+            ),
+        )
+        solve(fs)
+        # Charge 50 at t=0 @1€, discharge 50 at t=1. Final = initial (cyclic).
+        # cost = 50*1 = 50
+        assert_allclose(fs.solution['costs'].item(), 50.0, rtol=1e-5)
+
+    def test_storage_minimal_final_charge_state(self):
+        """Proves: minimal_final_charge_state forces the storage to retain at least the
+        specified absolute energy at the end, even when discharging would be profitable.
+
+        Storage capacity=100, initial=0, minimal_final=60. Price=[1,100].
+        Demand=[0,20]. Must charge ≥80 at t=0 (20 for demand + 60 for final).
+
+        Sensitivity: Without final constraint, charge only 20 → cost=20.
+        With minimal_final=60, charge 80 → cost=80.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Elec'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([0, 20])),
+                ],
+            ),
+            fx.Source(
+                'Grid',
+                outputs=[
+                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([1, 100])),
+                ],
+            ),
+            fx.Storage(
+                'Battery',
+                charging=fx.Flow('charge', bus='Elec', size=200),
+                discharging=fx.Flow('discharge', bus='Elec', size=200),
+                capacity_in_flow_hours=100,
+                initial_charge_state=0,
+                minimal_final_charge_state=60,
+                eta_charge=1,
+                eta_discharge=1,
+                relative_loss_per_hour=0,
+            ),
+        )
+        solve(fs)
+        # Charge 80 at t=0 @1€, discharge 20 at t=1. Final SOC=60. cost=80.
+        assert_allclose(fs.solution['costs'].item(), 80.0, rtol=1e-5)
+
+    def test_storage_invest_capacity(self):
+        """Proves: InvestParameters on capacity_in_flow_hours correctly sizes the storage.
+        The optimizer balances investment cost against operational savings.
+
+        invest_per_size=1€/kWh. Price=[1,10]. Demand=[0,50]. Storage saves 9€/kWh
+        shifted but costs 1€/kWh invested. Net saving=8€/kWh → invest all 50.
+
+        Sensitivity: If invest cost were 100€/kWh (>9 saving), no storage built → cost=500.
+        At 1€/kWh, storage built → cost=50*1 (buy) + 50*1 (invest) = 100.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Elec'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([0, 50])),
+                ],
+            ),
+            fx.Source(
+                'Grid',
+                outputs=[
+                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([1, 10])),
+                ],
+            ),
+            fx.Storage(
+                'Battery',
+                charging=fx.Flow('charge', bus='Elec', size=200),
+                discharging=fx.Flow('discharge', bus='Elec', size=200),
+                capacity_in_flow_hours=fx.InvestParameters(
+                    maximum_size=200,
+                    effects_of_investment_per_size=1,
+                ),
+                initial_charge_state=0,
+                eta_charge=1,
+                eta_discharge=1,
+                relative_loss_per_hour=0,
+            ),
+        )
+        solve(fs)
+        # Invest 50 kWh @1€/kWh = 50€. Buy 50 at t=0 @1€ = 50€. Total = 100€.
+        # Without storage: buy 50 at t=1 @10€ = 500€.
+        assert_allclose(fs.solution['Battery|size'].item(), 50.0, rtol=1e-5)
+        assert_allclose(fs.solution['costs'].item(), 100.0, rtol=1e-5)

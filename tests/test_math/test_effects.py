@@ -122,3 +122,127 @@ class TestEffects:
         # With CO2 max=15: 15 from Dirty (15€), 5 from Clean (50€) → total 65€
         assert_allclose(fs.solution['costs'].item(), 65.0, rtol=1e-5)
         assert_allclose(fs.solution['CO2'].item(), 15.0, rtol=1e-5)
+
+    def test_effect_minimum_total(self):
+        """Proves: minimum_total on an effect forces cumulative effect to reach at least
+        the specified value, even if it means using a dirtier source.
+
+        CO2 floor at 25kg. Dirty source: 1€+1kgCO2/kWh. Clean source: 1€+0kgCO2/kWh.
+        Demand=20. Without floor, optimizer splits freely (same cost). With floor,
+        must use ≥25 from Dirty.
+
+        Sensitivity: Without minimum_total, optimizer could use all Clean → CO2=0.
+        With minimum_total=25, forced to use ≥25 from Dirty → CO2≥25. Since demand=20,
+        must overproduce (imbalance) or use exactly 20 Dirty + need more CO2. Actually:
+        demand=20 total, but CO2 floor=25 means all 20 from Dirty gives only 20 CO2.
+        Not enough! Need imbalance to push CO2 to 25.
+        """
+        fs = make_flow_system(2)
+        co2 = fx.Effect('CO2', 'kg', minimum_total=25)
+        costs = fx.Effect('costs', '€', is_standard=True, is_objective=True)
+        fs.add_elements(
+            fx.Bus('Heat', imbalance_penalty_per_flow_hour=0),
+            costs,
+            co2,
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                ],
+            ),
+            fx.Source(
+                'Dirty',
+                outputs=[
+                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
+                ],
+            ),
+            fx.Source(
+                'Clean',
+                outputs=[
+                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 1, 'CO2': 0}),
+                ],
+            ),
+        )
+        solve(fs)
+        # Must produce ≥25 CO2. Only Dirty emits CO2 at 1kg/kWh → Dirty ≥ 25 kWh.
+        # Demand only 20, so 5 excess. cost = 25*1 (Dirty) = 25 (Clean may be 0 or negative is not possible)
+        # Actually cheapest: Dirty=25, Clean=0, excess=5 absorbed. cost=25
+        assert_allclose(fs.solution['CO2'].item(), 25.0, rtol=1e-5)
+        assert_allclose(fs.solution['costs'].item(), 25.0, rtol=1e-5)
+
+    def test_effect_maximum_per_hour(self):
+        """Proves: maximum_per_hour on an effect caps the per-timestep contribution,
+        forcing the optimizer to spread dirty production across timesteps.
+
+        CO2 max_per_hour=8. Dirty: 1€+1kgCO2/kWh. Clean: 5€+0kgCO2/kWh.
+        Demand=[15,5]. Without cap, Dirty covers all → CO2=[15,5], cost=20.
+        With cap=8/ts, Dirty limited to 8 per ts → Dirty=[8,5], Clean=[7,0].
+
+        Sensitivity: Without max_per_hour, all from Dirty → cost=20.
+        With cap, cost = (8+5)*1 + 7*5 = 48.
+        """
+        fs = make_flow_system(2)
+        co2 = fx.Effect('CO2', 'kg', maximum_per_hour=8)
+        costs = fx.Effect('costs', '€', is_standard=True, is_objective=True)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            costs,
+            co2,
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([15, 5])),
+                ],
+            ),
+            fx.Source(
+                'Dirty',
+                outputs=[
+                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
+                ],
+            ),
+            fx.Source(
+                'Clean',
+                outputs=[
+                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 5, 'CO2': 0}),
+                ],
+            ),
+        )
+        solve(fs)
+        # t=0: Dirty=8 (capped), Clean=7. t=1: Dirty=5, Clean=0.
+        # cost = (8+5)*1 + 7*5 = 13 + 35 = 48
+        assert_allclose(fs.solution['costs'].item(), 48.0, rtol=1e-5)
+
+    def test_effect_minimum_per_hour(self):
+        """Proves: minimum_per_hour on an effect forces a minimum per-timestep
+        contribution, even when zero would be cheaper.
+
+        CO2 min_per_hour=10. Dirty: 1€+1kgCO2/kWh. Demand=[5,5].
+        Without floor, Dirty=5 each ts → CO2=[5,5]. With floor, Dirty must
+        produce ≥10 each ts → excess absorbed by bus.
+
+        Sensitivity: Without min_per_hour, cost=10. With it, cost=20.
+        """
+        fs = make_flow_system(2)
+        co2 = fx.Effect('CO2', 'kg', minimum_per_hour=10)
+        costs = fx.Effect('costs', '€', is_standard=True, is_objective=True)
+        fs.add_elements(
+            fx.Bus('Heat', imbalance_penalty_per_flow_hour=0),
+            costs,
+            co2,
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([5, 5])),
+                ],
+            ),
+            fx.Source(
+                'Dirty',
+                outputs=[
+                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
+                ],
+            ),
+        )
+        solve(fs)
+        # Must emit ≥10 CO2 each ts → Dirty ≥ 10 each ts → cost = 20
+        assert_allclose(fs.solution['costs'].item(), 20.0, rtol=1e-5)
+        assert_allclose(fs.solution['CO2'].item(), 20.0, rtol=1e-5)
