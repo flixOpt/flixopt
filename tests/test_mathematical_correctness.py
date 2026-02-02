@@ -387,7 +387,13 @@ class TestInvestment:
         assert_allclose(fs.solution['costs'].item(), 140.0, rtol=1e-5)
 
     def test_invest_optional_not_built(self):
-        """Optional invest skipped when alternative is cheaper."""
+        """Optional invest skipped when investment cost outweighs fuel savings.
+
+        The invest boiler has better efficiency (1.0 vs 0.5) but high fixed
+        investment cost (99999). If the investment mechanism were broken and
+        allowed free investment, the optimizer would use the invest boiler
+        (fuel=20) instead of the cheap boiler (fuel=40), changing the objective.
+        """
         fs, _ = _make_fs(2)
         fs.add_elements(
             fx.Bus('Heat'),
@@ -405,9 +411,9 @@ class TestInvestment:
                     fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
                 ],
             ),
-            # Very expensive investment boiler
+            # High-efficiency boiler with prohibitive investment cost
             fx.linear_converters.Boiler(
-                'ExpensiveBoiler',
+                'InvestBoiler',
                 thermal_efficiency=1.0,
                 fuel_flow=fx.Flow('fuel', bus='Gas'),
                 thermal_flow=fx.Flow(
@@ -419,18 +425,19 @@ class TestInvestment:
                     ),
                 ),
             ),
-            # Cheap alternative always available
+            # Low-efficiency boiler always available (no invest needed)
             fx.linear_converters.Boiler(
                 'CheapBoiler',
-                thermal_efficiency=1.0,
+                thermal_efficiency=0.5,
                 fuel_flow=fx.Flow('fuel', bus='Gas'),
                 thermal_flow=fx.Flow('heat', bus='Heat', size=100),
             ),
         )
         _solve(fs)
-        assert_allclose(fs.solution['ExpensiveBoiler(heat)|invested'].item(), 0.0, atol=1e-5)
-        # All demand served by CheapBoiler: cost = 20
-        assert_allclose(fs.solution['costs'].item(), 20.0, rtol=1e-5)
+        assert_allclose(fs.solution['InvestBoiler(heat)|invested'].item(), 0.0, atol=1e-5)
+        # All demand served by CheapBoiler: fuel = 20/0.5 = 40
+        # If invest were free, InvestBoiler would run: fuel = 20/1.0 = 20 (different!)
+        assert_allclose(fs.solution['costs'].item(), 40.0, rtol=1e-5)
 
     def test_invest_minimum_size(self):
         """minimum_size forces oversized investment."""
@@ -579,8 +586,14 @@ class TestEffects:
 
 
 class TestBusBalance:
-    def test_bus_balance_exact(self):
-        """Sum of flows into bus = sum of flows out."""
+    def test_merit_order_dispatch(self):
+        """Cheap source is maxed out before expensive source is used.
+
+        With no imbalance allowed, the bus balance constraint forces
+        total supply = demand. The cost structure (1 vs 2 €/kWh) and
+        capacity limit (20) on Src1 uniquely determine the dispatch split.
+        If bus balance were broken, feasibility or cost would change.
+        """
         fs, _ = _make_fs(2)
         fs.add_elements(
             fx.Bus('Heat', imbalance_penalty_per_flow_hour=None),
@@ -605,13 +618,14 @@ class TestBusBalance:
             ),
         )
         _solve(fs)
-        # Src1 at max 20, Src2 covers remaining 10
-        # cost = 2*(20*1 + 10*2) = 2*40 = 80
+        # Src1 at max 20 @1€, Src2 covers remaining 10 @2€
+        # cost = 2*(20*1 + 10*2) = 80
         assert_allclose(fs.solution['costs'].item(), 80.0, rtol=1e-5)
-        # Verify balance: flow_in = flow_out for each timestep
+        # Verify individual flows to confirm dispatch split
         src1 = fs.solution['Src1(heat)|flow_rate'].values[:-1]
         src2 = fs.solution['Src2(heat)|flow_rate'].values[:-1]
-        assert_allclose(src1 + src2, [30, 30], rtol=1e-5)
+        assert_allclose(src1, [20, 20], rtol=1e-5)
+        assert_allclose(src2, [10, 10], rtol=1e-5)
 
     def test_imbalance_penalty(self):
         """Excess supply is penalized via imbalance_penalty_per_flow_hour."""
