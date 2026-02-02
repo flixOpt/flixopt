@@ -167,11 +167,11 @@ def test_expand_enables_statistics_accessor(solver_fixture, timesteps_8_days):
 
     # These should work without errors
     flow_rates = fs_expanded.statistics.flow_rates
-    assert 'Boiler(Q_th)' in flow_rates
-    assert len(flow_rates['Boiler(Q_th)'].coords['time']) == 193  # 192 + 1 extra timestep
+    assert 'Boiler(Q_th)' in flow_rates.coords['flow'].values
+    assert len(flow_rates.sel(flow='Boiler(Q_th)').coords['time']) == 193  # 192 + 1 extra timestep
 
     flow_hours = fs_expanded.statistics.flow_hours
-    assert 'Boiler(Q_th)' in flow_hours
+    assert 'Boiler(Q_th)' in flow_hours.coords['flow'].values
 
 
 def test_expand_statistics_match_clustered(solver_fixture, timesteps_8_days):
@@ -187,17 +187,17 @@ def test_expand_statistics_match_clustered(solver_fixture, timesteps_8_days):
     fs_expanded = fs_reduced.transform.expand()
 
     # Total effects should match between clustered and expanded
-    reduced_total = fs_reduced.statistics.total_effects['costs'].sum('contributor').item()
-    expanded_total = fs_expanded.statistics.total_effects['costs'].sum('contributor').item()
+    reduced_total = fs_reduced.statistics.total_effects.sel(effect='costs', drop=True).sum('contributor').item()
+    expanded_total = fs_expanded.statistics.total_effects.sel(effect='costs', drop=True).sum('contributor').item()
 
     assert_allclose(reduced_total, expanded_total, rtol=1e-6)
 
     # Flow hours should also match (need to sum over time with proper weighting)
     # With 2D cluster structure, sum over both cluster and time dimensions
-    reduced_fh = fs_reduced.statistics.flow_hours['Boiler(Q_th)'] * fs_reduced.cluster_weight
+    reduced_fh = fs_reduced.statistics.flow_hours.sel(flow='Boiler(Q_th)') * fs_reduced.cluster_weight
     reduced_flow_hours = reduced_fh.sum().item()  # Sum over all dimensions
     # Expanded FlowSystem has no cluster_weight (implicitly 1.0 for all timesteps)
-    expanded_flow_hours = fs_expanded.statistics.flow_hours['Boiler(Q_th)'].sum().item()
+    expanded_flow_hours = fs_expanded.statistics.flow_hours.sel(flow='Boiler(Q_th)').sum().item()
 
     assert_allclose(reduced_flow_hours, expanded_flow_hours, rtol=1e-6)
 
@@ -1325,7 +1325,7 @@ class TestSegmentation:
         fs_expanded = fs_clustered.transform.expand()
 
         # Validate: total_effects must match solution objective
-        computed = fs_expanded.statistics.total_effects['Cost'].sum('contributor')
+        computed = fs_expanded.statistics.total_effects.sel(effect='Cost', drop=True).sum('contributor')
         expected = fs_expanded.solution['effect|total'].sel(effect='Cost')
         assert np.allclose(computed.values, expected.values, rtol=1e-5), (
             f'total_effects mismatch: computed={float(computed):.2f}, expected={float(expected):.2f}'

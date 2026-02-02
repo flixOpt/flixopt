@@ -7,12 +7,10 @@ from typing import TYPE_CHECKING, Any, Literal, overload
 
 import xarray as xr
 from xarray_plotly import SLOT_ORDERS
-from xarray_plotly.figures import add_secondary_y
 
 from .config import CONFIG
 from .plot_result import PlotResult
 from .statistics_accessor import (
-    _SLOT_DEFAULTS,
     ColorType,
     SelectType,
     _build_color_kwargs,
@@ -342,16 +340,16 @@ class ComparisonStatistics:
 
     def __init__(self, comparison: Comparison) -> None:
         self._comp = comparison
-        # Caches for dataset properties
-        self._flow_rates: xr.Dataset | None = None
-        self._flow_hours: xr.Dataset | None = None
-        self._flow_sizes: xr.Dataset | None = None
-        self._storage_sizes: xr.Dataset | None = None
-        self._sizes: xr.Dataset | None = None
-        self._charge_states: xr.Dataset | None = None
-        self._temporal_effects: xr.Dataset | None = None
-        self._periodic_effects: xr.Dataset | None = None
-        self._total_effects: xr.Dataset | None = None
+        # Caches for properties (DataArray from individual stats, with case dim added)
+        self._flow_rates: xr.DataArray | None = None
+        self._flow_hours: xr.DataArray | None = None
+        self._flow_sizes: xr.DataArray | None = None
+        self._storage_sizes: xr.DataArray | None = None
+        self._sizes: xr.DataArray | None = None
+        self._charge_states: xr.DataArray | None = None
+        self._temporal_effects: xr.DataArray | None = None
+        self._periodic_effects: xr.DataArray | None = None
+        self._total_effects: xr.DataArray | None = None
         # Caches for dict properties
         self._carrier_colors: dict[str, str] | None = None
         self._component_colors: dict[str, str] | None = None
@@ -362,19 +360,19 @@ class ComparisonStatistics:
         # Plot accessor
         self._plot: ComparisonStatisticsPlot | None = None
 
-    def _concat_property(self, prop_name: str) -> xr.Dataset:
+    def _concat_property(self, prop_name: str) -> xr.DataArray:
         """Concatenate a statistics property across all cases."""
-        datasets = []
+        arrays = []
         for fs, name in zip(self._comp._systems, self._comp._names, strict=True):
             try:
-                ds = getattr(fs.stats, prop_name)
-                datasets.append(ds.expand_dims(case=[name]))
+                da = getattr(fs.stats, prop_name)
+                arrays.append(da.expand_dims(case=[name]))
             except RuntimeError as e:
                 warnings.warn(f"Skipping case '{name}': {e}", stacklevel=3)
                 continue
-        if not datasets:
-            return xr.Dataset()
-        return xr.concat(datasets, dim='case', join='outer', fill_value=float('nan'))
+        if not arrays:
+            return xr.DataArray()
+        return xr.concat(arrays, dim='case', join='outer', fill_value=float('nan'), coords='minimal', compat='override')
 
     def _merge_dict_property(self, prop_name: str) -> dict[str, str]:
         """Merge a dict property from all cases (later cases override)."""
@@ -384,63 +382,63 @@ class ComparisonStatistics:
         return result
 
     @property
-    def flow_rates(self) -> xr.Dataset:
+    def flow_rates(self) -> xr.DataArray:
         """Combined flow rates with 'case' dimension."""
         if self._flow_rates is None:
             self._flow_rates = self._concat_property('flow_rates')
         return self._flow_rates
 
     @property
-    def flow_hours(self) -> xr.Dataset:
+    def flow_hours(self) -> xr.DataArray:
         """Combined flow hours (energy) with 'case' dimension."""
         if self._flow_hours is None:
             self._flow_hours = self._concat_property('flow_hours')
         return self._flow_hours
 
     @property
-    def flow_sizes(self) -> xr.Dataset:
+    def flow_sizes(self) -> xr.DataArray:
         """Combined flow investment sizes with 'case' dimension."""
         if self._flow_sizes is None:
             self._flow_sizes = self._concat_property('flow_sizes')
         return self._flow_sizes
 
     @property
-    def storage_sizes(self) -> xr.Dataset:
+    def storage_sizes(self) -> xr.DataArray:
         """Combined storage capacity sizes with 'case' dimension."""
         if self._storage_sizes is None:
             self._storage_sizes = self._concat_property('storage_sizes')
         return self._storage_sizes
 
     @property
-    def sizes(self) -> xr.Dataset:
+    def sizes(self) -> xr.DataArray:
         """Combined sizes (flow + storage) with 'case' dimension."""
         if self._sizes is None:
             self._sizes = self._concat_property('sizes')
         return self._sizes
 
     @property
-    def charge_states(self) -> xr.Dataset:
+    def charge_states(self) -> xr.DataArray:
         """Combined storage charge states with 'case' dimension."""
         if self._charge_states is None:
             self._charge_states = self._concat_property('charge_states')
         return self._charge_states
 
     @property
-    def temporal_effects(self) -> xr.Dataset:
+    def temporal_effects(self) -> xr.DataArray:
         """Combined temporal effects with 'case' dimension."""
         if self._temporal_effects is None:
             self._temporal_effects = self._concat_property('temporal_effects')
         return self._temporal_effects
 
     @property
-    def periodic_effects(self) -> xr.Dataset:
+    def periodic_effects(self) -> xr.DataArray:
         """Combined periodic effects with 'case' dimension."""
         if self._periodic_effects is None:
             self._periodic_effects = self._concat_property('periodic_effects')
         return self._periodic_effects
 
     @property
-    def total_effects(self) -> xr.Dataset:
+    def total_effects(self) -> xr.DataArray:
         """Combined total effects with 'case' dimension."""
         if self._total_effects is None:
             self._total_effects = self._concat_property('total_effects')
@@ -507,9 +505,9 @@ class ComparisonStatisticsPlot:
         self._stats = statistics
         self._comp = statistics._comp
 
-    def _combine_data(self, method_name: str, *args, **kwargs) -> tuple[xr.Dataset, str]:
+    def _combine_data(self, method_name: str, *args, **kwargs) -> tuple[xr.DataArray, str]:
         """Call plot method on each system and combine data. Returns (combined_data, title)."""
-        datasets = []
+        arrays = []
         title = ''
         # Use data_only=True to skip figure creation for performance
         kwargs = {**kwargs, 'show': False, 'data_only': True}
@@ -517,7 +515,7 @@ class ComparisonStatisticsPlot:
         for fs, case_name in zip(self._comp._systems, self._comp._names, strict=True):
             try:
                 result = getattr(fs.stats.plot, method_name)(*args, **kwargs)
-                datasets.append(result.data.expand_dims(case=[case_name]))
+                arrays.append(result.data.expand_dims(case=[case_name]))
             except (KeyError, ValueError) as e:
                 warnings.warn(
                     f"Skipping case '{case_name}' in {method_name}: {e}",
@@ -525,12 +523,14 @@ class ComparisonStatisticsPlot:
                 )
                 continue
 
-        if not datasets:
-            return xr.Dataset(), ''
+        if not arrays:
+            return xr.DataArray(dims=[]), ''
 
-        return xr.concat(datasets, dim='case', join='outer', fill_value=float('nan')), title
+        return xr.concat(
+            arrays, dim='case', join='outer', fill_value=float('nan'), coords='minimal', compat='override'
+        ), title
 
-    def _finalize(self, ds: xr.Dataset, fig, show: bool | None) -> PlotResult:
+    def _finalize(self, da: xr.DataArray, fig, show: bool | None) -> PlotResult:
         """Handle show and return PlotResult."""
         import plotly.graph_objects as go
 
@@ -538,7 +538,7 @@ class ComparisonStatisticsPlot:
             show = CONFIG.Plotting.default_show
         if show and fig:
             fig.show()
-        return PlotResult(data=ds, figure=fig or go.Figure())
+        return PlotResult(data=da, figure=fig or go.Figure())
 
     def balance(
         self,
@@ -571,23 +571,23 @@ class ComparisonStatisticsPlot:
         Returns:
             PlotResult with combined balance data and figure.
         """
-        ds, _ = self._combine_data(
+        da, _ = self._combine_data(
             'balance', node, select=select, include=include, exclude=exclude, unit=unit, threshold=threshold
         )
-        if not ds.data_vars or data_only:
-            return self._finalize(ds, None, show if not data_only else False)
+        if da.size == 0 or 'flow' not in da.dims or data_only:
+            return self._finalize(da, None, show if not data_only else False)
 
-        defaults = {'x': 'time', 'color': 'variable', 'pattern_shape': None, 'facet_col': 'case'}
+        defaults = {'x': 'time', 'color': 'flow', 'pattern_shape': None, 'facet_col': 'case'}
         _apply_slot_defaults(plotly_kwargs, defaults)
-        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
-        fig = ds.plotly.bar(
+        color_kwargs = _build_color_kwargs(colors, list(str(f) for f in da.coords['flow'].values))
+        fig = da.plotly.bar(
             title=f'{node} Balance Comparison',
             **color_kwargs,
             **plotly_kwargs,
         )
         fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
         fig.update_traces(marker_line_width=0)
-        return self._finalize(ds, fig, show)
+        return self._finalize(da, fig, show)
 
     def carrier_balance(
         self,
@@ -620,23 +620,23 @@ class ComparisonStatisticsPlot:
         Returns:
             PlotResult with combined carrier balance data and figure.
         """
-        ds, _ = self._combine_data(
+        da, _ = self._combine_data(
             'carrier_balance', carrier, select=select, include=include, exclude=exclude, unit=unit, threshold=threshold
         )
-        if not ds.data_vars or data_only:
-            return self._finalize(ds, None, show if not data_only else False)
+        if da.size == 0 or 'component' not in da.dims or data_only:
+            return self._finalize(da, None, show if not data_only else False)
 
-        defaults = {'x': 'time', 'color': 'variable', 'pattern_shape': None, 'facet_col': 'case'}
+        defaults = {'x': 'time', 'color': 'component', 'pattern_shape': None, 'facet_col': 'case'}
         _apply_slot_defaults(plotly_kwargs, defaults)
-        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
-        fig = ds.plotly.bar(
+        color_kwargs = _build_color_kwargs(colors, list(str(c) for c in da.coords['component'].values))
+        fig = da.plotly.bar(
             title=f'{carrier.capitalize()} Balance Comparison',
             **color_kwargs,
             **plotly_kwargs,
         )
         fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
         fig.update_traces(marker_line_width=0)
-        return self._finalize(ds, fig, show)
+        return self._finalize(da, fig, show)
 
     def flows(
         self,
@@ -669,21 +669,21 @@ class ComparisonStatisticsPlot:
         Returns:
             PlotResult with combined flows data and figure.
         """
-        ds, _ = self._combine_data(
+        da, _ = self._combine_data(
             'flows', start=start, end=end, component=component, select=select, unit=unit, threshold=threshold
         )
-        if not ds.data_vars or data_only:
-            return self._finalize(ds, None, show if not data_only else False)
+        if da.size == 0 or data_only:
+            return self._finalize(da, None, show if not data_only else False)
 
-        defaults = {'x': 'time', 'color': 'variable', 'symbol': None, 'line_dash': 'case'}
+        defaults = {'x': 'time', 'color': 'flow', 'symbol': None, 'line_dash': 'case'}
         _apply_slot_defaults(plotly_kwargs, defaults)
-        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
-        fig = ds.plotly.line(
+        color_kwargs = _build_color_kwargs(colors, list(str(f) for f in da.coords['flow'].values))
+        fig = da.plotly.line(
             title='Flows Comparison',
             **color_kwargs,
             **plotly_kwargs,
         )
-        return self._finalize(ds, fig, show)
+        return self._finalize(da, fig, show)
 
     def storage(
         self,
@@ -712,18 +712,15 @@ class ComparisonStatisticsPlot:
         Returns:
             PlotResult with combined storage operation data and figure.
         """
-        ds, _ = self._combine_data('storage', storage, select=select, unit=unit, threshold=threshold)
-        if not ds.data_vars or data_only:
-            return self._finalize(ds, None, show if not data_only else False)
+        da, _ = self._combine_data('storage', storage, select=select, unit=unit, threshold=threshold)
+        if da.size == 0 or 'flow' not in da.dims or data_only:
+            return self._finalize(da, None, show if not data_only else False)
 
-        # Separate flows from charge_state
-        flow_vars = [v for v in ds.data_vars if v != 'charge_state']
-        flow_ds = ds[flow_vars] if flow_vars else xr.Dataset()
-
-        defaults = {'x': 'time', 'color': 'variable', 'pattern_shape': None, 'facet_col': 'case'}
+        defaults = {'x': 'time', 'color': 'flow', 'pattern_shape': None, 'facet_col': 'case'}
         _apply_slot_defaults(plotly_kwargs, defaults)
-        color_kwargs = _build_color_kwargs(colors, flow_vars)
-        fig = flow_ds.plotly.bar(
+        flow_labels = list(str(f) for f in da.coords['flow'].values) if 'flow' in da.dims else []
+        color_kwargs = _build_color_kwargs(colors, flow_labels)
+        fig = da.plotly.bar(
             title=f'{storage} Operation Comparison',
             **color_kwargs,
             **plotly_kwargs,
@@ -731,15 +728,7 @@ class ComparisonStatisticsPlot:
         fig.update_layout(barmode='relative', bargap=0, bargroupgap=0)
         fig.update_traces(marker_line_width=0)
 
-        # Add charge state as line overlay on secondary y-axis
-        if 'charge_state' in ds:
-            # Filter out bar-only kwargs, apply line defaults, override color for comparison
-            line_kwargs = {k: v for k, v in plotly_kwargs.items() if k not in ('pattern_shape', 'color')}
-            _apply_slot_defaults(line_kwargs, {**_SLOT_DEFAULTS['storage_line'], 'color': 'case'})
-            line_fig = ds['charge_state'].plotly.line(**line_kwargs)
-            fig = add_secondary_y(fig, line_fig, secondary_y_title='Charge State')
-
-        return self._finalize(ds, fig, show)
+        return self._finalize(da, fig, show)
 
     def charge_states(
         self,
@@ -766,19 +755,19 @@ class ComparisonStatisticsPlot:
         Returns:
             PlotResult with combined charge state data and figure.
         """
-        ds, _ = self._combine_data('charge_states', storages, select=select, threshold=threshold)
-        if not ds.data_vars or data_only:
-            return self._finalize(ds, None, show if not data_only else False)
+        da, _ = self._combine_data('charge_states', storages, select=select, threshold=threshold)
+        if da.size == 0 or data_only:
+            return self._finalize(da, None, show if not data_only else False)
 
-        defaults = {'x': 'time', 'color': 'variable', 'symbol': None, 'line_dash': 'case'}
+        defaults = {'x': 'time', 'color': 'storage', 'symbol': None, 'line_dash': 'case'}
         _apply_slot_defaults(plotly_kwargs, defaults)
-        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
-        fig = ds.plotly.line(
+        color_kwargs = _build_color_kwargs(colors, list(str(s) for s in da.coords['storage'].values))
+        fig = da.plotly.line(
             title='Charge States Comparison',
             **color_kwargs,
             **plotly_kwargs,
         )
-        return self._finalize(ds, fig, show)
+        return self._finalize(da, fig, show)
 
     def duration_curve(
         self,
@@ -807,24 +796,24 @@ class ComparisonStatisticsPlot:
         Returns:
             PlotResult with combined duration curve data and figure.
         """
-        ds, _ = self._combine_data('duration_curve', variables, select=select, normalize=normalize, threshold=threshold)
-        if not ds.data_vars or data_only:
-            return self._finalize(ds, None, show if not data_only else False)
+        da, _ = self._combine_data('duration_curve', variables, select=select, normalize=normalize, threshold=threshold)
+        if da.size == 0 or data_only:
+            return self._finalize(da, None, show if not data_only else False)
 
         defaults = {
-            'x': 'duration_pct' if normalize else 'duration',
+            'x': 'duration',
             'color': 'variable',
             'symbol': None,
             'line_dash': 'case',
         }
         _apply_slot_defaults(plotly_kwargs, defaults)
-        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
-        fig = ds.plotly.line(
+        color_kwargs = _build_color_kwargs(colors, list(str(v) for v in da.coords['variable'].values))
+        fig = da.plotly.line(
             title='Duration Curve Comparison',
             **color_kwargs,
             **plotly_kwargs,
         )
-        return self._finalize(ds, fig, show)
+        return self._finalize(da, fig, show)
 
     def sizes(
         self,
@@ -851,21 +840,23 @@ class ComparisonStatisticsPlot:
         Returns:
             PlotResult with combined sizes data and figure.
         """
-        ds, _ = self._combine_data('sizes', max_size=max_size, select=select, threshold=threshold)
-        if not ds.data_vars or data_only:
-            return self._finalize(ds, None, show if not data_only else False)
+        da, _ = self._combine_data('sizes', max_size=max_size, select=select, threshold=threshold)
+        if da.size == 0 or 'element' not in da.dims or data_only:
+            return self._finalize(da, None, show if not data_only else False)
 
-        defaults = {'x': 'variable', 'color': 'case'}
+        defaults = {'x': 'element', 'color': 'case'}
         _apply_slot_defaults(plotly_kwargs, defaults)
-        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
-        fig = ds.plotly.bar(
+        color_kwargs = _build_color_kwargs(
+            colors, list(str(e) for e in da.coords.get('element', xr.DataArray([])).values)
+        )
+        fig = da.plotly.bar(
             title='Investment Sizes Comparison',
             labels={'value': 'Size'},
             barmode='group',
             **color_kwargs,
             **plotly_kwargs,
         )
-        return self._finalize(ds, fig, show)
+        return self._finalize(da, fig, show)
 
     def effects(
         self,
@@ -896,22 +887,20 @@ class ComparisonStatisticsPlot:
         Returns:
             PlotResult with combined effects data and figure.
         """
-        ds, _ = self._combine_data('effects', aspect, effect=effect, by=by, select=select, threshold=threshold)
-        if not ds.data_vars or data_only:
-            return self._finalize(ds, None, show if not data_only else False)
+        da, _ = self._combine_data('effects', aspect, effect=effect, by=by, select=select, threshold=threshold)
+        if da.size == 0 or data_only:
+            return self._finalize(da, None, show if not data_only else False)
 
-        defaults = {'x': by if by else 'variable', 'color': 'case'}
+        defaults = {'x': by if by else 'effect', 'color': 'case'}
         _apply_slot_defaults(plotly_kwargs, defaults)
-        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
-        fig = ds.plotly.bar(
+        fig = da.plotly.bar(
             title=f'Effects Comparison ({aspect})',
             barmode='group',
-            **color_kwargs,
             **plotly_kwargs,
         )
         fig.update_layout(bargap=0, bargroupgap=0)
         fig.update_traces(marker_line_width=0)
-        return self._finalize(ds, fig, show)
+        return self._finalize(da, fig, show)
 
     def heatmap(
         self,
@@ -940,11 +929,9 @@ class ComparisonStatisticsPlot:
         Returns:
             PlotResult with combined heatmap data and figure.
         """
-        ds, _ = self._combine_data('heatmap', variables, select=select, reshape=reshape, threshold=threshold)
-        if not ds.data_vars or data_only:
-            return self._finalize(ds, None, show if not data_only else False)
-
-        da = ds[next(iter(ds.data_vars))]
+        da, _ = self._combine_data('heatmap', variables, select=select, reshape=reshape, threshold=threshold)
+        if da.size == 0 or data_only:
+            return self._finalize(da, None, show if not data_only else False)
 
         defaults = {'facet_col': 'case'}
         _apply_slot_defaults(plotly_kwargs, defaults)
@@ -956,4 +943,4 @@ class ComparisonStatisticsPlot:
             title='Heatmap Comparison',
             **plotly_kwargs,
         )
-        return self._finalize(ds, fig, show)
+        return self._finalize(da, fig, show)

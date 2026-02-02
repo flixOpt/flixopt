@@ -175,15 +175,16 @@ class TestStatisticsAccessor:
 
         sizes = simple_flow_system.statistics.sizes
 
-        assert isinstance(sizes, xr.Dataset)
-        # Should have sizes for flows with InvestParameters
-        assert len(sizes.data_vars) > 0
+        assert isinstance(sizes, xr.DataArray)
+        # Should have sizes with element dimension
+        assert 'element' in sizes.dims
+        assert sizes.sizes['element'] > 0
 
         # Check that all size labels are valid flow or storage labels
         flow_labels = [f.label_full for f in simple_flow_system.flows.values()]
         storage_labels = [s.label_full for s in simple_flow_system.storages.values()]
         valid_labels = flow_labels + storage_labels
-        for label in sizes.data_vars:
+        for label in sizes.coords['element'].values:
             assert label in valid_labels, f'Size label {label} should be a valid flow or storage'
 
     def test_statistics_sizes_returns_correct_values(self, simple_flow_system, highs_solver):
@@ -193,8 +194,9 @@ class TestStatisticsAccessor:
         sizes = simple_flow_system.statistics.sizes
 
         # Check that all values are positive (sizes should be > 0)
-        for label in sizes.data_vars:
-            value = float(sizes[label].values) if sizes[label].dims == () else float(sizes[label].max().values)
+        for label in sizes.coords['element'].values:
+            val = sizes.sel(element=label)
+            value = float(val.values) if val.dims == () else float(val.max().values)
             assert value > 0, f'Size for {label} should be positive'
 
     def test_statistics_flow_rates(self, simple_flow_system, highs_solver):
@@ -203,8 +205,9 @@ class TestStatisticsAccessor:
 
         flow_rates = simple_flow_system.statistics.flow_rates
 
-        assert isinstance(flow_rates, xr.Dataset)
-        assert len(flow_rates.data_vars) > 0
+        assert isinstance(flow_rates, xr.DataArray)
+        assert 'flow' in flow_rates.dims
+        assert flow_rates.sizes['flow'] > 0
         # Flow rates should have time dimension
         assert 'time' in flow_rates.dims
 
@@ -214,8 +217,9 @@ class TestStatisticsAccessor:
 
         flow_hours = simple_flow_system.statistics.flow_hours
 
-        assert isinstance(flow_hours, xr.Dataset)
-        assert len(flow_hours.data_vars) > 0
+        assert isinstance(flow_hours, xr.DataArray)
+        assert 'flow' in flow_hours.dims
+        assert flow_hours.sizes['flow'] > 0
 
 
 # ============================================================================
@@ -681,7 +685,7 @@ class TestSankeyDiagram:
 
         assert result.figure is not None
         assert result.data is not None
-        assert 'value' in result.data
+        assert result.data.size > 0
         assert 'source' in result.data.coords
         assert 'target' in result.data.coords
         assert len(result.data.link) > 0
@@ -766,8 +770,8 @@ class TestSankeyDiagram:
         assert result_sum.figure is not None
         assert result_mean.figure is not None
         # Mean values should be smaller than sum values
-        sum_total = sum(result_sum.data.value.values)
-        mean_total = sum(result_mean.data.value.values)
+        sum_total = sum(result_sum.data.values)
+        mean_total = sum(result_mean.data.values)
         assert mean_total < sum_total, 'Mean should produce smaller values than sum'
 
     def test_sankey_returns_plot_result(self, simple_flow_system, highs_solver):
@@ -779,4 +783,4 @@ class TestSankeyDiagram:
         # Check PlotResult structure
         assert hasattr(result, 'figure')
         assert hasattr(result, 'data')
-        assert isinstance(result.data, xr.Dataset)
+        assert isinstance(result.data, xr.DataArray)

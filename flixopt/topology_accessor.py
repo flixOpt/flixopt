@@ -10,9 +10,11 @@ from __future__ import annotations
 import logging
 import pathlib
 import warnings
+from functools import cached_property
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Literal
 
+import numpy as np
 import plotly.graph_objects as go
 import xarray as xr
 
@@ -261,6 +263,55 @@ class TopologyAccessor:
         if self._effect_units is None:
             self._effect_units = {effect.label: effect.unit or '' for effect in self._fs.effects.values()}
         return self._effect_units
+
+    @cached_property
+    def flows(self) -> xr.DataArray:
+        """DataArray with 'flow' dimension and metadata coordinates.
+
+        Coordinates on the 'flow' dimension:
+            - component: Parent component label
+            - bus: Connected bus label
+            - carrier: Carrier name (lowercase)
+            - unit: Unit string from carrier
+            - is_input: Whether the flow is an input to its component
+
+        Useful for filtering and groupby operations on flow data:
+
+        Examples:
+            >>> topo = flow_system.topology
+            >>> heat_flows = topo.flows.sel(flow=(topo.flows.carrier == 'heat')).flow.values
+            >>> flow_system.stats.flow_rates.sel(flow=heat_flows)
+        """
+        flow_labels = []
+        components = []
+        buses = []
+        carriers = []
+        units = []
+        is_inputs = []
+
+        carrier_units = self.carrier_units
+        for flow in self._fs.flows.values():
+            flow_labels.append(flow.label_full)
+            components.append(flow.component)
+            buses.append(flow.bus)
+            bus_obj = self._fs.buses.get(flow.bus)
+            carrier = bus_obj.carrier.lower() if bus_obj and bus_obj.carrier else ''
+            carriers.append(carrier)
+            units.append(carrier_units.get(carrier, ''))
+            is_inputs.append(flow.is_input_in_component)
+
+        return xr.DataArray(
+            data=np.ones(len(flow_labels)),  # Placeholder values
+            dims=['flow'],
+            coords={
+                'flow': flow_labels,
+                'component': ('flow', components),
+                'bus': ('flow', buses),
+                'carrier': ('flow', carriers),
+                'unit': ('flow', units),
+                'is_input': ('flow', is_inputs),
+            },
+        )
 
     def _invalidate_color_caches(self) -> None:
         """Reset all color caches so they are rebuilt on next access."""
@@ -557,14 +608,15 @@ class TopologyAccessor:
         title = plotly_kwargs.pop('title', 'Flow System Topology')
         fig.update_layout(title=title, **plotly_kwargs)
 
-        # Build xarray Dataset with topology data
-        data = xr.Dataset(
-            {
+        # Build xarray DataArray with topology data
+        data = xr.DataArray(
+            data=links['value'],
+            dims=['link'],
+            coords={
+                'link': links['label'],
                 'source': ('link', links['source']),
                 'target': ('link', links['target']),
-                'value': ('link', links['value']),
             },
-            coords={'link': links['label']},
         )
         result = PlotResult(data=data, figure=fig)
 
