@@ -20,6 +20,7 @@ Example:
 from __future__ import annotations
 
 import logging
+from functools import cached_property
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -458,17 +459,6 @@ class StatisticsAccessor:
 
     def __init__(self, flow_system: FlowSystem) -> None:
         self._fs = flow_system
-        # Cached data
-        self._flow_rates: xr.DataArray | None = None
-        self._flow_hours: xr.DataArray | None = None
-        self._flow_sizes: xr.DataArray | None = None
-        self._storage_sizes: xr.DataArray | None = None
-        self._sizes: xr.DataArray | None = None
-        self._charge_states: xr.DataArray | None = None
-        self._effect_share_factors: dict[str, dict] | None = None
-        self._temporal_effects: xr.DataArray | None = None
-        self._periodic_effects: xr.DataArray | None = None
-        self._total_effects: xr.DataArray | None = None
         # Plotting accessor (lazy)
         self._plot: StatisticsPlotAccessor | None = None
 
@@ -559,90 +549,44 @@ class StatisticsAccessor:
             self._plot = StatisticsPlotAccessor(self)
         return self._plot
 
-    @property
+    @cached_property
     def flow_rates(self) -> xr.DataArray:
-        """All flow rates as a DataArray with 'flow' dimension.
-
-        Coordinates include 'carrier' and 'unit' for each flow.
-        """
+        """All flow rates as a DataArray with 'flow' dimension."""
         self._require_solution()
-        if self._flow_rates is None:
-            da = self._fs.solution[FlowVarName.RATE]
-            # Add carrier/unit as coordinates on the flow dimension
-            flow_labels = da.coords['flow'].values
-            carriers = []
-            units = []
-            for label in flow_labels:
-                flow = self._fs.flows.get(str(label))
-                if flow is not None:
-                    bus = self._fs.buses.get(flow.bus)
-                    carrier = bus.carrier if bus else None
-                else:
-                    carrier = None
-                carriers.append(carrier)
-                units.append(self.carrier_units.get(carrier, '') if carrier else '')
-            da = da.assign_coords(
-                carrier=('flow', carriers),
-                unit=('flow', units),
-            )
-            self._flow_rates = da
-        return self._flow_rates
+        return self._fs.solution[FlowVarName.RATE]
 
-    @property
+    @cached_property
     def flow_hours(self) -> xr.DataArray:
-        """All flow hours (energy) as a DataArray with 'flow' dimension.
+        """All flow hours (energy) as a DataArray with 'flow' dimension."""
+        return self.flow_rates * self._fs.timestep_duration
 
-        Coordinates include 'carrier' and 'unit' for each flow.
-        """
-        self._require_solution()
-        if self._flow_hours is None:
-            hours = self._fs.timestep_duration
-            flow_rates = self.flow_rates
-            da = flow_rates * hours
-            # Update unit coordinate: power -> energy (e.g., 'kW' -> 'kW*h')
-            power_units = da.coords['unit'].values
-            energy_units = [f'{u}*h' if u else '' for u in power_units]
-            da = da.assign_coords(unit=('flow', energy_units))
-            self._flow_hours = da
-        return self._flow_hours
-
-    @property
+    @cached_property
     def flow_sizes(self) -> xr.DataArray:
         """Flow sizes as a DataArray with 'flow' dimension."""
         self._require_solution()
-        if self._flow_sizes is None:
-            da = self._fs.solution[FlowVarName.SIZE]
-            self._flow_sizes = da.dropna('flow', how='all')
-        return self._flow_sizes
+        return self._fs.solution[FlowVarName.SIZE].dropna('flow', how='all')
 
-    @property
+    @cached_property
     def storage_sizes(self) -> xr.DataArray:
         """Storage capacity sizes as a DataArray with 'storage' dimension."""
         self._require_solution()
-        if self._storage_sizes is None:
-            da = self._fs.solution[StorageVarName.SIZE]
-            self._storage_sizes = da.dropna('storage', how='all')
-        return self._storage_sizes
+        return self._fs.solution[StorageVarName.SIZE].dropna('storage', how='all')
 
-    @property
+    @cached_property
     def sizes(self) -> xr.DataArray:
         """All investment sizes (flows and storage capacities) as a DataArray with 'element' dim."""
-        if self._sizes is None:
-            self._sizes = xr.concat(
-                [self.flow_sizes.rename(flow='element'), self.storage_sizes.rename(storage='element')],
-                dim='element',
-            )
-        return self._sizes
+        return xr.concat(
+            [self.flow_sizes.rename(flow='element'), self.storage_sizes.rename(storage='element')],
+            dim='element',
+        )
 
-    @property
+    @cached_property
     def charge_states(self) -> xr.DataArray:
         """All storage charge states as a DataArray with 'storage' dimension."""
         self._require_solution()
-        if self._charge_states is None:
-            self._charge_states = self._fs.solution[StorageVarName.CHARGE]
-        return self._charge_states
+        return self._fs.solution[StorageVarName.CHARGE]
 
-    @property
+    @cached_property
     def effect_share_factors(self) -> dict[str, dict]:
         """Effect share factors for temporal and periodic modes.
 
@@ -651,12 +595,10 @@ class StatisticsAccessor:
             conversion factors between effects.
         """
         self._require_solution()
-        if self._effect_share_factors is None:
-            factors = self._fs.effects.calculate_effect_share_factors()
-            self._effect_share_factors = {'temporal': factors[0], 'periodic': factors[1]}
-        return self._effect_share_factors
+        factors = self._fs.effects.calculate_effect_share_factors()
+        return {'temporal': factors[0], 'periodic': factors[1]}
 
-    @property
+    @cached_property
     def temporal_effects(self) -> xr.DataArray:
         """Temporal effects per contributor per timestep.
 
@@ -680,13 +622,11 @@ class StatisticsAccessor:
             xr.DataArray with effect, contributor, and time dimensions.
         """
         self._require_solution()
-        if self._temporal_effects is None:
-            da = self._create_effects_array('temporal')
-            dim_order = ['effect', 'time', 'period', 'scenario', 'contributor']
-            self._temporal_effects = da.transpose(*dim_order, missing_dims='ignore')
-        return self._temporal_effects
+        da = self._create_effects_array('temporal')
+        dim_order = ['effect', 'time', 'period', 'scenario', 'contributor']
+        return da.transpose(*dim_order, missing_dims='ignore')
 
-    @property
+    @cached_property
     def periodic_effects(self) -> xr.DataArray:
         """Periodic (investment) effects per contributor.
 
@@ -710,13 +650,11 @@ class StatisticsAccessor:
             xr.DataArray with effect and contributor dimensions.
         """
         self._require_solution()
-        if self._periodic_effects is None:
-            da = self._create_effects_array('periodic')
-            dim_order = ['effect', 'period', 'scenario', 'contributor']
-            self._periodic_effects = da.transpose(*dim_order, missing_dims='ignore')
-        return self._periodic_effects
+        da = self._create_effects_array('periodic')
+        dim_order = ['effect', 'period', 'scenario', 'contributor']
+        return da.transpose(*dim_order, missing_dims='ignore')
 
-    @property
+    @cached_property
     def total_effects(self) -> xr.DataArray:
         """Total effects (temporal + periodic) per contributor.
 
@@ -742,11 +680,9 @@ class StatisticsAccessor:
             xr.DataArray with effect and contributor dimensions.
         """
         self._require_solution()
-        if self._total_effects is None:
-            da = self._create_effects_array('total')
-            dim_order = ['effect', 'period', 'scenario', 'contributor']
-            self._total_effects = da.transpose(*dim_order, missing_dims='ignore')
-        return self._total_effects
+        da = self._create_effects_array('total')
+        dim_order = ['effect', 'period', 'scenario', 'contributor']
+        return da.transpose(*dim_order, missing_dims='ignore')
 
     def get_effect_shares(
         self,
@@ -1027,8 +963,7 @@ class SankeyPlotAccessor:
         if carrier_filter is not None:
             carrier_filter = [c.lower() for c in carrier_filter]
 
-        # Use flow_rates to get carrier names from xarray attributes (already computed)
-        flow_rates = self._stats.flow_rates
+        flow_carriers = self._stats.plot._flow_carriers
 
         for flow in self._fs.flows.values():
             label = flow.label_full
@@ -1043,12 +978,8 @@ class SankeyPlotAccessor:
             if bus_filter is not None and bus_label not in bus_filter:
                 continue
 
-            # Get carrier name from flow_rates xarray attribute (efficient lookup)
-            carrier_name = (
-                str(flow_rates.sel(flow=label).coords.get('carrier', '').values)
-                if label in flow_rates.coords['flow'].values
-                else None
-            )
+            # Get carrier name from cached mapping
+            carrier_name = flow_carriers.get(label)
 
             if carrier_filter is not None:
                 if carrier_name is None or carrier_name.lower() not in carrier_filter:
@@ -1422,6 +1353,19 @@ class StatisticsPlotAccessor:
         self._fs = statistics._fs
         self._sankey: SankeyPlotAccessor | None = None
 
+    @cached_property
+    def _flow_carriers(self) -> dict[str, str]:
+        """Cached flow_label → carrier mapping from topology."""
+        topo = self._fs.topology.flows
+        return {str(f): str(c) for f, c in zip(topo.coords['flow'].values, topo.coords['carrier'].values, strict=False)}
+
+    def _get_unit_label(self, flow_label: str) -> str:
+        """Get the unit label for a flow by looking up its carrier in topology."""
+        carrier = self._flow_carriers.get(flow_label)
+        if carrier is not None:
+            return self._stats.carrier_units.get(carrier, '')
+        return ''
+
     @property
     def sankey(self) -> SankeyPlotAccessor:
         """Access sankey diagram methods with typed select options.
@@ -1453,7 +1397,7 @@ class StatisticsPlotAccessor:
         """
         component_colors = self._stats.component_colors
         carrier_colors = self._stats.carrier_colors
-        flow_rates = self._stats.flow_rates
+        _ = self._stats.flow_rates
 
         color_map = {}
         uncolored = []
@@ -1462,10 +1406,11 @@ class StatisticsPlotAccessor:
             color = None
 
             if color_by == 'carrier':
-                # Get carrier from flow attributes
+                # Get carrier from topology
+                topo_flows = self._fs.topology.flows
                 carrier_name = (
-                    str(flow_rates.sel(flow=label).coords.get('carrier', '').values)
-                    if label in flow_rates.coords['flow'].values
+                    str(topo_flows.sel(flow=label).coords['carrier'].values)
+                    if label in topo_flows.coords['flow'].values
                     else None
                 )
                 color = carrier_colors.get(carrier_name) if carrier_name else None
@@ -1636,11 +1581,8 @@ class StatisticsPlotAccessor:
         # Sort for consistent plotting order
         da = _sort_dataarray(da, 'flow')
 
-        # Get unit label from carrier_units
-        unit_label = ''
-        if available:
-            carrier = str(source_da.sel(flow=available[0]).coords.get('carrier', '').values)
-            unit_label = self._stats.carrier_units.get(carrier, '')
+        # Get unit label from topology
+        unit_label = self._get_unit_label(available[0]) if available else ''
 
         _apply_slot_defaults(plotly_kwargs, 'balance')
         fig = da.plotly.fast_bar(
@@ -1974,11 +1916,10 @@ class StatisticsPlotAccessor:
         # Sort for consistent plotting order
         da = _sort_dataarray(da, 'flow')
 
-        # Get unit label from carrier_units
+        # Get unit label from topology
         unit_label = ''
         if da.sizes.get('flow', 0) > 0:
-            carrier = str(da.isel(flow=0).coords.get('carrier', '').values)
-            unit_label = self._stats.carrier_units.get(carrier, '')
+            unit_label = self._get_unit_label(str(da.coords['flow'].values[0]))
 
         # Build color kwargs with smart defaults from component colors
         labels = list(str(f) for f in da.coords['flow'].values)
@@ -2160,11 +2101,8 @@ class StatisticsPlotAccessor:
 
         # Get unit label from first variable's carrier
         unit_label = ''
-        if normalized_vars:
-            first_var = normalized_vars[0]
-            if first_var in flow_labels:
-                carrier = str(self._stats.flow_rates.sel(flow=first_var).coords.get('carrier', '').values)
-                unit_label = self._stats.carrier_units.get(carrier, '')
+        if normalized_vars and normalized_vars[0] in flow_labels:
+            unit_label = self._get_unit_label(normalized_vars[0])
 
         # Build color kwargs with smart defaults from component colors
         labels = list(str(v) for v in result_da.coords['variable'].values)
@@ -2496,11 +2434,8 @@ class StatisticsPlotAccessor:
         labels = list(str(f) for f in flow_da.coords['flow'].values)
         color_kwargs = self._build_color_kwargs(colors, labels, color_by='carrier')
 
-        # Get unit label from carrier
-        unit_label = ''
-        if available:
-            carrier = str(source_da.sel(flow=available[0]).coords.get('carrier', '').values)
-            unit_label = self._stats.carrier_units.get(carrier, '')
+        # Get unit label from topology
+        unit_label = self._get_unit_label(available[0]) if available else ''
 
         # Create stacked area chart for flows (styled as bar)
         _apply_slot_defaults(plotly_kwargs, 'storage')
