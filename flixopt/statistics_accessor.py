@@ -963,27 +963,28 @@ class SankeyPlotAccessor:
         if carrier_filter is not None:
             carrier_filter = [c.lower() for c in carrier_filter]
 
-        flow_carriers = self._stats.plot._flow_carriers
+        # Extract all topology metadata as plain dicts for fast lookup
+        topo = self._fs.topology.flows
+        flow_labels = topo.coords['flow'].values
+        topo_bus = dict(zip(flow_labels, topo.coords['bus'].values, strict=False))
+        topo_comp = dict(zip(flow_labels, topo.coords['component'].values, strict=False))
+        topo_carrier = dict(zip(flow_labels, topo.coords['carrier'].values, strict=False))
+        topo_is_input = dict(zip(flow_labels, topo.coords['is_input'].values, strict=False))
 
-        for flow in self._fs.flows.values():
-            label = flow.label_full
+        for label in flow_labels:
             if label not in ds:
                 continue
 
             # Apply filters
             if flow_filter is not None and label not in flow_filter:
                 continue
-            bus_label = flow.bus
-            comp_label = flow.component
+            bus_label = str(topo_bus[label])
+            comp_label = str(topo_comp[label])
+            carrier_name = str(topo_carrier[label])
             if bus_filter is not None and bus_label not in bus_filter:
                 continue
-
-            # Get carrier name from cached mapping
-            carrier_name = flow_carriers.get(label)
-
-            if carrier_filter is not None:
-                if carrier_name is None or carrier_name.lower() not in carrier_filter:
-                    continue
+            if carrier_filter is not None and carrier_name.lower() not in carrier_filter:
+                continue
             if component_filter is not None and comp_label not in component_filter:
                 continue
 
@@ -991,7 +992,7 @@ class SankeyPlotAccessor:
             if abs(value) < min_value:
                 continue
 
-            if flow.is_input_in_component:
+            if topo_is_input[label]:
                 source, target = bus_label, comp_label
             else:
                 source, target = comp_label, bus_label
@@ -1353,17 +1354,11 @@ class StatisticsPlotAccessor:
         self._fs = statistics._fs
         self._sankey: SankeyPlotAccessor | None = None
 
-    @cached_property
-    def _flow_carriers(self) -> dict[str, str]:
-        """Cached flow_label → carrier mapping from topology."""
-        topo = self._fs.topology.flows
-        return {str(f): str(c) for f, c in zip(topo.coords['flow'].values, topo.coords['carrier'].values, strict=False)}
-
     def _get_unit_label(self, flow_label: str) -> str:
-        """Get the unit label for a flow by looking up its carrier in topology."""
-        carrier = self._flow_carriers.get(flow_label)
-        if carrier is not None:
-            return self._stats.carrier_units.get(carrier, '')
+        """Get the unit label for a flow from topology."""
+        topo_flows = self._fs.topology.flows
+        if flow_label in topo_flows.coords['flow'].values:
+            return str(topo_flows.sel(flow=flow_label).coords['unit'].values)
         return ''
 
     @property
@@ -1397,7 +1392,11 @@ class StatisticsPlotAccessor:
         """
         component_colors = self._stats.component_colors
         carrier_colors = self._stats.carrier_colors
-        _ = self._stats.flow_rates
+
+        # Extract topology metadata as dicts for fast lookup
+        topo = self._fs.topology.flows
+        topo_carriers = dict(zip(topo.coords['flow'].values, topo.coords['carrier'].values, strict=False))
+        topo_components = dict(zip(topo.coords['flow'].values, topo.coords['component'].values, strict=False))
 
         color_map = {}
         uncolored = []
@@ -1406,22 +1405,14 @@ class StatisticsPlotAccessor:
             color = None
 
             if color_by == 'carrier':
-                # Get carrier from topology
-                topo_flows = self._fs.topology.flows
-                carrier_name = (
-                    str(topo_flows.sel(flow=label).coords['carrier'].values)
-                    if label in topo_flows.coords['flow'].values
-                    else None
-                )
-                color = carrier_colors.get(carrier_name) if carrier_name else None
+                carrier_name = topo_carriers.get(label)
+                color = carrier_colors.get(str(carrier_name)) if carrier_name is not None else None
             else:  # color_by == 'component'
-                # Try to get component from flow first
-                flow = self._fs.flows.get(label)
-                if flow:
-                    color = component_colors.get(flow.component)
+                comp_name = topo_components.get(label)
+                if comp_name is not None:
+                    color = component_colors.get(str(comp_name))
                 else:
-                    # Extract component name from label
-                    # Patterns: 'Component(flow)' → 'Component', 'Component (production)' → 'Component'
+                    # Extract component name from label (non-flow labels like effect contributors)
                     comp_name = label.split('(')[0].strip() if '(' in label else label
                     color = component_colors.get(comp_name)
 
