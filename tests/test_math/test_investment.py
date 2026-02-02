@@ -1,0 +1,159 @@
+"""Mathematical correctness tests for investment decisions."""
+
+import numpy as np
+from numpy.testing import assert_allclose
+
+import flixopt as fx
+
+from .conftest import make_flow_system, solve
+
+
+class TestInvestment:
+    def test_invest_size_optimized(self):
+        """Proves: InvestParameters correctly sizes the unit to match peak demand
+        when there is a per-size investment cost.
+
+        Sensitivity: If sizing were broken (e.g. forced to max=200), invest cost
+        would be 10+200=210, total=290 instead of 140. If sized to 0, infeasible.
+        Only size=50 (peak demand) minimizes the sum of invest + fuel cost.
+        """
+        fs = make_flow_system(3)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 50, 20])),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=fx.InvestParameters(
+                        maximum_size=200,
+                        effects_of_investment=10,
+                        effects_of_investment_per_size=1,
+                    ),
+                ),
+            ),
+        )
+        solve(fs)
+        # size = 50 (peak), invest cost = 10 + 50*1 = 60, fuel = 80
+        # total = 140
+        assert_allclose(fs.solution['Boiler(heat)|size'].item(), 50.0, rtol=1e-5)
+        assert_allclose(fs.solution['costs'].item(), 140.0, rtol=1e-5)
+
+    def test_invest_optional_not_built(self):
+        """Proves: Optional investment is correctly skipped when the fixed investment
+        cost outweighs operational savings.
+
+        InvestBoiler has eta=1.0 (efficient) but 99999€ fixed invest cost.
+        CheapBoiler has eta=0.5 (inefficient) but no invest cost.
+
+        Sensitivity: If investment cost were ignored (free invest), InvestBoiler
+        would be built and used → fuel=20 instead of 40. The cost difference (40
+        vs 20) proves the investment mechanism is working.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'InvestBoiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=fx.InvestParameters(
+                        maximum_size=100,
+                        effects_of_investment=99999,
+                    ),
+                ),
+            ),
+            fx.linear_converters.Boiler(
+                'CheapBoiler',
+                thermal_efficiency=0.5,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow('heat', bus='Heat', size=100),
+            ),
+        )
+        solve(fs)
+        assert_allclose(fs.solution['InvestBoiler(heat)|invested'].item(), 0.0, atol=1e-5)
+        # All demand served by CheapBoiler: fuel = 20/0.5 = 40
+        # If invest were free, InvestBoiler would run: fuel = 20/1.0 = 20 (different!)
+        assert_allclose(fs.solution['costs'].item(), 40.0, rtol=1e-5)
+
+    def test_invest_minimum_size(self):
+        """Proves: InvestParameters.minimum_size forces the invested capacity to be
+        at least the specified value, even when demand is much smaller.
+
+        Demand peak=10, minimum_size=100, cost_per_size=1 → must invest 100.
+
+        Sensitivity: Without minimum_size, optimal invest=10 → cost=10+20=30.
+        With minimum_size=100, invest cost=100 → cost=120. The 4× cost difference
+        proves the constraint is active.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=fx.InvestParameters(
+                        minimum_size=100,
+                        maximum_size=200,
+                        mandatory=True,
+                        effects_of_investment_per_size=1,
+                    ),
+                ),
+            ),
+        )
+        solve(fs)
+        # Must invest at least 100, cost_per_size=1 → invest=100
+        assert_allclose(fs.solution['Boiler(heat)|size'].item(), 100.0, rtol=1e-5)
+        # fuel=20, invest=100 → total=120
+        assert_allclose(fs.solution['costs'].item(), 120.0, rtol=1e-5)

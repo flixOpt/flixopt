@@ -1,0 +1,167 @@
+"""Mathematical correctness tests for storage."""
+
+import numpy as np
+from numpy.testing import assert_allclose
+
+import flixopt as fx
+
+from .conftest import make_flow_system, solve
+
+
+class TestStorage:
+    def test_storage_shift_saves_money(self):
+        """Proves: Storage enables temporal arbitrage — charge cheap, discharge when expensive.
+
+        Sensitivity: Without storage, demand at t=2 must be bought at 10€/kWh → cost=200.
+        With working storage, buy at t=1 for 1€/kWh → cost=20. A 10× difference.
+        """
+        fs = make_flow_system(3)
+        fs.add_elements(
+            fx.Bus('Elec'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([0, 0, 20])),
+                ],
+            ),
+            fx.Source(
+                'Grid',
+                outputs=[
+                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([10, 1, 10])),
+                ],
+            ),
+            fx.Storage(
+                'Battery',
+                charging=fx.Flow('charge', bus='Elec', size=100),
+                discharging=fx.Flow('discharge', bus='Elec', size=100),
+                capacity_in_flow_hours=100,
+                initial_charge_state=0,
+                eta_charge=1,
+                eta_discharge=1,
+                relative_loss_per_hour=0,
+            ),
+        )
+        solve(fs)
+        # Optimal: buy 20 at t=1 @1€ = 20€  (not 20@10€ = 200€)
+        assert_allclose(fs.solution['costs'].item(), 20.0, rtol=1e-5)
+
+    def test_storage_losses(self):
+        """Proves: relative_loss_per_hour correctly reduces stored energy over time.
+
+        Sensitivity: If losses were ignored (0%), only 90 would be charged → cost=90.
+        With 10% loss, must charge 100 to have 90 after 1h → cost=100.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Elec'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([0, 90])),
+                ],
+            ),
+            fx.Source(
+                'Grid',
+                outputs=[
+                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([1, 1000])),
+                ],
+            ),
+            fx.Storage(
+                'Battery',
+                charging=fx.Flow('charge', bus='Elec', size=200),
+                discharging=fx.Flow('discharge', bus='Elec', size=200),
+                capacity_in_flow_hours=200,
+                initial_charge_state=0,
+                eta_charge=1,
+                eta_discharge=1,
+                relative_loss_per_hour=0.1,
+            ),
+        )
+        solve(fs)
+        # Must charge 100 at t=0: after 1h loss = 100*(1-0.1) = 90 available
+        # cost = 100 * 1 = 100
+        assert_allclose(fs.solution['costs'].item(), 100.0, rtol=1e-5)
+
+    def test_storage_eta_charge_discharge(self):
+        """Proves: eta_charge and eta_discharge are both applied to the energy flow.
+        Stored = charged * eta_charge; discharged = stored * eta_discharge.
+
+        Sensitivity: If eta_charge broken (1.0), cost=90. If eta_discharge broken (1.0),
+        cost=80. If both broken, cost=72. Only both correct yields cost=100.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Elec'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([0, 72])),
+                ],
+            ),
+            fx.Source(
+                'Grid',
+                outputs=[
+                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([1, 1000])),
+                ],
+            ),
+            fx.Storage(
+                'Battery',
+                charging=fx.Flow('charge', bus='Elec', size=200),
+                discharging=fx.Flow('discharge', bus='Elec', size=200),
+                capacity_in_flow_hours=200,
+                initial_charge_state=0,
+                eta_charge=0.9,
+                eta_discharge=0.8,
+                relative_loss_per_hour=0,
+            ),
+        )
+        solve(fs)
+        # Need 72 out → discharge = 72, stored needed = 72/0.8 = 90
+        # charge needed = 90/0.9 = 100 → cost = 100*1 = 100
+        assert_allclose(fs.solution['costs'].item(), 100.0, rtol=1e-5)
+
+    def test_storage_soc_bounds(self):
+        """Proves: relative_maximum_charge_state caps how much energy can be stored.
+
+        Storage has 100 kWh capacity but max SOC = 0.5 → only 50 kWh usable.
+        Demand of 60 at t=1: storage provides 50 from cheap t=0, remaining 10
+        from the expensive source at t=1.
+
+        Sensitivity: If SOC bound were ignored, all 60 stored cheaply → cost=60.
+        With the bound enforced, cost=1050 (50×1 + 10×100).
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Elec'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([0, 60])),
+                ],
+            ),
+            fx.Source(
+                'Grid',
+                outputs=[
+                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([1, 100])),
+                ],
+            ),
+            fx.Storage(
+                'Battery',
+                charging=fx.Flow('charge', bus='Elec', size=200),
+                discharging=fx.Flow('discharge', bus='Elec', size=200),
+                capacity_in_flow_hours=100,
+                initial_charge_state=0,
+                relative_maximum_charge_state=0.5,
+                eta_charge=1,
+                eta_discharge=1,
+                relative_loss_per_hour=0,
+            ),
+        )
+        solve(fs)
+        # Can store max 50 at t=0 @1€ = 50€. Remaining 10 at t=1 @100€ = 1000€.
+        # Total = 1050. Without SOC limit: 60@1€ = 60€ (different!)
+        assert_allclose(fs.solution['costs'].item(), 1050.0, rtol=1e-5)
