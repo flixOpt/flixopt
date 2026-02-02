@@ -142,13 +142,12 @@ def compare_plot(grouped: dict[str, list[dict]], output: Path | None = None) -> 
 
 
 def sweep_plot(grouped: dict[str, list[dict]], output: Path | None = None) -> None:
-    """Create a timeline plot showing performance across commits.
+    """Create an interactive timeline plot showing performance across commits using plotly."""
+    import pandas as pd
+    import plotly.express as px
 
-    Each run name is treated as a commit (ordered by timestamp).
-    One subplot per unique model/phase+size combination.
-    """
     # Build ordered commit list from timestamps
-    commit_info: dict[str, dict] = {}  # name -> {timestamp, short, subject}
+    commit_info: dict[str, dict] = {}
     for name, results in grouped.items():
         meta = results[0].get('metadata', {})
         commit_info[name] = {
@@ -157,16 +156,7 @@ def sweep_plot(grouped: dict[str, list[dict]], output: Path | None = None) -> No
             'subject': meta.get('commit_subject', ''),
         }
 
-    # Sort names by timestamp (oldest first)
     ordered_names = sorted(commit_info, key=lambda n: commit_info[n]['timestamp'])
-
-    # Collect all (model/phase, size) combos
-    combos: dict[str, dict[int, list]] = defaultdict(lambda: defaultdict(list))  # key -> {size -> [values per commit]}
-    for name in ordered_names:
-        series = _extract_series(grouped[name])
-        for key, size_map in series.items():
-            for size, median in size_map.items():
-                combos[key][size].append(median)
 
     # Determine which keys have units (memory)
     units: dict[str, str] = {}
@@ -177,72 +167,139 @@ def sweep_plot(grouped: dict[str, list[dict]], output: Path | None = None) -> No
                 if 'unit' in stats:
                     units[key] = stats['unit']
 
-    # Group by phase for subplot layout
-    all_keys = sorted(combos.keys())
-    n_plots = sum(len(sizes) for sizes in combos.values())
+    # Build long-form DataFrame for plotly
+    rows = []
+    for name in ordered_names:
+        info = commit_info[name]
+        series = _extract_series(grouped[name])
+        for key, size_map in series.items():
+            for size, median in size_map.items():
+                unit = units.get(key)
+                rows.append(
+                    {
+                        'commit': info['short'],
+                        'subject': info['subject'][:60],
+                        'benchmark': f'{key} (n={size})',
+                        'value': median if unit else median * 1000,
+                        'unit': unit or 'ms',
+                    }
+                )
 
-    if n_plots == 0:
+    if not rows:
         print('No data to plot.')
         return
 
-    n_cols = min(n_plots, 3)
-    n_rows = (n_plots + n_cols - 1) // n_cols
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 4 * n_rows), squeeze=False)
+    df = pd.DataFrame(rows)
 
-    x_labels = [commit_info[n]['short'] for n in ordered_names]
-    x = np.arange(len(ordered_names))
+    # Preserve commit order
+    df['commit'] = pd.Categorical(
+        df['commit'],
+        categories=[commit_info[n]['short'] for n in ordered_names],
+        ordered=True,
+    )
 
-    plot_idx = 0
-    for key in all_keys:
-        for size in sorted(combos[key]):
-            values = combos[key][size]
-            if len(values) != len(ordered_names):
-                continue  # Skip incomplete data
-
-            row, col = divmod(plot_idx, n_cols)
-            ax = axes[row][col]
-
-            unit = units.get(key)
-            if unit:
-                ax.plot(x, values, 'o-', linewidth=2, markersize=5)
-                ax.set_ylabel(unit)
-            else:
-                ax.plot(x, [v * 1000 for v in values], 'o-', linewidth=2, markersize=5)
-                ax.set_ylabel('ms')
-
-            ax.set_title(f'{key} (n={size})', fontsize=10)
-            ax.set_xticks(x)
-            ax.set_xticklabels(x_labels, rotation=45, ha='right', fontsize=8)
-            ax.grid(True, alpha=0.3)
-
-            # Highlight min value
-            arr = np.array(values)
-            best = arr.argmin()
-            ax.annotate(
-                x_labels[best],
-                xy=(best, arr[best] * (1 if unit else 1000)),
-                fontsize=7,
-                color='green',
-                ha='center',
-                va='top',
-            )
-
-            plot_idx += 1
-
-    # Hide unused axes
-    for idx in range(plot_idx, n_rows * n_cols):
-        row, col = divmod(idx, n_cols)
-        axes[row][col].set_visible(False)
-
-    fig.suptitle(f'Performance sweep: {x_labels[0]} → {x_labels[-1]} ({len(ordered_names)} commits)', fontsize=13)
-    plt.tight_layout()
+    fig = px.line(
+        df,
+        x='commit',
+        y='value',
+        color='benchmark',
+        facet_row='unit',
+        markers=True,
+        hover_data=['subject'],
+        title=f'Performance sweep ({len(ordered_names)} commits)',
+        labels={'value': '', 'commit': 'Commit'},
+    )
+    fig.update_yaxes(matches=None)  # Independent y-axes per facet
+    fig.for_each_yaxis(lambda y: y.update(title=''))
+    fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
 
     if output is None:
-        output = RESULTS_DIR / f'sweep_{x_labels[0]}_{x_labels[-1]}.png'
+        first = commit_info[ordered_names[0]]['short']
+        last = commit_info[ordered_names[-1]]['short']
+        output = RESULTS_DIR / f'sweep_{first}_{last}.html'
     output.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output, dpi=150)
+    fig.write_html(str(output))
     print(f'Saved sweep plot: {output}')
-    plt.close(fig)
+
+
+def sweep_table(grouped: dict[str, list[dict]], output: Path | None = None) -> str:
+    """Generate a markdown table showing performance across commits with speedup vs first commit.
+
+    Returns the markdown string and optionally writes it to a file.
+    """
+    import pandas as pd
+
+    # Build ordered commit list from timestamps
+    commit_info: dict[str, dict] = {}
+    for name, results in grouped.items():
+        meta = results[0].get('metadata', {})
+        commit_info[name] = {
+            'timestamp': meta.get('timestamp', ''),
+            'short': meta.get('commit_short', name),
+            'subject': meta.get('commit_subject', ''),
+        }
+
+    ordered_names = sorted(commit_info, key=lambda n: commit_info[n]['timestamp'])
+
+    # Determine which keys have units (memory)
+    units: dict[str, str] = {}
+    for _name, results in grouped.items():
+        for r in results:
+            key = f'{r["model"]}/{r["phase"]}'
+            for _size_str, stats in r['results'].items():
+                if 'unit' in stats:
+                    units[key] = stats['unit']
+
+    # Build rows: one per commit
+    rows = []
+    for name in ordered_names:
+        info = commit_info[name]
+        subject = info['subject']
+        if len(subject) > 60:
+            subject = subject[:57] + '...'
+        row = {'Commit': info['short'], 'Description': subject}
+
+        series = _extract_series(grouped[name])
+        for key, size_map in series.items():
+            for size, median in size_map.items():
+                unit = units.get(key)
+                if unit:
+                    row[f'{key} n={size} ({unit})'] = median
+                else:
+                    row[f'{key} n={size} (ms)'] = round(median * 1000, 1)
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+
+    # Add speedup columns (base = first row)
+    metric_cols = [c for c in df.columns if c not in ('Commit', 'Description')]
+    for col in metric_cols:
+        base_val = df[col].iloc[0]
+        df[f'{col} speedup'] = (base_val / df[col]).map(lambda x: f'{x:.2f}x')
+
+    # Interleave: metric, speedup, metric, speedup, ...
+    ordered_cols = ['Commit', 'Description']
+    for col in metric_cols:
+        ordered_cols.extend([col, f'{col} speedup'])
+    df = df[ordered_cols]
+
+    # Bold the first row commit
+    df.loc[0, 'Commit'] = df.loc[0, 'Commit'] + ' (base)'
+
+    md = df.to_markdown(index=False)
+
+    if output is None:
+        first = commit_info[ordered_names[0]]['short']
+        last = commit_info[ordered_names[-1]]['short']
+        output = RESULTS_DIR / f'sweep_{first}_{last}.md'
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with open(output, 'w') as f:
+        f.write(md + '\n')
+    print(f'Saved sweep table: {output}')
+    print()
+    print(md)
+
+    return md
 
 
 def main() -> None:
@@ -250,11 +307,14 @@ def main() -> None:
     parser.add_argument('files', nargs='+', help='JSON result files to compare')
     parser.add_argument('--output', type=Path, help='Output PNG path')
     parser.add_argument('--sweep', action='store_true', help='Generate sweep timeline plot instead of comparison')
+    parser.add_argument('--table', action='store_true', help='Generate sweep markdown table')
     args = parser.parse_args()
 
     grouped = load_results(args.files)
 
-    if args.sweep:
+    if args.table:
+        sweep_table(grouped, args.output)
+    elif args.sweep:
         sweep_plot(grouped, args.output)
     else:
         compare_plot(grouped, args.output)

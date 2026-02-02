@@ -162,7 +162,7 @@ def sweep(
 
     # Import compare eagerly — after restoring the original branch the module
     # may have been reloaded from disk; grabbing the functions now is safer.
-    from benchmarks.compare import load_results, sweep_plot  # noqa: F811
+    from benchmarks.compare import load_results, sweep_plot, sweep_table  # noqa: F811
 
     original_ref = _git('rev-parse', '--abbrev-ref', 'HEAD')
     if original_ref == 'HEAD':
@@ -272,8 +272,9 @@ def sweep(
     print(f'\nSweep complete. {len(final_files)} result files in {DEFAULT_RESULTS_DIR}/')
     print(f'Persistent copy in {SWEEP_RESULTS_DIR}/')
 
-    # Auto-generate sweep plot
+    # Auto-generate sweep plot and table
     grouped = load_results([str(p) for p in final_files])
+    sweep_table(grouped)
     sweep_plot(grouped)
 
     return final_files
