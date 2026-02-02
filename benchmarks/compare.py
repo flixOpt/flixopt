@@ -2,6 +2,7 @@
 
 Usage:
     python -m benchmarks.compare results/main_*.json results/ref_*.json
+    python -m benchmarks.compare --sweep results/*.json
 """
 
 from __future__ import annotations
@@ -41,7 +42,7 @@ def _extract_series(results: list[dict]) -> dict[str, dict[int, float]]:
 
 
 def compare_plot(grouped: dict[str, list[dict]], output: Path | None = None) -> None:
-    """Create a 4-panel comparison plot."""
+    """Create a 4-panel comparison plot for 2+ runs."""
     names = list(grouped.keys())
     if len(names) < 2:
         print('Need at least 2 run names to compare. Got:', names)
@@ -140,14 +141,123 @@ def compare_plot(grouped: dict[str, list[dict]], output: Path | None = None) -> 
     plt.close(fig)
 
 
+def sweep_plot(grouped: dict[str, list[dict]], output: Path | None = None) -> None:
+    """Create a timeline plot showing performance across commits.
+
+    Each run name is treated as a commit (ordered by timestamp).
+    One subplot per unique model/phase+size combination.
+    """
+    # Build ordered commit list from timestamps
+    commit_info: dict[str, dict] = {}  # name -> {timestamp, short, subject}
+    for name, results in grouped.items():
+        meta = results[0].get('metadata', {})
+        commit_info[name] = {
+            'timestamp': meta.get('timestamp', ''),
+            'short': meta.get('commit_short', name),
+            'subject': meta.get('commit_subject', ''),
+        }
+
+    # Sort names by timestamp (oldest first)
+    ordered_names = sorted(commit_info, key=lambda n: commit_info[n]['timestamp'])
+
+    # Collect all (model/phase, size) combos
+    combos: dict[str, dict[int, list]] = defaultdict(lambda: defaultdict(list))  # key -> {size -> [values per commit]}
+    for name in ordered_names:
+        series = _extract_series(grouped[name])
+        for key, size_map in series.items():
+            for size, median in size_map.items():
+                combos[key][size].append(median)
+
+    # Determine which keys have units (memory)
+    units: dict[str, str] = {}
+    for _name, results in grouped.items():
+        for r in results:
+            key = f'{r["model"]}/{r["phase"]}'
+            for _size_str, stats in r['results'].items():
+                if 'unit' in stats:
+                    units[key] = stats['unit']
+
+    # Group by phase for subplot layout
+    all_keys = sorted(combos.keys())
+    n_plots = sum(len(sizes) for sizes in combos.values())
+
+    if n_plots == 0:
+        print('No data to plot.')
+        return
+
+    n_cols = min(n_plots, 3)
+    n_rows = (n_plots + n_cols - 1) // n_cols
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 4 * n_rows), squeeze=False)
+
+    x_labels = [commit_info[n]['short'] for n in ordered_names]
+    x = np.arange(len(ordered_names))
+
+    plot_idx = 0
+    for key in all_keys:
+        for size in sorted(combos[key]):
+            values = combos[key][size]
+            if len(values) != len(ordered_names):
+                continue  # Skip incomplete data
+
+            row, col = divmod(plot_idx, n_cols)
+            ax = axes[row][col]
+
+            unit = units.get(key)
+            if unit:
+                ax.plot(x, values, 'o-', linewidth=2, markersize=5)
+                ax.set_ylabel(unit)
+            else:
+                ax.plot(x, [v * 1000 for v in values], 'o-', linewidth=2, markersize=5)
+                ax.set_ylabel('ms')
+
+            ax.set_title(f'{key} (n={size})', fontsize=10)
+            ax.set_xticks(x)
+            ax.set_xticklabels(x_labels, rotation=45, ha='right', fontsize=8)
+            ax.grid(True, alpha=0.3)
+
+            # Highlight min value
+            arr = np.array(values)
+            best = arr.argmin()
+            ax.annotate(
+                x_labels[best],
+                xy=(best, arr[best] * (1 if unit else 1000)),
+                fontsize=7,
+                color='green',
+                ha='center',
+                va='top',
+            )
+
+            plot_idx += 1
+
+    # Hide unused axes
+    for idx in range(plot_idx, n_rows * n_cols):
+        row, col = divmod(idx, n_cols)
+        axes[row][col].set_visible(False)
+
+    fig.suptitle(f'Performance sweep: {x_labels[0]} → {x_labels[-1]} ({len(ordered_names)} commits)', fontsize=13)
+    plt.tight_layout()
+
+    if output is None:
+        output = RESULTS_DIR / f'sweep_{x_labels[0]}_{x_labels[-1]}.png'
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=150)
+    print(f'Saved sweep plot: {output}')
+    plt.close(fig)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description='Compare benchmark results')
     parser.add_argument('files', nargs='+', help='JSON result files to compare')
     parser.add_argument('--output', type=Path, help='Output PNG path')
+    parser.add_argument('--sweep', action='store_true', help='Generate sweep timeline plot instead of comparison')
     args = parser.parse_args()
 
     grouped = load_results(args.files)
-    compare_plot(grouped, args.output)
+
+    if args.sweep:
+        sweep_plot(grouped, args.output)
+    else:
+        compare_plot(grouped, args.output)
 
 
 if __name__ == '__main__':
