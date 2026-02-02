@@ -295,3 +295,56 @@ class TestStorage:
         # Without storage: buy 50 at t=1 @10€ = 500€.
         assert_allclose(fs.solution['Battery|size'].item(), 50.0, rtol=1e-5)
         assert_allclose(fs.solution['costs'].item(), 100.0, rtol=1e-5)
+
+    def test_prevent_simultaneous_charge_and_discharge(self):
+        """Proves: prevent_simultaneous_charge_and_discharge=True prevents the storage
+        from charging and discharging in the same timestep.
+
+        Without this constraint, a storage with eta_charge=0.9, eta_discharge=0.9
+        and a generous imbalance penalty could exploit simultaneous charge/discharge
+        to game the bus balance. With the constraint, charge and discharge flows
+        are mutually exclusive per timestep.
+
+        Setup: Source at 1€/kWh, demand=10 at every timestep. Storage with
+        prevent_simultaneous=True. Verify that at no timestep both charge>0 and
+        discharge>0.
+
+        Sensitivity: This is a structural constraint. If broken, the optimizer
+        could charge and discharge simultaneously, which is physically nonsensical.
+        """
+        fs = make_flow_system(3)
+        fs.add_elements(
+            fx.Bus('Elec'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([10, 20, 10])),
+                ],
+            ),
+            fx.Source(
+                'Grid',
+                outputs=[
+                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([1, 10, 1])),
+                ],
+            ),
+            fx.Storage(
+                'Battery',
+                charging=fx.Flow('charge', bus='Elec', size=100),
+                discharging=fx.Flow('discharge', bus='Elec', size=100),
+                capacity_in_flow_hours=100,
+                initial_charge_state=0,
+                eta_charge=0.9,
+                eta_discharge=0.9,
+                relative_loss_per_hour=0,
+                prevent_simultaneous_charge_and_discharge=True,
+            ),
+        )
+        solve(fs)
+        charge = fs.solution['Battery(charge)|flow_rate'].values[:-1]
+        discharge = fs.solution['Battery(discharge)|flow_rate'].values[:-1]
+        # At no timestep should both be > 0
+        for t in range(len(charge)):
+            assert not (charge[t] > 1e-5 and discharge[t] > 1e-5), (
+                f'Simultaneous charge/discharge at t={t}: charge={charge[t]}, discharge={discharge[t]}'
+            )

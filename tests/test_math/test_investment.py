@@ -214,3 +214,56 @@ class TestInvestment:
         assert_allclose(fs.solution['FixedBoiler(heat)|invested'].item(), 1.0, atol=1e-5)
         # fuel=60 (all from FixedBoiler @eta=1), invest=10, total=70
         assert_allclose(fs.solution['costs'].item(), 70.0, rtol=1e-5)
+
+    def test_piecewise_invest_cost(self):
+        """Proves: piecewise_effects_of_investment applies non-linear investment costs
+        where the cost-per-size changes across size segments (economies of scale).
+
+        Segment 1: size 0→50, cost 0→100 (2€/kW).
+        Segment 2: size 50→200, cost 100→250 (1€/kW, cheaper per unit).
+        Demand peak=80. Optimal size=80, in segment 2.
+        Invest cost = 100 + (80-50)×(250-100)/(200-50) = 100 + 30 = 130.
+
+        Sensitivity: If linear cost at 2€/kW throughout, invest=160 → total=240.
+        With piecewise (economies of scale), invest=130 → total=210.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([80, 80])),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=0.5),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=fx.InvestParameters(
+                        maximum_size=200,
+                        piecewise_effects_of_investment=fx.PiecewiseEffects(
+                            piecewise_origin=fx.Piecewise([fx.Piece(0, 50), fx.Piece(50, 200)]),
+                            piecewise_shares={
+                                'costs': fx.Piecewise([fx.Piece(0, 100), fx.Piece(100, 250)]),
+                            },
+                        ),
+                    ),
+                ),
+            ),
+        )
+        solve(fs)
+        assert_allclose(fs.solution['Boiler(heat)|size'].item(), 80.0, rtol=1e-5)
+        # invest = 100 + 30/150*150 = 100 + 30 = 130. fuel = 160*0.5 = 80. total = 210.
+        assert_allclose(fs.solution['costs'].item(), 210.0, rtol=1e-5)

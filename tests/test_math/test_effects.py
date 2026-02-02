@@ -246,3 +246,131 @@ class TestEffects:
         # Must emit ≥10 CO2 each ts → Dirty ≥ 10 each ts → cost = 20
         assert_allclose(fs.solution['costs'].item(), 20.0, rtol=1e-5)
         assert_allclose(fs.solution['CO2'].item(), 20.0, rtol=1e-5)
+
+    def test_effect_maximum_temporal(self):
+        """Proves: maximum_temporal caps the sum of an effect's per-timestep contributions
+        over the period, forcing suboptimal dispatch.
+
+        CO2 maximum_temporal=12. Dirty: 1€+1kgCO2/kWh. Clean: 5€+0kgCO2/kWh.
+        Demand=[10,10]. Without cap, all Dirty → CO2=20, cost=20.
+        With temporal cap=12, Dirty limited to 12 total, Clean covers 8.
+
+        Sensitivity: Without maximum_temporal, cost=20. With cap, cost=12+40=52.
+        """
+        fs = make_flow_system(2)
+        co2 = fx.Effect('CO2', 'kg', maximum_temporal=12)
+        costs = fx.Effect('costs', '€', is_standard=True, is_objective=True)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            costs,
+            co2,
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                ],
+            ),
+            fx.Source(
+                'Dirty',
+                outputs=[
+                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
+                ],
+            ),
+            fx.Source(
+                'Clean',
+                outputs=[
+                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 5, 'CO2': 0}),
+                ],
+            ),
+        )
+        solve(fs)
+        # Dirty=12 @1€, Clean=8 @5€ → cost = 12 + 40 = 52
+        assert_allclose(fs.solution['costs'].item(), 52.0, rtol=1e-5)
+        assert_allclose(fs.solution['CO2'].item(), 12.0, rtol=1e-5)
+
+    def test_effect_minimum_temporal(self):
+        """Proves: minimum_temporal forces the sum of an effect's per-timestep contributions
+        to reach at least the specified value.
+
+        CO2 minimum_temporal=25. Dirty: 1€+1kgCO2/kWh. Demand=[10,10] (total=20).
+        Must produce ≥25 CO2 → Dirty ≥25, but demand only 20.
+        Excess absorbed by bus with imbalance_penalty_per_flow_hour=0.
+
+        Sensitivity: Without minimum_temporal, Dirty=20 → cost=20.
+        With floor=25, Dirty=25 → cost=25.
+        """
+        fs = make_flow_system(2)
+        co2 = fx.Effect('CO2', 'kg', minimum_temporal=25)
+        costs = fx.Effect('costs', '€', is_standard=True, is_objective=True)
+        fs.add_elements(
+            fx.Bus('Heat', imbalance_penalty_per_flow_hour=0),
+            costs,
+            co2,
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                ],
+            ),
+            fx.Source(
+                'Dirty',
+                outputs=[
+                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
+                ],
+            ),
+        )
+        solve(fs)
+        assert_allclose(fs.solution['CO2'].item(), 25.0, rtol=1e-5)
+        assert_allclose(fs.solution['costs'].item(), 25.0, rtol=1e-5)
+
+    def test_share_from_periodic(self):
+        """Proves: share_from_periodic adds a weighted fraction of one effect's periodic
+        (investment/fixed) sum into another effect's total.
+
+        costs has share_from_periodic={'CO2': 10}. Boiler invest emits 5 kgCO2 fixed.
+        Direct costs = invest(100) + fuel(20) = 120. CO2 periodic = 5.
+        Shared: 10 × 5 = 50. Total costs = 120 + 50 = 170.
+
+        Sensitivity: Without share_from_periodic, costs=120. With it, costs=170.
+        """
+        fs = make_flow_system(2)
+        co2 = fx.Effect('CO2', 'kg')
+        costs = fx.Effect('costs', '€', is_standard=True, is_objective=True, share_from_periodic={'CO2': 10})
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            costs,
+            co2,
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=fx.InvestParameters(
+                        fixed_size=50,
+                        effects_of_investment={'costs': 100, 'CO2': 5},
+                    ),
+                ),
+            ),
+        )
+        solve(fs)
+        # direct costs = 100 (invest) + 20 (fuel) = 120
+        # CO2 periodic = 5 (from invest)
+        # costs += 10 * 5 = 50
+        # total costs = 170
+        assert_allclose(fs.solution['costs'].item(), 170.0, rtol=1e-5)
+        assert_allclose(fs.solution['CO2'].item(), 5.0, rtol=1e-5)
