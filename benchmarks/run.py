@@ -14,15 +14,25 @@ from __future__ import annotations
 import argparse
 import json
 import platform
+import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
 from benchmarks.models import discover_models
 from benchmarks.runners import discover_runners
 
-RESULTS_DIR = Path(__file__).parent / 'results'
+DEFAULT_RESULTS_DIR = Path(__file__).parent / 'results'
+SWEEP_RESULTS_DIR = Path.home() / '.cache' / 'flixopt-benchmarks'
+
+# Module-level override used by sweep to redirect output outside the repo
+_results_dir: Path | None = None
+
+
+def _get_results_dir() -> Path:
+    return _results_dir if _results_dir is not None else DEFAULT_RESULTS_DIR
 
 
 def run_single(
@@ -82,8 +92,9 @@ def run_single(
         },
     }
 
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = RESULTS_DIR / f'{name}_{model_name}_{phase}.json'
+    results_dir = _get_results_dir()
+    results_dir.mkdir(parents=True, exist_ok=True)
+    out_path = results_dir / f'{name}_{model_name}_{phase}.json'
     with open(out_path, 'w') as f:
         json.dump(output, f, indent=2)
     print(f'  → {out_path}')
@@ -141,12 +152,16 @@ def sweep(
 ) -> list[Path]:
     """Benchmark across multiple git commits.
 
-    Checks out each commit, installs, runs benchmarks, then restores the original branch.
+    Results are written to ~/.cache/flixopt-benchmarks/ so they persist regardless
+    of git state. The benchmark framework is injected into commits that don't have
+    it; commits that already contain benchmarks/ are left untouched.
+
     Returns paths to all generated JSON files.
     """
+    global _results_dir  # noqa: PLW0603
+
     original_ref = _git('rev-parse', '--abbrev-ref', 'HEAD')
     if original_ref == 'HEAD':
-        # Detached HEAD — save the exact SHA
         original_ref = _git('rev-parse', 'HEAD')
 
     shas = resolve_revisions(rev_range)
@@ -156,53 +171,88 @@ def sweep(
 
     print(f'Sweeping {len(shas)} commits: {shas[0][:8]}..{shas[-1][:8]}')
 
+    benchmarks_src = Path(__file__).parent  # .../benchmarks/
+    repo_root = benchmarks_src.parent
+
+    # Write results outside the repo so they survive checkouts
+    _results_dir = SWEEP_RESULTS_DIR
+    _results_dir.mkdir(parents=True, exist_ok=True)
+    print(f'Results directory: {_results_dir}')
+
     all_result_files: list[Path] = []
 
-    try:
-        for i, sha in enumerate(shas):
-            short = sha[:8]
-            # Get commit subject for display
-            subject = _git('log', '--format=%s', '-1', sha)
-            print(f'\n{"=" * 60}')
-            print(f'[{i + 1}/{len(shas)}] {short} {subject}')
-            print('=' * 60)
+    with tempfile.TemporaryDirectory(prefix='flixopt_bench_') as tmpdir:
+        # Snapshot the benchmark framework
+        bench_copy = Path(tmpdir) / 'benchmarks'
+        shutil.copytree(benchmarks_src, bench_copy, ignore=shutil.ignore_patterns('results', '__pycache__'))
+        print(f'Benchmark framework cached in {bench_copy}')
 
-            _git('checkout', sha)
+        try:
+            for i, sha in enumerate(shas):
+                short = sha[:8]
+                subject = _git('log', '--format=%s', '-1', sha)
+                print(f'\n{"=" * 60}')
+                print(f'[{i + 1}/{len(shas)}] {short} {subject}')
+                print('=' * 60)
+
+                _git('checkout', sha)
+
+                # Only inject benchmarks/ if the checked-out commit doesn't have it
+                repo_benchmarks = repo_root / 'benchmarks'
+                injected = False
+                if not (repo_benchmarks / 'run.py').exists():
+                    if repo_benchmarks.exists():
+                        shutil.rmtree(repo_benchmarks)
+                    shutil.copytree(bench_copy, repo_benchmarks)
+                    injected = True
+                    print('  (injected benchmark framework)')
+
+                subprocess.run(
+                    [sys.executable, '-m', 'pip', 'install', '-e', '.', '--quiet'],
+                    check=True,
+                )
+
+                results = run_matrix(
+                    short,
+                    iterations,
+                    model_names=model_names,
+                    phase_names=phase_names,
+                    sizes=sizes,
+                    quick=quick,
+                )
+
+                # Tag each result with commit info for sweep plots
+                for r in results:
+                    r['metadata']['commit'] = sha
+                    r['metadata']['commit_short'] = short
+                    r['metadata']['commit_subject'] = subject
+                    out_path = _results_dir / f'{short}_{r["model"]}_{r["phase"]}.json'
+                    with open(out_path, 'w') as f:
+                        json.dump(r, f, indent=2)
+                    all_result_files.append(out_path)
+
+                # Clean up injected framework so git checkout doesn't conflict
+                if injected and repo_benchmarks.exists():
+                    shutil.rmtree(repo_benchmarks)
+
+        finally:
+            print(f'\nRestoring {original_ref}...')
+            _git('checkout', original_ref)
             subprocess.run(
                 [sys.executable, '-m', 'pip', 'install', '-e', '.', '--quiet'],
                 check=True,
             )
+            _results_dir = None
 
-            results = run_matrix(
-                short,
-                iterations,
-                model_names=model_names,
-                phase_names=phase_names,
-                sizes=sizes,
-                quick=quick,
-            )
+    # Copy results into the repo's results dir for convenience
+    DEFAULT_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    for f in all_result_files:
+        shutil.copy2(f, DEFAULT_RESULTS_DIR / f.name)
 
-            # Tag each result with commit info for sweep plots
-            for r in results:
-                r['metadata']['commit'] = sha
-                r['metadata']['commit_short'] = short
-                r['metadata']['commit_subject'] = subject
-                # Re-save with commit metadata
-                out_path = RESULTS_DIR / f'{short}_{r["model"]}_{r["phase"]}.json'
-                with open(out_path, 'w') as f:
-                    json.dump(r, f, indent=2)
-                all_result_files.append(out_path)
-
-    finally:
-        print(f'\nRestoring {original_ref}...')
-        _git('checkout', original_ref)
-        subprocess.run(
-            [sys.executable, '-m', 'pip', 'install', '-e', '.', '--quiet'],
-            check=True,
-        )
-
-    print(f'\nSweep complete. {len(all_result_files)} result files in {RESULTS_DIR}/')
-    return all_result_files
+    final_files = [DEFAULT_RESULTS_DIR / f.name for f in all_result_files]
+    print(f'\nSweep complete. {len(final_files)} result files in {DEFAULT_RESULTS_DIR}/')
+    print(f'Persistent copy in {SWEEP_RESULTS_DIR}/')
+    return final_files
 
 
 def list_available() -> None:
