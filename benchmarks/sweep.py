@@ -158,14 +158,8 @@ def sweep(
         subprocess.run(['uv', 'pip', 'install', '-e', '.', '--quiet'], check=True)
 
     print(f'\nSweep complete. {len(all_result_files)} result files in {RESULTS_DIR}/')
-
-    # Generate table and plot
-    if all_result_files:
-        from benchmarks.compare import load_results, plot, sweep_table
-
-        grouped = load_results([str(p) for p in all_result_files])
-        sweep_table(grouped)
-        plot(grouped)
+    print('\nTo view results:')
+    print(f'  just table {RESULTS_DIR}/*.json')
 
     return all_result_files
 
