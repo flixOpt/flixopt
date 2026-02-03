@@ -34,6 +34,7 @@ from .core import TimeSeriesData
 from .effects import PENALTY_EFFECT_LABEL, Effect
 from .elements import Bus, Flow
 from .flow_system import FlowSystem
+from .flow_system_status import FlowSystemStatus
 from .interface import InvestParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects, StatusParameters
 from .optimization import Optimization, SegmentedOptimization
 from .plot_result import PlotResult
@@ -55,6 +56,7 @@ __all__ = [
     'LinearConverter',
     'Transmission',
     'FlowSystem',
+    'FlowSystemStatus',
     'Optimization',
     'SegmentedOptimization',
     'InvestParameters',

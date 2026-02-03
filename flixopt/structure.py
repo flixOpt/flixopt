@@ -715,6 +715,7 @@ class FlowSystemModel(linopy.Model):
         self._components_model = None  # Reference to ComponentsModel
         self._converters_model = None  # Reference to ConvertersModel
         self._transmissions_model = None  # Reference to TransmissionsModel
+        self._is_built: bool = False  # Set True after build_model() completes
 
     def add_variables(
         self,
@@ -982,6 +983,8 @@ class FlowSystemModel(linopy.Model):
             timer.record('finalize')
         if timer:
             timer.print_summary()
+
+        self._is_built = True
 
         logger.info(
             f'Type-level modeling complete: {len(self.variables)} variables, {len(self.constraints)} constraints'

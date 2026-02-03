@@ -20,6 +20,7 @@ import xarray as xr
 
 from .color_processing import ColorType, hex_to_rgba, process_colors
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
+from .flow_system_status import FlowSystemStatus
 from .plot_result import PlotResult
 
 if TYPE_CHECKING:
@@ -740,7 +741,7 @@ class TopologyAccessor:
                 f'Original error: {VISUALIZATION_ERROR}'
             )
 
-        if not self._fs._connected_and_transformed:
+        if self._fs.status < FlowSystemStatus.CONNECTED:
             self._fs._connect_network()
 
         if self._fs._network_app is not None:

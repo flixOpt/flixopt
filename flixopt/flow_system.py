@@ -26,6 +26,7 @@ from .core import (
 )
 from .effects import Effect, EffectCollection
 from .elements import Bus, Component, Flow
+from .flow_system_status import FlowSystemStatus, get_status, invalidate_to_status
 from .model_coordinates import ModelCoordinates
 from .optimize_accessor import OptimizeAccessor
 from .statistics_accessor import StatisticsAccessor
@@ -812,7 +813,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 stacklevel=2,
             )
         # Always invalidate when adding elements to ensure new elements get transformed
-        if self.model is not None or self._connected_and_transformed:
+        if self.status > FlowSystemStatus.INITIALIZED:
             self._invalidate_model()
 
         for new_element in list(elements):
@@ -880,7 +881,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 stacklevel=2,
             )
         # Always invalidate when adding carriers to ensure proper re-transformation
-        if self.model is not None or self._connected_and_transformed:
+        if self.status > FlowSystemStatus.INITIALIZED:
             self._invalidate_model()
 
         for carrier in list(carriers):
@@ -904,10 +905,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Raises:
             RuntimeError: If FlowSystem is not connected_and_transformed.
         """
-        if not self.connected_and_transformed:
-            raise RuntimeError(
-                'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
-            )
+        self._require_status(FlowSystemStatus.CONNECTED, 'get carrier')
 
         # Try as bus label
         bus = self.buses.get(label)
@@ -939,10 +937,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Raises:
             RuntimeError: If FlowSystem is not connected_and_transformed.
         """
-        if not self.connected_and_transformed:
-            raise RuntimeError(
-                'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
-            )
+        self._require_status(FlowSystemStatus.CONNECTED, 'access flow_carriers')
 
         if self._flow_carriers is None:
             self._flow_carriers = {}
@@ -967,10 +962,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 DeprecationWarning,
                 stacklevel=2,
             )
-        if not self.connected_and_transformed:
-            raise RuntimeError(
-                'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
-            )
+        self._require_status(FlowSystemStatus.CONNECTED, 'create model')
         # System integrity was already validated in connect_and_transform()
         self.model = FlowSystemModel(self)
         return self.model
@@ -1035,8 +1027,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             >>> flow_system.solve(HighsSolver())
             >>> print(flow_system.solution)
         """
-        if self.model is None:
-            raise RuntimeError('Model has not been built. Call build_model() first.')
+        self._require_status(FlowSystemStatus.MODEL_BUILT, 'solve')
 
         self.model.solve(
             solver_name=solver.name,
@@ -1101,8 +1092,69 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """Check if the FlowSystem is locked (has a solution).
 
         A locked FlowSystem cannot be modified. Use `reset()` to unlock it.
+
+        This is equivalent to ``status >= FlowSystemStatus.SOLVED``.
         """
-        return self._solution is not None
+        return self.status >= FlowSystemStatus.SOLVED
+
+    @property
+    def status(self) -> FlowSystemStatus:
+        """Current lifecycle status of this FlowSystem.
+
+        The status progresses through these stages:
+
+        - INITIALIZED: FlowSystem created, elements can be added
+        - CONNECTED: Network connected, data transformed to xarray
+        - MODEL_CREATED: linopy Model instantiated
+        - MODEL_BUILT: Variables and constraints populated
+        - SOLVED: Optimization complete, solution exists
+
+        Use this to check what operations are available or what has been done.
+
+        Examples:
+            >>> fs = FlowSystem(timesteps)
+            >>> fs.status
+            <FlowSystemStatus.INITIALIZED: 1>
+            >>> fs.add_elements(bus, component)
+            >>> fs.connect_and_transform()
+            >>> fs.status
+            <FlowSystemStatus.CONNECTED: 2>
+            >>> fs.optimize(solver)
+            >>> fs.status
+            <FlowSystemStatus.SOLVED: 5>
+        """
+        return get_status(self)
+
+    def _require_status(self, minimum: FlowSystemStatus, action: str) -> None:
+        """Raise if FlowSystem is not in the required status.
+
+        Args:
+            minimum: The minimum required status.
+            action: Description of the action being attempted (for error message).
+
+        Raises:
+            RuntimeError: If current status is below the minimum required.
+        """
+        current = self.status
+        if current < minimum:
+            raise RuntimeError(
+                f'Cannot {action}: FlowSystem is in status {current.name}, but requires at least {minimum.name}.'
+            )
+
+    def _invalidate_to(self, target: FlowSystemStatus) -> None:
+        """Invalidate FlowSystem down to target status.
+
+        This clears all data/caches associated with statuses above the target.
+        If the FlowSystem is already at or below the target status, this is a no-op.
+
+        Args:
+            target: The target status to invalidate down to.
+
+        See Also:
+            :meth:`invalidate`: Public method for manual invalidation.
+            :meth:`reset`: Clears solution and invalidates (for locked FlowSystems).
+        """
+        invalidate_to_status(self, target)
 
     def _invalidate_model(self) -> None:
         """Invalidate the model when structure changes.
@@ -1118,14 +1170,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             :meth:`invalidate`: Public method for manual invalidation.
             :meth:`reset`: Clears solution and invalidates (for locked FlowSystems).
         """
-        self.model = None
-        self._connected_and_transformed = False
-        self._topology = None  # Invalidate topology accessor (and its cached colors)
-        self._flow_carriers = None  # Invalidate flow-to-carrier mapping
-        self._batched = None  # Invalidate batched data accessor (forces re-creation of FlowsData)
-        for element in self.values():
-            element._variable_names = []
-            element._constraint_names = []
+        self._invalidate_to(FlowSystemStatus.INITIALIZED)
 
     def reset(self) -> FlowSystem:
         """Clear optimization state to allow modifications.
@@ -2178,4 +2223,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     @property
     def connected_and_transformed(self) -> bool:
-        return self._connected_and_transformed
+        """Check if the FlowSystem has been connected and transformed.
+
+        This is equivalent to ``status >= FlowSystemStatus.CONNECTED``.
+        """
+        return self.status >= FlowSystemStatus.CONNECTED
