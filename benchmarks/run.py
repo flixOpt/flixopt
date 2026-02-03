@@ -6,7 +6,6 @@ Usage:
     python -m benchmarks.run --name main --all --sizes 24 168
     python -m benchmarks.run --name main --all --quick
     python -m benchmarks.run --list
-    python -m benchmarks.run --sweep HEAD~5..HEAD --model simple --phase build --sizes 168 --iterations 3
 """
 
 from __future__ import annotations
@@ -14,25 +13,14 @@ from __future__ import annotations
 import argparse
 import json
 import platform
-import shutil
-import subprocess
 import sys
-import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
 from benchmarks.models import discover_models
 from benchmarks.runners import discover_runners
 
-DEFAULT_RESULTS_DIR = Path(__file__).parent / 'results'
-SWEEP_RESULTS_DIR = Path.home() / '.cache' / 'flixopt-benchmarks'
-
-# Module-level override used by sweep to redirect output outside the repo
-_results_dir: Path | None = None
-
-
-def _get_results_dir() -> Path:
-    return _results_dir if _results_dir is not None else DEFAULT_RESULTS_DIR
+RESULTS_DIR = Path(__file__).parent / 'results'
 
 
 def run_single(
@@ -92,9 +80,8 @@ def run_single(
         },
     }
 
-    results_dir = _get_results_dir()
-    results_dir.mkdir(parents=True, exist_ok=True)
-    out_path = results_dir / f'{name}_{model_name}_{phase}.json'
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = RESULTS_DIR / f'{name}_{model_name}_{phase}.json'
     with open(out_path, 'w') as f:
         json.dump(output, f, indent=2)
     print(f'  → {out_path}')
@@ -125,161 +112,6 @@ def run_matrix(
     return results
 
 
-def _git(*cmd: str) -> str:
-    """Run a git command and return stripped stdout."""
-    result = subprocess.run(['git', *cmd], capture_output=True, text=True, check=True)
-    return result.stdout.strip()
-
-
-def resolve_revisions(rev_range: str) -> list[str]:
-    """Resolve a git revision range (e.g. HEAD~5..HEAD) to a list of commit SHAs, oldest first."""
-    if '..' in rev_range:
-        output = _git('rev-list', '--reverse', rev_range)
-    else:
-        # Treat as a single ref or comma-separated list
-        output = '\n'.join(_git('rev-parse', r.strip()) for r in rev_range.split(','))
-    return [line.strip() for line in output.splitlines() if line.strip()]
-
-
-def sweep(
-    rev_range: str,
-    iterations: int,
-    *,
-    model_names: list[str] | None = None,
-    phase_names: list[str] | None = None,
-    sizes: list[int] | None = None,
-    quick: bool = False,
-) -> list[Path]:
-    """Benchmark across multiple git commits.
-
-    Results are written to ~/.cache/flixopt-benchmarks/ so they persist regardless
-    of git state. The benchmark framework is injected into commits that don't have
-    it; commits that already contain benchmarks/ are left untouched.
-
-    Returns paths to all generated JSON files.
-    """
-    global _results_dir  # noqa: PLW0603
-
-    # Import compare eagerly — after restoring the original branch the module
-    # may have been reloaded from disk; grabbing the functions now is safer.
-    from benchmarks.compare import load_results, sweep_plot, sweep_table  # noqa: F811
-
-    original_ref = _git('rev-parse', '--abbrev-ref', 'HEAD')
-    if original_ref == 'HEAD':
-        original_ref = _git('rev-parse', 'HEAD')
-
-    # Stash any uncommitted changes so git checkout doesn't fail
-    stash_result = _git('stash', 'push', '-m', 'flixopt-bench-sweep', '--include-untracked')
-    did_stash = 'No local changes' not in stash_result
-    if did_stash:
-        print('Stashed uncommitted changes')
-
-    shas = resolve_revisions(rev_range)
-    if not shas:
-        print(f'No commits found for range: {rev_range}')
-        sys.exit(1)
-
-    print(f'Sweeping {len(shas)} commits: {shas[0][:8]}..{shas[-1][:8]}')
-
-    benchmarks_src = Path(__file__).parent  # .../benchmarks/
-    repo_root = benchmarks_src.parent
-
-    # Write results outside the repo so they survive checkouts
-    _results_dir = SWEEP_RESULTS_DIR
-    _results_dir.mkdir(parents=True, exist_ok=True)
-    print(f'Results directory: {_results_dir}')
-
-    all_result_files: list[Path] = []
-    last_was_injected = False
-
-    with tempfile.TemporaryDirectory(prefix='flixopt_bench_') as tmpdir:
-        # Snapshot the benchmark framework
-        bench_copy = Path(tmpdir) / 'benchmarks'
-        shutil.copytree(benchmarks_src, bench_copy, ignore=shutil.ignore_patterns('results', '__pycache__'))
-        print(f'Benchmark framework cached in {bench_copy}')
-
-        try:
-            for i, sha in enumerate(shas):
-                short = sha[:8]
-                subject = _git('log', '--format=%s', '-1', sha)
-                print(f'\n{"=" * 60}')
-                print(f'[{i + 1}/{len(shas)}] {short} {subject}')
-                print('=' * 60)
-
-                # Only remove benchmarks/ before checkout if we injected it last iteration
-                repo_benchmarks = repo_root / 'benchmarks'
-                if last_was_injected and repo_benchmarks.exists():
-                    shutil.rmtree(repo_benchmarks)
-
-                _git('checkout', sha)
-
-                # Inject benchmarks/ only if the checked-out commit doesn't have it
-                repo_benchmarks = repo_root / 'benchmarks'
-                last_was_injected = not (repo_benchmarks / 'run.py').exists()
-                if last_was_injected:
-                    if repo_benchmarks.exists():
-                        shutil.rmtree(repo_benchmarks)
-                    shutil.copytree(bench_copy, repo_benchmarks)
-                    print('  (injected benchmark framework)')
-
-                subprocess.run(
-                    ['uv', 'pip', 'install', '-e', '.', '--quiet'],
-                    check=True,
-                )
-
-                results = run_matrix(
-                    short,
-                    iterations,
-                    model_names=model_names,
-                    phase_names=phase_names,
-                    sizes=sizes,
-                    quick=quick,
-                )
-
-                # Tag each result with commit info for sweep plots
-                for r in results:
-                    r['metadata']['commit'] = sha
-                    r['metadata']['commit_short'] = short
-                    r['metadata']['commit_subject'] = subject
-                    out_path = _results_dir / f'{short}_{r["model"]}_{r["phase"]}.json'
-                    with open(out_path, 'w') as f:
-                        json.dump(r, f, indent=2)
-                    all_result_files.append(out_path)
-
-        finally:
-            # Only remove benchmarks/ if the last commit had it injected
-            repo_benchmarks = repo_root / 'benchmarks'
-            if last_was_injected and repo_benchmarks.exists():
-                shutil.rmtree(repo_benchmarks)
-
-            print(f'\nRestoring {original_ref}...')
-            _git('checkout', original_ref)
-            if did_stash:
-                _git('stash', 'pop')
-                print('Restored stashed changes')
-            subprocess.run(
-                ['uv', 'pip', 'install', '-e', '.', '--quiet'],
-                check=True,
-            )
-            _results_dir = None
-
-    # Copy results into the repo's results dir for convenience
-    DEFAULT_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    for f in all_result_files:
-        shutil.copy2(f, DEFAULT_RESULTS_DIR / f.name)
-
-    final_files = [DEFAULT_RESULTS_DIR / f.name for f in all_result_files]
-    print(f'\nSweep complete. {len(final_files)} result files in {DEFAULT_RESULTS_DIR}/')
-    print(f'Persistent copy in {SWEEP_RESULTS_DIR}/')
-
-    # Auto-generate sweep plot and table
-    grouped = load_results([str(p) for p in final_files])
-    sweep_table(grouped)
-    sweep_plot(grouped)
-
-    return final_files
-
-
 def list_available() -> None:
     """Print available models and phases."""
     models = discover_models()
@@ -306,23 +138,11 @@ def main() -> None:
     parser.add_argument('--all', action='store_true', help='Run all models × phases')
     parser.add_argument('--quick', action='store_true', help='Use QUICK_SIZES instead of SIZES')
     parser.add_argument('--list', action='store_true', help='List available models and phases')
-    parser.add_argument('--sweep', metavar='REV_RANGE', help='Sweep across git commits (e.g. HEAD~5..HEAD)')
 
     args = parser.parse_args()
 
     if args.list:
         list_available()
-        return
-
-    if args.sweep:
-        sweep(
-            args.sweep,
-            args.iterations,
-            model_names=args.model,
-            phase_names=args.phase,
-            sizes=args.sizes,
-            quick=args.quick,
-        )
         return
 
     if args.all or args.model or args.phase:
@@ -335,7 +155,7 @@ def main() -> None:
             quick=args.quick,
         )
     else:
-        parser.error('Specify --all, --model, --phase, --sweep, or --list')
+        parser.error('Specify --all, --model, --phase, or --list')
 
 
 if __name__ == '__main__':
