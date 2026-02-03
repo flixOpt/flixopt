@@ -1,4 +1,8 @@
-"""Mathematical correctness tests for status (on/off) variables."""
+"""Mathematical correctness tests for Flow status (on/off) variables.
+
+Tests for StatusParameters applied to Flows, including startup costs,
+uptime/downtime constraints, and active hour tracking.
+"""
 
 import numpy as np
 import pandas as pd
@@ -9,7 +13,7 @@ import flixopt as fx
 from .conftest import make_flow_system, solve
 
 
-class TestStatusVariables:
+class TestFlowStatus:
     def test_startup_cost(self):
         """Proves: effects_per_startup adds a fixed cost each time the unit transitions to on.
 

@@ -1,4 +1,8 @@
-"""Mathematical correctness tests for investment decisions."""
+"""Mathematical correctness tests for Flow investment decisions.
+
+Tests for InvestParameters applied to Flows, including sizing optimization,
+optional investments, minimum/fixed sizes, and piecewise investment costs.
+"""
 
 import numpy as np
 from numpy.testing import assert_allclose
@@ -8,7 +12,7 @@ import flixopt as fx
 from .conftest import make_flow_system, solve
 
 
-class TestInvestment:
+class TestFlowInvest:
     def test_invest_size_optimized(self):
         """Proves: InvestParameters correctly sizes the unit to match peak demand
         when there is a per-size investment cost.
