@@ -394,6 +394,111 @@ class ModelingPrimitives:
 
         return mutual_exclusivity
 
+    @staticmethod
+    def cumulative_sum_tracking(
+        model: Submodel,
+        cumulated_expression,
+        name: str = None,
+        short_name: str = None,
+        bounds: tuple[xr.DataArray | None, xr.DataArray | None] = (None, None),
+        initial_value: xr.DataArray | float = 0,
+        cumulation_dim: str = 'time',
+    ) -> tuple[dict[str, linopy.Variable], dict[str, linopy.Constraint]]:
+        """
+        Creates cumulative sum tracking variable that accumulates an expression over a dimension.
+
+        This primitive enables tracking the running sum of any expression, similar to how
+        storage tracks charge state. Useful for progressive limits, budgets, and milestones.
+
+        Mathematical formulation:
+            cumulative[t] = cumulative[t-1] + expression[t]  ∀t > 0
+            cumulative[0] = initial_value + expression[0]
+            lower[t] ≤ cumulative[t] ≤ upper[t]  (if bounds provided)
+
+        Args:
+            model: Submodel to add variables and constraints to
+            cumulated_expression: Expression to accumulate (must have cumulation_dim)
+            name: Full name for variables/constraints
+            short_name: Short name for variables/constraints
+            bounds: Tuple of (lower, upper) bounds for cumulative variable at each step.
+                Can be time-varying DataArrays for progressive limits.
+            initial_value: Starting value at t=0 (before adding first expression value)
+            cumulation_dim: Dimension to accumulate over (default: 'time')
+
+        Returns:
+            variables: {'cumulative': cumulative_var}
+            constraints: {'cumulation': constraint, 'initial': constraint}
+
+        Examples:
+            # Cumulative startup count
+            cumulative_startups, _ = ModelingPrimitives.cumulative_sum_tracking(
+                model=self,
+                cumulated_expression=self.startup,  # Binary startup variable
+                bounds=(0, startup_limits),  # Progressive limits over time
+                initial_value=0,
+                short_name='cumulative_startups',
+            )
+
+            # Cumulative energy delivery with milestones
+            cumulative_energy, _ = ModelingPrimitives.cumulative_sum_tracking(
+                model=self,
+                cumulated_expression=self.flow_rate * hours_per_step,
+                bounds=(min_delivery_by_time, None),  # Minimum delivery milestones
+                initial_value=0,
+                short_name='cumulative_energy',
+            )
+
+            # Cumulative CO2 emissions with monthly budget
+            cumulative_co2, _ = ModelingPrimitives.cumulative_sum_tracking(
+                model=self,
+                cumulated_expression=co2_emissions,
+                bounds=(None, monthly_co2_budget),  # Progressive budget limits
+                initial_value=0,
+                short_name='cumulative_co2',
+            )
+        """
+        if not isinstance(model, Submodel):
+            raise ValueError('ModelingPrimitives.cumulative_sum_tracking() can only be used with a Submodel')
+
+        # Validate that expression has the cumulation dimension
+        if cumulation_dim not in cumulated_expression.coords:
+            raise ValueError(
+                f"Expression must have '{cumulation_dim}' dimension for cumulation. "
+                f'Got dimensions: {list(cumulated_expression.coords.keys())}'
+            )
+
+        # Create cumulative variable with bounds if provided
+        lower_bound, upper_bound = bounds
+        cumulative = model.add_variables(
+            lower=lower_bound if lower_bound is not None else -np.inf,
+            upper=upper_bound if upper_bound is not None else np.inf,
+            coords=cumulated_expression.coords,
+            name=name,
+            short_name=short_name,
+        )
+
+        constraints = {}
+
+        # Initial condition: cumulative[0] = initial_value + expression[0]
+        constraints['initial'] = model.add_constraints(
+            cumulative.isel({cumulation_dim: 0}) == initial_value + cumulated_expression.isel({cumulation_dim: 0}),
+            name=f'{cumulative.name}|initial' if name else None,
+            short_name=f'{short_name}|initial' if short_name else None,
+        )
+
+        # Cumulation constraint: cumulative[t] = cumulative[t-1] + expression[t]  ∀t > 0
+        constraints['cumulation'] = model.add_constraints(
+            cumulative.isel({cumulation_dim: slice(1, None)})
+            == cumulative.isel({cumulation_dim: slice(None, -1)})
+            + cumulated_expression.isel({cumulation_dim: slice(1, None)}),
+            name=f'{cumulative.name}|cumulation' if name else None,
+            short_name=f'{short_name}|cumulation' if short_name else None,
+        )
+
+        variables = {'cumulative': cumulative}
+
+        return variables, constraints
+
 
 class BoundingPatterns:
     """High-level patterns that compose primitives and return (variables, constraints) tuples"""
