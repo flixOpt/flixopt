@@ -38,3 +38,21 @@ table +files:
 # List available models and phases
 list:
     python -m benchmarks.run --list
+
+# Dry-run sweep (show what would be benchmarked)
+sweep-dry rev_range *args:
+    python -m benchmarks.sweep {{rev_range}} --dry-run {{args}}
+
+# Show recent result files
+latest count="10":
+    @ls -lt benchmarks/results/*.json 2>/dev/null | head -{{count}} || echo "No results found"
+
+# Clean old results (keeps cache intact)
+clean:
+    rm -f benchmarks/results/*.json benchmarks/results/*.png benchmarks/results/*.html benchmarks/results/*.md
+    @echo "Cleaned benchmarks/results/"
+
+# Clean everything including cache
+clean-all: clean
+    rm -rf ~/.cache/flixopt-benchmarks/
+    @echo "Cleaned ~/.cache/flixopt-benchmarks/"

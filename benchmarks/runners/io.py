@@ -46,17 +46,29 @@ def run(model_module: ModuleType, size: int, iterations: int = DEFAULT_ITERATION
 
     return {
         'median': float(np.median(total_arr)),
+        'mean': float(np.mean(total_arr)),
+        'std': float(np.std(total_arr)),
+        'min': float(np.min(total_arr)),
+        'max': float(np.max(total_arr)),
         'q25': float(np.percentile(total_arr, 25)),
         'q75': float(np.percentile(total_arr, 75)),
         'times': total_arr.tolist(),
         'detail': {
             'to_dataset': {
                 'median': float(np.median(to_arr)),
+                'mean': float(np.mean(to_arr)),
+                'std': float(np.std(to_arr)),
+                'min': float(np.min(to_arr)),
+                'max': float(np.max(to_arr)),
                 'q25': float(np.percentile(to_arr, 25)),
                 'q75': float(np.percentile(to_arr, 75)),
             },
             'from_dataset': {
                 'median': float(np.median(from_arr)),
+                'mean': float(np.mean(from_arr)),
+                'std': float(np.std(from_arr)),
+                'min': float(np.min(from_arr)),
+                'max': float(np.max(from_arr)),
                 'q25': float(np.percentile(from_arr, 25)),
                 'q75': float(np.percentile(from_arr, 75)),
             },

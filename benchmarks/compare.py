@@ -16,7 +16,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-RESULTS_DIR = Path(__file__).parent / 'results'
+from benchmarks.config import RESULTS_DIR
 
 
 def load_results(paths: list[str]) -> dict[str, list[dict]]:

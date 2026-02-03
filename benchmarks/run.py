@@ -15,12 +15,10 @@ import json
 import platform
 import sys
 from datetime import UTC, datetime
-from pathlib import Path
 
+from benchmarks.config import RESULTS_DIR
 from benchmarks.models import discover_models
 from benchmarks.runners import discover_runners
-
-RESULTS_DIR = Path(__file__).parent / 'results'
 
 
 def run_single(

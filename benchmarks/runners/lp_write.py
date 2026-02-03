@@ -40,6 +40,10 @@ def run(model_module: ModuleType, size: int, iterations: int = DEFAULT_ITERATION
     arr = np.array(times)
     return {
         'median': float(np.median(arr)),
+        'mean': float(np.mean(arr)),
+        'std': float(np.std(arr)),
+        'min': float(np.min(arr)),
+        'max': float(np.max(arr)),
         'q25': float(np.percentile(arr, 25)),
         'q75': float(np.percentile(arr, 75)),
         'times': times,
