@@ -439,7 +439,11 @@ class TestFlowStatus:
 
 
 class TestPreviousFlowRate:
-    """Tests for previous_flow_rate determining initial status and uptime/downtime carry-over."""
+    """Tests for previous_flow_rate determining initial status and uptime/downtime carry-over.
+
+    Each test asserts on COST to ensure the feature actually affects optimization.
+    Tests are designed to fail if previous_flow_rate is ignored.
+    """
 
     def test_previous_flow_rate_scalar_on_forces_min_uptime(self):
         """Proves: previous_flow_rate=scalar>0 means unit was ON before t=0,
@@ -447,10 +451,10 @@ class TestPreviousFlowRate:
 
         Boiler with min_uptime=2, previous_flow_rate=10 (was on for 1 hour before t=0).
         Must stay on at t=0 to complete 2-hour minimum uptime block.
-        Demand=[0,20]. Even with zero demand at t=0, boiler must run.
+        Demand=[0,20]. Even with zero demand at t=0, boiler must run at relative_min=10.
 
-        Sensitivity: With previous_flow_rate=0 (was off), no carry-over,
-        boiler can be off at t=0 → different cost.
+        Sensitivity: With previous_flow_rate=0 (was off), cost=0 (can be off at t=0).
+        With previous_flow_rate=10 (was on), cost=10 (forced on at t=0).
         """
         fs = make_flow_system(2)
         fs.add_elements(
@@ -484,20 +488,17 @@ class TestPreviousFlowRate:
             ),
         )
         solve(fs)
-        # With previous_flow_rate=10, unit was on 1 hour before. min_uptime=2.
-        # Must stay on at t=0 to complete the 2-hour block.
-        status = fs.solution['Boiler(heat)|status'].values[:-1]
-        assert_allclose(status[0], 1.0, atol=1e-5, err_msg='Boiler should be ON at t=0 due to min_uptime carry-over')
+        # Forced ON at t=0 (relative_min=10), cost=10. Without carry-over, cost=0.
+        assert_allclose(fs.solution['costs'].item(), 10.0, rtol=1e-5)
 
     def test_previous_flow_rate_scalar_off_no_carry_over(self):
         """Proves: previous_flow_rate=0 means unit was OFF before t=0,
         so no min_uptime carry-over — unit can stay off at t=0.
 
-        Boiler with min_uptime=2, previous_flow_rate=0 (was off).
-        Demand=[0,20]. With zero demand at t=0 and no carry-over, boiler can be off.
+        Same setup as test above but previous_flow_rate=0.
+        Demand=[0,20]. With no carry-over, boiler can be off at t=0.
 
-        Sensitivity: With previous_flow_rate>0 (was on), min_uptime forces
-        boiler on at t=0 → different status pattern.
+        Sensitivity: Cost=0 here vs cost=10 with previous_flow_rate>0.
         """
         fs = make_flow_system(2)
         fs.add_elements(
@@ -531,22 +532,19 @@ class TestPreviousFlowRate:
             ),
         )
         solve(fs)
-        # With previous_flow_rate=0, unit was off. No min_uptime carry-over.
-        # Unit can be off at t=0 (demand=0), then on at t=1 (demand=20).
-        status = fs.solution['Boiler(heat)|status'].values[:-1]
-        # At t=0, demand=0, so optimal is off (no min_uptime from previous period)
-        assert_allclose(status[0], 0.0, atol=1e-5, err_msg='Boiler should be OFF at t=0 with no carry-over')
+        # No carry-over, can be off at t=0 → cost=0 (vs cost=10 if was on)
+        assert_allclose(fs.solution['costs'].item(), 0.0, rtol=1e-5)
 
-    def test_previous_flow_rate_array_full_uptime_satisfied(self):
-        """Proves: previous_flow_rate as array counts consecutive ON hours.
-        If min_uptime is already satisfied by previous hours, unit can turn off at t=0.
+    def test_previous_flow_rate_array_uptime_satisfied_vs_partial(self):
+        """Proves: previous_flow_rate array length affects uptime carry-over calculation.
 
-        Boiler with min_uptime=2, previous_flow_rate=[10, 20] (was on for 2 hours).
-        The 2-hour minimum is already satisfied → unit can turn off at t=0.
-        Demand=[0,0]. Boiler should stay off.
+        Scenario A: previous_flow_rate=[10, 20] (2 hours ON), min_uptime=2 → satisfied, can turn off
+        Scenario B: previous_flow_rate=[10] (1 hour ON), min_uptime=2 → needs 1 more hour
 
-        Sensitivity: With previous_flow_rate=[10] (only 1 hour on), min_uptime=2
-        would force boiler on at t=0 to complete the 2-hour block.
+        Demand=[0, 20]. With satisfied uptime, can be off at t=0 (cost=0).
+        With partial uptime, forced on at t=0 (cost=10).
+
+        This test uses Scenario A (satisfied). See test_scalar_on for Scenario B equivalent.
         """
         fs = make_flow_system(2)
         fs.add_elements(
@@ -556,7 +554,7 @@ class TestPreviousFlowRate:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([0, 0])),
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([0, 20])),
                 ],
             ),
             fx.Source(
@@ -574,16 +572,15 @@ class TestPreviousFlowRate:
                     bus='Heat',
                     size=100,
                     relative_minimum=0.1,
-                    previous_flow_rate=[10, 20],  # Was ON for 2 hours before t=0
+                    previous_flow_rate=[10, 20],  # Was ON for 2 hours → min_uptime=2 satisfied
                     status_parameters=fx.StatusParameters(min_uptime=2),
                 ),
             ),
         )
         solve(fs)
-        # With previous_flow_rate=[10, 20], unit was on for 2 consecutive hours.
-        # min_uptime=2 is already satisfied → can turn off at t=0.
-        status = fs.solution['Boiler(heat)|status'].values[:-1]
-        assert_allclose(status, [0, 0], atol=1e-5, err_msg='Boiler should be OFF (min_uptime satisfied by previous)')
+        # With 2h uptime history, min_uptime=2 is satisfied → can be off at t=0 → cost=0
+        # If array were ignored (treated as scalar 20 = 1h), would force on → cost=10
+        assert_allclose(fs.solution['costs'].item(), 0.0, rtol=1e-5)
 
     def test_previous_flow_rate_array_partial_uptime_forces_continuation(self):
         """Proves: previous_flow_rate array with partial uptime forces continuation.
