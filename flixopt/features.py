@@ -630,10 +630,9 @@ class StatusBuilder:
                 duration_subset = duration.sel({dim_name: element_ids})
 
                 # Constraint for t = 0..T-2: duration[t] >= min * (state[t] - state[t+1])
-                # Use multiplication by 1.0 to align time coordinates after slicing
-                state_prev = state_subset.isel({duration_dim: slice(None, -1)})
-                state_next = 1.0 * state_subset.isel({duration_dim: slice(1, None)})
-                state_diff = state_prev - state_next
+                state_diff = state_subset.isel({duration_dim: slice(None, -1)}) - state_subset.isel(
+                    {duration_dim: slice(1, None)}
+                )
                 model.add_constraints(
                     duration_subset.isel({duration_dim: slice(None, -1)}) >= min_subset * state_diff,
                     name=f'{name}|min',
