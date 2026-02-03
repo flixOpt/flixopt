@@ -1706,17 +1706,15 @@ class TransformAccessor:
             )
 
         # Validate ExtremeConfig compatibility with multi-period/scenario systems
-        # Methods 'new_cluster' and 'append' can produce different n_clusters per period,
+        # Without preserve_n_clusters=True, methods can produce different n_clusters per period,
         # which breaks the xarray structure that requires uniform dimensions
         total_slices = len(periods) * len(scenarios)
         if total_slices > 1 and extremes is not None:
-            extreme_method = getattr(extremes, 'method', None)
-            if extreme_method in ('new_cluster', 'append'):
+            if not extremes.preserve_n_clusters:
                 raise ValueError(
-                    f'ExtremeConfig with method="{extreme_method}" is not supported for multi-period '
-                    f'or multi-scenario systems because it can produce different cluster counts per '
-                    f'period/scenario. Use method="replace" instead, which replaces existing clusters '
-                    f'with extreme periods while maintaining the requested n_clusters.'
+                    'ExtremeConfig must have preserve_n_clusters=True for multi-period '
+                    'or multi-scenario systems to ensure consistent cluster counts across all slices. '
+                    'Example: ExtremeConfig(method="new_cluster", max_value=[...], preserve_n_clusters=True)'
                 )
 
         # Build dim_names and clean key helper
