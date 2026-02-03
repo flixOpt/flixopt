@@ -914,62 +914,31 @@ class StoragesModel(TypeModel):
         dim = self.dim_name
 
         # === Periodic: size * effects_per_size ===
+        # Batched over storages and effects - _accumulate_shares handles effect dim internally
         if inv.effects_per_size is not None:
             factors = inv.effects_per_size
-            size = self.size.sel({dim: factors.coords[dim].values})
-            for eid in factors.coords['effect'].values:
-                f_single = factors.sel(effect=eid, drop=True)
-                if (f_single == 0).all():
-                    continue
-                effects_model.add_periodic_contribution(size * f_single, contributor_dim=dim, effect=str(eid))
+            storage_ids = factors.coords[dim].values
+            size_subset = self.size.sel({dim: storage_ids})
+            effects_model.add_periodic_contribution(size_subset * factors, contributor_dim=dim)
 
         # === Investment/retirement effects (optional investments) ===
         invested = self.invested
         if invested is not None:
             if (ff := inv.effects_of_investment) is not None:
-                for eid in ff.coords['effect'].values:
-                    f_single = ff.sel(effect=eid, drop=True)
-                    if (f_single == 0).all():
-                        continue
-                    effects_model.add_periodic_contribution(
-                        invested.sel({dim: f_single.coords[dim].values}) * f_single,
-                        contributor_dim=dim,
-                        effect=str(eid),
-                    )
+                storage_ids = ff.coords[dim].values
+                invested_subset = invested.sel({dim: storage_ids})
+                effects_model.add_periodic_contribution(invested_subset * ff, contributor_dim=dim)
+
             if (ff := inv.effects_of_retirement) is not None:
-                for eid in ff.coords['effect'].values:
-                    f_single = ff.sel(effect=eid, drop=True)
-                    if (f_single == 0).all():
-                        continue
-                    effects_model.add_periodic_contribution(
-                        invested.sel({dim: f_single.coords[dim].values}) * (-f_single),
-                        contributor_dim=dim,
-                        effect=str(eid),
-                    )
+                storage_ids = ff.coords[dim].values
+                invested_subset = invested.sel({dim: storage_ids})
+                effects_model.add_periodic_contribution(invested_subset * (-ff), contributor_dim=dim)
 
         # === Constants: mandatory fixed + retirement ===
         if inv.effects_of_investment_mandatory is not None:
-            mandatory = inv.effects_of_investment_mandatory
-            if 'effect' in mandatory.dims:
-                for eid in mandatory.coords['effect'].values:
-                    effects_model.add_periodic_contribution(
-                        mandatory.sel(effect=eid, drop=True),
-                        contributor_dim=dim,
-                        effect=str(eid),
-                    )
-            else:
-                effects_model.add_periodic_contribution(mandatory, contributor_dim=dim)
+            effects_model.add_periodic_contribution(inv.effects_of_investment_mandatory, contributor_dim=dim)
         if inv.effects_of_retirement_constant is not None:
-            ret_const = inv.effects_of_retirement_constant
-            if 'effect' in ret_const.dims:
-                for eid in ret_const.coords['effect'].values:
-                    effects_model.add_periodic_contribution(
-                        ret_const.sel(effect=eid, drop=True),
-                        contributor_dim=dim,
-                        effect=str(eid),
-                    )
-            else:
-                effects_model.add_periodic_contribution(ret_const, contributor_dim=dim)
+            effects_model.add_periodic_contribution(inv.effects_of_retirement_constant, contributor_dim=dim)
 
     # --- Investment Cached Properties ---
 
