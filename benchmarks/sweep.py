@@ -161,11 +161,11 @@ def sweep(
 
     # Generate table and plot
     if all_result_files:
-        from benchmarks.compare import load_results, sweep_plot, sweep_table
+        from benchmarks.compare import load_results, plot, sweep_table
 
         grouped = load_results([str(p) for p in all_result_files])
         sweep_table(grouped)
-        sweep_plot(grouped)
+        plot(grouped)
 
     return all_result_files
 
