@@ -23,23 +23,11 @@ quick name:
 sweep rev_range *args:
     python -m benchmarks.sweep {{rev_range}} {{args}}
 
-# Plot results (auto-selects best view: single run = faceted, multiple = comparison)
+# Plot results (unified: rows=phases, cols=models, x=timesteps, color=runs)
 plot +files:
     python -m benchmarks.compare {{files}}
 
-# Plot per-model faceted view (interactive HTML)
-plot-results +files:
-    python -m benchmarks.compare --results {{files}}
-
-# Plot 2-run comparison (requires 2+ runs)
-plot-compare +files:
-    python -m benchmarks.compare --compare {{files}}
-
-# Plot existing results as sweep timeline
-plot-sweep +files:
-    python -m benchmarks.compare --sweep {{files}}
-
-# Generate markdown table from sweep results
+# Generate markdown table
 table +files:
     python -m benchmarks.compare --table {{files}}
 
