@@ -618,6 +618,25 @@ class StatusBuilder:
                     name=f'{name}|initial_lb',
                 )
 
+        # Minimum duration constraint: when state transitions from 1 to 0, duration must be >= minimum
+        # duration[t] >= minimum_duration * (state[t] - state[t+1])
+        if minimum_duration is not None:
+            has_minimum = fast_notnull(minimum_duration)
+            if has_minimum.any():
+                elem_with_min = [eid for eid, has in zip(element_ids, has_minimum.values, strict=False) if has]
+                min_vals = minimum_duration.sel({dim_name: elem_with_min})
+                state_subset = state.sel({dim_name: elem_with_min})
+                duration_subset = duration.sel({dim_name: elem_with_min})
+
+                # Constraint for t = 0..T-2: duration[t] >= min * (state[t] - state[t+1])
+                state_diff = state_subset.isel({duration_dim: slice(None, -1)}) - state_subset.isel(
+                    {duration_dim: slice(1, None)}
+                )
+                model.add_constraints(
+                    duration_subset.isel({duration_dim: slice(None, -1)}) >= min_vals * state_diff,
+                    name=f'{name}|min',
+                )
+
         return duration
 
     @staticmethod

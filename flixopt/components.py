@@ -923,29 +923,29 @@ class StoragesModel(TypeModel):
                     continue
                 effects_model.add_periodic_contribution(size * f_single, contributor_dim=dim, effect=str(eid))
 
-            # Investment/retirement effects
-            invested = self.invested
-            if invested is not None:
-                if (ff := inv.effects_of_investment) is not None:
-                    for eid in ff.coords['effect'].values:
-                        f_single = ff.sel(effect=eid, drop=True)
-                        if (f_single == 0).all():
-                            continue
-                        effects_model.add_periodic_contribution(
-                            invested.sel({dim: f_single.coords[dim].values}) * f_single,
-                            contributor_dim=dim,
-                            effect=str(eid),
-                        )
-                if (ff := inv.effects_of_retirement) is not None:
-                    for eid in ff.coords['effect'].values:
-                        f_single = ff.sel(effect=eid, drop=True)
-                        if (f_single == 0).all():
-                            continue
-                        effects_model.add_periodic_contribution(
-                            invested.sel({dim: f_single.coords[dim].values}) * (-f_single),
-                            contributor_dim=dim,
-                            effect=str(eid),
-                        )
+        # === Investment/retirement effects (optional investments) ===
+        invested = self.invested
+        if invested is not None:
+            if (ff := inv.effects_of_investment) is not None:
+                for eid in ff.coords['effect'].values:
+                    f_single = ff.sel(effect=eid, drop=True)
+                    if (f_single == 0).all():
+                        continue
+                    effects_model.add_periodic_contribution(
+                        invested.sel({dim: f_single.coords[dim].values}) * f_single,
+                        contributor_dim=dim,
+                        effect=str(eid),
+                    )
+            if (ff := inv.effects_of_retirement) is not None:
+                for eid in ff.coords['effect'].values:
+                    f_single = ff.sel(effect=eid, drop=True)
+                    if (f_single == 0).all():
+                        continue
+                    effects_model.add_periodic_contribution(
+                        invested.sel({dim: f_single.coords[dim].values}) * (-f_single),
+                        contributor_dim=dim,
+                        effect=str(eid),
+                    )
 
         # === Constants: mandatory fixed + retirement ===
         if inv.effects_of_investment_mandatory is not None:
