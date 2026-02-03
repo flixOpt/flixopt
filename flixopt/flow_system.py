@@ -1497,8 +1497,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     def _run_plausibility_checks(self) -> None:
         """Run plausibility checks on all elements after data transformation."""
+        # Element-level config validation (simple checks, no DataArray operations)
         for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
             element._plausibility_checks()
+
+        # Batched validation for flows (DataArray-based checks)
+        self.batched.flows.validate()
 
     def _validate_system_integrity(self) -> None:
         """

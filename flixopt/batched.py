@@ -11,6 +11,7 @@ Usage:
 
 from __future__ import annotations
 
+import logging
 from functools import cached_property
 from typing import TYPE_CHECKING
 
@@ -28,6 +29,8 @@ if TYPE_CHECKING:
     from .effects import Effect, EffectCollection
     from .elements import Bus, Component, Flow
     from .flow_system import FlowSystem
+
+logger = logging.getLogger('flixopt')
 
 
 def build_effects_array(
@@ -1475,6 +1478,67 @@ class FlowsData:
                 arr = arr.expand_dims({dim_name: coord})
 
         return self._ensure_canonical_order(arr)
+
+    # === Validation ===
+
+    def validate(self) -> None:
+        """Validate all flows after transformation.
+
+        This method performs two types of validation:
+        1. Config validation on each flow (simple checks, no DataArray operations)
+        2. Batched validation (DataArray-based checks across all flows)
+
+        Raises:
+            PlausibilityError: If any validation check fails.
+        """
+        from .core import PlausibilityError
+
+        # First: run config validation on each flow
+        for flow in self.elements.values():
+            flow.validate_config()
+
+        errors: list[str] = []
+
+        # Batched checks: relative_minimum <= relative_maximum
+        invalid_bounds = (self.relative_minimum > self.relative_maximum).any(
+            dim=[d for d in self.relative_minimum.dims if d != 'flow']
+        )
+        if invalid_bounds.any():
+            bad_flows = [fid for fid, bad in zip(self.ids, invalid_bounds.values, strict=False) if bad]
+            errors.append(f'relative_minimum > relative_maximum for flows: {bad_flows}')
+
+        # Check: size required when relative_minimum > 0
+        has_nonzero_min = (self.relative_minimum > 0).any(dim=[d for d in self.relative_minimum.dims if d != 'flow'])
+        needs_size_for_min = has_nonzero_min & ~self.has_size
+        if needs_size_for_min.any():
+            bad_flows = [fid for fid, bad in zip(self.ids, needs_size_for_min.values, strict=False) if bad]
+            errors.append(
+                f'relative_minimum > 0 but no size defined for flows: {bad_flows}. '
+                f'A size is required because the lower bound is size * relative_minimum.'
+            )
+
+        # Check: size required when relative_maximum < 1
+        has_nondefault_max = (self.relative_maximum < 1).any(dim=[d for d in self.relative_maximum.dims if d != 'flow'])
+        needs_size_for_max = has_nondefault_max & ~self.has_size
+        if needs_size_for_max.any():
+            bad_flows = [fid for fid, bad in zip(self.ids, needs_size_for_max.values, strict=False) if bad]
+            errors.append(
+                f'relative_maximum < 1 but no size defined for flows: {bad_flows}. '
+                f'A size is required because the upper bound is size * relative_maximum.'
+            )
+
+        # Warning: relative_minimum > 0 without status_parameters prevents switching inactive
+        has_nonzero_min_no_status = has_nonzero_min & ~self.has_status
+        if has_nonzero_min_no_status.any():
+            warn_flows = [fid for fid, warn in zip(self.ids, has_nonzero_min_no_status.values, strict=False) if warn]
+            logger.warning(
+                f'Flows {warn_flows} have relative_minimum > 0 and no status_parameters. '
+                f'This prevents the flow from switching inactive (flow_rate = 0). '
+                f'Consider using status_parameters to allow switching active and inactive.'
+            )
+
+        if errors:
+            raise PlausibilityError('\n'.join(errors))
 
 
 class EffectsData:
