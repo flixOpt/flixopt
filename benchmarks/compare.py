@@ -141,6 +141,146 @@ def compare_plot(grouped: dict[str, list[dict]], output: Path | None = None) -> 
     plt.close(fig)
 
 
+def results_plot(grouped: dict[str, list[dict]], output: Path | None = None) -> None:
+    """Create an interactive faceted plot showing results per model.
+
+    Layout: rows = models, cols = unit (time vs memory), color = phase, x = timesteps
+    """
+    import pandas as pd
+    import plotly.express as px
+
+    # Build long-form DataFrame
+    rows = []
+    for name, results in grouped.items():
+        for r in results:
+            model = r.get('model_label', r['model'])
+            phase = r['phase']
+            for size_str, stats in r['results'].items():
+                size = int(size_str)
+                unit = stats.get('unit', 's')
+                value = stats['median']
+                # Convert seconds to ms for better readability
+                if unit == 's':
+                    value = value * 1000
+                    unit = 'ms'
+                rows.append(
+                    {
+                        'run': name,
+                        'model': model,
+                        'phase': phase,
+                        'timesteps': size,
+                        'value': value,
+                        'unit': unit,
+                        'min': stats.get('min', value) * (1000 if unit == 'ms' else 1),
+                        'max': stats.get('max', value) * (1000 if unit == 'ms' else 1),
+                    }
+                )
+
+    if not rows:
+        print('No data to plot.')
+        return
+
+    df = pd.DataFrame(rows)
+
+    # Separate time and memory for different y-axes
+    df_time = df[df['unit'] == 'ms'].copy()
+    df_memory = df[df['unit'] == 'MB'].copy()
+
+    # Determine layout
+    has_time = len(df_time) > 0
+    has_memory = len(df_memory) > 0
+    models = df['model'].unique().tolist()
+
+    if has_time and has_memory:
+        # Two columns: time and memory
+        from plotly.subplots import make_subplots
+
+        fig = make_subplots(
+            rows=len(models),
+            cols=2,
+            subplot_titles=[f'{m} - Time' for m in models] + [f'{m} - Memory' for m in models],
+            row_titles=models,
+            column_titles=['Time (ms)', 'Memory (MB)'],
+            shared_xaxes=True,
+            vertical_spacing=0.08,
+            horizontal_spacing=0.08,
+        )
+
+        colors = px.colors.qualitative.Plotly
+        phase_colors = {phase: colors[i % len(colors)] for i, phase in enumerate(df['phase'].unique())}
+
+        for row_idx, model in enumerate(models, 1):
+            # Time column
+            model_time = df_time[df_time['model'] == model]
+            for phase in model_time['phase'].unique():
+                phase_data = model_time[model_time['phase'] == phase].sort_values('timesteps')
+                fig.add_scatter(
+                    x=phase_data['timesteps'],
+                    y=phase_data['value'],
+                    mode='lines+markers',
+                    name=phase,
+                    legendgroup=phase,
+                    showlegend=(row_idx == 1),
+                    line=dict(color=phase_colors[phase]),
+                    marker=dict(size=8),
+                    row=row_idx,
+                    col=1,
+                )
+
+            # Memory column
+            model_mem = df_memory[df_memory['model'] == model]
+            for phase in model_mem['phase'].unique():
+                phase_data = model_mem[model_mem['phase'] == phase].sort_values('timesteps')
+                fig.add_scatter(
+                    x=phase_data['timesteps'],
+                    y=phase_data['value'],
+                    mode='lines+markers',
+                    name=phase,
+                    legendgroup=phase,
+                    showlegend=False,
+                    line=dict(color=phase_colors[phase]),
+                    marker=dict(size=8),
+                    row=row_idx,
+                    col=2,
+                )
+
+        fig.update_xaxes(title_text='Timesteps', type='log')
+        fig.update_yaxes(title_text='ms', col=1)
+        fig.update_yaxes(title_text='MB', col=2)
+
+    else:
+        # Single metric type - use plotly express facet
+        df_plot = df_time if has_time else df_memory
+        unit_label = 'ms' if has_time else 'MB'
+
+        fig = px.line(
+            df_plot,
+            x='timesteps',
+            y='value',
+            color='phase',
+            facet_row='model',
+            markers=True,
+            log_x=True,
+            labels={'value': unit_label, 'timesteps': 'Timesteps'},
+        )
+        fig.update_yaxes(matches=None)  # Independent y-axes per facet
+        fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
+
+    run_names = list(grouped.keys())
+    title = f'Benchmark Results: {", ".join(run_names)}'
+    fig.update_layout(
+        title=title,
+        height=300 * len(models),
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+    )
+
+    if output is None:
+        output = RESULTS_DIR / f'results_{"_".join(run_names)}.html'
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.write_html(str(output))
+    print(f'Saved results plot: {output}')
+
+
 def sweep_plot(grouped: dict[str, list[dict]], output: Path | None = None) -> None:
     """Create an interactive timeline plot showing performance across commits using plotly."""
     import pandas as pd
@@ -305,9 +445,15 @@ def sweep_table(grouped: dict[str, list[dict]], output: Path | None = None) -> s
 def main() -> None:
     parser = argparse.ArgumentParser(description='Compare benchmark results')
     parser.add_argument('files', nargs='+', help='JSON result files to compare')
-    parser.add_argument('--output', type=Path, help='Output PNG path')
-    parser.add_argument('--sweep', action='store_true', help='Generate sweep timeline plot instead of comparison')
+    parser.add_argument('--output', type=Path, help='Output path')
+    parser.add_argument(
+        '--results',
+        action='store_true',
+        help='Interactive per-model faceted plot (default for single run)',
+    )
+    parser.add_argument('--sweep', action='store_true', help='Generate sweep timeline plot')
     parser.add_argument('--table', action='store_true', help='Generate sweep markdown table')
+    parser.add_argument('--compare', action='store_true', help='4-panel comparison plot (requires 2+ runs)')
     args = parser.parse_args()
 
     grouped = load_results(args.files)
@@ -316,7 +462,13 @@ def main() -> None:
         sweep_table(grouped, args.output)
     elif args.sweep:
         sweep_plot(grouped, args.output)
+    elif args.compare:
+        compare_plot(grouped, args.output)
+    elif args.results or len(grouped) == 1:
+        # Default to results plot for single run
+        results_plot(grouped, args.output)
     else:
+        # Default to compare plot for multiple runs
         compare_plot(grouped, args.output)
 
 
