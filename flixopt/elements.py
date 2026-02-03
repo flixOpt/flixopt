@@ -237,7 +237,11 @@ class Component(Element):
             duplicates = {label for label in all_flow_labels if all_flow_labels.count(label) > 1}
             raise ValueError(f'Flow names must be unique! "{self.label_full}" got 2 or more of: {duplicates}')
 
-    def _plausibility_checks(self) -> None:
+    def validate_config(self) -> None:
+        """Validate configuration consistency (before transformation).
+
+        These are simple checks that don't require DataArray operations.
+        """
         self._check_unique_flow_labels()
 
         # Component with status_parameters requires all flows to have sizes set
@@ -250,6 +254,10 @@ class Component(Element):
                     f'{flows_without_size}. All flows need explicit sizes when the component uses status_parameters '
                     f'(required for big-M constraints).'
                 )
+
+    def _plausibility_checks(self) -> None:
+        """Legacy validation method - delegates to validate_config()."""
+        self.validate_config()
 
     def _connect_flows(self, inputs=None, outputs=None):
         if inputs is None:
@@ -399,17 +407,23 @@ class Bus(Element):
             f'{self.prefix}|imbalance_penalty_per_flow_hour', self.imbalance_penalty_per_flow_hour
         )
 
-    def _plausibility_checks(self) -> None:
-        if self.imbalance_penalty_per_flow_hour is not None:
-            zero_penalty = np.all(np.equal(self.imbalance_penalty_per_flow_hour, 0))
-            if zero_penalty:
-                logger.warning(
-                    f'In Bus {self.label_full}, the imbalance_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
-                )
+    def validate_config(self) -> None:
+        """Validate configuration consistency (before transformation).
+
+        These are simple checks that don't require DataArray operations.
+        DataArray-based validation is done in BusesData.validate().
+        """
         if len(self.inputs) == 0 and len(self.outputs) == 0:
             raise ValueError(
                 f'Bus "{self.label_full}" has no Flows connected to it. Please remove it from the FlowSystem'
             )
+
+    def _plausibility_checks(self) -> None:
+        """Legacy validation method - delegates to validate_config().
+
+        DataArray-based checks (imbalance_penalty warning) moved to BusesData.validate().
+        """
+        self.validate_config()
 
     @property
     def allows_imbalance(self) -> bool:

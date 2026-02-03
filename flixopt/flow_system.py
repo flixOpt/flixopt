@@ -1496,13 +1496,42 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 penalty.link_to_flow_system(self)
 
     def _run_plausibility_checks(self) -> None:
-        """Run plausibility checks on all elements after data transformation."""
-        # Element-level config validation (simple checks, no DataArray operations)
-        for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
-            element._plausibility_checks()
+        """Run plausibility checks on all elements after data transformation.
 
-        # Batched validation for flows (DataArray-based checks)
+        This runs both config validation (simple checks) and DataArray-based
+        validation through the *Data classes.
+        """
+        from .batched import BusesData, ConvertersData, EffectsData, StoragesData, TransmissionsData
+        from .components import LinearConverter, Storage, Transmission
+
+        # Batched validation for flows (includes config + DataArray checks)
         self.batched.flows.validate()
+
+        # Batched validation for buses
+        BusesData(list(self.buses.values())).validate()
+
+        # Batched validation for effects
+        EffectsData(self.effects).validate()
+
+        # Batched validation for storages
+        storages = [c for c in self.components.values() if isinstance(c, Storage)]
+        if storages:
+            StoragesData(storages, 'storage', list(self.effects.keys())).validate()
+
+        # Batched validation for converters
+        converters = [c for c in self.components.values() if isinstance(c, LinearConverter)]
+        if converters:
+            ConvertersData(converters).validate()
+
+        # Batched validation for transmissions
+        transmissions = [c for c in self.components.values() if isinstance(c, Transmission)]
+        if transmissions:
+            TransmissionsData(transmissions).validate()
+
+        # Validate remaining components (those without specialized *Data classes)
+        for component in self.components.values():
+            if not isinstance(component, (Storage, LinearConverter, Transmission)):
+                component.validate_config()
 
     def _validate_system_integrity(self) -> None:
         """

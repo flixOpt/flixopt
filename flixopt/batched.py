@@ -750,6 +750,87 @@ class StoragesData:
         """(storage, time_extra) - absolute upper bounds = relative_max * capacity_upper."""
         return self.relative_maximum_charge_state_extra * self.capacity_upper
 
+    # === Validation ===
+
+    def validate(self) -> None:
+        """Validate all storages after transformation.
+
+        Performs batched validation checks that require DataArray operations.
+        Simple config checks are done in Storage.validate_config().
+
+        Raises:
+            PlausibilityError: If any validation check fails.
+        """
+        from .core import PlausibilityError
+        from .modeling import _scalar_safe_isel
+
+        errors: list[str] = []
+
+        for storage in self._storages:
+            # First run config validation
+            storage.validate_config()
+
+            sid = storage.label_full
+
+            # Capacity required for non-default relative bounds (DataArray checks)
+            if storage.capacity_in_flow_hours is None:
+                if np.any(storage.relative_minimum_charge_state > 0):
+                    errors.append(
+                        f'Storage "{sid}" has relative_minimum_charge_state > 0 but no capacity_in_flow_hours. '
+                        f'A capacity is required because the lower bound is capacity * relative_minimum_charge_state.'
+                    )
+                if np.any(storage.relative_maximum_charge_state < 1):
+                    errors.append(
+                        f'Storage "{sid}" has relative_maximum_charge_state < 1 but no capacity_in_flow_hours. '
+                        f'A capacity is required because the upper bound is capacity * relative_maximum_charge_state.'
+                    )
+
+            # Initial charge state vs capacity bounds (DataArray checks)
+            if storage.capacity_in_flow_hours is not None:
+                if isinstance(storage.capacity_in_flow_hours, InvestParameters):
+                    minimum_capacity = storage.capacity_in_flow_hours.minimum_or_fixed_size
+                    maximum_capacity = storage.capacity_in_flow_hours.maximum_or_fixed_size
+                else:
+                    maximum_capacity = storage.capacity_in_flow_hours
+                    minimum_capacity = storage.capacity_in_flow_hours
+
+                min_initial_at_max_capacity = maximum_capacity * _scalar_safe_isel(
+                    storage.relative_minimum_charge_state, {'time': 0}
+                )
+                max_initial_at_min_capacity = minimum_capacity * _scalar_safe_isel(
+                    storage.relative_maximum_charge_state, {'time': 0}
+                )
+
+                initial_equals_final = isinstance(storage.initial_charge_state, str)
+                if not initial_equals_final and storage.initial_charge_state is not None:
+                    if (storage.initial_charge_state > max_initial_at_min_capacity).any():
+                        errors.append(
+                            f'{sid}: initial_charge_state={storage.initial_charge_state} '
+                            f'is constraining the investment decision. Choose a value <= {max_initial_at_min_capacity}.'
+                        )
+                    if (storage.initial_charge_state < min_initial_at_max_capacity).any():
+                        errors.append(
+                            f'{sid}: initial_charge_state={storage.initial_charge_state} '
+                            f'is constraining the investment decision. Choose a value >= {min_initial_at_max_capacity}.'
+                        )
+
+            # Balanced charging/discharging size compatibility (DataArray checks)
+            if storage.balanced:
+                charging_min = storage.charging.size.minimum_or_fixed_size
+                charging_max = storage.charging.size.maximum_or_fixed_size
+                discharging_min = storage.discharging.size.minimum_or_fixed_size
+                discharging_max = storage.discharging.size.maximum_or_fixed_size
+
+                if (charging_min > discharging_max).any() or (charging_max < discharging_min).any():
+                    errors.append(
+                        f'Balancing charging and discharging Flows in {sid} need compatible minimum and maximum sizes. '
+                        f'Got: charging.size.minimum={charging_min}, charging.size.maximum={charging_max} and '
+                        f'discharging.size.minimum={discharging_min}, discharging.size.maximum={discharging_max}.'
+                    )
+
+        if errors:
+            raise PlausibilityError('\n'.join(errors))
+
 
 class FlowsData:
     """Batched data container for all flows with indexed access.
@@ -1658,6 +1739,14 @@ class EffectsData:
         """Iterate over Effect objects."""
         return self._effects
 
+    def validate(self) -> None:
+        """Validate all effects after transformation.
+
+        Simple config checks are done in Effect.validate_config().
+        """
+        for effect in self._effects:
+            effect.validate_config()
+
 
 class BusesData:
     """Batched data container for buses."""
@@ -1684,6 +1773,23 @@ class BusesData:
         """Bus objects that allow imbalance."""
         return [b for b in self._buses if b.allows_imbalance]
 
+    def validate(self) -> None:
+        """Validate all buses after transformation.
+
+        Performs validation checks including DataArray operations.
+        Simple config checks are done in Bus.validate_config().
+        """
+        for bus in self._buses:
+            bus.validate_config()
+
+            # Warning: imbalance_penalty == 0 (DataArray check)
+            if bus.imbalance_penalty_per_flow_hour is not None:
+                zero_penalty = np.all(np.equal(bus.imbalance_penalty_per_flow_hour, 0))
+                if zero_penalty:
+                    logger.warning(
+                        f'In Bus {bus.label_full}, the imbalance_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
+                    )
+
 
 class ComponentsData:
     """Batched data container for components with status."""
@@ -1704,6 +1810,14 @@ class ComponentsData:
     @property
     def all_components(self) -> list[Component]:
         return self._all_components
+
+    def validate(self) -> None:
+        """Validate all components after transformation.
+
+        Simple config checks are done in Component.validate_config().
+        """
+        for component in self._all_components:
+            component.validate_config()
 
 
 class ConvertersData:
@@ -1731,6 +1845,14 @@ class ConvertersData:
         """Converters with piecewise_conversion."""
         return [c for c in self._converters if c.piecewise_conversion]
 
+    def validate(self) -> None:
+        """Validate all converters after transformation.
+
+        Simple config checks are done in LinearConverter.validate_config().
+        """
+        for converter in self._converters:
+            converter.validate_config()
+
 
 class TransmissionsData:
     """Batched data container for transmissions."""
@@ -1756,6 +1878,38 @@ class TransmissionsData:
     def balanced(self) -> list[Transmission]:
         """Transmissions with balanced flow sizes."""
         return [t for t in self._transmissions if t.balanced]
+
+    def validate(self) -> None:
+        """Validate all transmissions after transformation.
+
+        Performs validation checks including DataArray operations.
+        Simple config checks are done in Transmission.validate_config().
+
+        Raises:
+            ValueError: If any validation check fails.
+        """
+        errors: list[str] = []
+
+        for transmission in self._transmissions:
+            transmission.validate_config()
+            tid = transmission.label_full
+
+            # Balanced size compatibility (DataArray check)
+            if transmission.balanced:
+                in1_min = transmission.in1.size.minimum_or_fixed_size
+                in1_max = transmission.in1.size.maximum_or_fixed_size
+                in2_min = transmission.in2.size.minimum_or_fixed_size
+                in2_max = transmission.in2.size.maximum_or_fixed_size
+
+                if (in1_min > in2_max).any() or (in1_max < in2_min).any():
+                    errors.append(
+                        f'Balanced Transmission {tid} needs compatible minimum and maximum sizes. '
+                        f'Got: in1.size.minimum={in1_min}, in1.size.maximum={in1_max} and '
+                        f'in2.size.minimum={in2_min}, in2.size.maximum={in2_max}.'
+                    )
+
+        if errors:
+            raise ValueError('\n'.join(errors))
 
 
 class BatchedAccessor:

@@ -290,7 +290,11 @@ class Effect(Element):
             f'{self.prefix}|period_weights', self.period_weights, dims=['period', 'scenario']
         )
 
-    def _plausibility_checks(self) -> None:
+    def validate_config(self) -> None:
+        """Validate configuration consistency (before transformation).
+
+        These are simple checks that don't require DataArray operations.
+        """
         # Check that minimum_over_periods and maximum_over_periods require a period dimension
         if (
             self.minimum_over_periods is not None or self.maximum_over_periods is not None
@@ -300,6 +304,10 @@ class Effect(Element):
                 f"the FlowSystem to have a 'period' dimension. Please define periods when creating "
                 f'the FlowSystem, or remove these constraints.'
             )
+
+    def _plausibility_checks(self) -> None:
+        """Legacy validation method - delegates to validate_config()."""
+        self.validate_config()
 
 
 class EffectsModel:
@@ -811,7 +819,11 @@ class EffectCollection(ElementContainer[Effect]):
             return {get_effect_label(effect): value for effect, value in effect_values_user.items()}
         return {self.standard_effect.label: effect_values_user}
 
-    def _plausibility_checks(self) -> None:
+    def validate_config(self) -> None:
+        """Validate configuration consistency (before transformation).
+
+        These are simple checks that don't require DataArray operations.
+        """
         # Check circular loops in effects:
         temporal, periodic = self.calculate_effect_share_factors()
 
@@ -833,6 +845,10 @@ class EffectCollection(ElementContainer[Effect]):
         if periodic_cycles:
             cycle_str = '\n'.join([' -> '.join(cycle) for cycle in periodic_cycles])
             raise ValueError(f'Error: circular periodic-shares detected:\n{cycle_str}')
+
+    def _plausibility_checks(self) -> None:
+        """Legacy validation method - delegates to validate_config()."""
+        self.validate_config()
 
     def __getitem__(self, effect: str | Effect | None) -> Effect:
         """
