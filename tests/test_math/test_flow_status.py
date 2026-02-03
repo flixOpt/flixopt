@@ -683,14 +683,14 @@ class TestPreviousFlowRate:
         assert_allclose(fs.solution['costs'].item(), 100.0, rtol=1e-5)
 
     def test_previous_flow_rate_array_longer_history(self):
-        """Proves: longer previous_flow_rate arrays correctly track history.
+        """Proves: longer previous_flow_rate arrays correctly track consecutive hours.
 
         Boiler with min_uptime=4, previous_flow_rate=[0, 10, 20, 30] (off, then on for 3 hours).
         3 hours uptime accumulated → needs 1 more hour at t=0.
-        Demand=[0,20]. Boiler forced on at t=0.
+        Demand=[0,20]. Boiler forced on at t=0 with relative_min=10.
 
-        Sensitivity: With previous_flow_rate=[10, 20, 30, 40] (4 hours on),
-        min_uptime=4 satisfied, boiler can be off at t=0.
+        Sensitivity: With previous_flow_rate=[10, 20, 30, 40] (4 hours on), cost=0.
+        With previous_flow_rate=[0, 10, 20, 30] (3 hours on), cost=10.
         """
         fs = make_flow_system(2)
         fs.add_elements(
@@ -725,6 +725,6 @@ class TestPreviousFlowRate:
         )
         solve(fs)
         # previous_flow_rate=[0, 10, 20, 30]: consecutive uptime from end = 3 hours
-        # min_uptime=4: needs 1 more hour → must be on at t=0
-        status = fs.solution['Boiler(heat)|status'].values[:-1]
-        assert_allclose(status[0], 1.0, atol=1e-5, err_msg='Boiler must be ON at t=0 (1 more hour needed)')
+        # min_uptime=4: needs 1 more → forced on at t=0 with relative_min=10
+        # cost = 10 (vs cost=0 if 4h history [10,20,30,40] satisfied min_uptime)
+        assert_allclose(fs.solution['costs'].item(), 10.0, rtol=1e-5)
