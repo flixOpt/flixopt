@@ -436,3 +436,301 @@ class TestFlowStatus:
         # Backup serves other peak @eta=0.5 (fuel=20). Total=32.5.
         # Without limit: boiler serves both → fuel=25 (cheaper).
         assert_allclose(fs.solution['costs'].item(), 32.5, rtol=1e-5)
+
+
+class TestPreviousFlowRate:
+    """Tests for previous_flow_rate determining initial status and uptime/downtime carry-over."""
+
+    def test_previous_flow_rate_scalar_on_forces_min_uptime(self):
+        """Proves: previous_flow_rate=scalar>0 means unit was ON before t=0,
+        and min_uptime carry-over forces it to stay on.
+
+        Boiler with min_uptime=2, previous_flow_rate=10 (was on for 1 hour before t=0).
+        Must stay on at t=0 to complete 2-hour minimum uptime block.
+        Demand=[0,20]. Even with zero demand at t=0, boiler must run.
+
+        Sensitivity: With previous_flow_rate=0 (was off), no carry-over,
+        boiler can be off at t=0 → different cost.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Heat', imbalance_penalty_per_flow_hour=0),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([0, 20])),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=100,
+                    relative_minimum=0.1,
+                    previous_flow_rate=10,  # Was ON for 1 hour before t=0
+                    status_parameters=fx.StatusParameters(min_uptime=2),
+                ),
+            ),
+        )
+        solve(fs)
+        # With previous_flow_rate=10, unit was on 1 hour before. min_uptime=2.
+        # Must stay on at t=0 to complete the 2-hour block.
+        status = fs.solution['Boiler(heat)|status'].values[:-1]
+        assert_allclose(status[0], 1.0, atol=1e-5, err_msg='Boiler should be ON at t=0 due to min_uptime carry-over')
+
+    def test_previous_flow_rate_scalar_off_no_carry_over(self):
+        """Proves: previous_flow_rate=0 means unit was OFF before t=0,
+        so no min_uptime carry-over — unit can stay off at t=0.
+
+        Boiler with min_uptime=2, previous_flow_rate=0 (was off).
+        Demand=[0,20]. With zero demand at t=0 and no carry-over, boiler can be off.
+
+        Sensitivity: With previous_flow_rate>0 (was on), min_uptime forces
+        boiler on at t=0 → different status pattern.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Heat', imbalance_penalty_per_flow_hour=0),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([0, 20])),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=100,
+                    relative_minimum=0.1,
+                    previous_flow_rate=0,  # Was OFF before t=0
+                    status_parameters=fx.StatusParameters(min_uptime=2),
+                ),
+            ),
+        )
+        solve(fs)
+        # With previous_flow_rate=0, unit was off. No min_uptime carry-over.
+        # Unit can be off at t=0 (demand=0), then on at t=1 (demand=20).
+        status = fs.solution['Boiler(heat)|status'].values[:-1]
+        # At t=0, demand=0, so optimal is off (no min_uptime from previous period)
+        assert_allclose(status[0], 0.0, atol=1e-5, err_msg='Boiler should be OFF at t=0 with no carry-over')
+
+    def test_previous_flow_rate_array_full_uptime_satisfied(self):
+        """Proves: previous_flow_rate as array counts consecutive ON hours.
+        If min_uptime is already satisfied by previous hours, unit can turn off at t=0.
+
+        Boiler with min_uptime=2, previous_flow_rate=[10, 20] (was on for 2 hours).
+        The 2-hour minimum is already satisfied → unit can turn off at t=0.
+        Demand=[0,0]. Boiler should stay off.
+
+        Sensitivity: With previous_flow_rate=[10] (only 1 hour on), min_uptime=2
+        would force boiler on at t=0 to complete the 2-hour block.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Heat', imbalance_penalty_per_flow_hour=0),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([0, 0])),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=100,
+                    relative_minimum=0.1,
+                    previous_flow_rate=[10, 20],  # Was ON for 2 hours before t=0
+                    status_parameters=fx.StatusParameters(min_uptime=2),
+                ),
+            ),
+        )
+        solve(fs)
+        # With previous_flow_rate=[10, 20], unit was on for 2 consecutive hours.
+        # min_uptime=2 is already satisfied → can turn off at t=0.
+        status = fs.solution['Boiler(heat)|status'].values[:-1]
+        assert_allclose(status, [0, 0], atol=1e-5, err_msg='Boiler should be OFF (min_uptime satisfied by previous)')
+
+    def test_previous_flow_rate_array_partial_uptime_forces_continuation(self):
+        """Proves: previous_flow_rate array with partial uptime forces continuation.
+
+        Boiler with min_uptime=3, previous_flow_rate=[0, 10] (off then on for 1 hour).
+        Only 1 hour of uptime accumulated → needs 2 more hours at t=0,t=1.
+        Demand=[0,0,0]. Boiler forced on for t=0,t=1 despite zero demand.
+
+        Sensitivity: With previous_flow_rate=[10, 10] (2 hours on), only need 1 more,
+        so pattern would be [on, off, off].
+        """
+        fs = make_flow_system(3)
+        fs.add_elements(
+            fx.Bus('Heat', imbalance_penalty_per_flow_hour=0),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([0, 0, 0])),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=100,
+                    relative_minimum=0.1,
+                    previous_flow_rate=[0, 10],  # Off at t=-2, ON at t=-1 (1 hour uptime)
+                    status_parameters=fx.StatusParameters(min_uptime=3),
+                ),
+            ),
+        )
+        solve(fs)
+        # previous_flow_rate=[0, 10]: last value is ON (10>0), consecutive uptime = 1 hour
+        # min_uptime=3: needs 2 more hours → must be on at t=0, t=1
+        status = fs.solution['Boiler(heat)|status'].values[:-1]
+        assert_allclose(status[0], 1.0, atol=1e-5, err_msg='Boiler must be ON at t=0 (needs 2 more hours)')
+        assert_allclose(status[1], 1.0, atol=1e-5, err_msg='Boiler must be ON at t=1 (completing min_uptime)')
+
+    def test_previous_flow_rate_array_min_downtime_carry_over(self):
+        """Proves: previous_flow_rate array affects min_downtime carry-over.
+
+        Boiler with min_downtime=3, previous_flow_rate=[10, 0] (was on, then off for 1 hour).
+        Only 1 hour of downtime accumulated → needs 2 more hours off at t=0,t=1.
+        Demand=[20,20,20]. Cheap boiler forced off, expensive backup covers.
+
+        Sensitivity: With previous_flow_rate=[0, 0] (2 hours off), only need 1 more,
+        so boiler could restart at t=1.
+        """
+        fs = make_flow_system(3)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([20, 20, 20])),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'CheapBoiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=100,
+                    previous_flow_rate=[10, 0],  # ON at t=-2, OFF at t=-1 (1 hour downtime)
+                    status_parameters=fx.StatusParameters(min_downtime=3),
+                ),
+            ),
+            fx.linear_converters.Boiler(
+                'ExpensiveBoiler',
+                thermal_efficiency=0.5,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow('heat', bus='Heat', size=100),
+            ),
+        )
+        solve(fs)
+        # previous_flow_rate=[10, 0]: last value is OFF (0), consecutive downtime = 1 hour
+        # min_downtime=3: needs 2 more hours → CheapBoiler must be off at t=0, t=1
+        status = fs.solution['CheapBoiler(heat)|status'].values[:-1]
+        assert_allclose(status[0], 0.0, atol=1e-5, err_msg='CheapBoiler must be OFF at t=0 (min_downtime)')
+        assert_allclose(status[1], 0.0, atol=1e-5, err_msg='CheapBoiler must be OFF at t=1 (min_downtime)')
+        # At t=2, min_downtime satisfied, CheapBoiler can restart
+        assert_allclose(status[2], 1.0, atol=1e-5, err_msg='CheapBoiler should restart at t=2')
+
+    def test_previous_flow_rate_array_longer_history(self):
+        """Proves: longer previous_flow_rate arrays correctly track history.
+
+        Boiler with min_uptime=4, previous_flow_rate=[0, 10, 20, 30] (off, then on for 3 hours).
+        3 hours uptime accumulated → needs 1 more hour at t=0.
+        Demand=[0,20]. Boiler forced on at t=0.
+
+        Sensitivity: With previous_flow_rate=[10, 20, 30, 40] (4 hours on),
+        min_uptime=4 satisfied, boiler can be off at t=0.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Heat', imbalance_penalty_per_flow_hour=0),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([0, 20])),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=100,
+                    relative_minimum=0.1,
+                    previous_flow_rate=[0, 10, 20, 30],  # Off, then ON for 3 hours
+                    status_parameters=fx.StatusParameters(min_uptime=4),
+                ),
+            ),
+        )
+        solve(fs)
+        # previous_flow_rate=[0, 10, 20, 30]: consecutive uptime from end = 3 hours
+        # min_uptime=4: needs 1 more hour → must be on at t=0
+        status = fs.solution['Boiler(heat)|status'].values[:-1]
+        assert_allclose(status[0], 1.0, atol=1e-5, err_msg='Boiler must be ON at t=0 (1 more hour needed)')
