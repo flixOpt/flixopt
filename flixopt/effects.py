@@ -291,8 +291,9 @@ class Effect(Element):
         )
 
     def validate_config(self) -> None:
-        """Validate configuration consistency (before transformation).
+        """Validate configuration consistency.
 
+        Called BEFORE transformation via FlowSystem._run_config_validation().
         These are simple checks that don't require DataArray operations.
         """
         # Check that minimum_over_periods and maximum_over_periods require a period dimension
@@ -820,9 +821,10 @@ class EffectCollection(ElementContainer[Effect]):
         return {self.standard_effect.label: effect_values_user}
 
     def validate_config(self) -> None:
-        """Validate configuration consistency (before transformation).
+        """Validate effect collection structure.
 
-        These are simple checks that don't require DataArray operations.
+        Called BEFORE transformation (in _prepare_effects) to ensure
+        effect share mappings are valid before any data transformation.
         """
         # Check circular loops in effects:
         temporal, periodic = self.calculate_effect_share_factors()

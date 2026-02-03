@@ -740,12 +740,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Note: status parameter propagation happens inside Component.transform_data()
         self._prepare_effects()
 
+        # Config validation BEFORE transformation (fail fast on config errors)
+        self._run_config_validation()
+
         for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
             element.transform_data()
 
-        # Validate cross-element references immediately after transformation
+        # Validate cross-element references after transformation
         self._validate_system_integrity()
-        self._run_plausibility_checks()
+
+        # Data validation AFTER transformation (DataArray checks)
+        self._run_data_validation()
 
         self._connected_and_transformed = True
 
@@ -1495,24 +1500,34 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             if penalty._flow_system is None:
                 penalty.link_to_flow_system(self)
 
-    def _run_plausibility_checks(self) -> None:
-        """Run plausibility checks on all elements after data transformation.
+    def _run_config_validation(self) -> None:
+        """Run config validation on all elements BEFORE data transformation.
 
-        This runs both config validation (simple checks) and DataArray-based
-        validation through the cached *Data classes in BatchedAccessor.
-        The same *Data instances are reused during model building.
+        These are simple checks that don't require DataArray operations.
+        Called before transform_data() to fail fast on configuration errors.
         """
-        # Use cached *Data from BatchedAccessor
-        batched = self.batched
+        for flow in self.flows.values():
+            flow.validate_config()
+        for bus in self.buses.values():
+            bus.validate_config()
+        for effect in self.effects.values():
+            effect.validate_config()
+        for component in self.components.values():
+            component.validate_config()
 
-        # Batched validation for each element type
+    def _run_data_validation(self) -> None:
+        """Run data validation on all elements AFTER data transformation.
+
+        These are checks that require DataArray operations (e.g., comparing
+        bounds across time dimensions). Called after transform_data().
+
+        The cached *Data instances are reused during model building.
+        """
+        batched = self.batched
         batched.flows.validate()
         batched.buses.validate()
-        batched.effects.validate()
         batched.storages.validate()
-        batched.converters.validate()
         batched.transmissions.validate()
-        batched.components.validate()
 
     def _validate_system_integrity(self) -> None:
         """

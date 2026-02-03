@@ -238,8 +238,9 @@ class Component(Element):
             raise ValueError(f'Flow names must be unique! "{self.label_full}" got 2 or more of: {duplicates}')
 
     def validate_config(self) -> None:
-        """Validate configuration consistency (before transformation).
+        """Validate configuration consistency.
 
+        Called BEFORE transformation via FlowSystem._run_config_validation().
         These are simple checks that don't require DataArray operations.
         """
         self._check_unique_flow_labels()
@@ -408,10 +409,10 @@ class Bus(Element):
         )
 
     def validate_config(self) -> None:
-        """Validate configuration consistency (before transformation).
+        """Validate configuration consistency.
 
+        Called BEFORE transformation via FlowSystem._run_config_validation().
         These are simple checks that don't require DataArray operations.
-        DataArray-based validation is done in BusesData.validate().
         """
         if len(self.inputs) == 0 and len(self.outputs) == 0:
             raise ValueError(
@@ -676,10 +677,10 @@ class Flow(Element):
             self.size = self._fit_coords(f'{self.prefix}|size', self.size, dims=['period', 'scenario'])
 
     def validate_config(self) -> None:
-        """Validate configuration consistency (before transformation).
+        """Validate configuration consistency.
 
+        Called BEFORE transformation via FlowSystem._run_config_validation().
         These are simple checks that don't require DataArray operations.
-        Checks that require transformed data are done in FlowsData.validate().
         """
         # Size is required when using StatusParameters (for big-M constraints)
         if self.status_parameters is not None and self.size is None:

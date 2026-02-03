@@ -191,8 +191,9 @@ class LinearConverter(Component):
             self.piecewise_conversion.link_to_flow_system(flow_system, self._sub_prefix('PiecewiseConversion'))
 
     def validate_config(self) -> None:
-        """Validate configuration consistency (before transformation).
+        """Validate configuration consistency.
 
+        Called BEFORE transformation via FlowSystem._run_config_validation().
         These are simple checks that don't require DataArray operations.
         """
         super().validate_config()
@@ -504,10 +505,10 @@ class Storage(Component):
             )
 
     def validate_config(self) -> None:
-        """Validate configuration consistency (before transformation).
+        """Validate configuration consistency.
 
+        Called BEFORE transformation via FlowSystem._run_config_validation().
         These are simple checks that don't require DataArray operations.
-        DataArray-based validation is done in StoragesData.validate().
         """
         super().validate_config()
 
@@ -702,10 +703,10 @@ class Transmission(Component):
         self.balanced = balanced
 
     def validate_config(self) -> None:
-        """Validate configuration consistency (before transformation).
+        """Validate configuration consistency.
 
+        Called BEFORE transformation via FlowSystem._run_config_validation().
         These are simple checks that don't require DataArray operations.
-        DataArray-based validation is done in TransmissionsData.validate().
         """
         super().validate_config()
         # Check buses consistency

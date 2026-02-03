@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from .core import PlausibilityError
 from .features import fast_isnull, fast_notnull, stack_along_dim
 from .interface import InvestParameters, StatusParameters
 from .modeling import _scalar_safe_isel_drop
@@ -753,23 +754,19 @@ class StoragesData:
     # === Validation ===
 
     def validate(self) -> None:
-        """Validate all storages after transformation.
+        """Validate all storages after transformation (DataArray checks only).
 
-        Performs batched validation checks that require DataArray operations.
-        Simple config checks are done in Storage.validate_config().
+        Config validation (simple checks) is done separately via Storage.validate_config().
+        This method only performs checks that require DataArray operations.
 
         Raises:
             PlausibilityError: If any validation check fails.
         """
-        from .core import PlausibilityError
         from .modeling import _scalar_safe_isel
 
         errors: list[str] = []
 
         for storage in self._storages:
-            # First run config validation
-            storage.validate_config()
-
             sid = storage.label_full
 
             # Capacity required for non-default relative bounds (DataArray checks)
@@ -1563,20 +1560,14 @@ class FlowsData:
     # === Validation ===
 
     def validate(self) -> None:
-        """Validate all flows after transformation.
+        """Validate all flows after transformation (DataArray checks only).
 
-        This method performs two types of validation:
-        1. Config validation on each flow (simple checks, no DataArray operations)
-        2. Batched validation (DataArray-based checks across all flows)
+        Config validation (simple checks) is done separately via Flow.validate_config().
+        This method only performs checks that require DataArray operations.
 
         Raises:
             PlausibilityError: If any validation check fails.
         """
-        from .core import PlausibilityError
-
-        # First: run config validation on each flow
-        for flow in self.elements.values():
-            flow.validate_config()
 
         errors: list[str] = []
 
@@ -1739,13 +1730,8 @@ class EffectsData:
         """Iterate over Effect objects."""
         return self._effects
 
-    def validate(self) -> None:
-        """Validate all effects after transformation.
-
-        Simple config checks are done in Effect.validate_config().
-        """
-        for effect in self._effects:
-            effect.validate_config()
+    # No validate() method needed - Effect has no DataArray checks.
+    # Config validation is done in FlowSystem._run_config_validation().
 
 
 class BusesData:
@@ -1774,14 +1760,12 @@ class BusesData:
         return [b for b in self._buses if b.allows_imbalance]
 
     def validate(self) -> None:
-        """Validate all buses after transformation.
+        """Validate all buses after transformation (DataArray checks only).
 
-        Performs validation checks including DataArray operations.
-        Simple config checks are done in Bus.validate_config().
+        Config validation (simple checks) is done separately via Bus.validate_config().
+        This method only performs checks that require DataArray operations.
         """
         for bus in self._buses:
-            bus.validate_config()
-
             # Warning: imbalance_penalty == 0 (DataArray check)
             if bus.imbalance_penalty_per_flow_hour is not None:
                 zero_penalty = np.all(np.equal(bus.imbalance_penalty_per_flow_hour, 0))
@@ -1811,13 +1795,8 @@ class ComponentsData:
     def all_components(self) -> list[Component]:
         return self._all_components
 
-    def validate(self) -> None:
-        """Validate all components after transformation.
-
-        Simple config checks are done in Component.validate_config().
-        """
-        for component in self._all_components:
-            component.validate_config()
+    # No validate() method needed - Component has no DataArray checks.
+    # Config validation is done in FlowSystem._run_config_validation().
 
 
 class ConvertersData:
@@ -1845,13 +1824,8 @@ class ConvertersData:
         """Converters with piecewise_conversion."""
         return [c for c in self._converters if c.piecewise_conversion]
 
-    def validate(self) -> None:
-        """Validate all converters after transformation.
-
-        Simple config checks are done in LinearConverter.validate_config().
-        """
-        for converter in self._converters:
-            converter.validate_config()
+    # No validate() method needed - LinearConverter has no DataArray checks.
+    # Config validation is done in FlowSystem._run_config_validation().
 
 
 class TransmissionsData:
@@ -1880,18 +1854,18 @@ class TransmissionsData:
         return [t for t in self._transmissions if t.balanced]
 
     def validate(self) -> None:
-        """Validate all transmissions after transformation.
+        """Validate all transmissions after transformation (DataArray checks only).
 
-        Performs validation checks including DataArray operations.
-        Simple config checks are done in Transmission.validate_config().
+        Config validation (simple checks) is done separately via Transmission.validate_config().
+        This method only performs checks that require DataArray operations.
 
         Raises:
-            ValueError: If any validation check fails.
+            PlausibilityError: If any validation check fails.
         """
+
         errors: list[str] = []
 
         for transmission in self._transmissions:
-            transmission.validate_config()
             tid = transmission.label_full
 
             # Balanced size compatibility (DataArray check)
@@ -1909,7 +1883,7 @@ class TransmissionsData:
                     )
 
         if errors:
-            raise ValueError('\n'.join(errors))
+            raise PlausibilityError('\n'.join(errors))
 
 
 class BatchedAccessor:
