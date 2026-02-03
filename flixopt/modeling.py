@@ -316,7 +316,7 @@ class ModelingPrimitives:
         # Minimum duration constraint if provided
         if minimum_duration is not None:
             constraints['lb'] = model.add_constraints(
-                duration
+                duration.isel(time=slice(None, -1))
                 >= (
                     state_variable.isel({duration_dim: slice(None, -1)})
                     - state_variable.isel({duration_dim: slice(1, None)})
