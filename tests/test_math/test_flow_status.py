@@ -589,8 +589,8 @@ class TestPreviousFlowRate:
         Only 1 hour of uptime accumulated → needs 2 more hours at t=0,t=1.
         Demand=[0,0,0]. Boiler forced on for t=0,t=1 despite zero demand.
 
-        Sensitivity: With previous_flow_rate=[10, 10] (2 hours on), only need 1 more,
-        so pattern would be [on, off, off].
+        Sensitivity: With previous_flow_rate=0 (was off), cost=0 (no carry-over).
+        With previous_flow_rate=[0, 10] (1h uptime), cost=20 (forced on 2 more hours).
         """
         fs = make_flow_system(3)
         fs.add_elements(
@@ -624,21 +624,20 @@ class TestPreviousFlowRate:
             ),
         )
         solve(fs)
-        # previous_flow_rate=[0, 10]: last value is ON (10>0), consecutive uptime = 1 hour
-        # min_uptime=3: needs 2 more hours → must be on at t=0, t=1
-        status = fs.solution['Boiler(heat)|status'].values[:-1]
-        assert_allclose(status[0], 1.0, atol=1e-5, err_msg='Boiler must be ON at t=0 (needs 2 more hours)')
-        assert_allclose(status[1], 1.0, atol=1e-5, err_msg='Boiler must be ON at t=1 (completing min_uptime)')
+        # previous_flow_rate=[0, 10]: consecutive uptime = 1 hour (only last ON counts)
+        # min_uptime=3: needs 2 more hours → forced on at t=0, t=1 with relative_min=10
+        # cost = 2 × 10 = 20 (vs cost=0 if previous_flow_rate ignored)
+        assert_allclose(fs.solution['costs'].item(), 20.0, rtol=1e-5)
 
     def test_previous_flow_rate_array_min_downtime_carry_over(self):
         """Proves: previous_flow_rate array affects min_downtime carry-over.
 
-        Boiler with min_downtime=3, previous_flow_rate=[10, 0] (was on, then off for 1 hour).
+        CheapBoiler with min_downtime=3, previous_flow_rate=[10, 0] (was on, then off for 1 hour).
         Only 1 hour of downtime accumulated → needs 2 more hours off at t=0,t=1.
-        Demand=[20,20,20]. Cheap boiler forced off, expensive backup covers.
+        Demand=[20,20,20]. CheapBoiler forced off, ExpensiveBoiler covers first 2 timesteps.
 
-        Sensitivity: With previous_flow_rate=[0, 0] (2 hours off), only need 1 more,
-        so boiler could restart at t=1.
+        Sensitivity: With previous_flow_rate=[10, 10] (was on), no downtime, cost=60.
+        With previous_flow_rate=[10, 0] (1h downtime), forced off 2 more hours, cost=100.
         """
         fs = make_flow_system(3)
         fs.add_elements(
@@ -677,13 +676,11 @@ class TestPreviousFlowRate:
             ),
         )
         solve(fs)
-        # previous_flow_rate=[10, 0]: last value is OFF (0), consecutive downtime = 1 hour
-        # min_downtime=3: needs 2 more hours → CheapBoiler must be off at t=0, t=1
-        status = fs.solution['CheapBoiler(heat)|status'].values[:-1]
-        assert_allclose(status[0], 0.0, atol=1e-5, err_msg='CheapBoiler must be OFF at t=0 (min_downtime)')
-        assert_allclose(status[1], 0.0, atol=1e-5, err_msg='CheapBoiler must be OFF at t=1 (min_downtime)')
-        # At t=2, min_downtime satisfied, CheapBoiler can restart
-        assert_allclose(status[2], 1.0, atol=1e-5, err_msg='CheapBoiler should restart at t=2')
+        # previous_flow_rate=[10, 0]: last is OFF, consecutive downtime = 1 hour
+        # min_downtime=3: needs 2 more off hours → CheapBoiler off t=0,t=1
+        # ExpensiveBoiler covers t=0,t=1: 2×20/0.5 = 80. CheapBoiler covers t=2: 20.
+        # Total = 100 (vs 60 if CheapBoiler could run all 3 hours)
+        assert_allclose(fs.solution['costs'].item(), 100.0, rtol=1e-5)
 
     def test_previous_flow_rate_array_longer_history(self):
         """Proves: longer previous_flow_rate arrays correctly track history.
