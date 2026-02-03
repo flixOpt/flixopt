@@ -105,47 +105,51 @@ def build_dataframe(grouped: dict[str, list[dict]]) -> tuple[list[dict], list[st
 
 
 def print_table(grouped: dict[str, list[dict]], output: Path | None = None) -> None:
-    """Print markdown table to stdout and optionally save to file."""
+    """Print table to stdout using pandas - benchmarks as rows, commits as columns."""
+    import pandas as pd
+
     rows, columns = build_dataframe(grouped)
 
     if not rows:
         print('No data.')
         return
 
-    # Format values
-    def fmt(v):
-        if v is None:
-            return '-'
-        if isinstance(v, float):
-            return f'{v:.1f}'
-        return str(v)
+    df = pd.DataFrame(rows, columns=columns)
 
-    # Calculate column widths
-    widths = {col: len(col) for col in columns}
-    for row in rows:
-        for col in columns:
-            widths[col] = max(widths[col], len(fmt(row.get(col, ''))))
+    # Melt to long format, then pivot so commits are columns
+    id_cols = ['run', 'description']
+    value_cols = [c for c in columns if c not in id_cols]
 
-    # Print header
-    header = ' | '.join(col.ljust(widths[col]) for col in columns)
-    separator = ' | '.join('-' * widths[col] for col in columns)
-    print(header)
-    print(separator)
+    df_long = df.melt(id_vars=id_cols, value_vars=value_cols, var_name='benchmark', value_name='value')
+    df_pivot = df_long.pivot(index='benchmark', columns='run', values='value')
 
-    # Print rows
-    for row in rows:
-        line = ' | '.join(fmt(row.get(col, '')).ljust(widths[col]) for col in columns)
-        print(line)
+    # Round values
+    df_pivot = df_pivot.round(1)
+
+    # Sort index: by model, phase, then size (numeric)
+    def sort_key(idx):
+        # Parse "model/phase/n=size (unit)"
+        parts = idx.split('/')
+        model = parts[0]
+        phase = parts[1].split('/')[0]
+        # Extract size from "n=XXX"
+        size_part = parts[2] if len(parts) > 2 else ''
+        size = int(size_part.split('=')[1].split()[0]) if '=' in size_part else 0
+        return (model, phase, size)
+
+    df_pivot = df_pivot.loc[sorted(df_pivot.index, key=sort_key)]
+
+    # Print
+    with pd.option_context('display.max_rows', None, 'display.width', None):
+        print(df_pivot.to_string())
 
     # Save to file if specified
     if output:
         output.parent.mkdir(parents=True, exist_ok=True)
-        with open(output, 'w') as f:
-            f.write(header + '\n')
-            f.write(separator + '\n')
-            for row in rows:
-                line = ' | '.join(fmt(row.get(col, '')).ljust(widths[col]) for col in columns)
-                f.write(line + '\n')
+        if output.suffix == '.csv':
+            df_pivot.to_csv(output)
+        else:
+            df_pivot.to_markdown(output)
         print(f'\nSaved to {output}')
 
 
