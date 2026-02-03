@@ -623,17 +623,19 @@ class StatusBuilder:
         if minimum_duration is not None:
             has_minimum = fast_notnull(minimum_duration)
             if has_minimum.any():
-                elem_with_min = [eid for eid, has in zip(element_ids, has_minimum.values, strict=False) if has]
-                min_vals = minimum_duration.sel({dim_name: elem_with_min})
-                state_subset = state.sel({dim_name: elem_with_min})
-                duration_subset = duration.sel({dim_name: elem_with_min})
+                # Select only elements with minimum constraint (non-NaN values)
+                element_ids = minimum_duration.coords[dim_name].values[has_minimum.values]
+                min_subset = minimum_duration.sel({dim_name: element_ids})
+                state_subset = state.sel({dim_name: element_ids})
+                duration_subset = duration.sel({dim_name: element_ids})
 
                 # Constraint for t = 0..T-2: duration[t] >= min * (state[t] - state[t+1])
-                state_diff = state_subset.isel({duration_dim: slice(None, -1)}) - state_subset.isel(
-                    {duration_dim: slice(1, None)}
-                )
+                # Use multiplication by 1.0 to align time coordinates after slicing
+                state_prev = state_subset.isel({duration_dim: slice(None, -1)})
+                state_next = 1.0 * state_subset.isel({duration_dim: slice(1, None)})
+                state_diff = state_prev - state_next
                 model.add_constraints(
-                    duration_subset.isel({duration_dim: slice(None, -1)}) >= min_vals * state_diff,
+                    duration_subset.isel({duration_dim: slice(None, -1)}) >= min_subset * state_diff,
                     name=f'{name}|min',
                 )
 
