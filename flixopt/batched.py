@@ -1915,13 +1915,26 @@ class TransmissionsData:
 class BatchedAccessor:
     """Accessor for batched data containers on FlowSystem.
 
+    Provides cached access to *Data containers for all element types.
+    The same cached instances are used for both validation (during connect_and_transform)
+    and model building, ensuring consistency and avoiding duplicate object creation.
+
     Usage:
-        flow_system.batched.flows  # Access FlowsData
+        flow_system.batched.flows      # Access FlowsData
+        flow_system.batched.storages   # Access StoragesData
+        flow_system.batched.buses      # Access BusesData
     """
 
     def __init__(self, flow_system: FlowSystem):
         self._fs = flow_system
         self._flows: FlowsData | None = None
+        self._storages: StoragesData | None = None
+        self._intercluster_storages: StoragesData | None = None
+        self._buses: BusesData | None = None
+        self._effects: EffectsData | None = None
+        self._components: ComponentsData | None = None
+        self._converters: ConvertersData | None = None
+        self._transmissions: TransmissionsData | None = None
 
     @property
     def flows(self) -> FlowsData:
@@ -1931,6 +1944,93 @@ class BatchedAccessor:
             self._flows = FlowsData(all_flows, self._fs)
         return self._flows
 
+    @property
+    def storages(self) -> StoragesData:
+        """Get or create StoragesData for basic storages (excludes intercluster)."""
+        if self._storages is None:
+            from .components import Storage
+
+            clustering = self._fs.clustering
+            basic_storages = [
+                c
+                for c in self._fs.components.values()
+                if isinstance(c, Storage)
+                and not (clustering is not None and c.cluster_mode in ('intercluster', 'intercluster_cyclic'))
+            ]
+            effect_ids = list(self._fs.effects.keys())
+            self._storages = StoragesData(
+                basic_storages, 'storage', effect_ids, timesteps_extra=self._fs.timesteps_extra
+            )
+        return self._storages
+
+    @property
+    def intercluster_storages(self) -> StoragesData:
+        """Get or create StoragesData for intercluster storages."""
+        if self._intercluster_storages is None:
+            from .components import Storage
+
+            clustering = self._fs.clustering
+            intercluster = [
+                c
+                for c in self._fs.components.values()
+                if isinstance(c, Storage)
+                and clustering is not None
+                and c.cluster_mode in ('intercluster', 'intercluster_cyclic')
+            ]
+            effect_ids = list(self._fs.effects.keys())
+            self._intercluster_storages = StoragesData(intercluster, 'intercluster_storage', effect_ids)
+        return self._intercluster_storages
+
+    @property
+    def buses(self) -> BusesData:
+        """Get or create BusesData for all buses."""
+        if self._buses is None:
+            self._buses = BusesData(list(self._fs.buses.values()))
+        return self._buses
+
+    @property
+    def effects(self) -> EffectsData:
+        """Get or create EffectsData for all effects."""
+        if self._effects is None:
+            self._effects = EffectsData(self._fs.effects)
+        return self._effects
+
+    @property
+    def components(self) -> ComponentsData:
+        """Get or create ComponentsData for all components."""
+        if self._components is None:
+            all_components = list(self._fs.components.values())
+            components_with_status = [c for c in all_components if c.status_parameters is not None]
+            self._components = ComponentsData(components_with_status, all_components)
+        return self._components
+
+    @property
+    def converters(self) -> ConvertersData:
+        """Get or create ConvertersData for all converters."""
+        if self._converters is None:
+            from .components import LinearConverter
+
+            converters = [c for c in self._fs.components.values() if isinstance(c, LinearConverter)]
+            self._converters = ConvertersData(converters)
+        return self._converters
+
+    @property
+    def transmissions(self) -> TransmissionsData:
+        """Get or create TransmissionsData for all transmissions."""
+        if self._transmissions is None:
+            from .components import Transmission
+
+            transmissions = [c for c in self._fs.components.values() if isinstance(c, Transmission)]
+            self._transmissions = TransmissionsData(transmissions)
+        return self._transmissions
+
     def _reset(self) -> None:
-        """Reset cached data (called when FlowSystem changes)."""
+        """Reset all cached data (called when FlowSystem is invalidated)."""
         self._flows = None
+        self._storages = None
+        self._intercluster_storages = None
+        self._buses = None
+        self._effects = None
+        self._components = None
+        self._converters = None
+        self._transmissions = None

@@ -893,15 +893,7 @@ class FlowSystemModel(linopy.Model):
         Args:
             timing: If True, print detailed timing breakdown.
         """
-        from .batched import (
-            BusesData,
-            ComponentsData,
-            ConvertersData,
-            EffectsData,
-            StoragesData,
-            TransmissionsData,
-        )
-        from .components import InterclusterStoragesModel, LinearConverter, Storage, StoragesModel, Transmission
+        from .components import InterclusterStoragesModel, StoragesModel
         from .effects import EffectsModel
         from .elements import (
             BusesModel,
@@ -913,65 +905,40 @@ class FlowSystemModel(linopy.Model):
 
         timer = _BuildTimer() if timing else None
 
-        self.effects = EffectsModel(self, EffectsData(self.flow_system.effects))
+        # Use cached *Data from BatchedAccessor (same instances used for validation)
+        batched = self.flow_system.batched
+
+        self.effects = EffectsModel(self, batched.effects)
         if timer:
             timer.record('effects')
 
-        self._flows_model = FlowsModel(self, self.flow_system.batched.flows)
+        self._flows_model = FlowsModel(self, batched.flows)
         if timer:
             timer.record('flows')
 
-        self._buses_model = BusesModel(self, BusesData(list(self.flow_system.buses.values())), self._flows_model)
+        self._buses_model = BusesModel(self, batched.buses, self._flows_model)
         if timer:
             timer.record('buses')
 
-        all_components = list(self.flow_system.components.values())
-        effect_ids = list(self.flow_system.effects.keys())
-        clustering = self.flow_system.clustering
-
-        basic_storages = [
-            c
-            for c in all_components
-            if isinstance(c, Storage)
-            and not (clustering is not None and c.cluster_mode in ('intercluster', 'intercluster_cyclic'))
-        ]
-        self._storages_model = StoragesModel(
-            self,
-            StoragesData(basic_storages, 'storage', effect_ids, timesteps_extra=self.flow_system.timesteps_extra),
-            self._flows_model,
-        )
+        self._storages_model = StoragesModel(self, batched.storages, self._flows_model)
         if timer:
             timer.record('storages')
 
-        intercluster_storages = [
-            c
-            for c in all_components
-            if isinstance(c, Storage)
-            and clustering is not None
-            and c.cluster_mode in ('intercluster', 'intercluster_cyclic')
-        ]
         self._intercluster_storages_model = InterclusterStoragesModel(
-            self,
-            StoragesData(intercluster_storages, 'intercluster_storage', effect_ids),
-            self._flows_model,
+            self, batched.intercluster_storages, self._flows_model
         )
         if timer:
             timer.record('intercluster_storages')
 
-        components_with_status = [c for c in all_components if c.status_parameters is not None]
-        self._components_model = ComponentsModel(
-            self, ComponentsData(components_with_status, all_components), self._flows_model
-        )
+        self._components_model = ComponentsModel(self, batched.components, self._flows_model)
         if timer:
             timer.record('components')
 
-        converters = [c for c in all_components if isinstance(c, LinearConverter)]
-        self._converters_model = ConvertersModel(self, ConvertersData(converters), self._flows_model)
+        self._converters_model = ConvertersModel(self, batched.converters, self._flows_model)
         if timer:
             timer.record('converters')
 
-        transmissions = [c for c in all_components if isinstance(c, Transmission)]
-        self._transmissions_model = TransmissionsModel(self, TransmissionsData(transmissions), self._flows_model)
+        self._transmissions_model = TransmissionsModel(self, batched.transmissions, self._flows_model)
         if timer:
             timer.record('transmissions')
 
