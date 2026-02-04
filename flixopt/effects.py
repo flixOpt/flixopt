@@ -821,36 +821,20 @@ class EffectCollection(ElementContainer[Effect]):
         return {self.standard_effect.label: effect_values_user}
 
     def validate_config(self) -> None:
-        """Validate effect collection structure.
+        """Deprecated: Validation is now handled by EffectsData.validate().
 
-        Called BEFORE transformation (in _prepare_effects) to ensure
-        effect share mappings are valid before any data transformation.
+        This method is kept for backwards compatibility but does nothing.
+        Collection-level validation (cycles, unknown refs) is now in EffectsData._validate_share_structure().
         """
-        # Check circular loops in effects:
-        temporal, periodic = self.calculate_effect_share_factors()
-
-        # Validate all referenced effects (both sources and targets) exist
-        edges = list(temporal.keys()) + list(periodic.keys())
-        unknown_sources = {src for src, _ in edges if src not in self}
-        unknown_targets = {tgt for _, tgt in edges if tgt not in self}
-        unknown = unknown_sources | unknown_targets
-        if unknown:
-            raise KeyError(f'Unknown effects used in effect share mappings: {sorted(unknown)}')
-
-        temporal_cycles = detect_cycles(tuples_to_adjacency_list([key for key in temporal]))
-        periodic_cycles = detect_cycles(tuples_to_adjacency_list([key for key in periodic]))
-
-        if temporal_cycles:
-            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in temporal_cycles])
-            raise ValueError(f'Error: circular temporal-shares detected:\n{cycle_str}')
-
-        if periodic_cycles:
-            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in periodic_cycles])
-            raise ValueError(f'Error: circular periodic-shares detected:\n{cycle_str}')
+        pass
 
     def _plausibility_checks(self) -> None:
-        """Legacy validation method - delegates to validate_config()."""
-        self.validate_config()
+        """Deprecated: Legacy validation method.
+
+        Kept for backwards compatibility but does nothing.
+        Validation is now handled by EffectsData.validate().
+        """
+        pass
 
     def __getitem__(self, effect: str | Effect | None) -> Effect:
         """

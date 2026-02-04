@@ -364,6 +364,8 @@ class _ReducedFlowSystemBuilder:
                 storage.initial_charge_state = None
 
         # Create Clustering object with full AggregationResult access
+        # Note: The clustering setter automatically resets the batched accessor
+        # to ensure storage categorization (basic vs intercluster) is recomputed.
         reduced_fs.clustering = Clustering(
             original_timesteps=self._fs.timesteps,
             original_data=drop_constant_arrays(ds, dim='time'),

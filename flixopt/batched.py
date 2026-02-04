@@ -754,10 +754,11 @@ class StoragesData:
     # === Validation ===
 
     def validate(self) -> None:
-        """Validate all storages after transformation (DataArray checks only).
+        """Validate all storages (config + DataArray checks).
 
-        Config validation (simple checks) is done separately via Storage.validate_config().
-        This method only performs checks that require DataArray operations.
+        Performs both:
+        - Config validation via Storage.validate_config()
+        - DataArray validation (post-transformation checks)
 
         Raises:
             PlausibilityError: If any validation check fails.
@@ -767,6 +768,7 @@ class StoragesData:
         errors: list[str] = []
 
         for storage in self._storages:
+            storage.validate_config()
             sid = storage.label_full
 
             # Capacity required for non-default relative bounds (DataArray checks)
@@ -1560,14 +1562,17 @@ class FlowsData:
     # === Validation ===
 
     def validate(self) -> None:
-        """Validate all flows after transformation (DataArray checks only).
+        """Validate all flows (config + DataArray checks).
 
-        Config validation (simple checks) is done separately via Flow.validate_config().
-        This method only performs checks that require DataArray operations.
+        Performs both:
+        - Config validation via Flow.validate_config()
+        - DataArray validation (post-transformation checks)
 
         Raises:
             PlausibilityError: If any validation check fails.
         """
+        for flow in self.elements.values():
+            flow.validate_config()
 
         errors: list[str] = []
 
@@ -1730,8 +1735,44 @@ class EffectsData:
         """Iterate over Effect objects."""
         return self._effects
 
-    # No validate() method needed - Effect has no DataArray checks.
-    # Config validation is done in FlowSystem._run_config_validation().
+    def validate(self) -> None:
+        """Validate all effects and the effect collection structure.
+
+        Performs both:
+        - Individual effect config validation
+        - Collection-level validation (circular loops in share mappings, unknown effect refs)
+        """
+        for effect in self._effects:
+            effect.validate_config()
+
+        # Collection-level validation (share structure)
+        self._validate_share_structure()
+
+    def _validate_share_structure(self) -> None:
+        """Validate effect share mappings for cycles and unknown references."""
+        from .effects import detect_cycles, tuples_to_adjacency_list
+
+        temporal, periodic = self._collection.calculate_effect_share_factors()
+
+        # Validate all referenced effects exist
+        edges = list(temporal.keys()) + list(periodic.keys())
+        unknown_sources = {src for src, _ in edges if src not in self._collection}
+        unknown_targets = {tgt for _, tgt in edges if tgt not in self._collection}
+        unknown = unknown_sources | unknown_targets
+        if unknown:
+            raise KeyError(f'Unknown effects used in effect share mappings: {sorted(unknown)}')
+
+        # Check for circular dependencies
+        temporal_cycles = detect_cycles(tuples_to_adjacency_list([key for key in temporal]))
+        periodic_cycles = detect_cycles(tuples_to_adjacency_list([key for key in periodic]))
+
+        if temporal_cycles:
+            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in temporal_cycles])
+            raise ValueError(f'Error: circular temporal-shares detected:\n{cycle_str}')
+
+        if periodic_cycles:
+            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in periodic_cycles])
+            raise ValueError(f'Error: circular periodic-shares detected:\n{cycle_str}')
 
 
 class BusesData:
@@ -1760,12 +1801,14 @@ class BusesData:
         return [b for b in self._buses if b.allows_imbalance]
 
     def validate(self) -> None:
-        """Validate all buses after transformation (DataArray checks only).
+        """Validate all buses (config + DataArray checks).
 
-        Config validation (simple checks) is done separately via Bus.validate_config().
-        This method only performs checks that require DataArray operations.
+        Performs both:
+        - Config validation via Bus.validate_config()
+        - DataArray validation (post-transformation checks)
         """
         for bus in self._buses:
+            bus.validate_config()
             # Warning: imbalance_penalty == 0 (DataArray check)
             if bus.imbalance_penalty_per_flow_hour is not None:
                 zero_penalty = np.all(np.equal(bus.imbalance_penalty_per_flow_hour, 0))
@@ -1795,8 +1838,17 @@ class ComponentsData:
     def all_components(self) -> list[Component]:
         return self._all_components
 
-    # No validate() method needed - Component has no DataArray checks.
-    # Config validation is done in FlowSystem._run_config_validation().
+    def validate(self) -> None:
+        """Validate generic components (config checks only).
+
+        Note: Storage, Transmission, and LinearConverter are validated
+        through their specialized *Data classes, so we skip them here.
+        """
+        from .components import LinearConverter, Storage, Transmission
+
+        for component in self._all_components:
+            if not isinstance(component, (Storage, LinearConverter, Transmission)):
+                component.validate_config()
 
 
 class ConvertersData:
@@ -1824,8 +1876,10 @@ class ConvertersData:
         """Converters with piecewise_conversion."""
         return [c for c in self._converters if c.piecewise_conversion]
 
-    # No validate() method needed - LinearConverter has no DataArray checks.
-    # Config validation is done in FlowSystem._run_config_validation().
+    def validate(self) -> None:
+        """Validate all converters (config checks, no DataArray operations needed)."""
+        for converter in self._converters:
+            converter.validate_config()
 
 
 class TransmissionsData:
@@ -1854,14 +1908,17 @@ class TransmissionsData:
         return [t for t in self._transmissions if t.balanced]
 
     def validate(self) -> None:
-        """Validate all transmissions after transformation (DataArray checks only).
+        """Validate all transmissions (config + DataArray checks).
 
-        Config validation (simple checks) is done separately via Transmission.validate_config().
-        This method only performs checks that require DataArray operations.
+        Performs both:
+        - Config validation via Transmission.validate_config()
+        - DataArray validation (post-transformation checks)
 
         Raises:
             PlausibilityError: If any validation check fails.
         """
+        for transmission in self._transmissions:
+            transmission.validate_config()
 
         errors: list[str] = []
 
