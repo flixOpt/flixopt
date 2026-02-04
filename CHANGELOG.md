@@ -52,6 +52,22 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
+## [6.0.1] - 2026-02-04
+
+**Summary**: Patch release with bug fixes for JSON encoding, `Comparison` coordinate handling, and documentation.
+
+### 🐛 Fixed
+
+- **JSON Encoding**: Fixed special characters (Ä, ö, etc.) being escaped in saved JSON/NetCDF files by adding `ensure_ascii=False` to `json.dumps()` calls in `io.py` (#599)
+- **Comparison Coordinates**: Fixed `component` coordinate becoming `(case, contributor)` shaped after concatenation in `Comparison` class. Non-index coordinates are now properly merged before concat (#599)
+
+### 📝 Docs
+
+- **Clustering Notebooks**: Added explicit `preserve_n_clusters=True` to all `ExtremeConfig` calls to fix FutureWarning from tsam v3.1 (#599)
+- **Docs Workflow**: Added `workflow_dispatch` inputs for manual docs deployment with version selection (#599)
+
+---
+
 ## [6.0.0] - 2026-02-03
 
 **Summary**: Major release featuring tsam v3 migration, complete rewrite of the clustering/aggregation system, 2-3x faster I/O for large systems, new `plotly` plotting accessor, FlowSystem comparison tools, and removal of deprecated v5.0 classes.
