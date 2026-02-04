@@ -52,6 +52,42 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
+## [7.0.0] - Unreleased
+
+**Summary**: Performance release with **up to 67x faster model building** for large systems through batched/vectorized operations.
+
+### 🚀 Performance
+
+#### Batched Model Building (#588)
+
+Complete rewrite of the model building pipeline using batched operations instead of per-element loops:
+
+| System Size | Build Speedup | Write LP Speedup |
+|-------------|---------------|------------------|
+| XL (2000h, 300 converters) | **67x** (113s → 1.7s) | **5x** (45s → 9s) |
+| Complex (72h, piecewise) | **2.6x** (1s → 383ms) | **4x** (417ms → 100ms) |
+
+**Architecture Changes**:
+
+- **Type-level batched models**: New `FlowsModel`, `StoragesModel`, `BusesModel` classes process all elements of a type in single vectorized operations
+- **Pre-computed element data**: `FlowsData` and `StoragesData` cache element parameters as xarray DataArrays with element dimensions
+- **Mask-based variables**: Use linopy's `mask=` parameter for heterogeneous elements (e.g., only some flows have status variables)
+- **Fast NumPy helpers**: `fast_notnull()` / `fast_isnull()` are ~55x faster than xarray equivalents
+
+**Model Size Reduction** (fewer, larger variables/constraints):
+
+| System | Variables (old → new) | Constraints (old → new) |
+|--------|----------------------|------------------------|
+| XL (2000h, 300 conv) | 4,917 → 21 | 5,715 → 30 |
+| Medium (720h) | 370 → 21 | 428 → 30 |
+
+### 🐛 Fixed
+
+- **Status duration constraints**: Fixed `min_downtime` and `min_uptime` constraints not being enforced in batched mode due to mask broadcasting issues
+- **Investment effects**: Fixed investment-related effects (`effects_of_investment`, `effects_of_retirement`, `effects_per_size`) not being registered when using batched operations
+
+---
+
 ## [6.0.0] - 2026-02-03
 
 **Summary**: Major release featuring tsam v3 migration, complete rewrite of the clustering/aggregation system, 2-3x faster I/O for large systems, new `plotly` plotting accessor, FlowSystem comparison tools, and removal of deprecated v5.0 classes.
