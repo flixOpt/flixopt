@@ -2238,6 +2238,36 @@ class ComponentsModel(TypeModel):
         """No-op: effect shares are now collected centrally in EffectsModel.finalize_shares()."""
         pass
 
+    def add_effect_contributions(self, effects_model) -> None:
+        """Push component-level status effect contributions to EffectsModel.
+
+        Called by EffectsModel.finalize_shares(). Pushes:
+        - Temporal: status × effects_per_active_hour × dt
+        - Temporal: startup × effects_per_startup
+
+        Args:
+            effects_model: The EffectsModel to register contributions with.
+        """
+        dim = self.dim_name
+        dt = self.model.timestep_duration
+        sd = self._status_data
+
+        # === Temporal: status * effects_per_active_hour * dt ===
+        if self.status is not None:
+            factor = sd.effects_per_active_hour
+            if factor is not None:
+                component_ids = factor.coords[dim].values
+                status_subset = self.status.sel({dim: component_ids})
+                effects_model.add_temporal_contribution(status_subset * (factor * dt), contributor_dim=dim)
+
+        # === Temporal: startup * effects_per_startup ===
+        if self.startup is not None:
+            factor = sd.effects_per_startup
+            if factor is not None:
+                component_ids = factor.coords[dim].values
+                startup_subset = self.startup.sel({dim: component_ids})
+                effects_model.add_temporal_contribution(startup_subset * factor, contributor_dim=dim)
+
     def constraint_prevent_simultaneous(self) -> None:
         """Create mutual exclusivity constraints for components with prevent_simultaneous_flows."""
         _add_prevent_simultaneous_constraints(
