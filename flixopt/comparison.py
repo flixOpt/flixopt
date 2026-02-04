@@ -29,41 +29,54 @@ __all__ = ['Comparison']
 _CASE_SLOTS = frozenset(slot for slots in SLOT_ORDERS.values() for slot in slots)
 
 
-def _reconstruct_contributor_coords(ds: xr.Dataset) -> xr.Dataset:
-    """Fix (case, dim) coords that arise from concatenating datasets with different contributors.
+def _extract_nonindex_coords(datasets: list[xr.Dataset]) -> tuple[list[xr.Dataset], dict[str, tuple[str, dict]]]:
+    """Extract and merge non-index coords, returning cleaned datasets and merged mappings.
 
-    For 'component' coord on 'contributor' dim: reconstruct from labels ("Boiler(Q_th)" -> "Boiler")
-    For other (case, dim) coords: take first valid value per position (case-invariant mapping)
+    Non-index coords (like `component` on `contributor` dim) cause concat conflicts.
+    This extracts them, merges the mappings, and returns datasets without them.
     """
-    import numpy as np
+    if not datasets:
+        return datasets, {}
+
+    # Find non-index coords and collect mappings
+    merged: dict[str, tuple[str, dict]] = {}
+    coords_to_drop: set[str] = set()
+
+    for ds in datasets:
+        for name, coord in ds.coords.items():
+            if len(coord.dims) != 1:
+                continue
+            dim = coord.dims[0]
+            if dim == name or dim not in ds.coords:
+                continue
+
+            coords_to_drop.add(name)
+            if name not in merged:
+                merged[name] = (dim, {})
+
+            for dv, cv in zip(ds.coords[dim].values, coord.values, strict=False):
+                if dv not in merged[name][1]:
+                    merged[name][1][dv] = cv
+
+    # Drop these coords from datasets
+    if coords_to_drop:
+        datasets = [ds.drop_vars(coords_to_drop, errors='ignore') for ds in datasets]
+
+    return datasets, merged
+
+
+def _apply_merged_coords(ds: xr.Dataset, merged: dict[str, tuple[str, dict]]) -> xr.Dataset:
+    """Apply merged coord mappings to concatenated dataset."""
+    if not merged:
+        return ds
 
     new_coords = {}
-
-    # Reconstruct 'component' from contributor labels if contributor dim exists
-    if 'contributor' in ds.dims:
-        contributors = ds.coords['contributor'].values
-        new_coords['component'] = (
-            'contributor',
-            [str(c).split('(')[0] if '(' in str(c) else str(c) for c in contributors],
-        )
-
-    # Handle other (case, dim) coords by taking first valid value
-    for name, coord in ds.coords.items():
-        if name in new_coords:
+    for name, (dim, mapping) in merged.items():
+        if dim not in ds.dims:
             continue
-        if 'case' not in coord.dims or len(coord.dims) != 2:
-            continue
+        new_coords[name] = (dim, [mapping.get(dv) for dv in ds.coords[dim].values])
 
-        other_dim = next(d for d in coord.dims if d != 'case')
-        values = coord.values if coord.dims[0] == 'case' else coord.values.T
-
-        unified = []
-        for col in values.T:
-            val = next((v for v in col if v is not None and not (isinstance(v, float) and np.isnan(v))), col[0])
-            unified.append(val)
-        new_coords[name] = (other_dim, unified)
-
-    return ds.assign_coords(new_coords) if new_coords else ds
+    return ds.assign_coords(new_coords)
 
 
 def _apply_slot_defaults(plotly_kwargs: dict, defaults: dict[str, str | None]) -> None:
@@ -300,7 +313,6 @@ class Comparison:
                 coords='minimal',
                 fill_value=float('nan'),
             )
-            self._solution = _reconstruct_contributor_coords(self._solution)
         return self._solution
 
     @property
@@ -370,7 +382,6 @@ class Comparison:
                 coords='minimal',
                 fill_value=float('nan'),
             )
-            self._inputs = _reconstruct_contributor_coords(self._inputs)
         return self._inputs
 
 
@@ -415,11 +426,9 @@ class ComparisonStatistics:
                 continue
         if not datasets:
             return xr.Dataset()
+        datasets, merged_coords = _extract_nonindex_coords(datasets)
         result = xr.concat(datasets, dim='case', join='outer', coords='minimal', fill_value=float('nan'))
-        # Fix coordinates that became (case, dim) shaped due to differing values across cases.
-        # These should be case-invariant (e.g., component is determined by contributor, not case).
-        result = _reconstruct_contributor_coords(result)
-        return result
+        return _apply_merged_coords(result, merged_coords)
 
     def _merge_dict_property(self, prop_name: str) -> dict[str, str]:
         """Merge a dict property from all cases (later cases override)."""
@@ -573,8 +582,9 @@ class ComparisonStatisticsPlot:
         if not datasets:
             return xr.Dataset(), ''
 
+        datasets, merged_coords = _extract_nonindex_coords(datasets)
         combined = xr.concat(datasets, dim='case', join='outer', coords='minimal', fill_value=float('nan'))
-        return _reconstruct_contributor_coords(combined), title
+        return _apply_merged_coords(combined, merged_coords), title
 
     def _finalize(self, ds: xr.Dataset, fig, show: bool | None) -> PlotResult:
         """Handle show and return PlotResult."""
