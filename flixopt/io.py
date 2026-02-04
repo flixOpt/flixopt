@@ -1556,10 +1556,12 @@ class FlowSystemDatasetIO:
         # Create and populate FlowSystem
         flow_system = cls._create_flow_system(ds, reference_structure, arrays_dict, FlowSystem)
         cls._restore_elements(flow_system, reference_structure, arrays_dict, FlowSystem)
-        cls._restore_solution(flow_system, ds, reference_structure, solution_var_names)
         cls._restore_clustering(flow_system, ds, reference_structure, config_var_names, arrays_dict, FlowSystem)
         cls._restore_metadata(flow_system, reference_structure, FlowSystem)
+        # Connect network BEFORE restoring solution, otherwise status=SOLVED
+        # causes connect_and_transform() to skip (since SOLVED >= CONNECTED)
         flow_system.connect_and_transform()
+        cls._restore_solution(flow_system, ds, reference_structure, solution_var_names)
         return flow_system
 
     @classmethod
