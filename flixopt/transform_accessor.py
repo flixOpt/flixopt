@@ -122,8 +122,7 @@ class _ReducedFlowSystemBuilder:
                 raise ValueError(
                     f'Inconsistent cluster counts across periods/scenarios: '
                     f'{key_str} has {result.n_clusters} clusters, but expected {self._n_clusters}. '
-                    f'This can happen when ExtremeConfig does not preserve cluster counts. '
-                    f'Ensure ExtremeConfig has preserve_n_clusters=True.'
+                    f'This can happen when ExtremeConfig does not preserve cluster counts.'
                 )
 
         # Pre-compute coordinates

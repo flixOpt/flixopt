@@ -388,7 +388,6 @@ class TestExtremeConfigNewCluster:
             extremes=ExtremeConfig(
                 method='new_cluster',
                 max_value=['HeatDemand(Q)|fixed_relative_profile'],
-                preserve_n_clusters=False,  # Allow adding new clusters for extremes
             ),
         )
 
@@ -410,7 +409,6 @@ class TestExtremeConfigNewCluster:
             extremes=ExtremeConfig(
                 method='new_cluster',
                 max_value=['HeatDemand(Q)|fixed_relative_profile'],
-                preserve_n_clusters=False,  # Allow cluster count to increase
             ),
         )
 
@@ -453,7 +451,6 @@ class TestExtremeConfigNewCluster:
             extremes=ExtremeConfig(
                 method='new_cluster',
                 min_value=['HeatDemand(Q)|fixed_relative_profile'],
-                preserve_n_clusters=False,  # Allow cluster count to increase
             ),
         )
 
@@ -475,7 +472,6 @@ class TestExtremeConfigReplace:
             extremes=ExtremeConfig(
                 method='replace',
                 max_value=['HeatDemand(Q)|fixed_relative_profile'],
-                preserve_n_clusters=True,  # Replace method maintains cluster count
             ),
         )
 
@@ -495,7 +491,6 @@ class TestExtremeConfigReplace:
             extremes=ExtremeConfig(
                 method='replace',
                 max_value=['HeatDemand(Q)|fixed_relative_profile'],
-                preserve_n_clusters=True,
             ),
         )
 
@@ -519,7 +514,6 @@ class TestExtremeConfigAppend:
             extremes=ExtremeConfig(
                 method='append',
                 max_value=['HeatDemand(Q)|fixed_relative_profile'],
-                preserve_n_clusters=False,  # Append may add clusters
             ),
             segments=SegmentConfig(n_segments=4),
         )
@@ -545,7 +539,6 @@ class TestExtremeConfigAppend:
             extremes=ExtremeConfig(
                 method='append',
                 max_value=['HeatDemand(Q)|fixed_relative_profile'],
-                preserve_n_clusters=False,  # Append may add clusters
             ),
             segments=SegmentConfig(n_segments=4),
         )
@@ -574,7 +567,6 @@ class TestExtremeConfigMultiPeriod:
                 extremes=ExtremeConfig(
                     method='new_cluster',
                     max_value=['HeatDemand(Q)|fixed_relative_profile'],
-                    preserve_n_clusters=True,
                 ),
             )
 
@@ -586,7 +578,6 @@ class TestExtremeConfigMultiPeriod:
                 extremes=ExtremeConfig(
                     method='append',
                     max_value=['HeatDemand(Q)|fixed_relative_profile'],
-                    preserve_n_clusters=True,
                 ),
             )
 
@@ -601,7 +592,6 @@ class TestExtremeConfigMultiPeriod:
             extremes=ExtremeConfig(
                 method='replace',
                 max_value=['HeatDemand(Q)|fixed_relative_profile'],
-                preserve_n_clusters=True,
             ),
         )
 
@@ -626,7 +616,6 @@ class TestExtremeConfigMultiPeriod:
             extremes=ExtremeConfig(
                 method='replace',
                 max_value=['HeatDemand(Q)|fixed_relative_profile'],
-                preserve_n_clusters=True,
             ),
         )
 
@@ -661,7 +650,6 @@ class TestMultiPeriodWithExtremes:
             extremes=ExtremeConfig(
                 method='replace',
                 max_value=['HeatDemand(Q)|fixed_relative_profile'],
-                preserve_n_clusters=True,
             ),
         )
 
@@ -686,7 +674,6 @@ class TestMultiPeriodWithExtremes:
             extremes=ExtremeConfig(
                 method='replace',
                 max_value=['HeatDemand(Q)|fixed_relative_profile'],
-                preserve_n_clusters=True,
             ),
             segments=SegmentConfig(n_segments=6),
         )
@@ -781,7 +768,6 @@ class TestMultiScenarioWithClustering:
             extremes=ExtremeConfig(
                 method='replace',
                 max_value=['HeatDemand(Q)|fixed_relative_profile'],
-                preserve_n_clusters=True,
             ),
         )
 
@@ -846,7 +832,6 @@ class TestFullDimensionalClustering:
             extremes=ExtremeConfig(
                 method='replace',
                 max_value=['HeatDemand(Q)|fixed_relative_profile'],
-                preserve_n_clusters=True,
             ),
         )
 
@@ -946,7 +931,6 @@ class TestMultiPeriodClusteringIO:
             extremes=ExtremeConfig(
                 method='replace',
                 max_value=['HeatDemand(Q)|fixed_relative_profile'],
-                preserve_n_clusters=True,
             ),
         )
         fs_clustered.optimize(solver_fixture)
