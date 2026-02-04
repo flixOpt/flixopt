@@ -29,27 +29,38 @@ __all__ = ['Comparison']
 _CASE_SLOTS = frozenset(slot for slots in SLOT_ORDERS.values() for slot in slots)
 
 
-def _unify_case_varying_coords(ds: xr.Dataset) -> xr.Dataset:
-    """Collapse (case, dim) coords back to (dim,) by taking first valid value per position."""
+def _reconstruct_contributor_coords(ds: xr.Dataset) -> xr.Dataset:
+    """Fix (case, dim) coords that arise from concatenating datasets with different contributors.
+
+    For 'component' coord on 'contributor' dim: reconstruct from labels ("Boiler(Q_th)" -> "Boiler")
+    For other (case, dim) coords: take first valid value per position (case-invariant mapping)
+    """
     import numpy as np
 
     new_coords = {}
+
+    # Reconstruct 'component' from contributor labels if contributor dim exists
+    if 'contributor' in ds.dims:
+        contributors = ds.coords['contributor'].values
+        new_coords['component'] = (
+            'contributor',
+            [str(c).split('(')[0] if '(' in str(c) else str(c) for c in contributors],
+        )
+
+    # Handle other (case, dim) coords by taking first valid value
     for name, coord in ds.coords.items():
+        if name in new_coords:
+            continue
         if 'case' not in coord.dims or len(coord.dims) != 2:
             continue
 
-        # Get the non-case dimension
         other_dim = next(d for d in coord.dims if d != 'case')
-        values = coord.values
-        if coord.dims[0] != 'case':
-            values = values.T
+        values = coord.values if coord.dims[0] == 'case' else coord.values.T
 
-        # Take first non-null value per column
         unified = []
         for col in values.T:
             val = next((v for v in col if v is not None and not (isinstance(v, float) and np.isnan(v))), col[0])
             unified.append(val)
-
         new_coords[name] = (other_dim, unified)
 
     return ds.assign_coords(new_coords) if new_coords else ds
@@ -289,7 +300,7 @@ class Comparison:
                 coords='minimal',
                 fill_value=float('nan'),
             )
-            self._solution = _unify_case_varying_coords(self._solution)
+            self._solution = _reconstruct_contributor_coords(self._solution)
         return self._solution
 
     @property
@@ -359,7 +370,7 @@ class Comparison:
                 coords='minimal',
                 fill_value=float('nan'),
             )
-            self._inputs = _unify_case_varying_coords(self._inputs)
+            self._inputs = _reconstruct_contributor_coords(self._inputs)
         return self._inputs
 
 
@@ -407,7 +418,7 @@ class ComparisonStatistics:
         result = xr.concat(datasets, dim='case', join='outer', coords='minimal', fill_value=float('nan'))
         # Fix coordinates that became (case, dim) shaped due to differing values across cases.
         # These should be case-invariant (e.g., component is determined by contributor, not case).
-        result = _unify_case_varying_coords(result)
+        result = _reconstruct_contributor_coords(result)
         return result
 
     def _merge_dict_property(self, prop_name: str) -> dict[str, str]:
@@ -563,7 +574,7 @@ class ComparisonStatisticsPlot:
             return xr.Dataset(), ''
 
         combined = xr.concat(datasets, dim='case', join='outer', coords='minimal', fill_value=float('nan'))
-        return _unify_case_varying_coords(combined), title
+        return _reconstruct_contributor_coords(combined), title
 
     def _finalize(self, ds: xr.Dataset, fig, show: bool | None) -> PlotResult:
         """Handle show and return PlotResult."""
