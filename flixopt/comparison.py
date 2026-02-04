@@ -57,6 +57,12 @@ def _extract_nonindex_coords(datasets: list[xr.Dataset]) -> tuple[list[xr.Datase
             for dv, cv in zip(ds.coords[dim].values, coord.values, strict=False):
                 if dv not in merged[name][1]:
                     merged[name][1][dv] = cv
+                elif merged[name][1][dv] != cv:
+                    warnings.warn(
+                        f"Coordinate '{name}' has conflicting values for dim value '{dv}': "
+                        f"'{merged[name][1][dv]}' vs '{cv}'. Keeping first value.",
+                        stacklevel=4,
+                    )
 
     # Drop these coords from datasets
     if coords_to_drop:
@@ -306,13 +312,10 @@ class Comparison:
             self._require_solutions()
             datasets = [fs.solution for fs in self._systems]
             self._warn_mismatched_dimensions(datasets)
-            self._solution = xr.concat(
-                [ds.expand_dims(case=[name]) for ds, name in zip(datasets, self._names, strict=True)],
-                dim='case',
-                join='outer',
-                coords='minimal',
-                fill_value=float('nan'),
-            )
+            expanded = [ds.expand_dims(case=[name]) for ds, name in zip(datasets, self._names, strict=True)]
+            expanded, merged_coords = _extract_nonindex_coords(expanded)
+            result = xr.concat(expanded, dim='case', join='outer', coords='minimal', fill_value=float('nan'))
+            self._solution = _apply_merged_coords(result, merged_coords)
         return self._solution
 
     @property
@@ -375,13 +378,10 @@ class Comparison:
         if self._inputs is None:
             datasets = [fs.to_dataset(include_solution=False) for fs in self._systems]
             self._warn_mismatched_dimensions(datasets)
-            self._inputs = xr.concat(
-                [ds.expand_dims(case=[name]) for ds, name in zip(datasets, self._names, strict=True)],
-                dim='case',
-                join='outer',
-                coords='minimal',
-                fill_value=float('nan'),
-            )
+            expanded = [ds.expand_dims(case=[name]) for ds, name in zip(datasets, self._names, strict=True)]
+            expanded, merged_coords = _extract_nonindex_coords(expanded)
+            result = xr.concat(expanded, dim='case', join='outer', coords='minimal', fill_value=float('nan'))
+            self._inputs = _apply_merged_coords(result, merged_coords)
         return self._inputs
 
 

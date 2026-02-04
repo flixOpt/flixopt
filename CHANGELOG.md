@@ -59,7 +59,7 @@ Until here -->
 ### 🐛 Fixed
 
 - **JSON Encoding**: Fixed special characters (Ä, ö, etc.) being escaped in saved JSON/NetCDF files by adding `ensure_ascii=False` to `json.dumps()` calls in `io.py` (#599)
-- **Comparison Coordinates**: Fixed `component` coordinate becoming `(case, contributor)` shaped after concatenation in `Comparison` class. Non-index coordinates are now properly merged before concat (#599)
+- **Comparison Coordinates**: Fixed `component` coordinate becoming `(case, contributor)` shaped after concatenation in `Comparison` class. Non-index coordinates are now properly merged before concat in `solution`, `inputs`, and all statistics properties. Added warning when coordinate mappings conflict (#599)
 
 ### 📝 Docs
 
