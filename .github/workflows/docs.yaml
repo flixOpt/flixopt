@@ -12,6 +12,15 @@ on:
       - 'docs/**'
       - 'mkdocs.yml'
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy docs to GitHub Pages'
+        type: boolean
+        default: false
+      version:
+        description: 'Version to deploy (e.g., v6.0.0)'
+        type: string
+        required: false
   workflow_call:
     inputs:
       deploy:
@@ -56,9 +65,6 @@ jobs:
 
       - name: Install dependencies
         run: uv pip install --system ".[docs,full]"
-
-      - name: Install tsam v3 (not yet on PyPI)
-        run: uv pip install --system "tsam @ git+https://github.com/FBumann/tsam.git@71177ec3fa1b16fcecdd039ca18ceddcdfa2064a"
 
       - name: Get notebook cache key
         id: notebook-cache-key
@@ -123,9 +129,6 @@ jobs:
 
       - name: Install dependencies
         run: uv pip install --system ".[docs,full]"
-
-      - name: Install tsam v3 (not yet on PyPI)
-        run: uv pip install --system "tsam @ git+https://github.com/FBumann/tsam.git@71177ec3fa1b16fcecdd039ca18ceddcdfa2064a"
 
       - name: Get notebook cache key
         id: notebook-cache-key
