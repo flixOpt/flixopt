@@ -1571,6 +1571,10 @@ class FlowsData:
         Raises:
             PlausibilityError: If any validation check fails.
         """
+        # Early return if no flows (avoids empty DataArray operations)
+        if not self.elements:
+            return
+
         for flow in self.elements.values():
             flow.validate_config()
 

@@ -1534,9 +1534,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         reused during model building.
         """
         batched = self.batched
+        # Validate buses first - catches "Bus with no flows" before FlowsData fails on empty arrays
+        batched.buses.validate()
         batched.effects.validate()
         batched.flows.validate()
-        batched.buses.validate()
         batched.storages.validate()
         batched.intercluster_storages.validate()
         batched.converters.validate()
