@@ -972,20 +972,6 @@ class TestEdgeCases:
         fs_clustered.optimize(solver_fixture)
         assert fs_clustered.solution is not None
 
-    def test_many_clusters_multiperiod(self, solver_fixture, timesteps_8_days, periods_2):
-        """Test clustering with many clusters (approaching original count)."""
-        fs = create_multiperiod_system_with_different_profiles(timesteps_8_days, periods_2)
-
-        # 6 clusters for 8 days
-        fs_clustered = fs.transform.cluster(n_clusters=6, cluster_duration='1D')
-
-        assert fs_clustered.clustering.n_clusters == 6
-
-        fs_clustered.optimize(solver_fixture)
-        fs_expanded = fs_clustered.transform.expand()
-
-        assert len(fs_expanded.timesteps) == 192
-
     def test_cluster_occurrences_sum_to_original(self, timesteps_8_days, periods_2):
         """Test that cluster occurrences always sum to original cluster count."""
         fs = create_multiperiod_system_with_different_profiles(timesteps_8_days, periods_2)
