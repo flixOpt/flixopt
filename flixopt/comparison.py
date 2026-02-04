@@ -29,6 +29,32 @@ __all__ = ['Comparison']
 _CASE_SLOTS = frozenset(slot for slots in SLOT_ORDERS.values() for slot in slots)
 
 
+def _unify_case_varying_coords(ds: xr.Dataset) -> xr.Dataset:
+    """Collapse (case, dim) coords back to (dim,) by taking first valid value per position."""
+    import numpy as np
+
+    new_coords = {}
+    for name, coord in ds.coords.items():
+        if 'case' not in coord.dims or len(coord.dims) != 2:
+            continue
+
+        # Get the non-case dimension
+        other_dim = next(d for d in coord.dims if d != 'case')
+        values = coord.values
+        if coord.dims[0] != 'case':
+            values = values.T
+
+        # Take first non-null value per column
+        unified = []
+        for col in values.T:
+            val = next((v for v in col if v is not None and not (isinstance(v, float) and np.isnan(v))), col[0])
+            unified.append(val)
+
+        new_coords[name] = (other_dim, unified)
+
+    return ds.assign_coords(new_coords) if new_coords else ds
+
+
 def _apply_slot_defaults(plotly_kwargs: dict, defaults: dict[str, str | None]) -> None:
     """Apply default slot assignments to plotly kwargs.
 
@@ -260,8 +286,10 @@ class Comparison:
                 [ds.expand_dims(case=[name]) for ds, name in zip(datasets, self._names, strict=True)],
                 dim='case',
                 join='outer',
+                coords='minimal',
                 fill_value=float('nan'),
             )
+            self._solution = _unify_case_varying_coords(self._solution)
         return self._solution
 
     @property
@@ -328,8 +356,10 @@ class Comparison:
                 [ds.expand_dims(case=[name]) for ds, name in zip(datasets, self._names, strict=True)],
                 dim='case',
                 join='outer',
+                coords='minimal',
                 fill_value=float('nan'),
             )
+            self._inputs = _unify_case_varying_coords(self._inputs)
         return self._inputs
 
 
@@ -374,7 +404,11 @@ class ComparisonStatistics:
                 continue
         if not datasets:
             return xr.Dataset()
-        return xr.concat(datasets, dim='case', join='outer', fill_value=float('nan'))
+        result = xr.concat(datasets, dim='case', join='outer', coords='minimal', fill_value=float('nan'))
+        # Fix coordinates that became (case, dim) shaped due to differing values across cases.
+        # These should be case-invariant (e.g., component is determined by contributor, not case).
+        result = _unify_case_varying_coords(result)
+        return result
 
     def _merge_dict_property(self, prop_name: str) -> dict[str, str]:
         """Merge a dict property from all cases (later cases override)."""
@@ -528,7 +562,8 @@ class ComparisonStatisticsPlot:
         if not datasets:
             return xr.Dataset(), ''
 
-        return xr.concat(datasets, dim='case', join='outer', fill_value=float('nan')), title
+        combined = xr.concat(datasets, dim='case', join='outer', coords='minimal', fill_value=float('nan'))
+        return _unify_case_varying_coords(combined), title
 
     def _finalize(self, ds: xr.Dataset, fig, show: bool | None) -> PlotResult:
         """Handle show and return PlotResult."""
