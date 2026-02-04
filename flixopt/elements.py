@@ -251,6 +251,10 @@ class Component(Element):
                     f'(required for big-M constraints).'
                 )
 
+        # Run plausibility checks on all flows
+        for flow in self.flows.values():
+            flow._plausibility_checks()
+
     def _connect_flows(self, inputs=None, outputs=None):
         if inputs is None:
             inputs = list(self.inputs.values())
@@ -709,6 +713,15 @@ class Flow(Element):
             logger.warning(
                 f'Flow {self.label_full} has both a fixed_relative_profile and status_parameters.'
                 f'This will allow the flow to be switched active and inactive, effectively differing from the fixed_flow_rate.'
+            )
+
+        # Warn when StatusParameters is used with relative_minimum=0, as the status variable
+        # becomes less meaningful - the unit can be "on" (status=1) while producing nothing (flow=0)
+        if self.status_parameters is not None and not np.any(self.relative_minimum > 0):
+            logger.warning(
+                f'Flow "{self.label_full}" has status_parameters but relative_minimum=0. '
+                f'This allows status=1 with flow=0, which may lead to unexpected behavior. '
+                f'Consider setting relative_minimum > 0 to ensure the unit produces when active.'
             )
 
         if np.any(self.relative_minimum > 0) and self.status_parameters is None:
