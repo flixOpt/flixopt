@@ -562,36 +562,49 @@ class TestExtremeConfigAppend:
 class TestExtremeConfigMultiPeriod:
     """Tests for extreme configurations with multi-period systems."""
 
-    def test_extremes_require_preserve_n_clusters_multiperiod(self, timesteps_8_days, periods_2):
-        """Test that new_cluster without preserve_n_clusters raises for multi-period."""
+    def test_extremes_require_replace_method_multiperiod(self, timesteps_8_days, periods_2):
+        """Test that only method='replace' is allowed for multi-period systems."""
         fs = create_system_with_extreme_peaks(timesteps_8_days, periods=periods_2)
 
-        with pytest.raises(ValueError, match='preserve_n_clusters=True'):
+        # method='new_cluster' should be rejected
+        with pytest.raises(ValueError, match="method='new_cluster'.*not supported"):
             fs.transform.cluster(
                 n_clusters=2,
                 cluster_duration='1D',
                 extremes=ExtremeConfig(
                     method='new_cluster',
                     max_value=['HeatDemand(Q)|fixed_relative_profile'],
-                    preserve_n_clusters=False,  # Explicitly False - should raise for multi-period
+                    preserve_n_clusters=True,
                 ),
             )
 
-    def test_extremes_with_preserve_n_clusters_multiperiod(self, solver_fixture, timesteps_8_days, periods_2):
-        """Test that extremes work with preserve_n_clusters for multi-period."""
+        # method='append' should also be rejected
+        with pytest.raises(ValueError, match="method='append'.*not supported"):
+            fs.transform.cluster(
+                n_clusters=2,
+                cluster_duration='1D',
+                extremes=ExtremeConfig(
+                    method='append',
+                    max_value=['HeatDemand(Q)|fixed_relative_profile'],
+                    preserve_n_clusters=True,
+                ),
+            )
+
+    def test_extremes_with_replace_multiperiod(self, solver_fixture, timesteps_8_days, periods_2):
+        """Test that extremes work with method='replace' for multi-period."""
         fs = create_system_with_extreme_peaks(timesteps_8_days, periods=periods_2)
 
+        # Only method='replace' is allowed for multi-period systems
         fs_clustered = fs.transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
             extremes=ExtremeConfig(
-                method='new_cluster',
+                method='replace',
                 max_value=['HeatDemand(Q)|fixed_relative_profile'],
                 preserve_n_clusters=True,
             ),
         )
 
-        # Should work with preserve_n_clusters=True
         assert fs_clustered.clustering.n_clusters == 2
         assert len(fs_clustered.periods) == 2
 
@@ -666,11 +679,12 @@ class TestMultiPeriodWithExtremes:
         """Test multi-period with extremes and segmentation."""
         fs = create_multiperiod_system_with_different_profiles(timesteps_8_days, periods_2)
 
+        # Note: method='replace' is required for multi-period systems (method='append' has tsam bug)
         fs_clustered = fs.transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
             extremes=ExtremeConfig(
-                method='append',
+                method='replace',
                 max_value=['HeatDemand(Q)|fixed_relative_profile'],
                 preserve_n_clusters=True,
             ),
