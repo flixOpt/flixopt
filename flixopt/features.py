@@ -618,6 +618,23 @@ class StatusBuilder:
                     name=f'{name}|initial_lb',
                 )
 
+                # Initial continuation constraint: if previous_duration > 0 and < minimum_duration,
+                # the unit must continue in its current state to meet the minimum requirement.
+                # This forces state[0] = 1 when the unit was active with insufficient duration.
+                if minimum_duration is not None:
+                    min_subset = minimum_duration.sel({dim_name: elem_with_prev})
+                    # Find elements that need to continue: prev_duration > 0 and prev_duration < min_duration
+                    needs_continuation = (prev_vals > 0) & (prev_vals < min_subset)
+                    if needs_continuation.any():
+                        elem_needs_continuation = [
+                            eid for eid, needs in zip(elem_with_prev, needs_continuation.values, strict=False) if needs
+                        ]
+                        state_to_fix = state.sel({dim_name: elem_needs_continuation}).isel({duration_dim: 0})
+                        model.add_constraints(
+                            state_to_fix >= 1,
+                            name=f'{name}|initial_continuation',
+                        )
+
         # Minimum duration constraint: when state transitions from 1 to 0, duration must be >= minimum
         # duration[t] >= minimum_duration * (state[t] - state[t+1])
         if minimum_duration is not None:
