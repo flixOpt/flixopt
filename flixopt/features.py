@@ -607,15 +607,12 @@ class StatusBuilder:
                 state_init = state.sel({dim_name: elem_with_prev}).isel({duration_dim: 0})
                 duration_init = duration.sel({dim_name: elem_with_prev}).isel({duration_dim: 0})
                 dt_init = timestep_duration.isel({duration_dim: 0})
-                mega_subset = mega.sel({dim_name: elem_with_prev}) if dim_name in mega.dims else mega
 
+                # duration[0] = (previous_duration + dt[0]) * state[0]
+                # If state=1: continues counting from previous. If state=0: resets to 0.
                 model.add_constraints(
-                    duration_init <= state_init * (prev_vals + dt_init),
-                    name=f'{name}|initial_ub',
-                )
-                model.add_constraints(
-                    duration_init >= (state_init - 1) * mega_subset + prev_vals + state_init * dt_init,
-                    name=f'{name}|initial_lb',
+                    duration_init == state_init * (prev_vals + dt_init),
+                    name=f'{name}|initial',
                 )
 
                 # Initial continuation constraint: if previous_duration > 0 and < minimum_duration,
