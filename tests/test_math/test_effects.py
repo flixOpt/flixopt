@@ -374,3 +374,125 @@ class TestEffects:
         # total costs = 170
         assert_allclose(fs.solution['costs'].item(), 170.0, rtol=1e-5)
         assert_allclose(fs.solution['CO2'].item(), 5.0, rtol=1e-5)
+
+    def test_effect_maximum_periodic(self):
+        """Proves: maximum_periodic limits the total periodic (investment-related) effect.
+
+        Two boilers: CheapBoiler (invest=10€, CO2_periodic=100kg) and
+        ExpensiveBoiler (invest=50€, CO2_periodic=10kg).
+        CO2 has maximum_periodic=50. CheapBoiler's 100kg exceeds this.
+        Optimizer forced to use ExpensiveBoiler despite higher invest cost.
+
+        Sensitivity: Without limit, CheapBoiler chosen → cost=30.
+        With limit=50, ExpensiveBoiler needed → cost=70.
+        """
+        fs = make_flow_system(2)
+        co2 = fx.Effect('CO2', 'kg', maximum_periodic=50)
+        costs = fx.Effect('costs', '€', is_standard=True, is_objective=True)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            costs,
+            co2,
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'CheapBoiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=fx.InvestParameters(
+                        fixed_size=50,
+                        effects_of_investment={'costs': 10, 'CO2': 100},
+                    ),
+                ),
+            ),
+            fx.linear_converters.Boiler(
+                'ExpensiveBoiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=fx.InvestParameters(
+                        fixed_size=50,
+                        effects_of_investment={'costs': 50, 'CO2': 10},
+                    ),
+                ),
+            ),
+        )
+        solve(fs)
+        # CheapBoiler: invest=10, CO2_periodic=100 (exceeds limit 50)
+        # ExpensiveBoiler: invest=50, CO2_periodic=10 (under limit)
+        # Optimizer must choose ExpensiveBoiler: cost = 50 + 20 = 70
+        assert_allclose(fs.solution['costs'].item(), 70.0, rtol=1e-5)
+        assert fs.solution['CO2'].item() <= 50.0 + 1e-5
+
+    def test_effect_minimum_periodic(self):
+        """Proves: minimum_periodic forces a minimum total periodic effect.
+
+        Boiler with optional investment (invest=100€, CO2_periodic=50kg).
+        CO2 has minimum_periodic=40. Without the boiler, CO2_periodic=0.
+        Optimizer forced to invest to meet minimum CO2 requirement.
+
+        Sensitivity: Without minimum_periodic, no investment → cost=40 (backup only).
+        With minimum_periodic=40, must invest → cost=120.
+        """
+        fs = make_flow_system(2)
+        co2 = fx.Effect('CO2', 'kg', minimum_periodic=40)
+        costs = fx.Effect('costs', '€', is_standard=True, is_objective=True)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            costs,
+            co2,
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'InvestBoiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=fx.InvestParameters(
+                        fixed_size=50,
+                        effects_of_investment={'costs': 100, 'CO2': 50},
+                    ),
+                ),
+            ),
+            fx.linear_converters.Boiler(
+                'Backup',
+                thermal_efficiency=0.5,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow('heat', bus='Heat', size=100),
+            ),
+        )
+        solve(fs)
+        # InvestBoiler: invest=100, CO2_periodic=50 (meets minimum 40)
+        # Without investment, CO2_periodic=0 (fails minimum)
+        # Optimizer must invest: cost = 100 + 20 = 120
+        assert_allclose(fs.solution['costs'].item(), 120.0, rtol=1e-5)
+        assert fs.solution['CO2'].item() >= 40.0 - 1e-5
