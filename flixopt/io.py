@@ -558,7 +558,7 @@ def save_dataset_to_netcdf(
     if stack_vars:
         ds = _stack_equal_vars(ds)
 
-    ds.attrs = {'attrs': json.dumps(ds.attrs)}
+    ds.attrs = {'attrs': json.dumps(ds.attrs, ensure_ascii=False)}
 
     # Convert all DataArray attrs to JSON strings
     # Use ds.variables to avoid slow _construct_dataarray calls
@@ -569,13 +569,13 @@ def save_dataset_to_netcdf(
             continue
         var = variables[var_name]
         if var.attrs:  # Only if there are attrs
-            var.attrs = {'attrs': json.dumps(var.attrs)}
+            var.attrs = {'attrs': json.dumps(var.attrs, ensure_ascii=False)}
 
     # Also handle coordinate attrs if they exist
     for coord_name in ds.coords:
         var = variables[coord_name]
         if var.attrs:
-            var.attrs = {'attrs': json.dumps(var.attrs)}
+            var.attrs = {'attrs': json.dumps(var.attrs, ensure_ascii=False)}
 
     # Suppress numpy binary compatibility warnings from netCDF4 (numpy 1->2 transition)
     with warnings.catch_warnings():
@@ -1896,7 +1896,7 @@ class FlowSystemDatasetIO:
             for name, carrier in carriers.items():
                 carrier_ref, _ = carrier._create_reference_structure()
                 carriers_structure[name] = carrier_ref
-            ds.attrs['carriers'] = json.dumps(carriers_structure)
+            ds.attrs['carriers'] = json.dumps(carriers_structure, ensure_ascii=False)
 
         return ds
 
@@ -1916,7 +1916,7 @@ class FlowSystemDatasetIO:
             # (individual ds[name] = arr assignments are slow)
             prefixed_arrays = {f'{cls.CLUSTERING_PREFIX}{name}': arr for name, arr in clustering_arrays.items()}
             ds = ds.assign(prefixed_arrays)
-            ds.attrs['clustering'] = json.dumps(clustering_ref)
+            ds.attrs['clustering'] = json.dumps(clustering_ref, ensure_ascii=False)
 
         return ds
 
@@ -1928,7 +1928,7 @@ class FlowSystemDatasetIO:
         """Add variable categories to dataset attributes."""
         if variable_categories:
             categories_dict = {name: cat.value for name, cat in variable_categories.items()}
-            ds.attrs['variable_categories'] = json.dumps(categories_dict)
+            ds.attrs['variable_categories'] = json.dumps(categories_dict, ensure_ascii=False)
 
         return ds
 
