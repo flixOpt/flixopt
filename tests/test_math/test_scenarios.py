@@ -4,6 +4,7 @@ Tests verify that scenario weights, scenario-independent sizes, and
 scenario-independent flow rates work correctly.
 """
 
+import numpy as np
 import xarray as xr
 from numpy.testing import assert_allclose
 
@@ -137,3 +138,97 @@ class TestScenarios:
         # With independent flow rates on Grid, must produce 30 in both scenarios.
         # Objective = 0.5*60 + 0.5*60 = 60.
         assert_allclose(fs.solution['objective'].item(), 60.0, rtol=1e-5)
+
+    def test_storage_relative_minimum_final_charge_state_scalar(self, optimize):
+        """Proves: scalar relative_minimum_final_charge_state works with scenarios.
+
+        Regression test for the scalar branch fix in _relative_charge_state_bounds.
+        Uses 3 timesteps (not 2) to avoid ambiguity with 2 scenarios.
+
+        3 ts, scenarios=['low', 'high'], weights=[0.5, 0.5].
+        Storage: capacity=100, initial=50, relative_minimum_final_charge_state=0.5.
+        Grid @[1, 1, 100], Demand=[0, 0, 80] (same in both scenarios).
+        Per-scenario: charge 50 @t0+t1 (cost=50), discharge 50 @t2, grid 30 @100=3000.
+        Per-scenario cost=3050. Objective = 0.5*3050 + 0.5*3050 = 3050.
+        """
+        fs = make_scenario_flow_system(
+            n_timesteps=3,
+            scenarios=['low', 'high'],
+            scenario_weights=[0.5, 0.5],
+        )
+        fs.add_elements(
+            fx.Bus('Elec'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([0, 0, 80])),
+                ],
+            ),
+            fx.Source(
+                'Grid',
+                outputs=[
+                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([1, 1, 100])),
+                ],
+            ),
+            fx.Storage(
+                'Battery',
+                charging=fx.Flow('charge', bus='Elec', size=200),
+                discharging=fx.Flow('discharge', bus='Elec', size=200),
+                capacity_in_flow_hours=100,
+                initial_charge_state=50,
+                relative_minimum_final_charge_state=0.5,
+                eta_charge=1,
+                eta_discharge=1,
+                relative_loss_per_hour=0,
+            ),
+        )
+        fs = optimize(fs)
+        assert_allclose(fs.solution['objective'].item(), 3050.0, rtol=1e-5)
+
+    def test_storage_relative_maximum_final_charge_state_scalar(self, optimize):
+        """Proves: scalar relative_maximum_final_charge_state works with scenarios.
+
+        Regression test for the scalar branch fix in _relative_charge_state_bounds.
+        Uses 3 timesteps (not 2) to avoid ambiguity with 2 scenarios.
+
+        3 ts, scenarios=['low', 'high'], weights=[0.5, 0.5].
+        Storage: capacity=100, initial=80, relative_maximum_final_charge_state=0.2.
+        Demand=[50, 0, 0], Grid @[100, 1, 1], imbalance_penalty=5.
+        Per-scenario: discharge 50 for demand @t0, discharge 10 excess @t1 (penalty=50).
+        Objective = 0.5*50 + 0.5*50 = 50.
+        """
+        fs = make_scenario_flow_system(
+            n_timesteps=3,
+            scenarios=['low', 'high'],
+            scenario_weights=[0.5, 0.5],
+        )
+        fs.add_elements(
+            fx.Bus('Elec', imbalance_penalty_per_flow_hour=5),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([50, 0, 0])),
+                ],
+            ),
+            fx.Source(
+                'Grid',
+                outputs=[
+                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([100, 1, 1])),
+                ],
+            ),
+            fx.Storage(
+                'Battery',
+                charging=fx.Flow('charge', bus='Elec', size=200),
+                discharging=fx.Flow('discharge', bus='Elec', size=200),
+                capacity_in_flow_hours=100,
+                initial_charge_state=80,
+                relative_maximum_final_charge_state=0.2,
+                eta_charge=1,
+                eta_discharge=1,
+                relative_loss_per_hour=0,
+            ),
+        )
+        fs = optimize(fs)
+        assert_allclose(fs.solution['objective'].item(), 50.0, rtol=1e-5)
