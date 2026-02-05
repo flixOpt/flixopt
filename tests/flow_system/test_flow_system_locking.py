@@ -12,7 +12,7 @@ import pytest
 
 import flixopt as fx
 
-from .conftest import build_simple_flow_system
+from ..conftest import build_simple_flow_system
 
 
 class TestIsLocked:
