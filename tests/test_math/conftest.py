@@ -10,6 +10,9 @@ directly, and once after a NetCDF round-trip (save to disk, reload) to
 verify IO preservation.
 """
 
+import pathlib
+import tempfile
+
 import pandas as pd
 import pytest
 
@@ -23,7 +26,7 @@ def make_flow_system(n_timesteps: int = 3) -> fx.FlowSystem:
 
 
 @pytest.fixture(params=['direct', 'netcdf_roundtrip'])
-def optimize(request, tmp_path):
+def optimize(request):
     """Callable fixture that optimizes a FlowSystem and returns it.
 
     ``direct``           -- optimize as-is.
@@ -32,9 +35,10 @@ def optimize(request, tmp_path):
 
     def _optimize(fs: fx.FlowSystem) -> fx.FlowSystem:
         if request.param == 'netcdf_roundtrip':
-            path = tmp_path / 'flow_system.nc'
-            fs.to_netcdf(path)
-            fs = fx.FlowSystem.from_netcdf(path)
+            with tempfile.TemporaryDirectory() as d:
+                path = pathlib.Path(d) / 'flow_system.nc'
+                fs.to_netcdf(path)
+                fs = fx.FlowSystem.from_netcdf(path)
         fs.optimize(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=60, log_to_console=False))
         return fs
 
