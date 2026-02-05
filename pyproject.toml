@@ -37,7 +37,7 @@ dependencies = [
     "xarray >= 2024.2.0, < 2026.0", # CalVer: allow through next calendar year
     # Optimization and data handling
     "linopy >= 0.5.1, < 0.6", # Widened from patch pin to minor range
-    "netcdf4 >= 1.6.1, < 1.7.4",  # 1.7.4 missing wheels, revert to < 2 later
+    "netcdf4 >=1.6.1, <1.7.5",  # 1.7.4 missing wheels, revert to < 2 later
     # Utilities
     "pyyaml >= 6.0.0, < 7",
     "colorlog >= 6.8.0, < 7",
@@ -81,8 +81,8 @@ dev = [
     "pytest==8.4.2",
     "pytest-xdist==3.8.0",
     "nbformat==5.10.4",
-    "ruff==0.14.10",
-    "pre-commit==4.3.0",
+    "ruff==0.14.14",
+    "pre-commit==4.5.1",
     "pyvis==0.3.2",
     "scipy==1.16.3",  # 1.16.1+ required for Python 3.14 wheels
     "gurobipy==12.0.3; python_version < '3.14'",  # No Python 3.14 wheels yet
@@ -90,7 +90,7 @@ dev = [
     "dash-cytoscape==1.0.2",
     "dash-daq==0.6.0",
     "networkx==3.0.0",
-    "werkzeug==3.1.4",
+    "werkzeug==3.1.5",
 ]
 
 # Documentation building
@@ -176,7 +176,7 @@ extend-fixable = ["B"]   # Enable fix for flake8-bugbear (`B`), on top of any ru
 # Apply rule exceptions to specific files or directories
 [tool.ruff.lint.per-file-ignores]
 "tests/*.py" = ["S101"]  # Ignore assertions in test files
-"tests/test_integration.py" = ["N806"]  # Ignore NOT lowercase names in test files
+"tests/superseded/test_integration.py" = ["N806"]  # Ignore NOT lowercase names in test files
 "flixopt/linear_converters.py" = ["N803"]  # Parameters with NOT lowercase names
 
 [tool.ruff.format]
@@ -193,7 +193,7 @@ markers = [
     "examples: marks example tests (run only on releases)",
     "deprecated_api: marks tests using deprecated Optimization/Results API (remove in v6.0.0)",
 ]
-addopts = '-m "not examples"'  # Skip examples by default
+addopts = '-m "not examples" --ignore=tests/superseded'  # Skip examples and superseded tests by default
 
 # Warning filter configuration for pytest
 # Filters are processed in order; first match wins

@@ -19,17 +19,12 @@ import flixopt as fx
 # ============================================================================
 
 
-@pytest.fixture
-def timesteps():
-    return pd.date_range('2020-01-01', periods=24, freq='h', name='time')
+_TIMESTEPS = pd.date_range('2020-01-01', periods=24, freq='h', name='time')
 
 
-@pytest.fixture
-def base_flow_system(timesteps):
-    """Base flow system with boiler and storage."""
-    fs = fx.FlowSystem(timesteps, name='Base')
-
-    # Effects and Buses
+def _build_base_flow_system():
+    """Factory: base flow system with boiler and storage."""
+    fs = fx.FlowSystem(_TIMESTEPS, name='Base')
     fs.add_elements(
         fx.Effect('costs', '€', 'Costs', is_standard=True, is_objective=True),
         fx.Effect('CO2', 'kg', 'CO2 Emissions'),
@@ -37,8 +32,6 @@ def base_flow_system(timesteps):
         fx.Bus('Heat'),
         fx.Bus('Gas'),
     )
-
-    # Components
     fs.add_elements(
         fx.Source(
             'Grid',
@@ -66,16 +59,12 @@ def base_flow_system(timesteps):
             initial_charge_state=0.5,
         ),
     )
-
     return fs
 
 
-@pytest.fixture
-def flow_system_with_chp(timesteps):
-    """Flow system with additional CHP component."""
-    fs = fx.FlowSystem(timesteps, name='WithCHP')
-
-    # Effects and Buses
+def _build_flow_system_with_chp():
+    """Factory: flow system with additional CHP component."""
+    fs = fx.FlowSystem(_TIMESTEPS, name='WithCHP')
     fs.add_elements(
         fx.Effect('costs', '€', 'Costs', is_standard=True, is_objective=True),
         fx.Effect('CO2', 'kg', 'CO2 Emissions'),
@@ -83,8 +72,6 @@ def flow_system_with_chp(timesteps):
         fx.Bus('Heat'),
         fx.Bus('Gas'),
     )
-
-    # Components (same as base, plus CHP)
     fs.add_elements(
         fx.Source(
             'Grid',
@@ -124,27 +111,31 @@ def flow_system_with_chp(timesteps):
             initial_charge_state=0.5,
         ),
     )
-
     return fs
 
 
 @pytest.fixture
-def highs_solver():
-    return fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=60)
+def base_flow_system():
+    """Unoptimized base flow system (function-scoped for tests needing fresh instance)."""
+    return _build_base_flow_system()
 
 
-@pytest.fixture
-def optimized_base(base_flow_system, highs_solver):
-    """Optimized base flow system."""
-    base_flow_system.optimize(highs_solver)
-    return base_flow_system
+@pytest.fixture(scope='module')
+def optimized_base():
+    """Optimized base flow system (module-scoped, solved once)."""
+    fs = _build_base_flow_system()
+    solver = fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=60)
+    fs.optimize(solver)
+    return fs
 
 
-@pytest.fixture
-def optimized_with_chp(flow_system_with_chp, highs_solver):
-    """Optimized flow system with CHP."""
-    flow_system_with_chp.optimize(highs_solver)
-    return flow_system_with_chp
+@pytest.fixture(scope='module')
+def optimized_with_chp():
+    """Optimized flow system with CHP (module-scoped, solved once)."""
+    fs = _build_flow_system_with_chp()
+    solver = fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=60)
+    fs.optimize(solver)
+    return fs
 
 
 # ============================================================================

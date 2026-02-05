@@ -4,10 +4,12 @@ import xarray as xr
 
 import flixopt as fx
 
-from .conftest import (
+from ...conftest import (
     assert_var_equal,
     create_linopy_model,
 )
+
+pytestmark = pytest.mark.skip(reason='Superseded: model-building tests implicitly covered by tests/test_math/')
 
 
 class TestEffectModel:
