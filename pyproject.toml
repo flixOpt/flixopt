@@ -89,7 +89,7 @@ dev = [
     "dash==3.3.0",
     "dash-cytoscape==1.0.2",
     "dash-daq==0.6.0",
-    "networkx==3.0.0",
+    "networkx==3.6.1",
     "werkzeug==3.1.5",
 ]
 
