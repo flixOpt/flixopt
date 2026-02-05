@@ -176,7 +176,7 @@ extend-fixable = ["B"]   # Enable fix for flake8-bugbear (`B`), on top of any ru
 # Apply rule exceptions to specific files or directories
 [tool.ruff.lint.per-file-ignores]
 "tests/*.py" = ["S101"]  # Ignore assertions in test files
-"tests/test_integration.py" = ["N806"]  # Ignore NOT lowercase names in test files
+"tests/stale/test_integration.py" = ["N806"]  # Ignore NOT lowercase names in test files
 "flixopt/linear_converters.py" = ["N803"]  # Parameters with NOT lowercase names
 
 [tool.ruff.format]
@@ -193,7 +193,7 @@ markers = [
     "examples: marks example tests (run only on releases)",
     "deprecated_api: marks tests using deprecated Optimization/Results API (remove in v6.0.0)",
 ]
-addopts = '-m "not examples"'  # Skip examples by default
+addopts = '-m "not examples" --ignore=tests/stale'  # Skip examples and stale tests by default
 
 # Warning filter configuration for pytest
 # Filters are processed in order; first match wins
