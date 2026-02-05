@@ -80,7 +80,7 @@ def _apply_merged_coords(ds: xr.Dataset, merged: dict[str, tuple[str, dict]]) ->
     for name, (dim, mapping) in merged.items():
         if dim not in ds.dims:
             continue
-        new_coords[name] = (dim, [mapping.get(dv) for dv in ds.coords[dim].values])
+        new_coords[name] = (dim, [mapping.get(dv, dv) for dv in ds.coords[dim].values])
 
     return ds.assign_coords(new_coords)
 
