@@ -6,8 +6,8 @@ hand-calculated value. This catches regressions in formulations without
 relying on recorded baselines.
 
 The ``optimize`` fixture is parametrized so every test runs twice: once
-directly, and once after a dataset round-trip (serialize then deserialize)
-to verify IO preservation.
+directly, and once after a NetCDF round-trip (save to disk, reload) to
+verify IO preservation.
 """
 
 import pandas as pd
@@ -22,18 +22,19 @@ def make_flow_system(n_timesteps: int = 3) -> fx.FlowSystem:
     return fx.FlowSystem(ts)
 
 
-@pytest.fixture(params=['direct', 'io_roundtrip'])
-def optimize(request):
+@pytest.fixture(params=['direct', 'netcdf_roundtrip'])
+def optimize(request, tmp_path):
     """Callable fixture that optimizes a FlowSystem and returns it.
 
-    ``direct``       -- optimize as-is.
-    ``io_roundtrip`` -- serialize to Dataset, deserialize, then optimize.
+    ``direct``           -- optimize as-is.
+    ``netcdf_roundtrip`` -- save to NetCDF, reload, then optimize.
     """
 
     def _optimize(fs: fx.FlowSystem) -> fx.FlowSystem:
-        if request.param == 'io_roundtrip':
-            ds = fs.to_dataset()
-            fs = fx.FlowSystem.from_dataset(ds)
+        if request.param == 'netcdf_roundtrip':
+            path = tmp_path / 'flow_system.nc'
+            fs.to_netcdf(path)
+            fs = fx.FlowSystem.from_netcdf(path)
         fs.optimize(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=60, log_to_console=False))
         return fs
 
