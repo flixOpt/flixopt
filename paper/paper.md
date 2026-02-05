@@ -63,7 +63,7 @@ Flixopt is designed for flexible use across various disciplines and research que
 The architecture and workflow of the Flixopt package consist of three main steps: initialization, modeling and solving, and postprocessing of results; illustrated in \autoref{fig:architecture}. Users begin by implementing a flow‑system, defining the network topology and all element parameters. The flow-system describes the structural representation of a physical system to be modeled. It consists of *Flows*, *Components* and *Buses* inspired by [@oemof_2020]. Based on an arbitrary subset of the flow-system, one or more calculation setups can then be configured.  
 During modeling, Flixopt constructs the optimization problem in a fully vectorized manner using Linopy. After solving, Flixopt provides a postprocessing environment that yields structured access to results, facilitates visualization and statistical analysis, and enables saving/restoring complete solution states.
 
-![Overview of Flixopt´s system architecture and workflow \label{fig:architecture}](figures/architecture.svg)
+![Overview of Flixopt´s system architecture and workflow \label{fig:architecture}](figures/architecture_draft.pdf)
 
 For example, following features can be used:
 * investment decisions with continuous sizes and binary selection,
