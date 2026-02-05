@@ -82,7 +82,7 @@ dev = [
     "pytest-xdist==3.8.0",
     "nbformat==5.10.4",
     "ruff==0.14.14",
-    "pre-commit==4.3.0",
+    "pre-commit==4.5.1",
     "pyvis==0.3.2",
     "scipy==1.16.3",  # 1.16.1+ required for Python 3.14 wheels
     "gurobipy==12.0.3; python_version < '3.14'",  # No Python 3.14 wheels yet
