@@ -507,43 +507,15 @@ The same cached `*Data` instances created during validation are reused during `b
 
 ## Variable Storage
 
-Variables are stored in model classes with a consistent pattern:
+Variables are stored in each `*Model`'s `_variables` dict, keyed by their `type|name` string (e.g., `'flow|rate'`). `TypeModel` provides subscript access and optional element slicing:
 
 ```python
-class TypeModel:
-    _variables: dict[str, linopy.Variable]
-
-    def add_variables(self, name: str, lower, upper, ...):
-        """Create batched variable and store in _variables."""
-        var = self.model.add_variables(...)
-        self._variables[name] = var
-        return var
-
-    def __getitem__(self, name: str) -> linopy.Variable:
-        return self._variables[name]
-
-    def get_variable(self, name: str, element_id: str = None):
-        """Access variable, optionally selecting specific element."""
-        var = self._variables[name]
-        if element_id:
-            return var.sel({self.dim_name: element_id})
-        return var
+flows_model['flow|rate']                              # full batched variable
+flows_model.get_variable('flow|rate', 'Boiler(gas)')  # single-element slice
+'flow|status' in flows_model                          # membership test
 ```
 
-**Storage locations:**
-
-| Variable Type | Stored In | Dimension |
-|---------------|-----------|-----------|
-| Flow rate | `FlowsModel['flow\|rate']` | `(flow, time, ...)` |
-| Flow status | `FlowsModel['flow\|status']` | `(flow, time, ...)` |
-| Flow size | `FlowsModel['flow\|size']` | `(flow, period, scenario)` |
-| Storage charge | `StoragesModel['storage\|charge']` | `(storage, time+1, ...)` |
-| Storage size | `StoragesModel['storage\|size']` | `(storage, period, scenario)` |
-| Component status | `ComponentsModel['component\|status']` | `(component, time, ...)` |
-| Effect periodic | `EffectsModel['effect\|periodic']` | `(effect, period, scenario)` |
-| Effect temporal | `EffectsModel['effect\|temporal']` | `(effect, period, scenario)` |
-| Effect total | `EffectsModel['effect\|total']` | `(effect, period, scenario)` |
-| Bus imbalance | `BusesModel['bus\|virtual_supply']` | `(bus, time, ...)` |
+For the complete list of variable names and dimensions, see [Variable Names](../variable_names.md).
 
 ## Data Flow
 
