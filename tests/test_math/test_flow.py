@@ -58,7 +58,8 @@ class TestFlowConstraints:
         Demand=[60,60]. Can only get 50 from CheapSrc, rest from ExpensiveSrc.
 
         Sensitivity: Without relative_maximum, CheapSrc covers all 60 → cost=120.
-        With relative_maximum=0.5, CheapSrc capped at 50, ExpensiveSrc covers 10 → cost=150.
+        With relative_maximum=0.5, CheapSrc capped at 50 (2×50×1=100),
+        ExpensiveSrc covers 10 each timestep (2×10×5=100) → total cost=200.
         """
         fs = make_flow_system(2)
         fs.add_elements(

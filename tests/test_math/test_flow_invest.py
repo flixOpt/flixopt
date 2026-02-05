@@ -343,7 +343,7 @@ class TestFlowInvest:
         CheapBoiler covers all: fuel=40, total=40.
 
         Sensitivity: This is the complement to test_invest_mandatory_forces_investment.
-        cost=40 here vs cost=1020 with mandatory=True proves the flag works.
+        cost=40 here vs cost=1030 with mandatory=True proves the flag works.
         """
         fs = make_flow_system(2)
         fs.add_elements(
