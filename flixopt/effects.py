@@ -290,7 +290,12 @@ class Effect(Element):
             f'{self.prefix}|period_weights', self.period_weights, dims=['period', 'scenario']
         )
 
-    def _plausibility_checks(self) -> None:
+    def validate_config(self) -> None:
+        """Validate configuration consistency.
+
+        Called BEFORE transformation via FlowSystem._run_config_validation().
+        These are simple checks that don't require DataArray operations.
+        """
         # Check that minimum_over_periods and maximum_over_periods require a period dimension
         if (
             self.minimum_over_periods is not None or self.maximum_over_periods is not None
@@ -300,6 +305,10 @@ class Effect(Element):
                 f"the FlowSystem to have a 'period' dimension. Please define periods when creating "
                 f'the FlowSystem, or remove these constraints.'
             )
+
+    def _plausibility_checks(self) -> None:
+        """Legacy validation method - delegates to validate_config()."""
+        self.validate_config()
 
 
 class EffectsModel:
@@ -813,28 +822,21 @@ class EffectCollection(ElementContainer[Effect]):
             return {get_effect_label(effect): value for effect, value in effect_values_user.items()}
         return {self.standard_effect.label: effect_values_user}
 
+    def validate_config(self) -> None:
+        """Deprecated: Validation is now handled by EffectsData.validate().
+
+        This method is kept for backwards compatibility but does nothing.
+        Collection-level validation (cycles, unknown refs) is now in EffectsData._validate_share_structure().
+        """
+        pass
+
     def _plausibility_checks(self) -> None:
-        # Check circular loops in effects:
-        temporal, periodic = self.calculate_effect_share_factors()
+        """Deprecated: Legacy validation method.
 
-        # Validate all referenced effects (both sources and targets) exist
-        edges = list(temporal.keys()) + list(periodic.keys())
-        unknown_sources = {src for src, _ in edges if src not in self}
-        unknown_targets = {tgt for _, tgt in edges if tgt not in self}
-        unknown = unknown_sources | unknown_targets
-        if unknown:
-            raise KeyError(f'Unknown effects used in effect share mappings: {sorted(unknown)}')
-
-        temporal_cycles = detect_cycles(tuples_to_adjacency_list([key for key in temporal]))
-        periodic_cycles = detect_cycles(tuples_to_adjacency_list([key for key in periodic]))
-
-        if temporal_cycles:
-            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in temporal_cycles])
-            raise ValueError(f'Error: circular temporal-shares detected:\n{cycle_str}')
-
-        if periodic_cycles:
-            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in periodic_cycles])
-            raise ValueError(f'Error: circular periodic-shares detected:\n{cycle_str}')
+        Kept for backwards compatibility but does nothing.
+        Validation is now handled by EffectsData.validate().
+        """
+        pass
 
     def __getitem__(self, effect: str | Effect | None) -> Effect:
         """

@@ -17,7 +17,7 @@ from .core import PlausibilityError
 from .elements import Component, Flow
 from .features import MaskHelpers, stack_along_dim
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
-from .modeling import _scalar_safe_isel, _scalar_safe_reduce
+from .modeling import _scalar_safe_reduce
 from .structure import (
     FlowSystemModel,
     FlowVarName,
@@ -190,8 +190,13 @@ class LinearConverter(Component):
         if self.piecewise_conversion is not None:
             self.piecewise_conversion.link_to_flow_system(flow_system, self._sub_prefix('PiecewiseConversion'))
 
-    def _plausibility_checks(self) -> None:
-        super()._plausibility_checks()
+    def validate_config(self) -> None:
+        """Validate configuration consistency.
+
+        Called BEFORE transformation via FlowSystem._run_config_validation().
+        These are simple checks that don't require DataArray operations.
+        """
+        super().validate_config()
         if not self.conversion_factors and not self.piecewise_conversion:
             raise PlausibilityError('Either conversion_factors or piecewise_conversion must be defined!')
         if self.conversion_factors and self.piecewise_conversion:
@@ -219,6 +224,10 @@ class LinearConverter(Component):
                         f'and a piecewise_conversion in {self.label_full} is uncommon. Please verify intent '
                         f'({flow.label_full}).'
                     )
+
+    def _plausibility_checks(self) -> None:
+        """Legacy validation method - delegates to validate_config()."""
+        self.validate_config()
 
     def transform_data(self) -> None:
         super().transform_data()
@@ -495,31 +504,21 @@ class Storage(Component):
                 f'{self.prefix}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['period', 'scenario']
             )
 
-    def _plausibility_checks(self) -> None:
-        """
-        Check for infeasible or uncommon combinations of parameters
-        """
-        super()._plausibility_checks()
+    def validate_config(self) -> None:
+        """Validate configuration consistency.
 
-        # Validate string values and set flag
-        initial_equals_final = False
+        Called BEFORE transformation via FlowSystem._run_config_validation().
+        These are simple checks that don't require DataArray operations.
+        """
+        super().validate_config()
+
+        # Validate string values for initial_charge_state
         if isinstance(self.initial_charge_state, str):
-            if not self.initial_charge_state == 'equals_final':
+            if self.initial_charge_state != 'equals_final':
                 raise PlausibilityError(f'initial_charge_state has undefined value: {self.initial_charge_state}')
-            initial_equals_final = True
 
-        # Capacity is required when using non-default relative bounds
+        # Capacity is required for final charge state constraints (simple None checks)
         if self.capacity_in_flow_hours is None:
-            if np.any(self.relative_minimum_charge_state > 0):
-                raise PlausibilityError(
-                    f'Storage "{self.label_full}" has relative_minimum_charge_state > 0 but no capacity_in_flow_hours. '
-                    f'A capacity is required because the lower bound is capacity * relative_minimum_charge_state.'
-                )
-            if np.any(self.relative_maximum_charge_state < 1):
-                raise PlausibilityError(
-                    f'Storage "{self.label_full}" has relative_maximum_charge_state < 1 but no capacity_in_flow_hours. '
-                    f'A capacity is required because the upper bound is capacity * relative_maximum_charge_state.'
-                )
             if self.relative_minimum_final_charge_state is not None:
                 raise PlausibilityError(
                     f'Storage "{self.label_full}" has relative_minimum_final_charge_state but no capacity_in_flow_hours. '
@@ -531,39 +530,7 @@ class Storage(Component):
                     f'A capacity is required for relative final charge state constraints.'
                 )
 
-        # Skip capacity-related checks if capacity is None (unbounded)
-        if self.capacity_in_flow_hours is not None:
-            # Use new InvestParameters methods to get capacity bounds
-            if isinstance(self.capacity_in_flow_hours, InvestParameters):
-                minimum_capacity = self.capacity_in_flow_hours.minimum_or_fixed_size
-                maximum_capacity = self.capacity_in_flow_hours.maximum_or_fixed_size
-            else:
-                maximum_capacity = self.capacity_in_flow_hours
-                minimum_capacity = self.capacity_in_flow_hours
-
-            # Initial charge state should not constrain investment decision
-            # If initial > (min_cap * rel_max), investment is forced to increase capacity
-            # If initial < (max_cap * rel_min), investment is forced to decrease capacity
-            min_initial_at_max_capacity = maximum_capacity * _scalar_safe_isel(
-                self.relative_minimum_charge_state, {'time': 0}
-            )
-            max_initial_at_min_capacity = minimum_capacity * _scalar_safe_isel(
-                self.relative_maximum_charge_state, {'time': 0}
-            )
-
-            # Only perform numeric comparisons if using a numeric initial_charge_state
-            if not initial_equals_final and self.initial_charge_state is not None:
-                if (self.initial_charge_state > max_initial_at_min_capacity).any():
-                    raise PlausibilityError(
-                        f'{self.label_full}: {self.initial_charge_state=} '
-                        f'is constraining the investment decision. Choose a value <= {max_initial_at_min_capacity}.'
-                    )
-                if (self.initial_charge_state < min_initial_at_max_capacity).any():
-                    raise PlausibilityError(
-                        f'{self.label_full}: {self.initial_charge_state=} '
-                        f'is constraining the investment decision. Choose a value >= {min_initial_at_max_capacity}.'
-                    )
-
+        # Balanced requires InvestParameters on charging/discharging flows
         if self.balanced:
             if not isinstance(self.charging.size, InvestParameters) or not isinstance(
                 self.discharging.size, InvestParameters
@@ -572,14 +539,12 @@ class Storage(Component):
                     f'Balancing charging and discharging Flows in {self.label_full} is only possible with Investments.'
                 )
 
-            if (self.charging.size.minimum_or_fixed_size > self.discharging.size.maximum_or_fixed_size).any() or (
-                self.charging.size.maximum_or_fixed_size < self.discharging.size.minimum_or_fixed_size
-            ).any():
-                raise PlausibilityError(
-                    f'Balancing charging and discharging Flows in {self.label_full} need compatible minimum and maximum sizes.'
-                    f'Got: {self.charging.size.minimum_or_fixed_size=}, {self.charging.size.maximum_or_fixed_size=} and '
-                    f'{self.discharging.size.minimum_or_fixed_size=}, {self.discharging.size.maximum_or_fixed_size=}.'
-                )
+    def _plausibility_checks(self) -> None:
+        """Legacy validation method - delegates to validate_config().
+
+        DataArray-based checks moved to StoragesData.validate().
+        """
+        self.validate_config()
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -737,31 +702,38 @@ class Transmission(Component):
         self.absolute_losses = absolute_losses
         self.balanced = balanced
 
-    def _plausibility_checks(self):
-        super()._plausibility_checks()
-        # check buses:
-        if self.in2 is not None:
-            assert self.in2.bus == self.out1.bus, (
-                f'Output 1 and Input 2 do not start/end at the same Bus: {self.out1.bus=}, {self.in2.bus=}'
-            )
-        if self.out2 is not None:
-            assert self.out2.bus == self.in1.bus, (
-                f'Input 1 and Output 2 do not start/end at the same Bus: {self.in1.bus=}, {self.out2.bus=}'
-            )
+    def validate_config(self) -> None:
+        """Validate configuration consistency.
 
+        Called BEFORE transformation via FlowSystem._run_config_validation().
+        These are simple checks that don't require DataArray operations.
+        """
+        super().validate_config()
+        # Check buses consistency
+        if self.in2 is not None:
+            if self.in2.bus != self.out1.bus:
+                raise ValueError(
+                    f'Output 1 and Input 2 do not start/end at the same Bus: {self.out1.bus=}, {self.in2.bus=}'
+                )
+        if self.out2 is not None:
+            if self.out2.bus != self.in1.bus:
+                raise ValueError(
+                    f'Input 1 and Output 2 do not start/end at the same Bus: {self.in1.bus=}, {self.out2.bus=}'
+                )
+
+        # Balanced requires InvestParameters on both in-Flows
         if self.balanced:
             if self.in2 is None:
                 raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
             if not isinstance(self.in1.size, InvestParameters) or not isinstance(self.in2.size, InvestParameters):
                 raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
-            if (self.in1.size.minimum_or_fixed_size > self.in2.size.maximum_or_fixed_size).any() or (
-                self.in1.size.maximum_or_fixed_size < self.in2.size.minimum_or_fixed_size
-            ).any():
-                raise ValueError(
-                    f'Balanced Transmission needs compatible minimum and maximum sizes.'
-                    f'Got: {self.in1.size.minimum_or_fixed_size=}, {self.in1.size.maximum_or_fixed_size=} and '
-                    f'{self.in2.size.minimum_or_fixed_size=}, {self.in2.size.maximum_or_fixed_size=}.'
-                )
+
+    def _plausibility_checks(self) -> None:
+        """Legacy validation method - delegates to validate_config().
+
+        DataArray-based checks moved to TransmissionsData.validate().
+        """
+        self.validate_config()
 
     def _propagate_status_parameters(self) -> None:
         super()._propagate_status_parameters()

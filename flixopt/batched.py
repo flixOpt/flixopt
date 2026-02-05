@@ -11,6 +11,7 @@ Usage:
 
 from __future__ import annotations
 
+import logging
 from functools import cached_property
 from typing import TYPE_CHECKING
 
@@ -18,6 +19,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from .core import PlausibilityError
 from .features import fast_isnull, fast_notnull, stack_along_dim
 from .interface import InvestParameters, StatusParameters
 from .modeling import _scalar_safe_isel_drop
@@ -28,6 +30,8 @@ if TYPE_CHECKING:
     from .effects import Effect, EffectCollection
     from .elements import Bus, Component, Flow
     from .flow_system import FlowSystem
+
+logger = logging.getLogger('flixopt')
 
 
 def build_effects_array(
@@ -756,6 +760,85 @@ class StoragesData:
     def charge_state_upper_bounds(self) -> xr.DataArray:
         """(storage, time_extra) - absolute upper bounds = relative_max * capacity_upper."""
         return self.relative_maximum_charge_state_extra * self.capacity_upper
+
+    # === Validation ===
+
+    def validate(self) -> None:
+        """Validate all storages (config + DataArray checks).
+
+        Performs both:
+        - Config validation via Storage.validate_config()
+        - DataArray validation (post-transformation checks)
+
+        Raises:
+            PlausibilityError: If any validation check fails.
+        """
+        from .modeling import _scalar_safe_isel
+
+        errors: list[str] = []
+
+        for storage in self._storages:
+            storage.validate_config()
+            sid = storage.label_full
+
+            # Capacity required for non-default relative bounds (DataArray checks)
+            if storage.capacity_in_flow_hours is None:
+                if np.any(storage.relative_minimum_charge_state > 0):
+                    errors.append(
+                        f'Storage "{sid}" has relative_minimum_charge_state > 0 but no capacity_in_flow_hours. '
+                        f'A capacity is required because the lower bound is capacity * relative_minimum_charge_state.'
+                    )
+                if np.any(storage.relative_maximum_charge_state < 1):
+                    errors.append(
+                        f'Storage "{sid}" has relative_maximum_charge_state < 1 but no capacity_in_flow_hours. '
+                        f'A capacity is required because the upper bound is capacity * relative_maximum_charge_state.'
+                    )
+
+            # Initial charge state vs capacity bounds (DataArray checks)
+            if storage.capacity_in_flow_hours is not None:
+                if isinstance(storage.capacity_in_flow_hours, InvestParameters):
+                    minimum_capacity = storage.capacity_in_flow_hours.minimum_or_fixed_size
+                    maximum_capacity = storage.capacity_in_flow_hours.maximum_or_fixed_size
+                else:
+                    maximum_capacity = storage.capacity_in_flow_hours
+                    minimum_capacity = storage.capacity_in_flow_hours
+
+                min_initial_at_max_capacity = maximum_capacity * _scalar_safe_isel(
+                    storage.relative_minimum_charge_state, {'time': 0}
+                )
+                max_initial_at_min_capacity = minimum_capacity * _scalar_safe_isel(
+                    storage.relative_maximum_charge_state, {'time': 0}
+                )
+
+                initial_equals_final = isinstance(storage.initial_charge_state, str)
+                if not initial_equals_final and storage.initial_charge_state is not None:
+                    if (storage.initial_charge_state > max_initial_at_min_capacity).any():
+                        errors.append(
+                            f'{sid}: initial_charge_state={storage.initial_charge_state} '
+                            f'is constraining the investment decision. Choose a value <= {max_initial_at_min_capacity}.'
+                        )
+                    if (storage.initial_charge_state < min_initial_at_max_capacity).any():
+                        errors.append(
+                            f'{sid}: initial_charge_state={storage.initial_charge_state} '
+                            f'is constraining the investment decision. Choose a value >= {min_initial_at_max_capacity}.'
+                        )
+
+            # Balanced charging/discharging size compatibility (DataArray checks)
+            if storage.balanced:
+                charging_min = storage.charging.size.minimum_or_fixed_size
+                charging_max = storage.charging.size.maximum_or_fixed_size
+                discharging_min = storage.discharging.size.minimum_or_fixed_size
+                discharging_max = storage.discharging.size.maximum_or_fixed_size
+
+                if (charging_min > discharging_max).any() or (charging_max < discharging_min).any():
+                    errors.append(
+                        f'Balancing charging and discharging Flows in {sid} need compatible minimum and maximum sizes. '
+                        f'Got: charging.size.minimum={charging_min}, charging.size.maximum={charging_max} and '
+                        f'discharging.size.minimum={discharging_min}, discharging.size.maximum={discharging_max}.'
+                    )
+
+        if errors:
+            raise PlausibilityError('\n'.join(errors))
 
 
 class FlowsData:
@@ -1486,6 +1569,79 @@ class FlowsData:
 
         return self._ensure_canonical_order(arr)
 
+    # === Validation ===
+
+    def _any_per_flow(self, arr: xr.DataArray) -> xr.DataArray:
+        """Reduce to (flow,) by collapsing all non-flow dims with .any()."""
+        non_flow_dims = [d for d in arr.dims if d != self.dim_name]
+        return arr.any(dim=non_flow_dims) if non_flow_dims else arr
+
+    def _flagged_ids(self, mask: xr.DataArray) -> list[str]:
+        """Return flow IDs where mask is True."""
+        return [fid for fid, flag in zip(self.ids, mask.values, strict=False) if flag]
+
+    def validate(self) -> None:
+        """Validate all flows (config + DataArray checks).
+
+        Performs both:
+        - Config validation via Flow.validate_config()
+        - DataArray validation (post-transformation checks)
+
+        Raises:
+            PlausibilityError: If any validation check fails.
+        """
+        if not self.elements:
+            return
+
+        for flow in self.elements.values():
+            flow.validate_config()
+
+        errors: list[str] = []
+
+        # Batched checks: relative_minimum <= relative_maximum
+        invalid_bounds = self._any_per_flow(self.relative_minimum > self.relative_maximum)
+        if invalid_bounds.any():
+            errors.append(f'relative_minimum > relative_maximum for flows: {self._flagged_ids(invalid_bounds)}')
+
+        # Check: size required when relative_minimum > 0
+        has_nonzero_min = self._any_per_flow(self.relative_minimum > 0)
+        if (has_nonzero_min & ~self.has_size).any():
+            errors.append(
+                f'relative_minimum > 0 but no size defined for flows: '
+                f'{self._flagged_ids(has_nonzero_min & ~self.has_size)}. '
+                f'A size is required because the lower bound is size * relative_minimum.'
+            )
+
+        # Check: size required when relative_maximum < 1
+        has_nondefault_max = self._any_per_flow(self.relative_maximum < 1)
+        if (has_nondefault_max & ~self.has_size).any():
+            errors.append(
+                f'relative_maximum < 1 but no size defined for flows: '
+                f'{self._flagged_ids(has_nondefault_max & ~self.has_size)}. '
+                f'A size is required because the upper bound is size * relative_maximum.'
+            )
+
+        # Warning: relative_minimum > 0 without status_parameters prevents switching inactive
+        has_nonzero_min_no_status = has_nonzero_min & ~self.has_status
+        if has_nonzero_min_no_status.any():
+            logger.warning(
+                f'Flows {self._flagged_ids(has_nonzero_min_no_status)} have relative_minimum > 0 '
+                f'and no status_parameters. This prevents the flow from switching inactive (flow_rate = 0). '
+                f'Consider using status_parameters to allow switching active and inactive.'
+            )
+
+        # Warning: status_parameters with relative_minimum=0 allows status=1 with flow=0
+        has_zero_min_with_status = ~has_nonzero_min & self.has_status
+        if has_zero_min_with_status.any():
+            logger.warning(
+                f'Flows {self._flagged_ids(has_zero_min_with_status)} have status_parameters but '
+                f'relative_minimum=0. This allows status=1 with flow=0, which may lead to unexpected '
+                f'behavior. Consider setting relative_minimum > 0 to ensure the unit produces when active.'
+            )
+
+        if errors:
+            raise PlausibilityError('\n'.join(errors))
+
 
 class EffectsData:
     """Batched data container for all effects.
@@ -1604,6 +1760,45 @@ class EffectsData:
         """Iterate over Effect objects."""
         return self._effects
 
+    def validate(self) -> None:
+        """Validate all effects and the effect collection structure.
+
+        Performs both:
+        - Individual effect config validation
+        - Collection-level validation (circular loops in share mappings, unknown effect refs)
+        """
+        for effect in self._effects:
+            effect.validate_config()
+
+        # Collection-level validation (share structure)
+        self._validate_share_structure()
+
+    def _validate_share_structure(self) -> None:
+        """Validate effect share mappings for cycles and unknown references."""
+        from .effects import detect_cycles, tuples_to_adjacency_list
+
+        temporal, periodic = self._collection.calculate_effect_share_factors()
+
+        # Validate all referenced effects exist
+        edges = list(temporal.keys()) + list(periodic.keys())
+        unknown_sources = {src for src, _ in edges if src not in self._collection}
+        unknown_targets = {tgt for _, tgt in edges if tgt not in self._collection}
+        unknown = unknown_sources | unknown_targets
+        if unknown:
+            raise KeyError(f'Unknown effects used in effect share mappings: {sorted(unknown)}')
+
+        # Check for circular dependencies
+        temporal_cycles = detect_cycles(tuples_to_adjacency_list([key for key in temporal]))
+        periodic_cycles = detect_cycles(tuples_to_adjacency_list([key for key in periodic]))
+
+        if temporal_cycles:
+            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in temporal_cycles])
+            raise ValueError(f'Error: circular temporal-shares detected:\n{cycle_str}')
+
+        if periodic_cycles:
+            cycle_str = '\n'.join([' -> '.join(cycle) for cycle in periodic_cycles])
+            raise ValueError(f'Error: circular periodic-shares detected:\n{cycle_str}')
+
 
 class BusesData:
     """Batched data container for buses."""
@@ -1630,6 +1825,23 @@ class BusesData:
         """Bus objects that allow imbalance."""
         return [b for b in self._buses if b.allows_imbalance]
 
+    def validate(self) -> None:
+        """Validate all buses (config + DataArray checks).
+
+        Performs both:
+        - Config validation via Bus.validate_config()
+        - DataArray validation (post-transformation checks)
+        """
+        for bus in self._buses:
+            bus.validate_config()
+            # Warning: imbalance_penalty == 0 (DataArray check)
+            if bus.imbalance_penalty_per_flow_hour is not None:
+                zero_penalty = np.all(np.equal(bus.imbalance_penalty_per_flow_hour, 0))
+                if zero_penalty:
+                    logger.warning(
+                        f'In Bus {bus.label_full}, the imbalance_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
+                    )
+
 
 class ComponentsData:
     """Batched data container for components with status."""
@@ -1650,6 +1862,18 @@ class ComponentsData:
     @property
     def all_components(self) -> list[Component]:
         return self._all_components
+
+    def validate(self) -> None:
+        """Validate generic components (config checks only).
+
+        Note: Storage, Transmission, and LinearConverter are validated
+        through their specialized *Data classes, so we skip them here.
+        """
+        from .components import LinearConverter, Storage, Transmission
+
+        for component in self._all_components:
+            if not isinstance(component, (Storage, LinearConverter, Transmission)):
+                component.validate_config()
 
 
 class ConvertersData:
@@ -1677,6 +1901,11 @@ class ConvertersData:
         """Converters with piecewise_conversion."""
         return [c for c in self._converters if c.piecewise_conversion]
 
+    def validate(self) -> None:
+        """Validate all converters (config checks, no DataArray operations needed)."""
+        for converter in self._converters:
+            converter.validate_config()
+
 
 class TransmissionsData:
     """Batched data container for transmissions."""
@@ -1703,17 +1932,65 @@ class TransmissionsData:
         """Transmissions with balanced flow sizes."""
         return [t for t in self._transmissions if t.balanced]
 
+    def validate(self) -> None:
+        """Validate all transmissions (config + DataArray checks).
+
+        Performs both:
+        - Config validation via Transmission.validate_config()
+        - DataArray validation (post-transformation checks)
+
+        Raises:
+            PlausibilityError: If any validation check fails.
+        """
+        for transmission in self._transmissions:
+            transmission.validate_config()
+
+        errors: list[str] = []
+
+        for transmission in self._transmissions:
+            tid = transmission.label_full
+
+            # Balanced size compatibility (DataArray check)
+            if transmission.balanced:
+                in1_min = transmission.in1.size.minimum_or_fixed_size
+                in1_max = transmission.in1.size.maximum_or_fixed_size
+                in2_min = transmission.in2.size.minimum_or_fixed_size
+                in2_max = transmission.in2.size.maximum_or_fixed_size
+
+                if (in1_min > in2_max).any() or (in1_max < in2_min).any():
+                    errors.append(
+                        f'Balanced Transmission {tid} needs compatible minimum and maximum sizes. '
+                        f'Got: in1.size.minimum={in1_min}, in1.size.maximum={in1_max} and '
+                        f'in2.size.minimum={in2_min}, in2.size.maximum={in2_max}.'
+                    )
+
+        if errors:
+            raise PlausibilityError('\n'.join(errors))
+
 
 class BatchedAccessor:
     """Accessor for batched data containers on FlowSystem.
 
+    Provides cached access to *Data containers for all element types.
+    The same cached instances are used for both validation (during connect_and_transform)
+    and model building, ensuring consistency and avoiding duplicate object creation.
+
     Usage:
-        flow_system.batched.flows  # Access FlowsData
+        flow_system.batched.flows      # Access FlowsData
+        flow_system.batched.storages   # Access StoragesData
+        flow_system.batched.buses      # Access BusesData
     """
 
     def __init__(self, flow_system: FlowSystem):
         self._fs = flow_system
         self._flows: FlowsData | None = None
+        self._storages: StoragesData | None = None
+        self._intercluster_storages: StoragesData | None = None
+        self._buses: BusesData | None = None
+        self._effects: EffectsData | None = None
+        self._components: ComponentsData | None = None
+        self._converters: ConvertersData | None = None
+        self._transmissions: TransmissionsData | None = None
 
     @property
     def flows(self) -> FlowsData:
@@ -1723,6 +2000,93 @@ class BatchedAccessor:
             self._flows = FlowsData(all_flows, self._fs)
         return self._flows
 
+    @property
+    def storages(self) -> StoragesData:
+        """Get or create StoragesData for basic storages (excludes intercluster)."""
+        if self._storages is None:
+            from .components import Storage
+
+            clustering = self._fs.clustering
+            basic_storages = [
+                c
+                for c in self._fs.components.values()
+                if isinstance(c, Storage)
+                and not (clustering is not None and c.cluster_mode in ('intercluster', 'intercluster_cyclic'))
+            ]
+            effect_ids = list(self._fs.effects.keys())
+            self._storages = StoragesData(
+                basic_storages, 'storage', effect_ids, timesteps_extra=self._fs.timesteps_extra
+            )
+        return self._storages
+
+    @property
+    def intercluster_storages(self) -> StoragesData:
+        """Get or create StoragesData for intercluster storages."""
+        if self._intercluster_storages is None:
+            from .components import Storage
+
+            clustering = self._fs.clustering
+            intercluster = [
+                c
+                for c in self._fs.components.values()
+                if isinstance(c, Storage)
+                and clustering is not None
+                and c.cluster_mode in ('intercluster', 'intercluster_cyclic')
+            ]
+            effect_ids = list(self._fs.effects.keys())
+            self._intercluster_storages = StoragesData(intercluster, 'intercluster_storage', effect_ids)
+        return self._intercluster_storages
+
+    @property
+    def buses(self) -> BusesData:
+        """Get or create BusesData for all buses."""
+        if self._buses is None:
+            self._buses = BusesData(list(self._fs.buses.values()))
+        return self._buses
+
+    @property
+    def effects(self) -> EffectsData:
+        """Get or create EffectsData for all effects."""
+        if self._effects is None:
+            self._effects = EffectsData(self._fs.effects)
+        return self._effects
+
+    @property
+    def components(self) -> ComponentsData:
+        """Get or create ComponentsData for all components."""
+        if self._components is None:
+            all_components = list(self._fs.components.values())
+            components_with_status = [c for c in all_components if c.status_parameters is not None]
+            self._components = ComponentsData(components_with_status, all_components)
+        return self._components
+
+    @property
+    def converters(self) -> ConvertersData:
+        """Get or create ConvertersData for all converters."""
+        if self._converters is None:
+            from .components import LinearConverter
+
+            converters = [c for c in self._fs.components.values() if isinstance(c, LinearConverter)]
+            self._converters = ConvertersData(converters)
+        return self._converters
+
+    @property
+    def transmissions(self) -> TransmissionsData:
+        """Get or create TransmissionsData for all transmissions."""
+        if self._transmissions is None:
+            from .components import Transmission
+
+            transmissions = [c for c in self._fs.components.values() if isinstance(c, Transmission)]
+            self._transmissions = TransmissionsData(transmissions)
+        return self._transmissions
+
     def _reset(self) -> None:
-        """Reset cached data (called when FlowSystem changes)."""
+        """Reset all cached data (called when FlowSystem is invalidated)."""
         self._flows = None
+        self._storages = None
+        self._intercluster_storages = None
+        self._buses = None
+        self._effects = None
+        self._components = None
+        self._converters = None
+        self._transmissions = None

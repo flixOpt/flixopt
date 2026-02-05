@@ -274,12 +274,8 @@ class TestComponentModel:
             x is not None for x in [in1_previous_flow_rate, out1_previous_flow_rate, out2_previous_flow_rate]
         )
         if has_previous:
-            # Check that uptime initial constraints exist in the model (batched naming)
-            # Note: component uptime constraints use |initial_lb and |initial_ub naming
-            has_uptime_constraint = (
-                'component|uptime|initial_lb' in model.constraints or 'component|uptime|initial_ub' in model.constraints
-            )
-            assert has_uptime_constraint, 'Uptime initial constraint should exist'
+            # Check that uptime initial constraint exists in the model (batched naming)
+            assert 'component|uptime|initial' in model.constraints, 'Uptime initial constraint should exist'
         else:
             # When no previous flow rate, no uptime initialization needed
             pass

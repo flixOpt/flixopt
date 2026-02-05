@@ -228,7 +228,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._solution: xr.Dataset | None = None
 
         # Aggregation info - populated by transform.cluster()
-        self.clustering: Clustering | None = None
+        self._clustering: Clustering | None = None
 
         # Statistics accessor cache - lazily initialized, invalidated on new solution
         self._statistics: StatisticsAccessor | None = None
@@ -743,9 +743,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
             element.transform_data()
 
-        # Validate cross-element references immediately after transformation
+        # Validate cross-element references after transformation
         self._validate_system_integrity()
-        self._run_plausibility_checks()
+
+        # Unified validation AFTER transformation (config + DataArray checks)
+        self._run_validation()
 
         self._connected_and_transformed = True
 
@@ -1391,6 +1393,32 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self._batched = BatchedAccessor(self)
         return self._batched
 
+    @property
+    def clustering(self) -> Clustering | None:
+        """Clustering metadata for this FlowSystem.
+
+        This property is populated by `transform.cluster()` or when loading
+        a clustered FlowSystem from file. It contains information about the
+        original timesteps, cluster assignments, and aggregation metrics.
+
+        Setting this property resets the batched accessor cache to ensure
+        storage categorization (basic vs intercluster) is correctly computed
+        based on the new clustering state.
+
+        Returns:
+            Clustering object if this is a clustered FlowSystem, None otherwise.
+        """
+        return self._clustering
+
+    @clustering.setter
+    def clustering(self, value: Clustering | None) -> None:
+        """Set clustering and reset batched accessor cache."""
+        self._clustering = value
+        # Reset batched accessor so storage categorization is recomputed
+        # with the new clustering state (basic vs intercluster storages)
+        if self._batched is not None:
+            self._batched._reset()
+
     def plot_network(
         self,
         path: bool | str | pathlib.Path = 'flow_system.html',
@@ -1485,20 +1513,36 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             )
 
     def _prepare_effects(self) -> None:
-        """Validate effect collection and create the penalty effect if needed.
+        """Create the penalty effect if needed.
 
         Called before transform_data() so the penalty effect gets transformed.
+        Validation is done after transformation via _run_validation().
         """
-        self.effects._plausibility_checks()
         if self.effects._penalty_effect is None:
             penalty = self.effects._create_penalty_effect()
             if penalty._flow_system is None:
                 penalty.link_to_flow_system(self)
 
-    def _run_plausibility_checks(self) -> None:
-        """Run plausibility checks on all elements after data transformation."""
-        for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
-            element._plausibility_checks()
+    def _run_validation(self) -> None:
+        """Run all validation through batched *Data classes.
+
+        Each *Data.validate() method handles both:
+        - Config validation (simple checks)
+        - DataArray validation (post-transformation checks)
+
+        Called after transform_data(). The cached *Data instances are
+        reused during model building.
+        """
+        batched = self.batched
+        # Validate buses first - catches "Bus with no flows" before FlowsData fails on empty arrays
+        batched.buses.validate()
+        batched.effects.validate()
+        batched.flows.validate()
+        batched.storages.validate()
+        batched.intercluster_storages.validate()
+        batched.converters.validate()
+        batched.transmissions.validate()
+        batched.components.validate()
 
     def _validate_system_integrity(self) -> None:
         """

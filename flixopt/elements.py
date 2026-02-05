@@ -237,7 +237,12 @@ class Component(Element):
             duplicates = {label for label in all_flow_labels if all_flow_labels.count(label) > 1}
             raise ValueError(f'Flow names must be unique! "{self.label_full}" got 2 or more of: {duplicates}')
 
-    def _plausibility_checks(self) -> None:
+    def validate_config(self) -> None:
+        """Validate configuration consistency.
+
+        Called BEFORE transformation via FlowSystem._run_config_validation().
+        These are simple checks that don't require DataArray operations.
+        """
         self._check_unique_flow_labels()
 
         # Component with status_parameters requires all flows to have sizes set
@@ -251,9 +256,9 @@ class Component(Element):
                     f'(required for big-M constraints).'
                 )
 
-        # Run plausibility checks on all flows
-        for flow in self.flows.values():
-            flow._plausibility_checks()
+    def _plausibility_checks(self) -> None:
+        """Legacy validation method - delegates to validate_config()."""
+        self.validate_config()
 
     def _connect_flows(self, inputs=None, outputs=None):
         if inputs is None:
@@ -403,17 +408,23 @@ class Bus(Element):
             f'{self.prefix}|imbalance_penalty_per_flow_hour', self.imbalance_penalty_per_flow_hour
         )
 
-    def _plausibility_checks(self) -> None:
-        if self.imbalance_penalty_per_flow_hour is not None:
-            zero_penalty = np.all(np.equal(self.imbalance_penalty_per_flow_hour, 0))
-            if zero_penalty:
-                logger.warning(
-                    f'In Bus {self.label_full}, the imbalance_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
-                )
+    def validate_config(self) -> None:
+        """Validate configuration consistency.
+
+        Called BEFORE transformation via FlowSystem._run_config_validation().
+        These are simple checks that don't require DataArray operations.
+        """
         if len(self.inputs) == 0 and len(self.outputs) == 0:
             raise ValueError(
                 f'Bus "{self.label_full}" has no Flows connected to it. Please remove it from the FlowSystem'
             )
+
+    def _plausibility_checks(self) -> None:
+        """Legacy validation method - delegates to validate_config().
+
+        DataArray-based checks (imbalance_penalty warning) moved to BusesData.validate().
+        """
+        self.validate_config()
 
     @property
     def allows_imbalance(self) -> bool:
@@ -665,11 +676,12 @@ class Flow(Element):
         elif self.size is not None:
             self.size = self._fit_coords(f'{self.prefix}|size', self.size, dims=['period', 'scenario'])
 
-    def _plausibility_checks(self) -> None:
-        # TODO: Incorporate into Variable? (Lower_bound can not be greater than upper bound
-        if (self.relative_minimum > self.relative_maximum).any():
-            raise PlausibilityError(self.label_full + ': Take care, that relative_minimum <= relative_maximum!')
+    def validate_config(self) -> None:
+        """Validate configuration consistency.
 
+        Called BEFORE transformation via FlowSystem._run_config_validation().
+        These are simple checks that don't require DataArray operations.
+        """
         # Size is required when using StatusParameters (for big-M constraints)
         if self.status_parameters is not None and self.size is None:
             raise PlausibilityError(
@@ -681,19 +693,6 @@ class Flow(Element):
             raise PlausibilityError(
                 f'Flow "{self.label_full}" has a fixed_relative_profile but no size defined. '
                 f'A size is required because flow_rate = size * fixed_relative_profile.'
-            )
-
-        # Size is required when using non-default relative bounds (flow_rate = size * relative_bound)
-        if self.size is None and np.any(self.relative_minimum > 0):
-            raise PlausibilityError(
-                f'Flow "{self.label_full}" has relative_minimum > 0 but no size defined. '
-                f'A size is required because the lower bound is size * relative_minimum.'
-            )
-
-        if self.size is None and np.any(self.relative_maximum < 1):
-            raise PlausibilityError(
-                f'Flow "{self.label_full}" has relative_maximum != 1 but no size defined. '
-                f'A size is required because the upper bound is size * relative_maximum.'
             )
 
         # Size is required for load factor constraints (total_flow_hours / size)
@@ -709,28 +708,7 @@ class Flow(Element):
                 f'A size is required because the constraint is total_flow_hours <= size * load_factor_max * hours.'
             )
 
-        if self.fixed_relative_profile is not None and self.status_parameters is not None:
-            logger.warning(
-                f'Flow {self.label_full} has both a fixed_relative_profile and status_parameters.'
-                f'This will allow the flow to be switched active and inactive, effectively differing from the fixed_flow_rate.'
-            )
-
-        # Warn when StatusParameters is used with relative_minimum=0, as the status variable
-        # becomes less meaningful - the unit can be "on" (status=1) while producing nothing (flow=0)
-        if self.status_parameters is not None and not np.any(self.relative_minimum > 0):
-            logger.warning(
-                f'Flow "{self.label_full}" has status_parameters but relative_minimum=0. '
-                f'This allows status=1 with flow=0, which may lead to unexpected behavior. '
-                f'Consider setting relative_minimum > 0 to ensure the unit produces when active.'
-            )
-
-        if np.any(self.relative_minimum > 0) and self.status_parameters is None:
-            logger.warning(
-                f'Flow {self.label_full} has a relative_minimum of {self.relative_minimum} and no status_parameters. '
-                f'This prevents the Flow from switching inactive (flow_rate = 0). '
-                f'Consider using status_parameters to allow the Flow to be switched active and inactive.'
-            )
-
+        # Validate previous_flow_rate type
         if self.previous_flow_rate is not None:
             if not any(
                 [
@@ -739,9 +717,24 @@ class Flow(Element):
                 ]
             ):
                 raise TypeError(
-                    f'previous_flow_rate must be None, a scalar, a list of scalars or a 1D-numpy-array. Got {type(self.previous_flow_rate)}. '
+                    f'previous_flow_rate must be None, a scalar, a list of scalars or a 1D-numpy-array. '
+                    f'Got {type(self.previous_flow_rate)}. '
                     f'Different values in different periods or scenarios are not yet supported.'
                 )
+
+        # Warning: fixed_relative_profile + status_parameters is unusual
+        if self.fixed_relative_profile is not None and self.status_parameters is not None:
+            logger.warning(
+                f'Flow {self.label_full} has both a fixed_relative_profile and status_parameters. '
+                f'This will allow the flow to be switched active and inactive, effectively differing from the fixed_flow_rate.'
+            )
+
+    def _plausibility_checks(self) -> None:
+        """Legacy validation method - delegates to validate_config().
+
+        DataArray-based validation is now done in FlowsData.validate().
+        """
+        self.validate_config()
 
     @property
     def label_full(self) -> str:
