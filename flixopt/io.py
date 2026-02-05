@@ -1631,15 +1631,12 @@ class FlowSystemDatasetIO:
         # Extract cluster index if present (clustered FlowSystem)
         clusters = ds.indexes.get('cluster')
 
-        # For clustered datasets, cluster_weight is (cluster,) shaped - set separately
-        if clusters is not None:
-            cluster_weight_for_constructor = None
-        else:
-            cluster_weight_for_constructor = (
-                cls._resolve_dataarray_reference(reference_structure['cluster_weight'], arrays_dict)
-                if 'cluster_weight' in reference_structure
-                else None
-            )
+        # Resolve cluster_weight if present in reference structure
+        cluster_weight_for_constructor = (
+            cls._resolve_dataarray_reference(reference_structure['cluster_weight'], arrays_dict)
+            if 'cluster_weight' in reference_structure
+            else None
+        )
 
         # Resolve scenario_weights only if scenario dimension exists
         scenario_weights = None

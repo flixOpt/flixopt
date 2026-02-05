@@ -232,11 +232,11 @@ class TestClusteringExact:
     def test_flow_rates_match_demand_per_cluster(self, optimize):
         """Proves: flow rates match demand identically in every cluster.
 
-        4 ts, 2 clusters (weights 1, 1). Demand=[10,20,30,40], Grid @1€/MWh.
+        4 ts, 2 clusters (weights 1, 2). Demand=[10,20,30,40], Grid @1€/MWh.
         Grid flow_rate = demand in each cluster.
-        objective = (10+20+30+40) × (1+1) = 200.
+        objective = (10+20+30+40) × (1+2) = 300.
         """
-        fs = _make_clustered_flow_system(4, [1.0, 1.0])
+        fs = _make_clustered_flow_system(4, [1.0, 2.0])
         fs.add_elements(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
@@ -254,16 +254,16 @@ class TestClusteringExact:
         grid_fr = fs.solution['Grid(elec)|flow_rate'].values[:, :4]  # exclude NaN col
         expected = np.array([[10, 20, 30, 40], [10, 20, 30, 40]], dtype=float)
         assert_allclose(grid_fr, expected, atol=1e-5)
-        assert_allclose(fs.solution['objective'].item(), 200.0, rtol=1e-5)
+        assert_allclose(fs.solution['objective'].item(), 300.0, rtol=1e-5)
 
     def test_per_timestep_effects_with_varying_price(self, optimize):
         """Proves: per-timestep costs reflect price × flow in each cluster.
 
-        4 ts, 2 clusters (weights 1, 1). Grid @[1,2,3,4]€/MWh, Demand=10.
+        4 ts, 2 clusters (weights 1, 3). Grid @[1,2,3,4]€/MWh, Demand=10.
         costs per timestep = [10,20,30,40] in each cluster.
-        objective = (10+20+30+40) × (1+1) = 200.
+        objective = (10+20+30+40) × (1+3) = 400.
         """
-        fs = _make_clustered_flow_system(4, [1.0, 1.0])
+        fs = _make_clustered_flow_system(4, [1.0, 3.0])
         fs.add_elements(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
@@ -287,7 +287,7 @@ class TestClusteringExact:
         expected_costs = np.array([[10, 20, 30, 40], [10, 20, 30, 40]], dtype=float)
         assert_allclose(costs_ts, expected_costs, atol=1e-5)
 
-        assert_allclose(fs.solution['objective'].item(), 200.0, rtol=1e-5)
+        assert_allclose(fs.solution['objective'].item(), 400.0, rtol=1e-5)
 
     def test_storage_cyclic_charge_discharge_pattern(self, optimize):
         """Proves: storage with cyclic clustering charges at cheap timesteps and
