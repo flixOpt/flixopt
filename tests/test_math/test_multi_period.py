@@ -285,3 +285,90 @@ class TestMultiPeriod:
         # Custom period_weights=[1, 10]. Per-period cost=30.
         # Objective = 1*30 + 10*30 = 330.
         assert_allclose(fs.solution['objective'].item(), 330.0, rtol=1e-5)
+
+    def test_storage_relative_minimum_final_charge_state_scalar(self, optimize):
+        """Proves: scalar relative_minimum_final_charge_state works in multi-period.
+
+        Regression test for the scalar branch fix in _relative_charge_state_bounds.
+        Uses 3 timesteps (not 2) to avoid ambiguity with 2 periods.
+
+        3 ts, periods=[2020, 2025], weight_of_last_period=5. Weights=[5, 5].
+        Storage: capacity=100, initial=50, relative_minimum_final_charge_state=0.5.
+        Grid @[1, 1, 100], Demand=[0, 0, 80].
+        Per-period: charge 50 @t0+t1 (cost=50), discharge 50 @t2, grid 30 @100=3000.
+        Per-period cost=3050. Objective = 5*3050 + 5*3050 = 30500.
+        """
+        fs = make_multi_period_flow_system(n_timesteps=3, periods=[2020, 2025], weight_of_last_period=5)
+        fs.add_elements(
+            fx.Bus('Elec'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([0, 0, 80])),
+                ],
+            ),
+            fx.Source(
+                'Grid',
+                outputs=[
+                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([1, 1, 100])),
+                ],
+            ),
+            fx.Storage(
+                'Battery',
+                charging=fx.Flow('charge', bus='Elec', size=200),
+                discharging=fx.Flow('discharge', bus='Elec', size=200),
+                capacity_in_flow_hours=100,
+                initial_charge_state=50,
+                relative_minimum_final_charge_state=0.5,
+                eta_charge=1,
+                eta_discharge=1,
+                relative_loss_per_hour=0,
+            ),
+        )
+        fs = optimize(fs)
+        assert_allclose(fs.solution['objective'].item(), 30500.0, rtol=1e-5)
+
+    def test_storage_relative_maximum_final_charge_state_scalar(self, optimize):
+        """Proves: scalar relative_maximum_final_charge_state works in multi-period.
+
+        Regression test for the scalar branch fix in _relative_charge_state_bounds.
+        Uses 3 timesteps (not 2) to avoid ambiguity with 2 periods.
+
+        3 ts, periods=[2020, 2025], weight_of_last_period=5. Weights=[5, 5].
+        Storage: capacity=100, initial=80, relative_maximum_final_charge_state=0.2.
+        Demand=[50, 0, 0], Grid @[100, 1, 1], imbalance_penalty=5.
+        Per-period: discharge 50 for demand @t0 (SOC=30), discharge 10 excess @t1
+        (penalty=50, SOC=20). Objective per period=50.
+        Total objective = 5*50 + 5*50 = 500.
+        """
+        fs = make_multi_period_flow_system(n_timesteps=3, periods=[2020, 2025], weight_of_last_period=5)
+        fs.add_elements(
+            fx.Bus('Elec', imbalance_penalty_per_flow_hour=5),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([50, 0, 0])),
+                ],
+            ),
+            fx.Source(
+                'Grid',
+                outputs=[
+                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([100, 1, 1])),
+                ],
+            ),
+            fx.Storage(
+                'Battery',
+                charging=fx.Flow('charge', bus='Elec', size=200),
+                discharging=fx.Flow('discharge', bus='Elec', size=200),
+                capacity_in_flow_hours=100,
+                initial_charge_state=80,
+                relative_maximum_final_charge_state=0.2,
+                eta_charge=1,
+                eta_discharge=1,
+                relative_loss_per_hour=0,
+            ),
+        )
+        fs = optimize(fs)
+        assert_allclose(fs.solution['objective'].item(), 500.0, rtol=1e-5)
