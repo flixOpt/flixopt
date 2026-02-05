@@ -1628,6 +1628,16 @@ class FlowsData:
                 f'Consider using status_parameters to allow switching active and inactive.'
             )
 
+        # Warning: status_parameters with relative_minimum=0 allows status=1 with flow=0
+        has_zero_min_with_status = ~has_nonzero_min & self.has_status
+        if has_zero_min_with_status.any():
+            warn_flows = [fid for fid, warn in zip(self.ids, has_zero_min_with_status.values, strict=False) if warn]
+            logger.warning(
+                f'Flows {warn_flows} have status_parameters but relative_minimum=0. '
+                f'This allows status=1 with flow=0, which may lead to unexpected behavior. '
+                f'Consider setting relative_minimum > 0 to ensure the unit produces when active.'
+            )
+
         if errors:
             raise PlausibilityError('\n'.join(errors))
 
