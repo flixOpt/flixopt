@@ -233,7 +233,9 @@ class StatusData:
 
     # === Previous Durations ===
 
-    def _build_previous_durations(self, ids: list[str], target_state: int, min_attr: str) -> xr.DataArray | None:
+    def _build_previous_durations(
+        self, ids: list[str], target_state: int, min_attr: str, max_attr: str
+    ) -> xr.DataArray | None:
         """Build previous duration array for elements with previous state."""
         if not ids or self._timestep_duration is None:
             return None
@@ -242,7 +244,11 @@ class StatusData:
 
         values = np.full(len(ids), np.nan, dtype=float)
         for i, eid in enumerate(ids):
-            if eid in self._previous_states and getattr(self._params[eid], min_attr) is not None:
+            # Compute previous duration if element has previous state AND has either min or max constraint
+            has_constraint = (
+                getattr(self._params[eid], min_attr) is not None or getattr(self._params[eid], max_attr) is not None
+            )
+            if eid in self._previous_states and has_constraint:
                 values[i] = StatusBuilder.compute_previous_duration(
                     self._previous_states[eid], target_state=target_state, timestep_duration=self._timestep_duration
                 )
@@ -252,12 +258,16 @@ class StatusData:
     @cached_property
     def previous_uptime(self) -> xr.DataArray | None:
         """(element,) - previous uptime duration. NaN where not applicable."""
-        return self._build_previous_durations(self.with_uptime_tracking, target_state=1, min_attr='min_uptime')
+        return self._build_previous_durations(
+            self.with_uptime_tracking, target_state=1, min_attr='min_uptime', max_attr='max_uptime'
+        )
 
     @cached_property
     def previous_downtime(self) -> xr.DataArray | None:
         """(element,) - previous downtime duration. NaN where not applicable."""
-        return self._build_previous_durations(self.with_downtime_tracking, target_state=0, min_attr='min_downtime')
+        return self._build_previous_durations(
+            self.with_downtime_tracking, target_state=0, min_attr='min_downtime', max_attr='max_downtime'
+        )
 
     # === Effects ===
 

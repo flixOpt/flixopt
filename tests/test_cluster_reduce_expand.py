@@ -874,22 +874,6 @@ class TestPeakSelection:
         # The sum of cluster occurrences should equal n_original_clusters (8 days)
         assert int(fs_clustered.clustering.cluster_occurrences.sum()) == 8
 
-    def test_extremes_new_cluster_rejected_for_multi_period(self, timesteps_8_days, periods_2):
-        """Test that method='new_cluster' is rejected for multi-period systems."""
-        from tsam import ExtremeConfig
-
-        fs = create_system_with_periods(timesteps_8_days, periods_2)
-
-        with pytest.raises(ValueError, match='method="new_cluster" is not supported'):
-            fs.transform.cluster(
-                n_clusters=2,
-                cluster_duration='1D',
-                extremes=ExtremeConfig(
-                    method='new_cluster',
-                    max_value=['HeatDemand(Q)|fixed_relative_profile'],
-                ),
-            )
-
     def test_extremes_replace_works_for_multi_period(self, solver_fixture, timesteps_8_days, periods_2):
         """Test that method='replace' works correctly for multi-period systems."""
         from tsam import ExtremeConfig

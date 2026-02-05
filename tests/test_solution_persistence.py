@@ -391,7 +391,7 @@ class TestFlowSystemDirectMethods:
 
     def test_solve_without_build_model_raises(self, simple_flow_system, highs_solver):
         """solve() should raise if model not built."""
-        with pytest.raises(RuntimeError, match='Model has not been built'):
+        with pytest.raises(RuntimeError, match='requires at least MODEL_BUILT'):
             simple_flow_system.solve(highs_solver)
 
     def test_solve_after_build_model(self, simple_flow_system, highs_solver):

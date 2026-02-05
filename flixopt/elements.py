@@ -1258,115 +1258,55 @@ class FlowsModel(TypeModel):
         dt = self.model.timestep_duration
 
         # === Temporal: rate * effects_per_flow_hour * dt ===
+        # Batched over flows and effects - _accumulate_shares handles effect dim internally
         factors = self.data.effects_per_flow_hour
         if factors is not None:
-            rate = self.rate.sel({dim: factors.coords[dim].values})
-            for eid in factors.coords['effect'].values:
-                f_single = factors.sel(effect=eid, drop=True)  # (flow,) or (flow, time) — pure DataArray, cheap
-                # Only include flows with nonzero factor
-                nonzero = f_single != 0
-                if not nonzero.any():
-                    continue
-                effects_model.add_temporal_contribution(
-                    rate * (f_single * dt),
-                    contributor_dim=dim,
-                    effect=str(eid),
-                )
+            flow_ids = factors.coords[dim].values
+            rate_subset = self.rate.sel({dim: flow_ids})
+            effects_model.add_temporal_contribution(rate_subset * (factors * dt), contributor_dim=dim)
 
         # === Temporal: status effects ===
         if self.status is not None:
+            # effects_per_active_hour
             factor = self.data.effects_per_active_hour
             if factor is not None:
                 flow_ids = factor.coords[dim].values
                 status_subset = self.status.sel({dim: flow_ids})
-                for eid in factor.coords['effect'].values:
-                    f_single = factor.sel(effect=eid, drop=True)
-                    nonzero = f_single != 0
-                    if not nonzero.any():
-                        continue
-                    effects_model.add_temporal_contribution(
-                        status_subset * (f_single * dt),
-                        contributor_dim=dim,
-                        effect=str(eid),
-                    )
+                effects_model.add_temporal_contribution(status_subset * (factor * dt), contributor_dim=dim)
 
+            # effects_per_startup
             factor = self.data.effects_per_startup
             if self.startup is not None and factor is not None:
                 flow_ids = factor.coords[dim].values
                 startup_subset = self.startup.sel({dim: flow_ids})
-                for eid in factor.coords['effect'].values:
-                    f_single = factor.sel(effect=eid, drop=True)
-                    nonzero = f_single != 0
-                    if not nonzero.any():
-                        continue
-                    effects_model.add_temporal_contribution(
-                        startup_subset * f_single,
-                        contributor_dim=dim,
-                        effect=str(eid),
-                    )
+                effects_model.add_temporal_contribution(startup_subset * factor, contributor_dim=dim)
 
         # === Periodic: size * effects_per_size ===
         inv = self.data._investment_data
         if inv is not None and inv.effects_per_size is not None:
             factors = inv.effects_per_size
-            size = self.size.sel({dim: factors.coords[dim].values})
-            for eid in factors.coords['effect'].values:
-                f_single = factors.sel(effect=eid, drop=True)
-                nonzero = f_single != 0
-                if not nonzero.any():
-                    continue
-                effects_model.add_periodic_contribution(size * f_single, contributor_dim=dim, effect=str(eid))
+            flow_ids = factors.coords[dim].values
+            size_subset = self.size.sel({dim: flow_ids})
+            effects_model.add_periodic_contribution(size_subset * factors, contributor_dim=dim)
 
-            # Investment/retirement effects
-            if self.invested is not None:
-                if (ff := inv.effects_of_investment) is not None:
-                    for eid in ff.coords['effect'].values:
-                        f_single = ff.sel(effect=eid, drop=True)
-                        nonzero = f_single != 0
-                        if not nonzero.any():
-                            continue
-                        effects_model.add_periodic_contribution(
-                            self.invested.sel({dim: f_single.coords[dim].values}) * f_single,
-                            contributor_dim=dim,
-                            effect=str(eid),
-                        )
-                if (ff := inv.effects_of_retirement) is not None:
-                    for eid in ff.coords['effect'].values:
-                        f_single = ff.sel(effect=eid, drop=True)
-                        nonzero = f_single != 0
-                        if not nonzero.any():
-                            continue
-                        effects_model.add_periodic_contribution(
-                            self.invested.sel({dim: f_single.coords[dim].values}) * (-f_single),
-                            contributor_dim=dim,
-                            effect=str(eid),
-                        )
+        # === Investment/retirement effects (optional investments) ===
+        if inv is not None and self.invested is not None:
+            if (ff := inv.effects_of_investment) is not None:
+                flow_ids = ff.coords[dim].values
+                invested_subset = self.invested.sel({dim: flow_ids})
+                effects_model.add_periodic_contribution(invested_subset * ff, contributor_dim=dim)
+
+            if (ff := inv.effects_of_retirement) is not None:
+                flow_ids = ff.coords[dim].values
+                invested_subset = self.invested.sel({dim: flow_ids})
+                effects_model.add_periodic_contribution(invested_subset * (-ff), contributor_dim=dim)
 
         # === Constants: mandatory fixed + retirement ===
         if inv is not None:
             if inv.effects_of_investment_mandatory is not None:
-                # These already have effect dim — split per effect
-                mandatory = inv.effects_of_investment_mandatory
-                if 'effect' in mandatory.dims:
-                    for eid in mandatory.coords['effect'].values:
-                        effects_model.add_periodic_contribution(
-                            mandatory.sel(effect=eid, drop=True),
-                            contributor_dim=dim,
-                            effect=str(eid),
-                        )
-                else:
-                    effects_model.add_periodic_contribution(mandatory, contributor_dim=dim)
+                effects_model.add_periodic_contribution(inv.effects_of_investment_mandatory, contributor_dim=dim)
             if inv.effects_of_retirement_constant is not None:
-                ret_const = inv.effects_of_retirement_constant
-                if 'effect' in ret_const.dims:
-                    for eid in ret_const.coords['effect'].values:
-                        effects_model.add_periodic_contribution(
-                            ret_const.sel(effect=eid, drop=True),
-                            contributor_dim=dim,
-                            effect=str(eid),
-                        )
-                else:
-                    effects_model.add_periodic_contribution(ret_const, contributor_dim=dim)
+                effects_model.add_periodic_contribution(inv.effects_of_retirement_constant, contributor_dim=dim)
 
     # === Status Variables (cached_property) ===
 
@@ -2303,6 +2243,36 @@ class ComponentsModel(TypeModel):
     def create_effect_shares(self) -> None:
         """No-op: effect shares are now collected centrally in EffectsModel.finalize_shares()."""
         pass
+
+    def add_effect_contributions(self, effects_model) -> None:
+        """Push component-level status effect contributions to EffectsModel.
+
+        Called by EffectsModel.finalize_shares(). Pushes:
+        - Temporal: status × effects_per_active_hour × dt
+        - Temporal: startup × effects_per_startup
+
+        Args:
+            effects_model: The EffectsModel to register contributions with.
+        """
+        dim = self.dim_name
+        dt = self.model.timestep_duration
+        sd = self._status_data
+
+        # === Temporal: status * effects_per_active_hour * dt ===
+        if self.status is not None:
+            factor = sd.effects_per_active_hour
+            if factor is not None:
+                component_ids = factor.coords[dim].values
+                status_subset = self.status.sel({dim: component_ids})
+                effects_model.add_temporal_contribution(status_subset * (factor * dt), contributor_dim=dim)
+
+        # === Temporal: startup * effects_per_startup ===
+        if self.startup is not None:
+            factor = sd.effects_per_startup
+            if factor is not None:
+                component_ids = factor.coords[dim].values
+                startup_subset = self.startup.sel({dim: component_ids})
+                effects_model.add_temporal_contribution(startup_subset * factor, contributor_dim=dim)
 
     def constraint_prevent_simultaneous(self) -> None:
         """Create mutual exclusivity constraints for components with prevent_simultaneous_flows."""

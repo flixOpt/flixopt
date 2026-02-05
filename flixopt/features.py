@@ -607,15 +607,49 @@ class StatusBuilder:
                 state_init = state.sel({dim_name: elem_with_prev}).isel({duration_dim: 0})
                 duration_init = duration.sel({dim_name: elem_with_prev}).isel({duration_dim: 0})
                 dt_init = timestep_duration.isel({duration_dim: 0})
-                mega_subset = mega.sel({dim_name: elem_with_prev}) if dim_name in mega.dims else mega
 
+                # duration[0] = (previous_duration + dt[0]) * state[0]
+                # If state=1: continues counting from previous. If state=0: resets to 0.
                 model.add_constraints(
-                    duration_init <= state_init * (prev_vals + dt_init),
-                    name=f'{name}|initial_ub',
+                    duration_init == state_init * (prev_vals + dt_init),
+                    name=f'{name}|initial',
+                )
+
+                # Initial continuation constraint: if previous_duration > 0 and < minimum_duration,
+                # the unit must continue in its current state to meet the minimum requirement.
+                # This forces state[0] = 1 when the unit was active with insufficient duration.
+                if minimum_duration is not None:
+                    min_subset = minimum_duration.sel({dim_name: elem_with_prev})
+                    # Find elements that need to continue: prev_duration > 0 and prev_duration < min_duration
+                    needs_continuation = (prev_vals > 0) & (prev_vals < min_subset)
+                    if needs_continuation.any():
+                        elem_needs_continuation = [
+                            eid for eid, needs in zip(elem_with_prev, needs_continuation.values, strict=False) if needs
+                        ]
+                        state_to_fix = state.sel({dim_name: elem_needs_continuation}).isel({duration_dim: 0})
+                        model.add_constraints(
+                            state_to_fix >= 1,
+                            name=f'{name}|initial_continuation',
+                        )
+
+        # Minimum duration constraint: when state transitions from 1 to 0, duration must be >= minimum
+        # duration[t] >= minimum_duration * (state[t] - state[t+1])
+        if minimum_duration is not None:
+            has_minimum = fast_notnull(minimum_duration)
+            if has_minimum.any():
+                # Select only elements with minimum constraint (non-NaN values)
+                element_ids = minimum_duration.coords[dim_name].values[has_minimum.values]
+                min_subset = minimum_duration.sel({dim_name: element_ids})
+                state_subset = state.sel({dim_name: element_ids})
+                duration_subset = duration.sel({dim_name: element_ids})
+
+                # Constraint for t = 0..T-2: duration[t] >= min * (state[t] - state[t+1])
+                state_diff = state_subset.isel({duration_dim: slice(None, -1)}) - state_subset.isel(
+                    {duration_dim: slice(1, None)}
                 )
                 model.add_constraints(
-                    duration_init >= (state_init - 1) * mega_subset + prev_vals + state_init * dt_init,
-                    name=f'{name}|initial_lb',
+                    duration_subset.isel({duration_dim: slice(None, -1)}) >= min_subset * state_diff,
+                    name=f'{name}|min',
                 )
 
         return duration

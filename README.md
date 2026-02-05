@@ -54,7 +54,7 @@ flow_system.optimize(fx.solvers.HighsSolver())
 
 # 3. Analyze results
 flow_system.solution        # Raw xarray Dataset
-flow_system.statistics      # Convenient analysis accessor
+flow_system.stats           # Convenient analysis accessor
 ```
 
 **Get started with real examples:**

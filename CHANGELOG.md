@@ -52,7 +52,62 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
-## [6.0.0] - Upcoming
+## [7.0.0] - Unreleased
+
+**Summary**: Performance release with **up to 67x faster model building** for large systems through batched/vectorized operations.
+
+### 🚀 Performance
+
+#### Batched Model Building (#588)
+
+Complete rewrite of the model building pipeline using batched operations instead of per-element loops:
+
+| System Size | Build Speedup | Write LP Speedup |
+|-------------|---------------|------------------|
+| XL (2000h, 300 converters) | **67x** (113s → 1.7s) | **5x** (45s → 9s) |
+| Complex (72h, piecewise) | **2.6x** (1s → 383ms) | **4x** (417ms → 100ms) |
+
+**Architecture Changes**:
+
+- **Type-level batched models**: New `FlowsModel`, `StoragesModel`, `BusesModel` classes process all elements of a type in single vectorized operations
+- **Pre-computed element data**: `FlowsData` and `StoragesData` cache element parameters as xarray DataArrays with element dimensions
+- **Mask-based variables**: Use linopy's `mask=` parameter for heterogeneous elements (e.g., only some flows have status variables)
+- **Fast NumPy helpers**: `fast_notnull()` / `fast_isnull()` are ~55x faster than xarray equivalents
+
+**Model Size Reduction** (fewer, larger variables/constraints):
+
+| System | Variables (old → new) | Constraints (old → new) |
+|--------|----------------------|------------------------|
+| XL (2000h, 300 conv) | 4,917 → 21 | 5,715 → 30 |
+| Medium (720h) | 370 → 21 | 428 → 30 |
+
+### 🐛 Fixed
+
+- **Status duration constraints**: Fixed `min_downtime` and `min_uptime` constraints not being enforced in batched mode due to mask broadcasting issues
+- **Investment effects**: Fixed investment-related effects (`effects_of_investment`, `effects_of_retirement`, `effects_per_size`) not being registered when using batched operations
+
+---
+
+## [6.0.1] - 2026-02-04
+
+**Summary**: Bugfix release addressing clustering issues with multi-period systems and ExtremeConfig.
+
+### 🐛 Fixed
+
+- **Multi-period clustering with ExtremeConfig** - Fixed `ValueError: cannot reshape array` when clustering multi-period or multi-scenario systems with `ExtremeConfig`. The fix uses pandas `.unstack()` instead of manual reshape for robustness.
+- **Consistent cluster count validation** - Added validation to detect inconsistent cluster counts across periods/scenarios, providing clear error messages.
+
+### 💥 Breaking Changes
+
+- **ExtremeConfig method restriction for multi-period systems** - When using `ExtremeConfig` with multi-period or multi-scenario systems, only `method='replace'` is now allowed. Using `method='new_cluster'` or `method='append'` will raise a `ValueError`. This works around a tsam bug where these methods can produce inconsistent cluster counts across slices.
+
+### 📦 Dependencies
+
+- Excluded tsam 3.1.0 from compatible versions due to clustering bug.
+
+---
+
+## [6.0.0] - 2026-02-03
 
 **Summary**: Major release featuring tsam v3 migration, complete rewrite of the clustering/aggregation system, 2-3x faster I/O for large systems, new `plotly` plotting accessor, FlowSystem comparison tools, and removal of deprecated v5.0 classes.
 
@@ -226,12 +281,12 @@ comp = fx.Comparison([fs_base, fs_modified])
 comp = fx.Comparison([fs1, fs2, fs3], names=['baseline', 'low_cost', 'high_eff'])
 
 # Side-by-side plots (auto-facets by 'case' dimension)
-comp.statistics.plot.balance('Heat')
-comp.statistics.flow_rates.plotly.line()
+comp.stats.plot.balance('Heat')
+comp.stats.flow_rates.plotly.line()
 
 # Access combined data with 'case' dimension
 comp.solution  # xr.Dataset
-comp.statistics.flow_rates  # xr.Dataset
+comp.stats.flow_rates  # xr.Dataset
 
 # Compute differences relative to a reference case
 comp.diff()  # vs first case
@@ -261,6 +316,58 @@ flow_system.topology.set_component_colors('turbo', overwrite=False)  # Only unse
 #### FlowContainer for Component Flows (#587)
 
 `Component.inputs`, `Component.outputs`, and `Component.flows` now use `FlowContainer` (dict-like) with dual access by index or label: `inputs[0]` or `inputs['Q_th']`.
+
+#### `before_solve` Callback
+
+New callback parameter for `optimize()` and `rolling_horizon()` allows adding custom constraints before solving:
+
+```python
+def add_constraints(fs):
+    model = fs.model
+    boiler = model.variables['Boiler(Q_th)|flow_rate']
+    model.add_constraints(boiler >= 10, name='min_boiler')
+
+flow_system.optimize(solver, before_solve=add_constraints)
+
+# Works with rolling_horizon too
+flow_system.optimize.rolling_horizon(
+    solver,
+    horizon=168,
+    before_solve=add_constraints
+)
+```
+
+#### `cluster_mode` for StatusParameters
+
+New parameter to control status behavior at cluster boundaries:
+
+```python
+fx.StatusParameters(
+    ...,
+    cluster_mode='relaxed',  # Default: no constraint at boundaries, prevents phantom startups
+    # cluster_mode='cyclic',  # Each cluster's final status equals its initial status
+)
+```
+
+#### Comparison Class Enhancements
+
+- **`Comparison.inputs`**: Compare inputs across FlowSystems for easy side-by-side input parameter comparison
+- **`data_only` parameter**: Get data without generating plots in Comparison methods
+- **`threshold` parameter**: Filter small values when comparing
+
+#### Plotting Enhancements
+
+- **`threshold` parameter**: Added to all plotting methods to filter values below a threshold (default: `1e-5`)
+- **`round_decimals` parameter**: Control decimal precision in `balance()`, `carrier_balance()`, and `storage()` plots
+- **`flow_colors` property**: Map flows to their component's colors for consistent visualization
+
+#### `FlowSystem.from_old_dataset()`
+
+New method for loading datasets saved with older flixopt versions:
+
+```python
+fs = fx.FlowSystem.from_old_dataset(old_dataset)
+```
 
 ### 💥 Breaking Changes
 
@@ -306,17 +413,22 @@ fs.transform.cluster(
 
 - `FlowSystem.weights` returns `dict[str, xr.DataArray]` (unit weights instead of `1.0` float fallback)
 - `FlowSystemDimensions` type now includes `'cluster'`
-- `statistics.plot.balance()`, `carrier_balance()`, and `storage()` now use `xarray_plotly.fast_bar()` internally (styled stacked areas for better performance)
+- `stats.plot.balance()`, `carrier_balance()`, and `storage()` now use `xarray_plotly.fast_bar()` internally (styled stacked areas for better performance)
+- `stats.plot.carrier_balance()` now combines inputs and outputs to show net flow per component, and aggregates per component by default
 
 ### 🗑️ Deprecated
 
 The following items are deprecated and will be removed in **v7.0.0**:
 
+**Accessor renamed:**
+
+- `flow_system.statistics` → Use `flow_system.stats` (shorter, more convenient)
+
 **Classes** (use FlowSystem methods instead):
 
 - `Optimization` class → Use `flow_system.optimize(solver)`
 - `SegmentedOptimization` class → Use `flow_system.optimize.rolling_horizon()`
-- `Results` class → Use `flow_system.solution` and `flow_system.statistics`
+- `Results` class → Use `flow_system.solution` and `flow_system.stats`
 - `SegmentedResults` class → Use segment FlowSystems directly
 
 **FlowSystem methods** (use `transform` or `topology` accessor instead):

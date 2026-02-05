@@ -582,15 +582,17 @@ class EffectsModel:
     def finalize_shares(self) -> None:
         """Collect effect contributions from type models (push-based).
 
-        Each type model (FlowsModel, StoragesModel) registers its share definitions
-        via add_temporal_contribution() / add_periodic_contribution(). This method
-        creates the two share variables (share|temporal, share|periodic) with a
-        unified 'contributor' dimension, then applies all contributions.
+        Each type model (FlowsModel, StoragesModel, ComponentsModel) registers its
+        share definitions via add_temporal_contribution() / add_periodic_contribution().
+        This method creates the two share variables (share|temporal, share|periodic)
+        with a unified 'contributor' dimension, then applies all contributions.
         """
         if (fm := self.model._flows_model) is not None:
             fm.add_effect_contributions(self)
         if (sm := self.model._storages_model) is not None:
             sm.add_effect_contributions(self)
+        if (cm := self.model._components_model) is not None:
+            cm.add_effect_contributions(self)
 
         # === Create share|temporal variable (one combined with contributor × effect dims) ===
         if self._temporal_shares:
