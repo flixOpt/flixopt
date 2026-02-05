@@ -53,6 +53,13 @@ def _extract_nonindex_coords(datasets: list[xr.Dataset]) -> tuple[list[xr.Datase
             coords_to_drop.add(name)
             if name not in merged:
                 merged[name] = (dim, {})
+            elif merged[name][0] != dim:
+                warnings.warn(
+                    f"Coordinate '{name}' appears on different dims: "
+                    f"'{merged[name][0]}' vs '{dim}'. Dropping this coordinate.",
+                    stacklevel=4,
+                )
+                continue
 
             for dv, cv in zip(ds.coords[dim].values, coord.values, strict=False):
                 if dv not in merged[name][1]:

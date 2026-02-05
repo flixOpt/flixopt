@@ -998,11 +998,11 @@ class TestEdgeCases:
 
         # Mapping values should be in [0, n_clusters * timesteps_per_cluster - 1]
         max_valid = 3 * 24 - 1  # n_clusters * timesteps_per_cluster - 1
-        assert mapping.min() >= 0
-        assert mapping.max() <= max_valid
+        assert mapping.min().item() >= 0
+        assert mapping.max().item() <= max_valid
 
         # Each period should have valid mappings
         for period in periods_2:
             period_mapping = mapping.sel(period=period)
-            assert period_mapping.min() >= 0
-            assert period_mapping.max() <= max_valid
+            assert period_mapping.min().item() >= 0
+            assert period_mapping.max().item() <= max_valid

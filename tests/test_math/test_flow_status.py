@@ -503,8 +503,8 @@ class TestFlowStatus:
             else:
                 current = 0
         assert max_consecutive <= 2, f'max_uptime violated: {status}'
-        # Cost must be higher than without constraint (50)
-        assert fs.solution['costs'].item() > 50.0 + 1e-5
+        # Cheap: 4×10 = 40 fuel. Backup @t2: 10/0.5 = 20 fuel. Total = 60.
+        assert_allclose(fs.solution['costs'].item(), 60.0, rtol=1e-5)
 
 
 class TestPreviousFlowRate:
