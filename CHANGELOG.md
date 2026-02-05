@@ -62,7 +62,20 @@ Until here -->
 
 ### 👷 Development
 
-- `TestClusteringExact`: Added exact per-timestep assertions for flow_rates, per-timestep effects, and storage charge_state in clustered systems (with non-equal cluster weights to cover IO roundtrip)
+- **New `test_math/` test suite**: Comprehensive mathematical correctness tests with exact, hand-calculated assertions. Each test runs in 3 IO modes (solve, save→reload→solve, solve→save→reload) via the `optimize` fixture:
+    - `test_flow.py` — flow bounds, merit order, relative min/max, on/off hours
+    - `test_flow_invest.py` — investment sizing, fixed-size, optional invest, piecewise invest
+    - `test_flow_status.py` — startup costs, switch-on/off constraints, status penalties
+    - `test_bus.py` — bus balance, excess/shortage penalties
+    - `test_effects.py` — effect aggregation, periodic/temporal effects, multi-effect objectives
+    - `test_components.py` — SourceAndSink, converters, links, combined heat-and-power
+    - `test_conversion.py` — linear converter balance, multi-input/output, efficiency
+    - `test_piecewise.py` — piecewise-linear efficiency, segment selection
+    - `test_storage.py` — charge/discharge, SOC tracking, final charge state, losses
+    - `test_multi_period.py` — period weights, invest across periods
+    - `test_scenarios.py` — scenario weights, scenario-independent flows
+    - `test_clustering.py` — exact per-timestep flow_rates, effects, and charge_state in clustered systems (incl. non-equal cluster weights to cover IO roundtrip)
+    - `test_validation.py` — plausibility checks and error messages
 
 ---
 
