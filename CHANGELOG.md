@@ -52,6 +52,20 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
+## [6.0.3] - Upcoming
+
+**Summary**: Bugfix release fixing `cluster_weight` loss during NetCDF roundtrip for manually constructed clustered FlowSystems.
+
+### 🐛 Fixed
+
+- **Clustering IO**: `cluster_weight` is now preserved during NetCDF roundtrip for manually constructed clustered FlowSystems (i.e. `FlowSystem(..., clusters=..., cluster_weight=...)`). Previously, `cluster_weight` was silently dropped to `None` during `save->reload->solve`, causing incorrect objective values. Systems created via `.transform.cluster()` were not affected.
+
+### 👷 Development
+
+- `TestClusteringExact`: Added exact per-timestep assertions for flow_rates, per-timestep effects, and storage charge_state in clustered systems (with non-equal cluster weights to cover IO roundtrip)
+
+---
+
 ## [6.0.2] - 2026-02-05
 
 **Summary**: Patch release which improves `Comparison` coordinate handling.
