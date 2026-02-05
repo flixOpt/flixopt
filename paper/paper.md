@@ -51,11 +51,6 @@ Flixopt fills this gap by enabling:
 * arbitrary evaluation metrics through *Effects*, supporting multiobjective and constrained formulations. 
 * todo: dimensions scenario and period!
 
-ODER
-
-* allocating impacts to freely definable evaluation metrics, through *Effects*, supporting multiobjective and constrained formulations.
-* easy switch of objectives and wide flexibility of configuration of the calculation
-
 Flixopt is designed for flexible use across various disciplines and research questions or practical tasks ranging from operational dispatch to strategic planning.
 
 ## Software Description
@@ -74,7 +69,7 @@ For example, following features can be used:
 
 These capabilities remain inactive unless explicitly required, keeping models compact and computationally efficient.
 
-Flixopt supports several calculation modes. The default mode performs full time-resolved optimization. Aggregated modes use clustered typical periods, following principles discussed in the literature on time-series aggregation ([@TSAM2020]), reducing computational burden for long time horizons. A segmented mode decomposes large operational problems into smaller, sequentially optimized blocks.
+Flixopt supports several calculation modes. The default mode performs full time-resolved optimization. Aggregated modes use clustered typical periods, following principles discussed in the literature on time-series aggregation ([@TSAM2020]), reducing computational load for long time horizons. A segmented mode decomposes large operational problems into smaller, sequentially optimized blocks.
 
 ## Effects
 
