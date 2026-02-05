@@ -531,6 +531,84 @@ class TestStorage:
         # Discharge 60, excess 10 penalized @5 → penalty=50. Objective=50.
         assert_allclose(fs.solution['objective'].item(), 50.0, rtol=1e-5)
 
+    def test_storage_relative_minimum_final_charge_state_scalar(self, optimize):
+        """Proves: relative_minimum_final_charge_state works when relative_minimum_charge_state
+        is a scalar (default=0, no time dimension).
+
+        Same scenario as test_storage_relative_minimum_final_charge_state but using
+        scalar defaults instead of arrays — this was previously a bug where the scalar
+        branch ignored the final override entirely.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Elec'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([0, 80])),
+                ],
+            ),
+            fx.Source(
+                'Grid',
+                outputs=[
+                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([1, 100])),
+                ],
+            ),
+            fx.Storage(
+                'Battery',
+                charging=fx.Flow('charge', bus='Elec', size=200),
+                discharging=fx.Flow('discharge', bus='Elec', size=200),
+                capacity_in_flow_hours=100,
+                initial_charge_state=50,
+                relative_minimum_final_charge_state=0.5,
+                eta_charge=1,
+                eta_discharge=1,
+                relative_loss_per_hour=0,
+            ),
+        )
+        fs = optimize(fs)
+        assert_allclose(fs.solution['costs'].item(), 3050.0, rtol=1e-5)
+
+    def test_storage_relative_maximum_final_charge_state_scalar(self, optimize):
+        """Proves: relative_maximum_final_charge_state works when relative_maximum_charge_state
+        is a scalar (default=1, no time dimension).
+
+        Same scenario as test_storage_relative_maximum_final_charge_state but using
+        scalar defaults instead of arrays — this was previously a bug where the scalar
+        branch ignored the final override entirely.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Elec', imbalance_penalty_per_flow_hour=5),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([50, 0])),
+                ],
+            ),
+            fx.Source(
+                'Grid',
+                outputs=[
+                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([100, 1])),
+                ],
+            ),
+            fx.Storage(
+                'Battery',
+                charging=fx.Flow('charge', bus='Elec', size=200),
+                discharging=fx.Flow('discharge', bus='Elec', size=200),
+                capacity_in_flow_hours=100,
+                initial_charge_state=80,
+                relative_maximum_final_charge_state=0.2,
+                eta_charge=1,
+                eta_discharge=1,
+                relative_loss_per_hour=0,
+            ),
+        )
+        fs = optimize(fs)
+        assert_allclose(fs.solution['objective'].item(), 50.0, rtol=1e-5)
+
     def test_storage_balanced_invest(self, optimize):
         """Proves: balanced=True forces charge and discharge invest sizes to be equal.
 
