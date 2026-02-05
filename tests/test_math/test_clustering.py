@@ -6,6 +6,7 @@ Requires the ``tsam`` package.
 
 import numpy as np
 import pandas as pd
+from numpy.testing import assert_allclose
 
 import flixopt as fx
 
@@ -212,3 +213,136 @@ class TestClustering:
         fs.optimize(_SOLVER)
         # Structural: should solve without error, startup cost should be reflected
         assert fs.solution['costs'].item() >= 40.0 - 1e-5  # 40 fuel + possible startups
+
+
+def _make_clustered_flow_system(n_timesteps, cluster_weights):
+    """Create a FlowSystem with clustering support."""
+    ts = pd.date_range('2020-01-01', periods=n_timesteps, freq='h')
+    clusters = pd.Index(range(len(cluster_weights)), name='cluster')
+    return fx.FlowSystem(
+        ts,
+        clusters=clusters,
+        cluster_weight=np.array(cluster_weights, dtype=float),
+    )
+
+
+class TestClusteringExact:
+    """Exact per-timestep assertions for clustered systems."""
+
+    def test_flow_rates_match_demand_per_cluster(self, optimize):
+        """Proves: flow rates match demand identically in every cluster.
+
+        4 ts, 2 clusters (weights 1, 1). Demand=[10,20,30,40], Grid @1€/MWh.
+        Grid flow_rate = demand in each cluster.
+        objective = (10+20+30+40) × (1+1) = 200.
+        """
+        fs = _make_clustered_flow_system(4, [1.0, 1.0])
+        fs.add_elements(
+            fx.Bus('Elec'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([10, 20, 30, 40]))],
+            ),
+            fx.Source(
+                'Grid',
+                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=1)],
+            ),
+        )
+        fs = optimize(fs)
+
+        grid_fr = fs.solution['Grid(elec)|flow_rate'].values[:, :4]  # exclude NaN col
+        expected = np.array([[10, 20, 30, 40], [10, 20, 30, 40]], dtype=float)
+        assert_allclose(grid_fr, expected, atol=1e-5)
+        assert_allclose(fs.solution['objective'].item(), 200.0, rtol=1e-5)
+
+    def test_per_timestep_effects_with_varying_price(self, optimize):
+        """Proves: per-timestep costs reflect price × flow in each cluster.
+
+        4 ts, 2 clusters (weights 1, 1). Grid @[1,2,3,4]€/MWh, Demand=10.
+        costs per timestep = [10,20,30,40] in each cluster.
+        objective = (10+20+30+40) × (1+1) = 200.
+        """
+        fs = _make_clustered_flow_system(4, [1.0, 1.0])
+        fs.add_elements(
+            fx.Bus('Elec'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([10, 10, 10, 10]))],
+            ),
+            fx.Source(
+                'Grid',
+                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([1, 2, 3, 4]))],
+            ),
+        )
+        fs = optimize(fs)
+
+        # Flow rate is constant at 10 in every timestep and cluster
+        grid_fr = fs.solution['Grid(elec)|flow_rate'].values[:, :4]
+        assert_allclose(grid_fr, 10.0, atol=1e-5)
+
+        # Per-timestep costs = price × flow
+        costs_ts = fs.solution['costs(temporal)|per_timestep'].values[:, :4]
+        expected_costs = np.array([[10, 20, 30, 40], [10, 20, 30, 40]], dtype=float)
+        assert_allclose(costs_ts, expected_costs, atol=1e-5)
+
+        assert_allclose(fs.solution['objective'].item(), 200.0, rtol=1e-5)
+
+    def test_storage_cyclic_charge_discharge_pattern(self, optimize):
+        """Proves: storage with cyclic clustering charges at cheap timesteps and
+        discharges at expensive ones, with SOC wrapping within each cluster.
+
+        4 ts, 2 clusters (weights 1, 1).
+        Grid @[1,100,1,100], Demand=[0,50,0,50].
+        Storage: cap=100, eta=1, loss=0, cyclic mode.
+        Optimal: buy 50 at cheap ts (index 2), discharge at expensive ts (1,3).
+        objective = 50 × 1 × 2 clusters = 100.
+        """
+        fs = _make_clustered_flow_system(4, [1.0, 1.0])
+        fs.add_elements(
+            fx.Bus('Elec'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([0, 50, 0, 50]))],
+            ),
+            fx.Source(
+                'Grid',
+                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([1, 100, 1, 100]))],
+            ),
+            fx.Storage(
+                'Battery',
+                charging=fx.Flow('charge', bus='Elec', size=100),
+                discharging=fx.Flow('discharge', bus='Elec', size=100),
+                capacity_in_flow_hours=100,
+                initial_charge_state=0,
+                eta_charge=1,
+                eta_discharge=1,
+                relative_loss_per_hour=0,
+                cluster_mode='cyclic',
+            ),
+        )
+        fs = optimize(fs)
+
+        # Grid only buys at cheap timestep (index 2, price=1)
+        grid_fr = fs.solution['Grid(elec)|flow_rate'].values[:, :4]
+        assert_allclose(grid_fr, [[0, 0, 50, 0], [0, 0, 50, 0]], atol=1e-5)
+
+        # Charge at cheap timestep, discharge at expensive timesteps
+        charge_fr = fs.solution['Battery(charge)|flow_rate'].values[:, :4]
+        assert_allclose(charge_fr, [[0, 0, 50, 0], [0, 0, 50, 0]], atol=1e-5)
+
+        discharge_fr = fs.solution['Battery(discharge)|flow_rate'].values[:, :4]
+        assert_allclose(discharge_fr, [[0, 50, 0, 50], [0, 50, 0, 50]], atol=1e-5)
+
+        # Charge state: dims=(time, cluster), 5 entries (incl. final)
+        # Cyclic: SOC wraps, starting with pre-charge from previous cycle
+        charge_state = fs.solution['Battery|charge_state']
+        assert charge_state.dims == ('time', 'cluster')
+        cs_c0 = charge_state.values[:5, 0]
+        cs_c1 = charge_state.values[:5, 1]
+        assert_allclose(cs_c0, [50, 50, 0, 50, 0], atol=1e-5)
+        assert_allclose(cs_c1, [100, 100, 50, 100, 50], atol=1e-5)
+
+        assert_allclose(fs.solution['objective'].item(), 100.0, rtol=1e-5)
