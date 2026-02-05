@@ -25,6 +25,9 @@ import pytest
 
 import flixopt as fx
 
+# Enable legacy solution access for backward compatibility in tests
+fx.CONFIG.Legacy.solution_access = True
+
 _SOLVER = fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=60, log_to_console=False)
 
 

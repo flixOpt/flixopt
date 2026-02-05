@@ -60,6 +60,113 @@ _register_clustering_classes()
 logger = logging.getLogger('flixopt')
 
 
+class LegacySolutionWrapper:
+    """Wrapper for xr.Dataset that provides legacy solution access patterns.
+
+    When CONFIG.Legacy.solution_access is True, this wrapper intercepts
+    __getitem__ calls to translate legacy access patterns like:
+        fs.solution['costs'] -> fs.solution['effect|total'].sel(effect='costs')
+        fs.solution['Src(heat)|flow_rate'] -> fs.solution['flow|rate'].sel(flow='Src(heat)')
+
+    All other operations are proxied directly to the underlying Dataset.
+    """
+
+    __slots__ = ('_dataset',)
+
+    # Mapping from old variable suffixes to new type|variable format
+    # Format: old_suffix -> (dimension, new_variable_suffix)
+    _LEGACY_VAR_MAP = {
+        # Flow variables
+        'flow_rate': ('flow', 'rate'),
+        'size': ('flow', 'size'),  # For flows: Comp(flow)|size
+        'status': ('flow', 'status'),
+        'invested': ('flow', 'invested'),
+    }
+
+    # Storage-specific mappings (no parentheses in label, e.g., 'Battery|size')
+    _LEGACY_STORAGE_VAR_MAP = {
+        'size': ('storage', 'size'),
+        'invested': ('storage', 'invested'),
+        'charge_state': ('storage', 'charge'),  # Old: charge_state -> New: charge
+    }
+
+    def __init__(self, dataset: xr.Dataset) -> None:
+        object.__setattr__(self, '_dataset', dataset)
+
+    def __getitem__(self, key):
+        ds = object.__getattribute__(self, '_dataset')
+        try:
+            return ds[key]
+        except KeyError as e:
+            if not isinstance(key, str):
+                raise e
+
+            # Try legacy effect access: solution['costs'] -> solution['effect|total'].sel(effect='costs')
+            if 'effect' in ds.coords and key in ds.coords['effect'].values:
+                warnings.warn(
+                    f"Legacy solution access: solution['{key}'] is deprecated. "
+                    f"Use solution['effect|total'].sel(effect='{key}') instead.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                return ds['effect|total'].sel(effect=key)
+
+            # Try legacy flow/storage access: solution['Src(heat)|flow_rate'] -> solution['flow|rate'].sel(flow='Src(heat)')
+            if '|' in key:
+                parts = key.rsplit('|', 1)
+                if len(parts) == 2:
+                    element_label, var_suffix = parts
+
+                    # Try flow variables first (labels have parentheses like 'Src(heat)')
+                    if var_suffix in self._LEGACY_VAR_MAP:
+                        dim, var_name = self._LEGACY_VAR_MAP[var_suffix]
+                        new_key = f'{dim}|{var_name}'
+                        if new_key in ds and dim in ds.coords and element_label in ds.coords[dim].values:
+                            warnings.warn(
+                                f"Legacy solution access: solution['{key}'] is deprecated. "
+                                f"Use solution['{new_key}'].sel({dim}='{element_label}') instead.",
+                                DeprecationWarning,
+                                stacklevel=2,
+                            )
+                            return ds[new_key].sel({dim: element_label})
+
+                    # Try storage variables (labels without parentheses like 'Battery')
+                    if var_suffix in self._LEGACY_STORAGE_VAR_MAP:
+                        dim, var_name = self._LEGACY_STORAGE_VAR_MAP[var_suffix]
+                        new_key = f'{dim}|{var_name}'
+                        if new_key in ds and dim in ds.coords and element_label in ds.coords[dim].values:
+                            warnings.warn(
+                                f"Legacy solution access: solution['{key}'] is deprecated. "
+                                f"Use solution['{new_key}'].sel({dim}='{element_label}') instead.",
+                                DeprecationWarning,
+                                stacklevel=2,
+                            )
+                            return ds[new_key].sel({dim: element_label})
+
+            raise e
+
+    def __getattr__(self, name):
+        return getattr(object.__getattribute__(self, '_dataset'), name)
+
+    def __setattr__(self, name, value):
+        if name == '_dataset':
+            object.__setattr__(self, name, value)
+        else:
+            setattr(object.__getattribute__(self, '_dataset'), name, value)
+
+    def __repr__(self):
+        return repr(object.__getattribute__(self, '_dataset'))
+
+    def __iter__(self):
+        return iter(object.__getattribute__(self, '_dataset'))
+
+    def __len__(self):
+        return len(object.__getattribute__(self, '_dataset'))
+
+    def __contains__(self, key):
+        return key in object.__getattribute__(self, '_dataset')
+
+
 class FlowSystem(Interface, CompositeContainerMixin[Element]):
     """
     A FlowSystem organizes the high level Elements (Components, Buses, Effects & Flows).
@@ -1064,7 +1171,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         logger.error('Successfully extracted infeasibilities: \n%s', infeasibilities)
 
     @property
-    def solution(self) -> xr.Dataset | None:
+    def solution(self) -> xr.Dataset | LegacySolutionWrapper | None:
         """
         Access the optimization solution as an xarray Dataset.
 
@@ -1072,6 +1179,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         one additional timestep at the end). Variables that do not have data for the
         extra timestep (most variables except storage charge states) will contain
         NaN values at the final timestep.
+
+        When ``CONFIG.Legacy.solution_access`` is True, returns a wrapper that
+        supports legacy access patterns like ``solution['effect_name']``.
 
         Returns:
             xr.Dataset: The solution dataset with all optimization variable results,
@@ -1081,6 +1191,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             >>> flow_system.optimize(solver)
             >>> flow_system.solution.isel(time=slice(None, -1))  # Exclude trailing NaN (and final charge states)
         """
+        if self._solution is None:
+            return None
+        if CONFIG.Legacy.solution_access:
+            return LegacySolutionWrapper(self._solution)
         return self._solution
 
     @solution.setter
