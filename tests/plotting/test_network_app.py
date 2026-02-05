@@ -2,7 +2,7 @@ import pytest
 
 import flixopt as fx
 
-from .conftest import (
+from ..conftest import (
     flow_system_long,
     flow_system_segments_of_flows_2,
     simple_flow_system,

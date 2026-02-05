@@ -29,6 +29,69 @@ __all__ = ['Comparison']
 _CASE_SLOTS = frozenset(slot for slots in SLOT_ORDERS.values() for slot in slots)
 
 
+def _extract_nonindex_coords(datasets: list[xr.Dataset]) -> tuple[list[xr.Dataset], dict[str, tuple[str, dict]]]:
+    """Extract and merge non-index coords, returning cleaned datasets and merged mappings.
+
+    Non-index coords (like `component` on `contributor` dim) cause concat conflicts.
+    This extracts them, merges the mappings, and returns datasets without them.
+    """
+    if not datasets:
+        return datasets, {}
+
+    # Find non-index coords and collect mappings
+    merged: dict[str, tuple[str, dict]] = {}
+    coords_to_drop: set[str] = set()
+
+    for ds in datasets:
+        for name, coord in ds.coords.items():
+            if len(coord.dims) != 1:
+                continue
+            dim = coord.dims[0]
+            if dim == name or dim not in ds.coords:
+                continue
+
+            coords_to_drop.add(name)
+            if name not in merged:
+                merged[name] = (dim, {})
+            elif merged[name][0] != dim:
+                warnings.warn(
+                    f"Coordinate '{name}' appears on different dims: "
+                    f"'{merged[name][0]}' vs '{dim}'. Dropping this coordinate.",
+                    stacklevel=4,
+                )
+                continue
+
+            for dv, cv in zip(ds.coords[dim].values, coord.values, strict=False):
+                if dv not in merged[name][1]:
+                    merged[name][1][dv] = cv
+                elif merged[name][1][dv] != cv:
+                    warnings.warn(
+                        f"Coordinate '{name}' has conflicting values for dim value '{dv}': "
+                        f"'{merged[name][1][dv]}' vs '{cv}'. Keeping first value.",
+                        stacklevel=4,
+                    )
+
+    # Drop these coords from datasets
+    if coords_to_drop:
+        datasets = [ds.drop_vars(coords_to_drop, errors='ignore') for ds in datasets]
+
+    return datasets, merged
+
+
+def _apply_merged_coords(ds: xr.Dataset, merged: dict[str, tuple[str, dict]]) -> xr.Dataset:
+    """Apply merged coord mappings to concatenated dataset."""
+    if not merged:
+        return ds
+
+    new_coords = {}
+    for name, (dim, mapping) in merged.items():
+        if dim not in ds.dims:
+            continue
+        new_coords[name] = (dim, [mapping.get(dv, dv) for dv in ds.coords[dim].values])
+
+    return ds.assign_coords(new_coords)
+
+
 def _apply_slot_defaults(plotly_kwargs: dict, defaults: dict[str, str | None]) -> None:
     """Apply default slot assignments to plotly kwargs.
 
@@ -256,12 +319,10 @@ class Comparison:
             self._require_solutions()
             datasets = [fs.solution for fs in self._systems]
             self._warn_mismatched_dimensions(datasets)
-            self._solution = xr.concat(
-                [ds.expand_dims(case=[name]) for ds, name in zip(datasets, self._names, strict=True)],
-                dim='case',
-                join='outer',
-                fill_value=float('nan'),
-            )
+            expanded = [ds.expand_dims(case=[name]) for ds, name in zip(datasets, self._names, strict=True)]
+            expanded, merged_coords = _extract_nonindex_coords(expanded)
+            result = xr.concat(expanded, dim='case', join='outer', coords='minimal', fill_value=float('nan'))
+            self._solution = _apply_merged_coords(result, merged_coords)
         return self._solution
 
     @property
@@ -324,12 +385,10 @@ class Comparison:
         if self._inputs is None:
             datasets = [fs.to_dataset(include_solution=False) for fs in self._systems]
             self._warn_mismatched_dimensions(datasets)
-            self._inputs = xr.concat(
-                [ds.expand_dims(case=[name]) for ds, name in zip(datasets, self._names, strict=True)],
-                dim='case',
-                join='outer',
-                fill_value=float('nan'),
-            )
+            expanded = [ds.expand_dims(case=[name]) for ds, name in zip(datasets, self._names, strict=True)]
+            expanded, merged_coords = _extract_nonindex_coords(expanded)
+            result = xr.concat(expanded, dim='case', join='outer', coords='minimal', fill_value=float('nan'))
+            self._inputs = _apply_merged_coords(result, merged_coords)
         return self._inputs
 
 
@@ -374,7 +433,9 @@ class ComparisonStatistics:
                 continue
         if not datasets:
             return xr.Dataset()
-        return xr.concat(datasets, dim='case', join='outer', fill_value=float('nan'))
+        datasets, merged_coords = _extract_nonindex_coords(datasets)
+        result = xr.concat(datasets, dim='case', join='outer', coords='minimal', fill_value=float('nan'))
+        return _apply_merged_coords(result, merged_coords)
 
     def _merge_dict_property(self, prop_name: str) -> dict[str, str]:
         """Merge a dict property from all cases (later cases override)."""
@@ -528,7 +589,9 @@ class ComparisonStatisticsPlot:
         if not datasets:
             return xr.Dataset(), ''
 
-        return xr.concat(datasets, dim='case', join='outer', fill_value=float('nan')), title
+        datasets, merged_coords = _extract_nonindex_coords(datasets)
+        combined = xr.concat(datasets, dim='case', join='outer', coords='minimal', fill_value=float('nan'))
+        return _apply_merged_coords(combined, merged_coords), title
 
     def _finalize(self, ds: xr.Dataset, fig, show: bool | None) -> PlotResult:
         """Handle show and return PlotResult."""

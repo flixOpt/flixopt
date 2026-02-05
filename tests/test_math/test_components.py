@@ -446,7 +446,7 @@ class TestComponentStatus:
 
 
 class TestTransmission:
-    """Tests for Transmission component with losses."""
+    """Tests for Transmission component with losses and structural constraints."""
 
     def test_transmission_relative_losses(self, optimize):
         """Proves: relative_losses correctly reduces transmitted energy.
@@ -577,6 +577,90 @@ class TestTransmission:
         # total = 40 (vs 20+200=220 if only local sources)
         assert_allclose(fs.solution['costs'].item(), 40.0, rtol=1e-5)
 
+    def test_transmission_prevent_simultaneous_bidirectional(self, optimize):
+        """Proves: prevent_simultaneous_flows_in_both_directions=True prevents both
+        directions from being active at the same timestep.
+
+        Two buses, demands alternate sides. Bidirectional transmission with
+        prevent_simultaneous=True. Structural check: at no timestep both directions active.
+
+        Sensitivity: Constraint is structural. Cost = 40 (same as unrestricted).
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Left'),
+            fx.Bus('Right'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'LeftDemand',
+                inputs=[
+                    fx.Flow('heat', bus='Left', size=1, fixed_relative_profile=np.array([20, 0])),
+                ],
+            ),
+            fx.Sink(
+                'RightDemand',
+                inputs=[
+                    fx.Flow('heat', bus='Right', size=1, fixed_relative_profile=np.array([0, 20])),
+                ],
+            ),
+            fx.Source(
+                'LeftSource',
+                outputs=[fx.Flow('heat', bus='Left', effects_per_flow_hour=1)],
+            ),
+            fx.Transmission(
+                'Link',
+                in1=fx.Flow('left', bus='Left', size=100),
+                out1=fx.Flow('right', bus='Right', size=100),
+                in2=fx.Flow('right_in', bus='Right', size=100),
+                out2=fx.Flow('left_out', bus='Left', size=100),
+                prevent_simultaneous_flows_in_both_directions=True,
+            ),
+        )
+        fs = optimize(fs)
+        assert_allclose(fs.solution['costs'].item(), 40.0, rtol=1e-5)
+        # Structural check: at no timestep both directions active
+        in1 = fs.solution['Link(left)|flow_rate'].values[:-1]
+        in2 = fs.solution['Link(right_in)|flow_rate'].values[:-1]
+        for t in range(len(in1)):
+            assert not (in1[t] > 1e-5 and in2[t] > 1e-5), f'Simultaneous bidirectional flow at t={t}'
+
+    def test_transmission_status_startup_cost(self, optimize):
+        """Proves: StatusParameters on Transmission applies startup cost
+        when the transmission transitions to active.
+
+        Demand=[20, 0, 20, 0] through Transmission with effects_per_startup=50.
+        previous_flow_rate=0 and relative_minimum=0.1 force on/off cycling.
+        2 startups × 50 + energy 40.
+
+        Sensitivity: Without startup cost, cost=40 (energy only).
+        With 50€/startup × 2, cost=140.
+        """
+        fs = make_flow_system(4)
+        fs.add_elements(
+            fx.Bus('Source'),
+            fx.Bus('Sink'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Sink', size=1, fixed_relative_profile=np.array([20, 0, 20, 0])),
+                ],
+            ),
+            fx.Source(
+                'CheapSource',
+                outputs=[fx.Flow('heat', bus='Source', effects_per_flow_hour=1)],
+            ),
+            fx.Transmission(
+                'Pipe',
+                in1=fx.Flow('in', bus='Source', size=200, previous_flow_rate=0, relative_minimum=0.1),
+                out1=fx.Flow('out', bus='Sink', size=200, previous_flow_rate=0, relative_minimum=0.1),
+                status_parameters=fx.StatusParameters(effects_per_startup=50),
+            ),
+        )
+        fs = optimize(fs)
+        # energy = 40, 2 startups × 50 = 100. Total = 140.
+        assert_allclose(fs.solution['costs'].item(), 140.0, rtol=1e-5)
+
 
 class TestHeatPump:
     """Tests for HeatPump component with COP."""
@@ -692,3 +776,127 @@ class TestCoolingTower:
         fs = optimize(fs)
         # heat=200, specific_elec=0.1 → elec = 200 * 0.1 = 20
         assert_allclose(fs.solution['costs'].item(), 20.0, rtol=1e-5)
+
+
+class TestPower2Heat:
+    """Tests for Power2Heat component."""
+
+    def test_power2heat_efficiency(self, optimize):
+        """Proves: Power2Heat applies thermal_efficiency to electrical input.
+
+        Power2Heat with thermal_efficiency=0.9. Demand=40 heat over 2 timesteps.
+        Elec needed = 40 / 0.9 ≈ 44.44.
+
+        Sensitivity: If efficiency ignored (=1), elec=40 → cost=40.
+        With eta=0.9, elec=44.44 → cost≈44.44.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Elec'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([20, 20])),
+                ],
+            ),
+            fx.Source(
+                'Grid',
+                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=1)],
+            ),
+            fx.linear_converters.Power2Heat(
+                'P2H',
+                thermal_efficiency=0.9,
+                electrical_flow=fx.Flow('elec', bus='Elec'),
+                thermal_flow=fx.Flow('heat', bus='Heat'),
+            ),
+        )
+        fs = optimize(fs)
+        # heat=40, eta=0.9 → elec = 40/0.9 ≈ 44.44
+        assert_allclose(fs.solution['costs'].item(), 40.0 / 0.9, rtol=1e-5)
+
+
+class TestHeatPumpWithSource:
+    """Tests for HeatPumpWithSource component with COP and heat source."""
+
+    def test_heatpump_with_source_cop(self, optimize):
+        """Proves: HeatPumpWithSource applies COP to compute electrical consumption,
+        drawing the remainder from a heat source.
+
+        HeatPumpWithSource cop=3. Demand=60 heat over 2 timesteps.
+        Elec = 60/3 = 20. Heat source provides 60 - 20 = 40.
+
+        Sensitivity: If cop=1, elec=60 → cost=60. With cop=3, cost=20.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Elec'),
+            fx.Bus('HeatSource'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([30, 30])),
+                ],
+            ),
+            fx.Source(
+                'Grid',
+                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=1)],
+            ),
+            fx.Source(
+                'FreeHeat',
+                outputs=[fx.Flow('heat', bus='HeatSource')],
+            ),
+            fx.linear_converters.HeatPumpWithSource(
+                'HP',
+                cop=3.0,
+                electrical_flow=fx.Flow('elec', bus='Elec'),
+                heat_source_flow=fx.Flow('source', bus='HeatSource'),
+                thermal_flow=fx.Flow('heat', bus='Heat'),
+            ),
+        )
+        fs = optimize(fs)
+        # heat=60, cop=3 → elec=20, cost=20
+        assert_allclose(fs.solution['costs'].item(), 20.0, rtol=1e-5)
+
+
+class TestSourceAndSink:
+    """Tests for SourceAndSink component (e.g. grid connection for buy/sell)."""
+
+    def test_source_and_sink_prevent_simultaneous(self, optimize):
+        """Proves: SourceAndSink with prevent_simultaneous_flow_rates=True prevents
+        buying and selling in the same timestep.
+
+        Solar=[30, 30, 0]. Demand=[10, 10, 10]. GridConnection: buy @5€, sell @-1€.
+        t0,t1: excess 20 → sell 20 (revenue 20 each = -40). t2: deficit 10 → buy 10 (50).
+
+        Sensitivity: Cost = 50 - 40 = 10.
+        """
+        fs = make_flow_system(3)
+        fs.add_elements(
+            fx.Bus('Elec'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
+                ],
+            ),
+            fx.Source(
+                'Solar',
+                outputs=[
+                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([30, 30, 0])),
+                ],
+            ),
+            fx.SourceAndSink(
+                'GridConnection',
+                outputs=[fx.Flow('buy', bus='Elec', size=100, effects_per_flow_hour=5)],
+                inputs=[fx.Flow('sell', bus='Elec', size=100, effects_per_flow_hour=-1)],
+                prevent_simultaneous_flow_rates=True,
+            ),
+        )
+        fs = optimize(fs)
+        # t0: sell 20 → -20€. t1: sell 20 → -20€. t2: buy 10 → 50€. Total = 10€.
+        assert_allclose(fs.solution['costs'].item(), 10.0, rtol=1e-5)

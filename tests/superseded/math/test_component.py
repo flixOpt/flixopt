@@ -4,7 +4,7 @@ import pytest
 import flixopt as fx
 import flixopt.elements
 
-from .conftest import (
+from ...conftest import (
     assert_almost_equal_numeric,
     assert_conequal,
     assert_dims_compatible,
@@ -12,6 +12,8 @@ from .conftest import (
     assert_var_equal,
     create_linopy_model,
 )
+
+pytestmark = pytest.mark.skip(reason='Superseded: model-building tests implicitly covered by tests/test_math/')
 
 
 class TestComponentModel:

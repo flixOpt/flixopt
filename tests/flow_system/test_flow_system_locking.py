@@ -12,7 +12,7 @@ import pytest
 
 import flixopt as fx
 
-# Note: We use simple_flow_system fixture from conftest.py
+from ..conftest import build_simple_flow_system
 
 
 class TestIsLocked:
@@ -179,6 +179,14 @@ class TestReset:
 class TestCopy:
     """Test the copy method."""
 
+    @pytest.fixture(scope='class')
+    def optimized_flow_system(self):
+        """Pre-optimized flow system shared across TestCopy (tests only work with copies)."""
+        fs = build_simple_flow_system()
+        solver = fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=300)
+        fs.optimize(solver)
+        return fs
+
     def test_copy_creates_new_instance(self, simple_flow_system):
         """Copy should create a new FlowSystem instance."""
         copy_fs = simple_flow_system.copy()
@@ -191,67 +199,58 @@ class TestCopy:
         assert set(copy_fs.components.keys()) == set(simple_flow_system.components.keys())
         assert set(copy_fs.buses.keys()) == set(simple_flow_system.buses.keys())
 
-    def test_copy_does_not_copy_solution(self, simple_flow_system, highs_solver):
+    def test_copy_does_not_copy_solution(self, optimized_flow_system):
         """Copy should not include the solution."""
-        simple_flow_system.optimize(highs_solver)
-        assert simple_flow_system.solution is not None
+        assert optimized_flow_system.solution is not None
 
-        copy_fs = simple_flow_system.copy()
+        copy_fs = optimized_flow_system.copy()
         assert copy_fs.solution is None
 
-    def test_copy_does_not_copy_model(self, simple_flow_system, highs_solver):
+    def test_copy_does_not_copy_model(self, optimized_flow_system):
         """Copy should not include the model."""
-        simple_flow_system.optimize(highs_solver)
-        assert simple_flow_system.model is not None
+        assert optimized_flow_system.model is not None
 
-        copy_fs = simple_flow_system.copy()
+        copy_fs = optimized_flow_system.copy()
         assert copy_fs.model is None
 
-    def test_copy_is_not_locked(self, simple_flow_system, highs_solver):
+    def test_copy_is_not_locked(self, optimized_flow_system):
         """Copy should not be locked even if original is."""
-        simple_flow_system.optimize(highs_solver)
-        assert simple_flow_system.is_locked is True
+        assert optimized_flow_system.is_locked is True
 
-        copy_fs = simple_flow_system.copy()
+        copy_fs = optimized_flow_system.copy()
         assert copy_fs.is_locked is False
 
-    def test_copy_can_be_modified(self, simple_flow_system, highs_solver):
+    def test_copy_can_be_modified(self, optimized_flow_system):
         """Copy should be modifiable even if original is locked."""
-        simple_flow_system.optimize(highs_solver)
-
-        copy_fs = simple_flow_system.copy()
+        copy_fs = optimized_flow_system.copy()
         new_bus = fx.Bus('NewBus')
         copy_fs.add_elements(new_bus)  # Should not raise
         assert 'NewBus' in copy_fs.buses
 
-    def test_copy_can_be_optimized_independently(self, simple_flow_system, highs_solver):
+    def test_copy_can_be_optimized_independently(self, optimized_flow_system):
         """Copy can be optimized independently of original."""
-        simple_flow_system.optimize(highs_solver)
-        original_cost = simple_flow_system.solution['costs'].item()
+        original_cost = optimized_flow_system.solution['costs'].item()
 
-        copy_fs = simple_flow_system.copy()
-        copy_fs.optimize(highs_solver)
+        copy_fs = optimized_flow_system.copy()
+        solver = fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=300)
+        copy_fs.optimize(solver)
 
         # Both should have solutions
-        assert simple_flow_system.solution is not None
+        assert optimized_flow_system.solution is not None
         assert copy_fs.solution is not None
 
         # Costs should be equal (same system)
         assert copy_fs.solution['costs'].item() == pytest.approx(original_cost)
 
-    def test_python_copy_uses_copy_method(self, simple_flow_system, highs_solver):
+    def test_python_copy_uses_copy_method(self, optimized_flow_system):
         """copy.copy() should use the custom copy method."""
-        simple_flow_system.optimize(highs_solver)
-
-        copy_fs = copy.copy(simple_flow_system)
+        copy_fs = copy.copy(optimized_flow_system)
         assert copy_fs.solution is None
         assert copy_fs.is_locked is False
 
-    def test_python_deepcopy_uses_copy_method(self, simple_flow_system, highs_solver):
+    def test_python_deepcopy_uses_copy_method(self, optimized_flow_system):
         """copy.deepcopy() should use the custom copy method."""
-        simple_flow_system.optimize(highs_solver)
-
-        copy_fs = copy.deepcopy(simple_flow_system)
+        copy_fs = copy.deepcopy(optimized_flow_system)
         assert copy_fs.solution is None
         assert copy_fs.is_locked is False
 

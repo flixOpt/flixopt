@@ -1,20 +1,16 @@
 """
 Unit tests for the flixopt framework.
 
-This module defines a set of unit tests for testing the functionality of the `flixopt` framework.
-The tests focus on verifying the correct behavior of flow systems, including component modeling,
-investment optimization, and operational constraints like status behavior.
-
-### Approach:
-1. **Setup**: Each test initializes a flow system with a set of predefined elements and parameters.
-2. **Model Creation**: Test-specific flow systems are constructed using `create_model` with datetime arrays.
-3. **Solution**: The models are solved using the `solve_and_load` method, which performs modeling, solves the optimization problem, and loads the results.
-4. **Validation**: Results are validated using assertions, primarily `assert_allclose`, to ensure model outputs match expected values with a specified tolerance.
-
-Tests group related cases by their functional focus:
-- Minimal modeling setup (`TestMinimal` class)
-- Investment behavior (`TestInvestment` class)
-- Status operational constraints (functions: `test_startup_shutdown`, `test_consecutive_uptime_downtime`, etc.)
+.. deprecated::
+    Superseded — These tests are superseded by tests/test_math/ which provides more thorough,
+    analytically verified coverage with sensitivity documentation. Specifically:
+    - Investment tests → test_math/test_flow_invest.py (9 tests + 3 invest+status combo tests)
+    - Status tests → test_math/test_flow_status.py (9 tests + 6 previous_flow_rate tests)
+    - Efficiency tests → test_math/test_conversion.py (3 tests)
+    - Effect tests → test_math/test_effects.py (11 tests)
+    Each test_math test runs in 3 modes (solve, save→reload→solve, solve→save→reload),
+    making the IO roundtrip tests here redundant as well.
+    Kept temporarily for reference. Safe to delete.
 """
 
 import numpy as np
@@ -25,6 +21,8 @@ from numpy.testing import assert_allclose
 import flixopt as fx
 
 np.random.seed(45)
+
+pytestmark = pytest.mark.skip(reason='Superseded by tests/test_math/ — see module docstring')
 
 
 class Data:

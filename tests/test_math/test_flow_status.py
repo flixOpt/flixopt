@@ -437,6 +437,75 @@ class TestFlowStatus:
         # Without limit: boiler serves both → fuel=25 (cheaper).
         assert_allclose(fs.solution['costs'].item(), 32.5, rtol=1e-5)
 
+    def test_max_uptime_standalone(self, optimize):
+        """Proves: max_uptime on a flow limits continuous operation, forcing
+        the unit to shut down and hand off to a backup.
+
+        CheapBoiler (eta=1.0) with max_uptime=2, previous_flow_rate=0.
+        ExpensiveBackup (eta=0.5). Demand=[10]*5.
+        Cheap boiler can run at most 2 consecutive hours, then must shut down.
+        Pattern: on(0,1), off(2), on(3,4) → cheap covers 4h, backup covers 1h.
+
+        Sensitivity: Without max_uptime, all 5 hours cheap → cost=50.
+        With max_uptime=2, backup covers 1 hour at eta=0.5 → cost=70.
+        """
+        fs = make_flow_system(5)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow(
+                        'heat',
+                        bus='Heat',
+                        size=1,
+                        fixed_relative_profile=np.array([10, 10, 10, 10, 10]),
+                    ),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+            ),
+            fx.linear_converters.Boiler(
+                'CheapBoiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=100,
+                    previous_flow_rate=0,
+                    status_parameters=fx.StatusParameters(max_uptime=2),
+                ),
+            ),
+            fx.linear_converters.Boiler(
+                'ExpensiveBackup',
+                thermal_efficiency=0.5,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow('heat', bus='Heat', size=100),
+            ),
+        )
+        fs = optimize(fs)
+        # CheapBoiler max 2 consecutive hours. Pattern: on,on,off,on,on.
+        # Cheap: 4×10 = 40 fuel. Expensive backup @t2: 10/0.5 = 20 fuel.
+        # Total = 60.
+        # Verify no more than 2 consecutive on-hours
+        status = fs.solution['CheapBoiler(heat)|status'].values[:-1]
+        max_consecutive = 0
+        current = 0
+        for s in status:
+            if s > 0.5:
+                current += 1
+                max_consecutive = max(max_consecutive, current)
+            else:
+                current = 0
+        assert max_consecutive <= 2, f'max_uptime violated: {status}'
+        # Cheap: 4×10 = 40 fuel. Backup @t2: 10/0.5 = 20 fuel. Total = 60.
+        assert_allclose(fs.solution['costs'].item(), 60.0, rtol=1e-5)
+
 
 class TestPreviousFlowRate:
     """Tests for previous_flow_rate determining initial status and uptime/downtime carry-over.
