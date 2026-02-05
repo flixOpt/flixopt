@@ -52,7 +52,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
-## [6.0.1] - 2026-02-04
+## [6.0.2] - 2026-02-04
 
 **Summary**: Patch release with bug fixes for JSON encoding, `Comparison` coordinate handling, and documentation.
 
@@ -63,8 +63,26 @@ Until here -->
 
 ### 📝 Docs
 
-- **Clustering Notebooks**: Added explicit `preserve_n_clusters=True` to all `ExtremeConfig` calls to fix FutureWarning from tsam v3.1 (#599)
 - **Docs Workflow**: Added `workflow_dispatch` inputs for manual docs deployment with version selection (#599)
+
+---
+
+## [6.0.1] - 2026-02-04
+
+**Summary**: Bugfix release addressing clustering issues with multi-period systems and ExtremeConfig.
+
+### 🐛 Fixed
+
+- **Multi-period clustering with ExtremeConfig** - Fixed `ValueError: cannot reshape array` when clustering multi-period or multi-scenario systems with `ExtremeConfig`. The fix uses pandas `.unstack()` instead of manual reshape for robustness.
+- **Consistent cluster count validation** - Added validation to detect inconsistent cluster counts across periods/scenarios, providing clear error messages.
+
+### 💥 Breaking Changes
+
+- **ExtremeConfig method restriction for multi-period systems** - When using `ExtremeConfig` with multi-period or multi-scenario systems, only `method='replace'` is now allowed. Using `method='new_cluster'` or `method='append'` will raise a `ValueError`. This works around a tsam bug where these methods can produce inconsistent cluster counts across slices.
+
+### 📦 Dependencies
+
+- Excluded tsam 3.1.0 from compatible versions due to clustering bug.
 
 ---
 

@@ -111,9 +111,19 @@ class _ReducedFlowSystemBuilder:
         # Extract info from first result (all should be consistent)
         first_result = next(iter(aggregation_results.values()))
         self._n_reduced_timesteps = len(first_result.cluster_representatives)
-        self._n_clusters = len(first_result.cluster_weights)
+        self._n_clusters = first_result.n_clusters
         self._is_segmented = first_result.n_segments is not None
         self._n_segments = first_result.n_segments
+
+        # Validate all results have consistent structure
+        for key, result in aggregation_results.items():
+            if result.n_clusters != self._n_clusters:
+                key_str = dict(zip(dim_names, key, strict=False)) if dim_names else key
+                raise ValueError(
+                    f'Inconsistent cluster counts across periods/scenarios: '
+                    f'{key_str} has {result.n_clusters} clusters, but expected {self._n_clusters}. '
+                    f'This can happen when ExtremeConfig does not preserve cluster counts.'
+                )
 
         # Pre-compute coordinates
         self._cluster_coords = np.arange(self._n_clusters)
@@ -173,17 +183,17 @@ class _ReducedFlowSystemBuilder:
 
         for key, tsam_result in self._aggregation_results.items():
             typical_df = tsam_result.cluster_representatives
-            if self._is_segmented:
-                columns = typical_df.columns.tolist()
-                reshaped = typical_df.values.reshape(self._n_clusters, self._n_time_points, -1)
-                for col_idx, col in enumerate(columns):
-                    da = xr.DataArray(reshaped[:, :, col_idx], dims=['cluster', 'time'], coords=self._base_coords)
-                    column_slices.setdefault(col, {})[key] = da
-            else:
-                for col in typical_df.columns:
-                    reshaped = typical_df[col].values.reshape(self._n_clusters, self._n_time_points)
-                    da = xr.DataArray(reshaped, dims=['cluster', 'time'], coords=self._base_coords)
-                    column_slices.setdefault(col, {})[key] = da
+            for col in typical_df.columns:
+                series = typical_df[col]
+                if self._is_segmented:
+                    # Segmented: MultiIndex (cluster, segment_step, segment_duration)
+                    # Drop duration level and unstack by segment step
+                    unstacked = series.droplevel('Segment Duration').unstack(level='Segment Step')
+                else:
+                    # Non-segmented: MultiIndex (cluster, timestep)
+                    unstacked = series.unstack(level='timestep')
+                da = xr.DataArray(unstacked.values, dims=['cluster', 'time'], coords=self._base_coords)
+                column_slices.setdefault(col, {})[key] = da
 
         return {
             col: self._expand_and_combine(data_per_key, ['cluster', 'time'])
@@ -1706,15 +1716,15 @@ class TransformAccessor:
             )
 
         # Validate ExtremeConfig compatibility with multi-period/scenario systems
-        # Without preserve_n_clusters=True, methods can produce different n_clusters per period,
-        # which breaks the xarray structure that requires uniform dimensions
+        # Only method='replace' reliably produces consistent cluster counts across all slices.
         total_slices = len(periods) * len(scenarios)
         if total_slices > 1 and extremes is not None:
-            if not extremes.preserve_n_clusters:
+            if extremes.method != 'replace':
                 raise ValueError(
-                    'ExtremeConfig must have preserve_n_clusters=True for multi-period '
-                    'or multi-scenario systems to ensure consistent cluster counts across all slices. '
-                    'Example: ExtremeConfig(method="new_cluster", max_value=[...], preserve_n_clusters=True)'
+                    f"ExtremeConfig method='{extremes.method}' is not supported for multi-period "
+                    "or multi-scenario systems. Only method='replace' reliably produces consistent "
+                    'cluster counts across all slices. Use: '
+                    "ExtremeConfig(..., method='replace')"
                 )
 
         # Build dim_names and clean key helper
