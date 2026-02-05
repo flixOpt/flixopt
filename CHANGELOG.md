@@ -64,6 +64,9 @@ Until here -->
 
 - **Docs Workflow**: Added `workflow_dispatch` inputs for manual docs deployment with version selection (#599)
 
+### 👷 Development
+
+- Updated dev dependencies to newer versions
 ---
 
 ## [6.0.1] - 2026-02-04
