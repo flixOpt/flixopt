@@ -13,7 +13,7 @@ each verifying a different pipeline:
 ``save->reload->solve``
     Proves the FlowSystem definition survives IO.
 ``solve->save->reload``
-    Proves the solution data survives IO.
+    Proves the solution data survives IO..
 """
 
 import pathlib
