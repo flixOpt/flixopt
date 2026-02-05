@@ -5,11 +5,11 @@ from numpy.testing import assert_allclose
 
 import flixopt as fx
 
-from .conftest import make_flow_system, solve
+from .conftest import make_flow_system
 
 
 class TestConversionEfficiency:
-    def test_boiler_efficiency(self):
+    def test_boiler_efficiency(self, solve):
         """Proves: Boiler applies Q_fu = Q_th / eta to compute fuel consumption.
 
         Sensitivity: If eta were ignored (treated as 1.0), cost would be 40 instead of 50.
@@ -42,7 +42,7 @@ class TestConversionEfficiency:
         # fuel = (10+20+10)/0.8 = 50, cost@1€/kWh = 50
         assert_allclose(fs.solution['costs'].item(), 50.0, rtol=1e-5)
 
-    def test_variable_efficiency(self):
+    def test_variable_efficiency(self, solve):
         """Proves: Boiler accepts a time-varying efficiency array and applies it per timestep.
 
         Sensitivity: If a scalar mean (0.75) were used, cost=26.67. If only the first
@@ -76,7 +76,7 @@ class TestConversionEfficiency:
         # fuel = 10/0.5 + 10/1.0 = 30
         assert_allclose(fs.solution['costs'].item(), 30.0, rtol=1e-5)
 
-    def test_chp_dual_output(self):
+    def test_chp_dual_output(self, solve):
         """Proves: CHP conversion factors for both thermal and electrical output are correct.
         fuel = Q_th / eta_th, P_el = fuel * eta_el. Revenue from P_el reduces total cost.
 

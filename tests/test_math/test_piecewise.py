@@ -5,11 +5,11 @@ from numpy.testing import assert_allclose
 
 import flixopt as fx
 
-from .conftest import make_flow_system, solve
+from .conftest import make_flow_system
 
 
 class TestPiecewise:
-    def test_piecewise_selects_cheap_segment(self):
+    def test_piecewise_selects_cheap_segment(self, solve):
         """Proves: PiecewiseConversion correctly interpolates within the active segment,
         and the optimizer selects the right segment for a given demand level.
 
@@ -55,7 +55,7 @@ class TestPiecewise:
         # cost per timestep = 76.667, total = 2 * 76.667 ≈ 153.333
         assert_allclose(fs.solution['costs'].item(), 2 * (30 + 30 / 45 * 70), rtol=1e-4)
 
-    def test_piecewise_conversion_at_breakpoint(self):
+    def test_piecewise_conversion_at_breakpoint(self, solve):
         """Proves: PiecewiseConversion is consistent at segment boundaries — both
         adjacent segments agree on the flow ratio at the shared breakpoint.
 
@@ -101,7 +101,7 @@ class TestPiecewise:
         # Verify fuel flow rate
         assert_allclose(fs.solution['Converter(fuel)|flow_rate'].values[0], 30.0, rtol=1e-5)
 
-    def test_piecewise_with_gap_forces_minimum_load(self):
+    def test_piecewise_with_gap_forces_minimum_load(self, solve):
         """Proves: Gaps between pieces create forbidden operating regions.
 
         Converter with pieces: [fuel 0→0 / heat 0→0] and [fuel 40→100 / heat 40→100].
@@ -158,7 +158,7 @@ class TestPiecewise:
         for h in heat:
             assert h < 1e-5 or h >= 40.0 - 1e-5, f'Heat in forbidden gap: {h}'
 
-    def test_piecewise_gap_allows_off_state(self):
+    def test_piecewise_gap_allows_off_state(self, solve):
         """Proves: Piecewise with off-state piece allows unit to be completely off
         when demand is below minimum load and backup is available.
 
@@ -217,7 +217,7 @@ class TestPiecewise:
         conv_heat = fs.solution['Converter(heat)|flow_rate'].values[:-1]
         assert_allclose(conv_heat, [0, 0], atol=1e-5)
 
-    def test_piecewise_varying_efficiency_across_segments(self):
+    def test_piecewise_varying_efficiency_across_segments(self, solve):
         """Proves: Different segments can have different efficiency ratios,
         allowing modeling of equipment with varying efficiency at different loads.
 

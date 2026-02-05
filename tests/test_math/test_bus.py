@@ -5,11 +5,11 @@ from numpy.testing import assert_allclose
 
 import flixopt as fx
 
-from .conftest import make_flow_system, solve
+from .conftest import make_flow_system
 
 
 class TestBusBalance:
-    def test_merit_order_dispatch(self):
+    def test_merit_order_dispatch(self, solve):
         """Proves: Bus balance forces total supply = demand, and the optimizer
         dispatches sources in merit order (cheapest first, up to capacity).
 
@@ -53,7 +53,7 @@ class TestBusBalance:
         assert_allclose(src1, [20, 20], rtol=1e-5)
         assert_allclose(src2, [10, 10], rtol=1e-5)
 
-    def test_imbalance_penalty(self):
+    def test_imbalance_penalty(self, solve):
         """Proves: imbalance_penalty_per_flow_hour creates a 'Penalty' effect that
         charges for any mismatch between supply and demand on a bus.
 
@@ -90,7 +90,7 @@ class TestBusBalance:
         assert_allclose(fs.solution['Penalty'].item(), 2000.0, rtol=1e-5)
         assert_allclose(fs.solution['objective'].item(), 2040.0, rtol=1e-5)
 
-    def test_prevent_simultaneous_flow_rates(self):
+    def test_prevent_simultaneous_flow_rates(self, solve):
         """Proves: prevent_simultaneous_flow_rates on a Source prevents multiple outputs
         from being active at the same time, forcing sequential operation.
 

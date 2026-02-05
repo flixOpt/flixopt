@@ -5,11 +5,11 @@ from numpy.testing import assert_allclose
 
 import flixopt as fx
 
-from .conftest import make_flow_system, solve
+from .conftest import make_flow_system
 
 
 class TestFlowConstraints:
-    def test_relative_minimum(self):
+    def test_relative_minimum(self, solve):
         """Proves: relative_minimum enforces a minimum flow rate as a fraction of size
         when the unit is active (status=1).
 
@@ -51,7 +51,7 @@ class TestFlowConstraints:
         flow = fs.solution['Boiler(heat)|flow_rate'].values[:-1]
         assert all(f >= 40.0 - 1e-5 for f in flow), f'Flow below relative_minimum: {flow}'
 
-    def test_relative_maximum(self):
+    def test_relative_maximum(self, solve):
         """Proves: relative_maximum limits the maximum flow rate as a fraction of size.
 
         Source (size=100, relative_maximum=0.5). Max output = 50 kW.
@@ -92,7 +92,7 @@ class TestFlowConstraints:
         flow = fs.solution['CheapSrc(heat)|flow_rate'].values[:-1]
         assert all(f <= 50.0 + 1e-5 for f in flow), f'Flow above relative_maximum: {flow}'
 
-    def test_flow_hours_max(self):
+    def test_flow_hours_max(self, solve):
         """Proves: flow_hours_max limits the total cumulative flow-hours per period.
 
         CheapSrc (flow_hours_max=30). Total allowed = 30 kWh over horizon.
@@ -133,7 +133,7 @@ class TestFlowConstraints:
         total_flow = fs.solution['CheapSrc(heat)|flow_rate'].values[:-1].sum()
         assert_allclose(total_flow, 30.0, rtol=1e-5)
 
-    def test_flow_hours_min(self):
+    def test_flow_hours_min(self, solve):
         """Proves: flow_hours_min forces a minimum total cumulative flow-hours per period.
 
         ExpensiveSrc (flow_hours_min=40). Must produce at least 40 kWh total.
@@ -174,7 +174,7 @@ class TestFlowConstraints:
         total_exp = fs.solution['ExpensiveSrc(heat)|flow_rate'].values[:-1].sum()
         assert total_exp >= 40.0 - 1e-5, f'ExpensiveSrc total below minimum: {total_exp}'
 
-    def test_load_factor_max(self):
+    def test_load_factor_max(self, solve):
         """Proves: load_factor_max limits utilization to (flow_hours) / (size × total_hours).
 
         CheapSrc (size=50, load_factor_max=0.5). Over 2 hours, max flow_hours = 50 × 2 × 0.5 = 50.
@@ -213,7 +213,7 @@ class TestFlowConstraints:
         # Total = 200
         assert_allclose(fs.solution['costs'].item(), 200.0, rtol=1e-5)
 
-    def test_load_factor_min(self):
+    def test_load_factor_min(self, solve):
         """Proves: load_factor_min forces minimum utilization (flow_hours) / (size × total_hours).
 
         ExpensiveSrc (size=100, load_factor_min=0.3). Over 2 hours, min flow_hours = 100 × 2 × 0.3 = 60.

@@ -9,11 +9,11 @@ from numpy.testing import assert_allclose
 
 import flixopt as fx
 
-from .conftest import make_flow_system, solve
+from .conftest import make_flow_system
 
 
 class TestFlowInvest:
-    def test_invest_size_optimized(self):
+    def test_invest_size_optimized(self, solve):
         """Proves: InvestParameters correctly sizes the unit to match peak demand
         when there is a per-size investment cost.
 
@@ -59,7 +59,7 @@ class TestFlowInvest:
         assert_allclose(fs.solution['Boiler(heat)|size'].item(), 50.0, rtol=1e-5)
         assert_allclose(fs.solution['costs'].item(), 140.0, rtol=1e-5)
 
-    def test_invest_optional_not_built(self):
+    def test_invest_optional_not_built(self, solve):
         """Proves: Optional investment is correctly skipped when the fixed investment
         cost outweighs operational savings.
 
@@ -113,7 +113,7 @@ class TestFlowInvest:
         # If invest were free, InvestBoiler would run: fuel = 20/1.0 = 20 (different!)
         assert_allclose(fs.solution['costs'].item(), 40.0, rtol=1e-5)
 
-    def test_invest_minimum_size(self):
+    def test_invest_minimum_size(self, solve):
         """Proves: InvestParameters.minimum_size forces the invested capacity to be
         at least the specified value, even when demand is much smaller.
 
@@ -162,7 +162,7 @@ class TestFlowInvest:
         # fuel=20, invest=100 → total=120
         assert_allclose(fs.solution['costs'].item(), 120.0, rtol=1e-5)
 
-    def test_invest_fixed_size(self):
+    def test_invest_fixed_size(self, solve):
         """Proves: fixed_size creates a binary invest-or-not decision at exactly the
         specified capacity — no continuous sizing.
 
@@ -219,7 +219,7 @@ class TestFlowInvest:
         # fuel=60 (all from FixedBoiler @eta=1), invest=10, total=70
         assert_allclose(fs.solution['costs'].item(), 70.0, rtol=1e-5)
 
-    def test_piecewise_invest_cost(self):
+    def test_piecewise_invest_cost(self, solve):
         """Proves: piecewise_effects_of_investment applies non-linear investment costs
         where the cost-per-size changes across size segments (economies of scale).
 
@@ -272,7 +272,7 @@ class TestFlowInvest:
         # invest = 100 + 30/150*150 = 100 + 30 = 130. fuel = 160*0.5 = 80. total = 210.
         assert_allclose(fs.solution['costs'].item(), 210.0, rtol=1e-5)
 
-    def test_invest_mandatory_forces_investment(self):
+    def test_invest_mandatory_forces_investment(self, solve):
         """Proves: mandatory=True forces investment even when it's not economical.
 
         ExpensiveBoiler: mandatory=True, fixed invest=1000€, per_size=1€/kW, eta=1.0.
@@ -332,7 +332,7 @@ class TestFlowInvest:
         # invest=1000+10*1=1010, fuel from ExpensiveBoiler=20 (eta=1.0), total=1030
         assert_allclose(fs.solution['costs'].item(), 1030.0, rtol=1e-5)
 
-    def test_invest_not_mandatory_skips_when_uneconomical(self):
+    def test_invest_not_mandatory_skips_when_uneconomical(self, solve):
         """Proves: mandatory=False (default) allows optimizer to skip investment
         when it's not economical.
 
@@ -390,7 +390,7 @@ class TestFlowInvest:
         # CheapBoiler covers all: fuel = 20/0.5 = 40
         assert_allclose(fs.solution['costs'].item(), 40.0, rtol=1e-5)
 
-    def test_invest_effects_of_retirement(self):
+    def test_invest_effects_of_retirement(self, solve):
         """Proves: effects_of_retirement adds a cost when NOT investing.
 
         Boiler with effects_of_retirement=500€. If not built, incur 500€ penalty.
@@ -448,7 +448,7 @@ class TestFlowInvest:
         assert_allclose(fs.solution['NewBoiler(heat)|invested'].item(), 1.0, atol=1e-5)
         assert_allclose(fs.solution['costs'].item(), 120.0, rtol=1e-5)
 
-    def test_invest_retirement_triggers_when_not_investing(self):
+    def test_invest_retirement_triggers_when_not_investing(self, solve):
         """Proves: effects_of_retirement is incurred when investment is skipped.
 
         Boiler with invest_cost=1000, effects_of_retirement=50.
@@ -510,7 +510,7 @@ class TestFlowInvest:
 class TestFlowInvestWithStatus:
     """Tests for combined InvestParameters and StatusParameters on the same Flow."""
 
-    def test_invest_with_startup_cost(self):
+    def test_invest_with_startup_cost(self, solve):
         """Proves: InvestParameters and StatusParameters work together correctly.
 
         Boiler with investment sizing AND startup costs.
@@ -558,7 +558,7 @@ class TestFlowInvestWithStatus:
         assert_allclose(fs.solution['Boiler(heat)|size'].item(), 20.0, rtol=1e-5)
         assert_allclose(fs.solution['costs'].item(), 170.0, rtol=1e-5)
 
-    def test_invest_with_min_uptime(self):
+    def test_invest_with_min_uptime(self, solve):
         """Proves: Invested unit respects min_uptime constraint.
 
         InvestBoiler with sizing AND min_uptime=2. Once started, must stay on 2 hours.
@@ -620,7 +620,7 @@ class TestFlowInvestWithStatus:
         status = fs.solution['InvestBoiler(heat)|status'].values[:-1]
         assert_allclose(status, [1, 1, 1], atol=1e-5)
 
-    def test_invest_with_active_hours_max(self):
+    def test_invest_with_active_hours_max(self, solve):
         """Proves: Invested unit respects active_hours_max constraint.
 
         InvestBoiler (eta=1.0) with active_hours_max=2. Backup (eta=0.5).

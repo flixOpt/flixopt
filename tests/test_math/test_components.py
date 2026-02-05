@@ -11,13 +11,13 @@ from numpy.testing import assert_allclose
 
 import flixopt as fx
 
-from .conftest import make_flow_system, solve
+from .conftest import make_flow_system
 
 
 class TestComponentStatus:
     """Tests for StatusParameters applied at the component level (not flow level)."""
 
-    def test_component_status_startup_cost(self):
+    def test_component_status_startup_cost(self, solve):
         """Proves: StatusParameters on LinearConverter applies startup cost when
         the component (all its flows) transitions to active.
 
@@ -56,7 +56,7 @@ class TestComponentStatus:
         # fuel=40, 2 startups × 100 = 200, total = 240
         assert_allclose(fs.solution['costs'].item(), 240.0, rtol=1e-5)
 
-    def test_component_status_min_uptime(self):
+    def test_component_status_min_uptime(self, solve):
         """Proves: min_uptime on component level forces the entire component
         to stay on for consecutive hours.
 
@@ -98,7 +98,7 @@ class TestComponentStatus:
         status = fs.solution['Boiler(heat)|status'].values[:-1]
         assert all(s > 0.5 for s in status), f'Component should be on all hours: {status}'
 
-    def test_component_status_active_hours_max(self):
+    def test_component_status_active_hours_max(self, solve):
         """Proves: active_hours_max on component level limits total operating hours.
 
         LinearConverter with active_hours_max=2. Backup available.
@@ -144,7 +144,7 @@ class TestComponentStatus:
         # total = 60
         assert_allclose(fs.solution['costs'].item(), 60.0, rtol=1e-5)
 
-    def test_component_status_effects_per_active_hour(self):
+    def test_component_status_effects_per_active_hour(self, solve):
         """Proves: effects_per_active_hour on component level adds cost per active hour.
 
         LinearConverter with effects_per_active_hour=50. Two hours of operation.
@@ -181,7 +181,7 @@ class TestComponentStatus:
         # fuel=20, active_hour_cost=2×50=100, total=120
         assert_allclose(fs.solution['costs'].item(), 120.0, rtol=1e-5)
 
-    def test_component_status_active_hours_min(self):
+    def test_component_status_active_hours_min(self, solve):
         """Proves: active_hours_min on component level forces minimum operating hours.
 
         Expensive LinearConverter with active_hours_min=2. Cheap backup available.
@@ -227,7 +227,7 @@ class TestComponentStatus:
         status = fs.solution['ExpensiveBoiler(heat)|status'].values[:-1]
         assert_allclose(status, [1, 1], atol=1e-5)
 
-    def test_component_status_max_uptime(self):
+    def test_component_status_max_uptime(self, solve):
         """Proves: max_uptime on component level limits continuous operation.
 
         LinearConverter with max_uptime=2, min_uptime=2, previous state was on for 1 hour.
@@ -285,7 +285,7 @@ class TestComponentStatus:
                 current_consecutive = 0
         assert max_consecutive <= 2, f'max_uptime violated: {status}'
 
-    def test_component_status_min_downtime(self):
+    def test_component_status_min_downtime(self, solve):
         """Proves: min_downtime on component level prevents quick restart.
 
         CheapBoiler with min_downtime=3, relative_minimum=0.1. Was on before horizon.
@@ -337,7 +337,7 @@ class TestComponentStatus:
         # Verify CheapBoiler is off at t=2
         assert fs.solution['CheapBoiler(heat)|status'].values[2] < 0.5
 
-    def test_component_status_max_downtime(self):
+    def test_component_status_max_downtime(self, solve):
         """Proves: max_downtime on component level forces restart after idle.
 
         ExpensiveBoiler with max_downtime=1 was on before horizon.
@@ -390,7 +390,7 @@ class TestComponentStatus:
         # With constraint, ExpensiveBoiler must run ≥2 hours → cost > 40
         assert fs.solution['costs'].item() > 40.0 + 1e-5
 
-    def test_component_status_startup_limit(self):
+    def test_component_status_startup_limit(self, solve):
         """Proves: startup_limit on component level caps number of startups.
 
         CheapBoiler with startup_limit=1, relative_minimum=0.5, was off before horizon.
@@ -448,7 +448,7 @@ class TestComponentStatus:
 class TestTransmission:
     """Tests for Transmission component with losses."""
 
-    def test_transmission_relative_losses(self):
+    def test_transmission_relative_losses(self, solve):
         """Proves: relative_losses correctly reduces transmitted energy.
 
         Transmission with relative_losses=0.1 (10% loss).
@@ -487,7 +487,7 @@ class TestTransmission:
         expected_cost = 100 / 0.9
         assert_allclose(fs.solution['costs'].item(), expected_cost, rtol=1e-4)
 
-    def test_transmission_absolute_losses(self):
+    def test_transmission_absolute_losses(self, solve):
         """Proves: absolute_losses adds fixed loss when transmission is active.
 
         Transmission with absolute_losses=5. When active, loses 5 kW regardless of flow.
@@ -525,7 +525,7 @@ class TestTransmission:
         # source = 40 + 10 = 50
         assert_allclose(fs.solution['costs'].item(), 50.0, rtol=1e-4)
 
-    def test_transmission_bidirectional(self):
+    def test_transmission_bidirectional(self, solve):
         """Proves: Bidirectional transmission allows flow in both directions.
 
         Two sources on opposite ends. Demand shifts between buses.
@@ -581,7 +581,7 @@ class TestTransmission:
 class TestHeatPump:
     """Tests for HeatPump component with COP."""
 
-    def test_heatpump_cop(self):
+    def test_heatpump_cop(self, solve):
         """Proves: HeatPump correctly applies COP to compute electrical consumption.
 
         HeatPump with cop=3. For 30 kW heat, needs 10 kW electricity.
@@ -617,7 +617,7 @@ class TestHeatPump:
         # heat=60, cop=3 → elec=20, cost=20
         assert_allclose(fs.solution['costs'].item(), 20.0, rtol=1e-5)
 
-    def test_heatpump_variable_cop(self):
+    def test_heatpump_variable_cop(self, solve):
         """Proves: HeatPump accepts time-varying COP array.
 
         cop=[2, 4]. t=0: 20kW heat needs 10kW elec. t=1: 20kW heat needs 5kW elec.
@@ -656,7 +656,7 @@ class TestHeatPump:
 class TestCoolingTower:
     """Tests for CoolingTower component."""
 
-    def test_cooling_tower_specific_electricity(self):
+    def test_cooling_tower_specific_electricity(self, solve):
         """Proves: CoolingTower correctly applies specific_electricity_demand.
 
         CoolingTower with specific_electricity_demand=0.1 (kWel/kWth).
