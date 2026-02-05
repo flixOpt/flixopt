@@ -52,6 +52,23 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
+## [6.0.2] - 2026-02-05
+
+**Summary**: Patch release which improves `Comparison` coordinate handling.
+
+### 🐛 Fixed
+
+- **Comparison Coordinates**: Fixed `component` coordinate becoming `(case, contributor)` shaped after concatenation in `Comparison` class. Non-index coordinates are now properly merged before concat in `solution`, `inputs`, and all statistics properties. Added warning when coordinate mappings conflict (#599)
+
+### 📝 Docs
+
+- **Docs Workflow**: Added `workflow_dispatch` inputs for manual docs deployment with version selection (#599)
+
+### 👷 Development
+
+- Updated dev dependencies to newer versions
+---
+
 ## [6.0.1] - 2026-02-04
 
 **Summary**: Bugfix release addressing clustering issues with multi-period systems and ExtremeConfig.
