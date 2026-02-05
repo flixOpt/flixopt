@@ -9,7 +9,7 @@ from .conftest import make_flow_system
 
 
 class TestEffects:
-    def test_effects_per_flow_hour(self, solve):
+    def test_effects_per_flow_hour(self, optimize):
         """Proves: effects_per_flow_hour correctly accumulates flow × rate for each
         named effect independently.
 
@@ -39,12 +39,12 @@ class TestEffects:
                 ],
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # costs = (10+20)*2 = 60, CO2 = (10+20)*0.5 = 15
         assert_allclose(fs.solution['costs'].item(), 60.0, rtol=1e-5)
         assert_allclose(fs.solution['CO2'].item(), 15.0, rtol=1e-5)
 
-    def test_share_from_temporal(self, solve):
+    def test_share_from_temporal(self, optimize):
         """Proves: share_from_temporal correctly adds a weighted fraction of one effect's
         temporal sum into another effect's total.
 
@@ -74,14 +74,14 @@ class TestEffects:
                 ],
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # direct costs = 20*1 = 20, CO2 = 20*10 = 200
         # costs += 0.5 * CO2_temporal = 0.5 * 200 = 100
         # total costs = 20 + 100 = 120
         assert_allclose(fs.solution['costs'].item(), 120.0, rtol=1e-5)
         assert_allclose(fs.solution['CO2'].item(), 200.0, rtol=1e-5)
 
-    def test_effect_maximum_total(self, solve):
+    def test_effect_maximum_total(self, optimize):
         """Proves: maximum_total on an effect constrains the optimizer to respect an
         upper bound on cumulative effect, forcing suboptimal dispatch.
 
@@ -117,13 +117,13 @@ class TestEffects:
                 ],
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Without CO2 limit: all from Dirty = 20€
         # With CO2 max=15: 15 from Dirty (15€), 5 from Clean (50€) → total 65€
         assert_allclose(fs.solution['costs'].item(), 65.0, rtol=1e-5)
         assert_allclose(fs.solution['CO2'].item(), 15.0, rtol=1e-5)
 
-    def test_effect_minimum_total(self, solve):
+    def test_effect_minimum_total(self, optimize):
         """Proves: minimum_total on an effect forces cumulative effect to reach at least
         the specified value, even if it means using a dirtier source.
 
@@ -163,14 +163,14 @@ class TestEffects:
                 ],
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Must produce ≥25 CO2. Only Dirty emits CO2 at 1kg/kWh → Dirty ≥ 25 kWh.
         # Demand only 20, so 5 excess. cost = 25*1 (Dirty) = 25 (Clean may be 0 or negative is not possible)
         # Actually cheapest: Dirty=25, Clean=0, excess=5 absorbed. cost=25
         assert_allclose(fs.solution['CO2'].item(), 25.0, rtol=1e-5)
         assert_allclose(fs.solution['costs'].item(), 25.0, rtol=1e-5)
 
-    def test_effect_maximum_per_hour(self, solve):
+    def test_effect_maximum_per_hour(self, optimize):
         """Proves: maximum_per_hour on an effect caps the per-timestep contribution,
         forcing the optimizer to spread dirty production across timesteps.
 
@@ -207,12 +207,12 @@ class TestEffects:
                 ],
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # t=0: Dirty=8 (capped), Clean=7. t=1: Dirty=5, Clean=0.
         # cost = (8+5)*1 + 7*5 = 13 + 35 = 48
         assert_allclose(fs.solution['costs'].item(), 48.0, rtol=1e-5)
 
-    def test_effect_minimum_per_hour(self, solve):
+    def test_effect_minimum_per_hour(self, optimize):
         """Proves: minimum_per_hour on an effect forces a minimum per-timestep
         contribution, even when zero would be cheaper.
 
@@ -242,12 +242,12 @@ class TestEffects:
                 ],
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Must emit ≥10 CO2 each ts → Dirty ≥ 10 each ts → cost = 20
         assert_allclose(fs.solution['costs'].item(), 20.0, rtol=1e-5)
         assert_allclose(fs.solution['CO2'].item(), 20.0, rtol=1e-5)
 
-    def test_effect_maximum_temporal(self, solve):
+    def test_effect_maximum_temporal(self, optimize):
         """Proves: maximum_temporal caps the sum of an effect's per-timestep contributions
         over the period, forcing suboptimal dispatch.
 
@@ -283,12 +283,12 @@ class TestEffects:
                 ],
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Dirty=12 @1€, Clean=8 @5€ → cost = 12 + 40 = 52
         assert_allclose(fs.solution['costs'].item(), 52.0, rtol=1e-5)
         assert_allclose(fs.solution['CO2'].item(), 12.0, rtol=1e-5)
 
-    def test_effect_minimum_temporal(self, solve):
+    def test_effect_minimum_temporal(self, optimize):
         """Proves: minimum_temporal forces the sum of an effect's per-timestep contributions
         to reach at least the specified value.
 
@@ -319,11 +319,11 @@ class TestEffects:
                 ],
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         assert_allclose(fs.solution['CO2'].item(), 25.0, rtol=1e-5)
         assert_allclose(fs.solution['costs'].item(), 25.0, rtol=1e-5)
 
-    def test_share_from_periodic(self, solve):
+    def test_share_from_periodic(self, optimize):
         """Proves: share_from_periodic adds a weighted fraction of one effect's periodic
         (investment/fixed) sum into another effect's total.
 
@@ -367,7 +367,7 @@ class TestEffects:
                 ),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # direct costs = 100 (invest) + 20 (fuel) = 120
         # CO2 periodic = 5 (from invest)
         # costs += 10 * 5 = 50
@@ -375,7 +375,7 @@ class TestEffects:
         assert_allclose(fs.solution['costs'].item(), 170.0, rtol=1e-5)
         assert_allclose(fs.solution['CO2'].item(), 5.0, rtol=1e-5)
 
-    def test_effect_maximum_periodic(self, solve):
+    def test_effect_maximum_periodic(self, optimize):
         """Proves: maximum_periodic limits the total periodic (investment-related) effect.
 
         Two boilers: CheapBoiler (invest=10€, CO2_periodic=100kg) and
@@ -433,14 +433,14 @@ class TestEffects:
                 ),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # CheapBoiler: invest=10, CO2_periodic=100 (exceeds limit 50)
         # ExpensiveBoiler: invest=50, CO2_periodic=10 (under limit)
         # Optimizer must choose ExpensiveBoiler: cost = 50 + 20 = 70
         assert_allclose(fs.solution['costs'].item(), 70.0, rtol=1e-5)
         assert fs.solution['CO2'].item() <= 50.0 + 1e-5
 
-    def test_effect_minimum_periodic(self, solve):
+    def test_effect_minimum_periodic(self, optimize):
         """Proves: minimum_periodic forces a minimum total periodic effect.
 
         Boiler with optional investment (invest=100€, CO2_periodic=50kg).
@@ -490,7 +490,7 @@ class TestEffects:
                 thermal_flow=fx.Flow('heat', bus='Heat', size=100),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # InvestBoiler: invest=100, CO2_periodic=50 (meets minimum 40)
         # Without investment, CO2_periodic=0 (fails minimum)
         # Optimizer must invest: cost = 100 + 20 = 120

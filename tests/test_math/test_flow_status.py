@@ -14,7 +14,7 @@ from .conftest import make_flow_system
 
 
 class TestFlowStatus:
-    def test_startup_cost(self, solve):
+    def test_startup_cost(self, optimize):
         """Proves: effects_per_startup adds a fixed cost each time the unit transitions to on.
 
         Demand pattern [0,10,0,10,0] forces 2 start-up events.
@@ -51,11 +51,11 @@ class TestFlowStatus:
                 ),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # fuel = (10+10)/0.5 = 40, startups = 2, cost = 40 + 200 = 240
         assert_allclose(fs.solution['costs'].item(), 240.0, rtol=1e-5)
 
-    def test_active_hours_max(self, solve):
+    def test_active_hours_max(self, optimize):
         """Proves: active_hours_max limits the total number of on-hours for a unit.
 
         Cheap boiler (eta=1.0) limited to 1 hour; expensive backup (eta=0.5).
@@ -99,13 +99,13 @@ class TestFlowStatus:
                 thermal_flow=fx.Flow('heat', bus='Heat', size=100),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # CheapBoiler runs at t=1 (biggest demand): cost = 20*1 = 20
         # ExpensiveBoiler covers t=0 and t=2: cost = (10+10)/0.5 = 40
         # Total = 60
         assert_allclose(fs.solution['costs'].item(), 60.0, rtol=1e-5)
 
-    def test_min_uptime_forces_operation(self, solve):
+    def test_min_uptime_forces_operation(self, optimize):
         """Proves: min_uptime forces a unit to stay on for at least N consecutive hours
         once started, even if cheaper to turn off earlier.
 
@@ -153,7 +153,7 @@ class TestFlowStatus:
                 thermal_flow=fx.Flow('heat', bus='Heat', size=100),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Boiler on t=0,1 (block of 2) and t=3,4 (block of 2). Off at t=2 → backup.
         # Boiler fuel: (5+10+18+12)/0.5 = 90. Backup fuel: 20/0.2 = 100. Total = 190.
         assert_allclose(fs.solution['costs'].item(), 190.0, rtol=1e-5)
@@ -163,7 +163,7 @@ class TestFlowStatus:
             atol=1e-5,
         )
 
-    def test_min_downtime_prevents_restart(self, solve):
+    def test_min_downtime_prevents_restart(self, optimize):
         """Proves: min_downtime prevents a unit from restarting before N consecutive
         off-hours have elapsed.
 
@@ -211,7 +211,7 @@ class TestFlowStatus:
                 thermal_flow=fx.Flow('heat', bus='Heat', size=100),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # t=0: Boiler on (fuel=20). Turns off at t=1.
         # min_downtime=3: must stay off t=1,2,3. Can't restart at t=2.
         # Backup covers t=2: fuel = 20/0.5 = 40.
@@ -220,7 +220,7 @@ class TestFlowStatus:
         # Verify boiler off at t=2 (where demand exists but can't restart)
         assert_allclose(fs.solution['Boiler(heat)|status'].values[2], 0.0, atol=1e-5)
 
-    def test_effects_per_active_hour(self, solve):
+    def test_effects_per_active_hour(self, optimize):
         """Proves: effects_per_active_hour adds a cost for each hour a unit is on,
         independent of the flow rate.
 
@@ -258,11 +258,11 @@ class TestFlowStatus:
                 ),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # fuel=20, active_hour_cost=2*50=100, total=120
         assert_allclose(fs.solution['costs'].item(), 120.0, rtol=1e-5)
 
-    def test_active_hours_min(self, solve):
+    def test_active_hours_min(self, optimize):
         """Proves: active_hours_min forces a unit to run for at least N hours total,
         even when turning off would be cheaper.
 
@@ -308,7 +308,7 @@ class TestFlowStatus:
                 thermal_flow=fx.Flow('heat', bus='Heat', size=100),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # ExpBoiler must run 2 hours. Cheapest: let it produce minimum, backup covers rest.
         # But ExpBoiler must be *on* 2 hours — it produces at least relative_minimum (default 0).
         # So ExpBoiler on but at 0 output? That won't help. Let me check: status on means flow > 0?
@@ -321,7 +321,7 @@ class TestFlowStatus:
         status = fs.solution['ExpBoiler(heat)|status'].values[:-1]
         assert_allclose(status, [1, 1], atol=1e-5)
 
-    def test_max_downtime(self, solve):
+    def test_max_downtime(self, optimize):
         """Proves: max_downtime forces a unit to restart after being off for N consecutive
         hours, preventing extended idle periods.
 
@@ -373,7 +373,7 @@ class TestFlowStatus:
                 thermal_flow=fx.Flow('heat', bus='Heat', size=100),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Verify max_downtime: no two consecutive off-hours
         status = fs.solution['ExpBoiler(heat)|status'].values[:-1]
         for i in range(len(status) - 1):
@@ -382,7 +382,7 @@ class TestFlowStatus:
         # With constraint, ExpBoiler must run ≥2 hours → cost > 40
         assert fs.solution['costs'].item() > 40.0 + 1e-5
 
-    def test_startup_limit(self, solve):
+    def test_startup_limit(self, optimize):
         """Proves: startup_limit caps the number of startup events per period.
 
         Boiler (eta=0.8, size=20, relative_minimum=0.5, startup_limit=1,
@@ -431,7 +431,7 @@ class TestFlowStatus:
                 thermal_flow=fx.Flow('heat', bus='Heat', size=100),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # startup_limit=1: Boiler starts once (1 peak @eta=0.8, fuel=12.5),
         # Backup serves other peak @eta=0.5 (fuel=20). Total=32.5.
         # Without limit: boiler serves both → fuel=25 (cheaper).
@@ -445,7 +445,7 @@ class TestPreviousFlowRate:
     Tests are designed to fail if previous_flow_rate is ignored.
     """
 
-    def test_previous_flow_rate_scalar_on_forces_min_uptime(self, solve):
+    def test_previous_flow_rate_scalar_on_forces_min_uptime(self, optimize):
         """Proves: previous_flow_rate=scalar>0 means unit was ON before t=0,
         and min_uptime carry-over forces it to stay on.
 
@@ -487,11 +487,11 @@ class TestPreviousFlowRate:
                 ),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Forced ON at t=0 (relative_min=10), cost=10. Without carry-over, cost=0.
         assert_allclose(fs.solution['costs'].item(), 10.0, rtol=1e-5)
 
-    def test_previous_flow_rate_scalar_off_no_carry_over(self, solve):
+    def test_previous_flow_rate_scalar_off_no_carry_over(self, optimize):
         """Proves: previous_flow_rate=0 means unit was OFF before t=0,
         so no min_uptime carry-over — unit can stay off at t=0.
 
@@ -531,11 +531,11 @@ class TestPreviousFlowRate:
                 ),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # No carry-over, can be off at t=0 → cost=0 (vs cost=10 if was on)
         assert_allclose(fs.solution['costs'].item(), 0.0, rtol=1e-5)
 
-    def test_previous_flow_rate_array_uptime_satisfied_vs_partial(self, solve):
+    def test_previous_flow_rate_array_uptime_satisfied_vs_partial(self, optimize):
         """Proves: previous_flow_rate array length affects uptime carry-over calculation.
 
         Scenario A: previous_flow_rate=[10, 20] (2 hours ON), min_uptime=2 → satisfied, can turn off
@@ -577,12 +577,12 @@ class TestPreviousFlowRate:
                 ),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # With 2h uptime history, min_uptime=2 is satisfied → can be off at t=0 → cost=0
         # If array were ignored (treated as scalar 20 = 1h), would force on → cost=10
         assert_allclose(fs.solution['costs'].item(), 0.0, rtol=1e-5)
 
-    def test_previous_flow_rate_array_partial_uptime_forces_continuation(self, solve):
+    def test_previous_flow_rate_array_partial_uptime_forces_continuation(self, optimize):
         """Proves: previous_flow_rate array with partial uptime forces continuation.
 
         Boiler with min_uptime=3, previous_flow_rate=[0, 10] (off then on for 1 hour).
@@ -623,13 +623,13 @@ class TestPreviousFlowRate:
                 ),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # previous_flow_rate=[0, 10]: consecutive uptime = 1 hour (only last ON counts)
         # min_uptime=3: needs 2 more hours → forced on at t=0, t=1 with relative_min=10
         # cost = 2 × 10 = 20 (vs cost=0 if previous_flow_rate ignored)
         assert_allclose(fs.solution['costs'].item(), 20.0, rtol=1e-5)
 
-    def test_previous_flow_rate_array_min_downtime_carry_over(self, solve):
+    def test_previous_flow_rate_array_min_downtime_carry_over(self, optimize):
         """Proves: previous_flow_rate array affects min_downtime carry-over.
 
         CheapBoiler with min_downtime=3, previous_flow_rate=[10, 0] (was on, then off for 1 hour).
@@ -675,14 +675,14 @@ class TestPreviousFlowRate:
                 thermal_flow=fx.Flow('heat', bus='Heat', size=100),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # previous_flow_rate=[10, 0]: last is OFF, consecutive downtime = 1 hour
         # min_downtime=3: needs 2 more off hours → CheapBoiler off t=0,t=1
         # ExpensiveBoiler covers t=0,t=1: 2×20/0.5 = 80. CheapBoiler covers t=2: 20.
         # Total = 100 (vs 60 if CheapBoiler could run all 3 hours)
         assert_allclose(fs.solution['costs'].item(), 100.0, rtol=1e-5)
 
-    def test_previous_flow_rate_array_longer_history(self, solve):
+    def test_previous_flow_rate_array_longer_history(self, optimize):
         """Proves: longer previous_flow_rate arrays correctly track consecutive hours.
 
         Boiler with min_uptime=4, previous_flow_rate=[0, 10, 20, 30] (off, then on for 3 hours).
@@ -723,7 +723,7 @@ class TestPreviousFlowRate:
                 ),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # previous_flow_rate=[0, 10, 20, 30]: consecutive uptime from end = 3 hours
         # min_uptime=4: needs 1 more → forced on at t=0 with relative_min=10
         # cost = 10 (vs cost=0 if 4h history [10,20,30,40] satisfied min_uptime)

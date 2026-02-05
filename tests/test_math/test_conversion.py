@@ -9,7 +9,7 @@ from .conftest import make_flow_system
 
 
 class TestConversionEfficiency:
-    def test_boiler_efficiency(self, solve):
+    def test_boiler_efficiency(self, optimize):
         """Proves: Boiler applies Q_fu = Q_th / eta to compute fuel consumption.
 
         Sensitivity: If eta were ignored (treated as 1.0), cost would be 40 instead of 50.
@@ -38,11 +38,11 @@ class TestConversionEfficiency:
                 thermal_flow=fx.Flow('heat', bus='Heat'),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # fuel = (10+20+10)/0.8 = 50, cost@1€/kWh = 50
         assert_allclose(fs.solution['costs'].item(), 50.0, rtol=1e-5)
 
-    def test_variable_efficiency(self, solve):
+    def test_variable_efficiency(self, optimize):
         """Proves: Boiler accepts a time-varying efficiency array and applies it per timestep.
 
         Sensitivity: If a scalar mean (0.75) were used, cost=26.67. If only the first
@@ -72,11 +72,11 @@ class TestConversionEfficiency:
                 thermal_flow=fx.Flow('heat', bus='Heat'),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # fuel = 10/0.5 + 10/1.0 = 30
         assert_allclose(fs.solution['costs'].item(), 30.0, rtol=1e-5)
 
-    def test_chp_dual_output(self, solve):
+    def test_chp_dual_output(self, optimize):
         """Proves: CHP conversion factors for both thermal and electrical output are correct.
         fuel = Q_th / eta_th, P_el = fuel * eta_el. Revenue from P_el reduces total cost.
 
@@ -116,7 +116,7 @@ class TestConversionEfficiency:
                 electrical_flow=fx.Flow('elec', bus='Elec'),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Per timestep: fuel = 50/0.5 = 100, elec = 100*0.4 = 40
         # Per timestep cost = 100*1 - 40*2 = 20, total = 2*20 = 40
         assert_allclose(fs.solution['costs'].item(), 40.0, rtol=1e-5)

@@ -9,7 +9,7 @@ from .conftest import make_flow_system
 
 
 class TestPiecewise:
-    def test_piecewise_selects_cheap_segment(self, solve):
+    def test_piecewise_selects_cheap_segment(self, optimize):
         """Proves: PiecewiseConversion correctly interpolates within the active segment,
         and the optimizer selects the right segment for a given demand level.
 
@@ -50,12 +50,12 @@ class TestPiecewise:
                 ),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # heat=45 in segment 2: fuel = 30 + (45-15)/(60-15) * (100-30) = 30 + 46.667 = 76.667
         # cost per timestep = 76.667, total = 2 * 76.667 ≈ 153.333
         assert_allclose(fs.solution['costs'].item(), 2 * (30 + 30 / 45 * 70), rtol=1e-4)
 
-    def test_piecewise_conversion_at_breakpoint(self, solve):
+    def test_piecewise_conversion_at_breakpoint(self, optimize):
         """Proves: PiecewiseConversion is consistent at segment boundaries — both
         adjacent segments agree on the flow ratio at the shared breakpoint.
 
@@ -95,13 +95,13 @@ class TestPiecewise:
                 ),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # At breakpoint: fuel = 30 per timestep, total = 60
         assert_allclose(fs.solution['costs'].item(), 60.0, rtol=1e-5)
         # Verify fuel flow rate
         assert_allclose(fs.solution['Converter(fuel)|flow_rate'].values[0], 30.0, rtol=1e-5)
 
-    def test_piecewise_with_gap_forces_minimum_load(self, solve):
+    def test_piecewise_with_gap_forces_minimum_load(self, optimize):
         """Proves: Gaps between pieces create forbidden operating regions.
 
         Converter with pieces: [fuel 0→0 / heat 0→0] and [fuel 40→100 / heat 40→100].
@@ -149,7 +149,7 @@ class TestPiecewise:
                 ),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Converter at 1€/kWh (via gas), CheapSrc at 10€/kWh
         # Converter serves all 50 each timestep → fuel = 100, cost = 100
         assert_allclose(fs.solution['costs'].item(), 100.0, rtol=1e-5)
@@ -158,7 +158,7 @@ class TestPiecewise:
         for h in heat:
             assert h < 1e-5 or h >= 40.0 - 1e-5, f'Heat in forbidden gap: {h}'
 
-    def test_piecewise_gap_allows_off_state(self, solve):
+    def test_piecewise_gap_allows_off_state(self, optimize):
         """Proves: Piecewise with off-state piece allows unit to be completely off
         when demand is below minimum load and backup is available.
 
@@ -208,7 +208,7 @@ class TestPiecewise:
                 ),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Converter expensive (10€/kWh gas) with min load 50: 2×50×10=1000
         # Backup cheap (1€/kWh): 2×20×1=40
         # Optimizer chooses backup (converter off)
@@ -217,7 +217,7 @@ class TestPiecewise:
         conv_heat = fs.solution['Converter(heat)|flow_rate'].values[:-1]
         assert_allclose(conv_heat, [0, 0], atol=1e-5)
 
-    def test_piecewise_varying_efficiency_across_segments(self, solve):
+    def test_piecewise_varying_efficiency_across_segments(self, optimize):
         """Proves: Different segments can have different efficiency ratios,
         allowing modeling of equipment with varying efficiency at different loads.
 
@@ -258,7 +258,7 @@ class TestPiecewise:
                 ),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # heat=35 in segment 2: fuel = 20 + (35-15)/(45-15) × 30 = 20 + 20 = 40
         # cost = 2 × 40 = 80
         assert_allclose(fs.solution['costs'].item(), 80.0, rtol=1e-5)

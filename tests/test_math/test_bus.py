@@ -9,7 +9,7 @@ from .conftest import make_flow_system
 
 
 class TestBusBalance:
-    def test_merit_order_dispatch(self, solve):
+    def test_merit_order_dispatch(self, optimize):
         """Proves: Bus balance forces total supply = demand, and the optimizer
         dispatches sources in merit order (cheapest first, up to capacity).
 
@@ -43,7 +43,7 @@ class TestBusBalance:
                 ],
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Src1 at max 20 @1€, Src2 covers remaining 10 @2€
         # cost = 2*(20*1 + 10*2) = 80
         assert_allclose(fs.solution['costs'].item(), 80.0, rtol=1e-5)
@@ -53,7 +53,7 @@ class TestBusBalance:
         assert_allclose(src1, [20, 20], rtol=1e-5)
         assert_allclose(src2, [10, 10], rtol=1e-5)
 
-    def test_imbalance_penalty(self, solve):
+    def test_imbalance_penalty(self, optimize):
         """Proves: imbalance_penalty_per_flow_hour creates a 'Penalty' effect that
         charges for any mismatch between supply and demand on a bus.
 
@@ -82,7 +82,7 @@ class TestBusBalance:
                 ],
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Each timestep: source=20, demand=10, excess=10
         # fuel = 2*20*1 = 40, penalty = 2*10*100 = 2000
         # Penalty goes to separate 'Penalty' effect, not 'costs'
@@ -90,7 +90,7 @@ class TestBusBalance:
         assert_allclose(fs.solution['Penalty'].item(), 2000.0, rtol=1e-5)
         assert_allclose(fs.solution['objective'].item(), 2040.0, rtol=1e-5)
 
-    def test_prevent_simultaneous_flow_rates(self, solve):
+    def test_prevent_simultaneous_flow_rates(self, optimize):
         """Proves: prevent_simultaneous_flow_rates on a Source prevents multiple outputs
         from being active at the same time, forcing sequential operation.
 
@@ -139,7 +139,7 @@ class TestBusBalance:
                 ],
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Each timestep: DualSrc serves one bus @1€, backup serves other @5€
         # cost per ts = 10*1 + 10*5 = 60, total = 120
         assert_allclose(fs.solution['costs'].item(), 120.0, rtol=1e-5)

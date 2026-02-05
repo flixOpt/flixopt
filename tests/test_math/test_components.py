@@ -17,7 +17,7 @@ from .conftest import make_flow_system
 class TestComponentStatus:
     """Tests for StatusParameters applied at the component level (not flow level)."""
 
-    def test_component_status_startup_cost(self, solve):
+    def test_component_status_startup_cost(self, optimize):
         """Proves: StatusParameters on LinearConverter applies startup cost when
         the component (all its flows) transitions to active.
 
@@ -52,11 +52,11 @@ class TestComponentStatus:
                 status_parameters=fx.StatusParameters(effects_per_startup=100),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # fuel=40, 2 startups × 100 = 200, total = 240
         assert_allclose(fs.solution['costs'].item(), 240.0, rtol=1e-5)
 
-    def test_component_status_min_uptime(self, solve):
+    def test_component_status_min_uptime(self, optimize):
         """Proves: min_uptime on component level forces the entire component
         to stay on for consecutive hours.
 
@@ -91,14 +91,14 @@ class TestComponentStatus:
                 status_parameters=fx.StatusParameters(min_uptime=2),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Demand must be met: fuel = 20 + 10 + 20 = 50
         assert_allclose(fs.solution['costs'].item(), 50.0, rtol=1e-5)
         # Verify component is on all 3 hours (min_uptime forces continuous operation)
         status = fs.solution['Boiler(heat)|status'].values[:-1]
         assert all(s > 0.5 for s in status), f'Component should be on all hours: {status}'
 
-    def test_component_status_active_hours_max(self, solve):
+    def test_component_status_active_hours_max(self, optimize):
         """Proves: active_hours_max on component level limits total operating hours.
 
         LinearConverter with active_hours_max=2. Backup available.
@@ -138,13 +138,13 @@ class TestComponentStatus:
                 thermal_flow=fx.Flow('heat', bus='Heat', size=100),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # CheapBoiler: 2 hours × 10 = 20
         # ExpensiveBackup: 2 hours × 10/0.5 = 40
         # total = 60
         assert_allclose(fs.solution['costs'].item(), 60.0, rtol=1e-5)
 
-    def test_component_status_effects_per_active_hour(self, solve):
+    def test_component_status_effects_per_active_hour(self, optimize):
         """Proves: effects_per_active_hour on component level adds cost per active hour.
 
         LinearConverter with effects_per_active_hour=50. Two hours of operation.
@@ -177,11 +177,11 @@ class TestComponentStatus:
                 status_parameters=fx.StatusParameters(effects_per_active_hour=50),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # fuel=20, active_hour_cost=2×50=100, total=120
         assert_allclose(fs.solution['costs'].item(), 120.0, rtol=1e-5)
 
-    def test_component_status_active_hours_min(self, solve):
+    def test_component_status_active_hours_min(self, optimize):
         """Proves: active_hours_min on component level forces minimum operating hours.
 
         Expensive LinearConverter with active_hours_min=2. Cheap backup available.
@@ -222,12 +222,12 @@ class TestComponentStatus:
                 conversion_factors=[{'fuel': 1, 'heat': 1}],
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # ExpensiveBoiler must be on 2 hours (status=1). Verify status.
         status = fs.solution['ExpensiveBoiler(heat)|status'].values[:-1]
         assert_allclose(status, [1, 1], atol=1e-5)
 
-    def test_component_status_max_uptime(self, solve):
+    def test_component_status_max_uptime(self, optimize):
         """Proves: max_uptime on component level limits continuous operation.
 
         LinearConverter with max_uptime=2, min_uptime=2, previous state was on for 1 hour.
@@ -268,7 +268,7 @@ class TestComponentStatus:
                 conversion_factors=[{'fuel': 1, 'heat': 2}],  # eta=0.5 (fuel:heat = 1:2 → eta = 1/2)
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # With previous 1h uptime + max_uptime=2: can run 1 more hour, then must stop.
         # Pattern forced: [on,off,on,on,off] or similar with blocks of ≤2 consecutive.
         # CheapBoiler runs 4 hours, ExpensiveBackup runs 1 hour.
@@ -285,7 +285,7 @@ class TestComponentStatus:
                 current_consecutive = 0
         assert max_consecutive <= 2, f'max_uptime violated: {status}'
 
-    def test_component_status_min_downtime(self, solve):
+    def test_component_status_min_downtime(self, optimize):
         """Proves: min_downtime on component level prevents quick restart.
 
         CheapBoiler with min_downtime=3, relative_minimum=0.1. Was on before horizon.
@@ -328,7 +328,7 @@ class TestComponentStatus:
                 ],  # eta=0.5 (fuel:heat = 1:2 → eta = 1/2) (1 fuel → 0.5 heat)
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # t=0: CheapBoiler on (20). At t=1 demand=0, relative_min forces off.
         # min_downtime=3: must stay off t=1,2,3. Can't restart at t=2.
         # Backup covers t=2: fuel = 20/0.5 = 40.
@@ -337,7 +337,7 @@ class TestComponentStatus:
         # Verify CheapBoiler is off at t=2
         assert fs.solution['CheapBoiler(heat)|status'].values[2] < 0.5
 
-    def test_component_status_max_downtime(self, solve):
+    def test_component_status_max_downtime(self, optimize):
         """Proves: max_downtime on component level forces restart after idle.
 
         ExpensiveBoiler with max_downtime=1 was on before horizon.
@@ -381,7 +381,7 @@ class TestComponentStatus:
                 conversion_factors=[{'fuel': 1, 'heat': 1}],
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # max_downtime=1: no two consecutive off-hours for ExpensiveBoiler
         status = fs.solution['ExpensiveBoiler(heat)|status'].values[:-1]
         for i in range(len(status) - 1):
@@ -390,7 +390,7 @@ class TestComponentStatus:
         # With constraint, ExpensiveBoiler must run ≥2 hours → cost > 40
         assert fs.solution['costs'].item() > 40.0 + 1e-5
 
-    def test_component_status_startup_limit(self, solve):
+    def test_component_status_startup_limit(self, optimize):
         """Proves: startup_limit on component level caps number of startups.
 
         CheapBoiler with startup_limit=1, relative_minimum=0.5, was off before horizon.
@@ -434,7 +434,7 @@ class TestComponentStatus:
                 ],  # eta=0.5 (fuel:heat = 1:2 → eta = 1/2) (1 fuel → 0.5 heat)
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # With relative_minimum=0.5 on size=20, when ON must produce ≥10 heat.
         # At t=1 with demand=0, staying on would overproduce → must turn off.
         # So optimally needs: on-off-on = 2 startups.
@@ -448,7 +448,7 @@ class TestComponentStatus:
 class TestTransmission:
     """Tests for Transmission component with losses."""
 
-    def test_transmission_relative_losses(self, solve):
+    def test_transmission_relative_losses(self, optimize):
         """Proves: relative_losses correctly reduces transmitted energy.
 
         Transmission with relative_losses=0.1 (10% loss).
@@ -481,13 +481,13 @@ class TestTransmission:
                 relative_losses=0.1,
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # demand=100, with 10% loss: source = 100 / 0.9 ≈ 111.11
         # cost ≈ 111.11
         expected_cost = 100 / 0.9
         assert_allclose(fs.solution['costs'].item(), expected_cost, rtol=1e-4)
 
-    def test_transmission_absolute_losses(self, solve):
+    def test_transmission_absolute_losses(self, optimize):
         """Proves: absolute_losses adds fixed loss when transmission is active.
 
         Transmission with absolute_losses=5. When active, loses 5 kW regardless of flow.
@@ -520,12 +520,12 @@ class TestTransmission:
                 absolute_losses=5,
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # demand=40, absolute_losses=5 per active hour × 2 = 10
         # source = 40 + 10 = 50
         assert_allclose(fs.solution['costs'].item(), 50.0, rtol=1e-4)
 
-    def test_transmission_bidirectional(self, solve):
+    def test_transmission_bidirectional(self, optimize):
         """Proves: Bidirectional transmission allows flow in both directions.
 
         Two sources on opposite ends. Demand shifts between buses.
@@ -571,7 +571,7 @@ class TestTransmission:
                 out2=fx.Flow('left_out', bus='Left', size=100),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # t=0: LeftDemand=20 from LeftSource @1€ = 20
         # t=1: RightDemand=20 from LeftSource via Transmission @1€ = 20
         # total = 40 (vs 20+200=220 if only local sources)
@@ -581,7 +581,7 @@ class TestTransmission:
 class TestHeatPump:
     """Tests for HeatPump component with COP."""
 
-    def test_heatpump_cop(self, solve):
+    def test_heatpump_cop(self, optimize):
         """Proves: HeatPump correctly applies COP to compute electrical consumption.
 
         HeatPump with cop=3. For 30 kW heat, needs 10 kW electricity.
@@ -613,11 +613,11 @@ class TestHeatPump:
                 thermal_flow=fx.Flow('heat', bus='Heat'),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # heat=60, cop=3 → elec=20, cost=20
         assert_allclose(fs.solution['costs'].item(), 20.0, rtol=1e-5)
 
-    def test_heatpump_variable_cop(self, solve):
+    def test_heatpump_variable_cop(self, optimize):
         """Proves: HeatPump accepts time-varying COP array.
 
         cop=[2, 4]. t=0: 20kW heat needs 10kW elec. t=1: 20kW heat needs 5kW elec.
@@ -648,7 +648,7 @@ class TestHeatPump:
                 thermal_flow=fx.Flow('heat', bus='Heat'),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # t=0: 20/2=10, t=1: 20/4=5, total elec=15, cost=15
         assert_allclose(fs.solution['costs'].item(), 15.0, rtol=1e-5)
 
@@ -656,7 +656,7 @@ class TestHeatPump:
 class TestCoolingTower:
     """Tests for CoolingTower component."""
 
-    def test_cooling_tower_specific_electricity(self, solve):
+    def test_cooling_tower_specific_electricity(self, optimize):
         """Proves: CoolingTower correctly applies specific_electricity_demand.
 
         CoolingTower with specific_electricity_demand=0.1 (kWel/kWth).
@@ -689,6 +689,6 @@ class TestCoolingTower:
                 electrical_flow=fx.Flow('elec', bus='Elec'),
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # heat=200, specific_elec=0.1 → elec = 200 * 0.1 = 20
         assert_allclose(fs.solution['costs'].item(), 20.0, rtol=1e-5)

@@ -9,7 +9,7 @@ from .conftest import make_flow_system
 
 
 class TestStorage:
-    def test_storage_shift_saves_money(self, solve):
+    def test_storage_shift_saves_money(self, optimize):
         """Proves: Storage enables temporal arbitrage — charge cheap, discharge when expensive.
 
         Sensitivity: Without storage, demand at t=2 must be bought at 10€/kWh → cost=200.
@@ -42,11 +42,11 @@ class TestStorage:
                 relative_loss_per_hour=0,
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Optimal: buy 20 at t=1 @1€ = 20€  (not 20@10€ = 200€)
         assert_allclose(fs.solution['costs'].item(), 20.0, rtol=1e-5)
 
-    def test_storage_losses(self, solve):
+    def test_storage_losses(self, optimize):
         """Proves: relative_loss_per_hour correctly reduces stored energy over time.
 
         Sensitivity: If losses were ignored (0%), only 90 would be charged → cost=90.
@@ -79,12 +79,12 @@ class TestStorage:
                 relative_loss_per_hour=0.1,
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Must charge 100 at t=0: after 1h loss = 100*(1-0.1) = 90 available
         # cost = 100 * 1 = 100
         assert_allclose(fs.solution['costs'].item(), 100.0, rtol=1e-5)
 
-    def test_storage_eta_charge_discharge(self, solve):
+    def test_storage_eta_charge_discharge(self, optimize):
         """Proves: eta_charge and eta_discharge are both applied to the energy flow.
         Stored = charged * eta_charge; discharged = stored * eta_discharge.
 
@@ -118,12 +118,12 @@ class TestStorage:
                 relative_loss_per_hour=0,
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Need 72 out → discharge = 72, stored needed = 72/0.8 = 90
         # charge needed = 90/0.9 = 100 → cost = 100*1 = 100
         assert_allclose(fs.solution['costs'].item(), 100.0, rtol=1e-5)
 
-    def test_storage_soc_bounds(self, solve):
+    def test_storage_soc_bounds(self, optimize):
         """Proves: relative_maximum_charge_state caps how much energy can be stored.
 
         Storage has 100 kWh capacity but max SOC = 0.5 → only 50 kWh usable.
@@ -161,12 +161,12 @@ class TestStorage:
                 relative_loss_per_hour=0,
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Can store max 50 at t=0 @1€ = 50€. Remaining 10 at t=1 @100€ = 1000€.
         # Total = 1050. Without SOC limit: 60@1€ = 60€ (different!)
         assert_allclose(fs.solution['costs'].item(), 1050.0, rtol=1e-5)
 
-    def test_storage_cyclic_charge_state(self, solve):
+    def test_storage_cyclic_charge_state(self, optimize):
         """Proves: initial_charge_state='equals_final' forces the storage to end at the
         same level it started, preventing free energy extraction.
 
@@ -203,12 +203,12 @@ class TestStorage:
                 relative_loss_per_hour=0,
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Charge 50 at t=0 @1€, discharge 50 at t=1. Final = initial (cyclic).
         # cost = 50*1 = 50
         assert_allclose(fs.solution['costs'].item(), 50.0, rtol=1e-5)
 
-    def test_storage_minimal_final_charge_state(self, solve):
+    def test_storage_minimal_final_charge_state(self, optimize):
         """Proves: minimal_final_charge_state forces the storage to retain at least the
         specified absolute energy at the end, even when discharging would be profitable.
 
@@ -246,11 +246,11 @@ class TestStorage:
                 relative_loss_per_hour=0,
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Charge 80 at t=0 @1€, discharge 20 at t=1. Final SOC=60. cost=80.
         assert_allclose(fs.solution['costs'].item(), 80.0, rtol=1e-5)
 
-    def test_storage_invest_capacity(self, solve):
+    def test_storage_invest_capacity(self, optimize):
         """Proves: InvestParameters on capacity_in_flow_hours correctly sizes the storage.
         The optimizer balances investment cost against operational savings.
 
@@ -290,13 +290,13 @@ class TestStorage:
                 relative_loss_per_hour=0,
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         # Invest 50 kWh @1€/kWh = 50€. Buy 50 at t=0 @1€ = 50€. Total = 100€.
         # Without storage: buy 50 at t=1 @10€ = 500€.
         assert_allclose(fs.solution['Battery|size'].item(), 50.0, rtol=1e-5)
         assert_allclose(fs.solution['costs'].item(), 100.0, rtol=1e-5)
 
-    def test_prevent_simultaneous_charge_and_discharge(self, solve):
+    def test_prevent_simultaneous_charge_and_discharge(self, optimize):
         """Proves: prevent_simultaneous_charge_and_discharge=True prevents the storage
         from charging and discharging in the same timestep.
 
@@ -340,7 +340,7 @@ class TestStorage:
                 prevent_simultaneous_charge_and_discharge=True,
             ),
         )
-        solve(fs)
+        fs = optimize(fs)
         charge = fs.solution['Battery(charge)|flow_rate'].values[:-1]
         discharge = fs.solution['Battery(discharge)|flow_rate'].values[:-1]
         # At no timestep should both be > 0
