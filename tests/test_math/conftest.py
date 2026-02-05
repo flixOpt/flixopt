@@ -5,9 +5,15 @@ model and asserts that the objective (or key solution variables) match a
 hand-calculated value. This catches regressions in formulations without
 relying on recorded baselines.
 
-The ``optimize`` fixture is parametrized so every test runs twice: once
-directly, and once after a NetCDF round-trip (save to disk, reload) to
-verify IO preservation.
+The ``optimize`` fixture is parametrized so every test runs three times,
+each verifying a different pipeline:
+
+``solve``
+    Baseline correctness check.
+``save->reload->solve``
+    Proves the FlowSystem definition survives IO.
+``solve->save->reload``
+    Proves the solution data survives IO.
 """
 
 import pathlib
@@ -18,6 +24,8 @@ import pytest
 
 import flixopt as fx
 
+_SOLVER = fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=60, log_to_console=False)
+
 
 def make_flow_system(n_timesteps: int = 3) -> fx.FlowSystem:
     """Create a minimal FlowSystem with the given number of hourly timesteps."""
@@ -25,21 +33,30 @@ def make_flow_system(n_timesteps: int = 3) -> fx.FlowSystem:
     return fx.FlowSystem(ts)
 
 
-@pytest.fixture(params=['direct', 'netcdf_roundtrip'])
-def optimize(request):
-    """Callable fixture that optimizes a FlowSystem and returns it.
+def _netcdf_roundtrip(fs: fx.FlowSystem) -> fx.FlowSystem:
+    """Save to NetCDF and reload."""
+    with tempfile.TemporaryDirectory() as d:
+        path = pathlib.Path(d) / 'flow_system.nc'
+        fs.to_netcdf(path)
+        return fx.FlowSystem.from_netcdf(path)
 
-    ``direct``           -- optimize as-is.
-    ``netcdf_roundtrip`` -- save to NetCDF, reload, then optimize.
-    """
+
+@pytest.fixture(
+    params=[
+        'solve',
+        'save->reload->solve',
+        'solve->save->reload',
+    ]
+)
+def optimize(request):
+    """Callable fixture that optimizes a FlowSystem and returns it."""
 
     def _optimize(fs: fx.FlowSystem) -> fx.FlowSystem:
-        if request.param == 'netcdf_roundtrip':
-            with tempfile.TemporaryDirectory() as d:
-                path = pathlib.Path(d) / 'flow_system.nc'
-                fs.to_netcdf(path)
-                fs = fx.FlowSystem.from_netcdf(path)
-        fs.optimize(fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=60, log_to_console=False))
+        if request.param == 'save->reload->solve':
+            fs = _netcdf_roundtrip(fs)
+        fs.optimize(_SOLVER)
+        if request.param == 'solve->save->reload':
+            fs = _netcdf_roundtrip(fs)
         return fs
 
     return _optimize
