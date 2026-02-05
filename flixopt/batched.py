@@ -1571,6 +1571,15 @@ class FlowsData:
 
     # === Validation ===
 
+    def _any_per_flow(self, arr: xr.DataArray) -> xr.DataArray:
+        """Reduce to (flow,) by collapsing all non-flow dims with .any()."""
+        non_flow_dims = [d for d in arr.dims if d != self.dim_name]
+        return arr.any(dim=non_flow_dims) if non_flow_dims else arr
+
+    def _flagged_ids(self, mask: xr.DataArray) -> list[str]:
+        """Return flow IDs where mask is True."""
+        return [fid for fid, flag in zip(self.ids, mask.values, strict=False) if flag]
+
     def validate(self) -> None:
         """Validate all flows (config + DataArray checks).
 
@@ -1581,7 +1590,6 @@ class FlowsData:
         Raises:
             PlausibilityError: If any validation check fails.
         """
-        # Early return if no flows (avoids empty DataArray operations)
         if not self.elements:
             return
 
@@ -1591,51 +1599,44 @@ class FlowsData:
         errors: list[str] = []
 
         # Batched checks: relative_minimum <= relative_maximum
-        invalid_bounds = (self.relative_minimum > self.relative_maximum).any(
-            dim=[d for d in self.relative_minimum.dims if d != 'flow']
-        )
+        invalid_bounds = self._any_per_flow(self.relative_minimum > self.relative_maximum)
         if invalid_bounds.any():
-            bad_flows = [fid for fid, bad in zip(self.ids, invalid_bounds.values, strict=False) if bad]
-            errors.append(f'relative_minimum > relative_maximum for flows: {bad_flows}')
+            errors.append(f'relative_minimum > relative_maximum for flows: {self._flagged_ids(invalid_bounds)}')
 
         # Check: size required when relative_minimum > 0
-        has_nonzero_min = (self.relative_minimum > 0).any(dim=[d for d in self.relative_minimum.dims if d != 'flow'])
-        needs_size_for_min = has_nonzero_min & ~self.has_size
-        if needs_size_for_min.any():
-            bad_flows = [fid for fid, bad in zip(self.ids, needs_size_for_min.values, strict=False) if bad]
+        has_nonzero_min = self._any_per_flow(self.relative_minimum > 0)
+        if (has_nonzero_min & ~self.has_size).any():
             errors.append(
-                f'relative_minimum > 0 but no size defined for flows: {bad_flows}. '
+                f'relative_minimum > 0 but no size defined for flows: '
+                f'{self._flagged_ids(has_nonzero_min & ~self.has_size)}. '
                 f'A size is required because the lower bound is size * relative_minimum.'
             )
 
         # Check: size required when relative_maximum < 1
-        has_nondefault_max = (self.relative_maximum < 1).any(dim=[d for d in self.relative_maximum.dims if d != 'flow'])
-        needs_size_for_max = has_nondefault_max & ~self.has_size
-        if needs_size_for_max.any():
-            bad_flows = [fid for fid, bad in zip(self.ids, needs_size_for_max.values, strict=False) if bad]
+        has_nondefault_max = self._any_per_flow(self.relative_maximum < 1)
+        if (has_nondefault_max & ~self.has_size).any():
             errors.append(
-                f'relative_maximum < 1 but no size defined for flows: {bad_flows}. '
+                f'relative_maximum < 1 but no size defined for flows: '
+                f'{self._flagged_ids(has_nondefault_max & ~self.has_size)}. '
                 f'A size is required because the upper bound is size * relative_maximum.'
             )
 
         # Warning: relative_minimum > 0 without status_parameters prevents switching inactive
         has_nonzero_min_no_status = has_nonzero_min & ~self.has_status
         if has_nonzero_min_no_status.any():
-            warn_flows = [fid for fid, warn in zip(self.ids, has_nonzero_min_no_status.values, strict=False) if warn]
             logger.warning(
-                f'Flows {warn_flows} have relative_minimum > 0 and no status_parameters. '
-                f'This prevents the flow from switching inactive (flow_rate = 0). '
+                f'Flows {self._flagged_ids(has_nonzero_min_no_status)} have relative_minimum > 0 '
+                f'and no status_parameters. This prevents the flow from switching inactive (flow_rate = 0). '
                 f'Consider using status_parameters to allow switching active and inactive.'
             )
 
         # Warning: status_parameters with relative_minimum=0 allows status=1 with flow=0
         has_zero_min_with_status = ~has_nonzero_min & self.has_status
         if has_zero_min_with_status.any():
-            warn_flows = [fid for fid, warn in zip(self.ids, has_zero_min_with_status.values, strict=False) if warn]
             logger.warning(
-                f'Flows {warn_flows} have status_parameters but relative_minimum=0. '
-                f'This allows status=1 with flow=0, which may lead to unexpected behavior. '
-                f'Consider setting relative_minimum > 0 to ensure the unit produces when active.'
+                f'Flows {self._flagged_ids(has_zero_min_with_status)} have status_parameters but '
+                f'relative_minimum=0. This allows status=1 with flow=0, which may lead to unexpected '
+                f'behavior. Consider setting relative_minimum > 0 to ensure the unit produces when active.'
             )
 
         if errors:

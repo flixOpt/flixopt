@@ -180,15 +180,15 @@ class _FlowConstraint:
     UPTIME_UB = f'{FlowVarName.UPTIME}|ub'
     UPTIME_FORWARD = f'{FlowVarName.UPTIME}|forward'
     UPTIME_BACKWARD = f'{FlowVarName.UPTIME}|backward'
-    UPTIME_INITIAL_UB = f'{FlowVarName.UPTIME}|initial_ub'
-    UPTIME_INITIAL_LB = f'{FlowVarName.UPTIME}|initial_lb'
+    UPTIME_INITIAL = f'{FlowVarName.UPTIME}|initial'
+    UPTIME_INITIAL_CONTINUATION = f'{FlowVarName.UPTIME}|initial_continuation'
 
     # Downtime tracking constraints (built from variable name)
     DOWNTIME_UB = f'{FlowVarName.DOWNTIME}|ub'
     DOWNTIME_FORWARD = f'{FlowVarName.DOWNTIME}|forward'
     DOWNTIME_BACKWARD = f'{FlowVarName.DOWNTIME}|backward'
-    DOWNTIME_INITIAL_UB = f'{FlowVarName.DOWNTIME}|initial_ub'
-    DOWNTIME_INITIAL_LB = f'{FlowVarName.DOWNTIME}|initial_lb'
+    DOWNTIME_INITIAL = f'{FlowVarName.DOWNTIME}|initial'
+    DOWNTIME_INITIAL_CONTINUATION = f'{FlowVarName.DOWNTIME}|initial_continuation'
 
 
 FlowVarName.Constraint = _FlowConstraint
@@ -233,15 +233,15 @@ class _ComponentConstraint:
     UPTIME_UB = f'{ComponentVarName.UPTIME}|ub'
     UPTIME_FORWARD = f'{ComponentVarName.UPTIME}|forward'
     UPTIME_BACKWARD = f'{ComponentVarName.UPTIME}|backward'
-    UPTIME_INITIAL_UB = f'{ComponentVarName.UPTIME}|initial_ub'
-    UPTIME_INITIAL_LB = f'{ComponentVarName.UPTIME}|initial_lb'
+    UPTIME_INITIAL = f'{ComponentVarName.UPTIME}|initial'
+    UPTIME_INITIAL_CONTINUATION = f'{ComponentVarName.UPTIME}|initial_continuation'
 
     # Downtime tracking constraints
     DOWNTIME_UB = f'{ComponentVarName.DOWNTIME}|ub'
     DOWNTIME_FORWARD = f'{ComponentVarName.DOWNTIME}|forward'
     DOWNTIME_BACKWARD = f'{ComponentVarName.DOWNTIME}|backward'
-    DOWNTIME_INITIAL_UB = f'{ComponentVarName.DOWNTIME}|initial_ub'
-    DOWNTIME_INITIAL_LB = f'{ComponentVarName.DOWNTIME}|initial_lb'
+    DOWNTIME_INITIAL = f'{ComponentVarName.DOWNTIME}|initial'
+    DOWNTIME_INITIAL_CONTINUATION = f'{ComponentVarName.DOWNTIME}|initial_continuation'
 
 
 ComponentVarName.Constraint = _ComponentConstraint

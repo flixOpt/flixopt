@@ -502,7 +502,7 @@ class TestFlowOnModel:
         assert 'flow|uptime|ub' in model.constraints
         assert 'flow|uptime|forward' in model.constraints
         assert 'flow|uptime|backward' in model.constraints
-        assert 'flow|uptime|initial_ub' in model.constraints
+        assert 'flow|uptime|initial' in model.constraints
 
         # Get individual flow variables
         uptime = model.variables['flow|uptime'].sel(flow=flow_label, drop=True)
@@ -532,9 +532,10 @@ class TestFlowOnModel:
             + (status.isel(time=slice(1, None)) - 1) * mega,
         )
 
+        # duration[0] = (previous_duration + dt[0]) * state[0]; previous_uptime=0
         assert_conequal(
-            model.constraints['flow|uptime|initial_ub'].sel(flow=flow_label, drop=True),
-            uptime.isel(time=0) <= status.isel(time=0) * model.timestep_duration.isel(time=0),
+            model.constraints['flow|uptime|initial'].sel(flow=flow_label, drop=True),
+            uptime.isel(time=0) == status.isel(time=0) * model.timestep_duration.isel(time=0),
         )
 
     def test_consecutive_on_hours_previous(self, basic_flow_system_linopy_coords, coords_config):
@@ -564,7 +565,7 @@ class TestFlowOnModel:
         assert 'flow|uptime|ub' in model.constraints
         assert 'flow|uptime|forward' in model.constraints
         assert 'flow|uptime|backward' in model.constraints
-        assert 'flow|uptime|initial_lb' in model.constraints
+        assert 'flow|uptime|initial' in model.constraints
 
         # Get individual flow variables
         uptime = model.variables['flow|uptime'].sel(flow=flow_label, drop=True)
@@ -595,7 +596,7 @@ class TestFlowOnModel:
         )
 
         # Check that initial constraint exists (with previous uptime incorporated)
-        assert 'flow|uptime|initial_lb' in model.constraints
+        assert 'flow|uptime|initial' in model.constraints
 
     def test_consecutive_off_hours(self, basic_flow_system_linopy_coords, coords_config):
         """Test flow with minimum and maximum consecutive inactive hours."""
@@ -624,7 +625,7 @@ class TestFlowOnModel:
         assert 'flow|downtime|ub' in model.constraints
         assert 'flow|downtime|forward' in model.constraints
         assert 'flow|downtime|backward' in model.constraints
-        assert 'flow|downtime|initial_ub' in model.constraints
+        assert 'flow|downtime|initial' in model.constraints
 
         # Get individual flow variables
         downtime = model.variables['flow|downtime'].sel(flow=flow_label, drop=True)
@@ -656,9 +657,10 @@ class TestFlowOnModel:
             + (inactive.isel(time=slice(1, None)) - 1) * mega,
         )
 
+        # duration[0] = (previous_duration + dt[0]) * state[0]; previous_downtime=1h
         assert_conequal(
-            model.constraints['flow|downtime|initial_ub'].sel(flow=flow_label, drop=True),
-            downtime.isel(time=0) <= inactive.isel(time=0) * (model.timestep_duration.isel(time=0) * (1 + 1)),
+            model.constraints['flow|downtime|initial'].sel(flow=flow_label, drop=True),
+            downtime.isel(time=0) == inactive.isel(time=0) * (model.timestep_duration.isel(time=0) * (1 + 1)),
         )
 
     def test_consecutive_off_hours_previous(self, basic_flow_system_linopy_coords, coords_config):
@@ -688,7 +690,7 @@ class TestFlowOnModel:
         assert 'flow|downtime|ub' in model.constraints
         assert 'flow|downtime|forward' in model.constraints
         assert 'flow|downtime|backward' in model.constraints
-        assert 'flow|downtime|initial_lb' in model.constraints
+        assert 'flow|downtime|initial' in model.constraints
 
         # Get individual flow variables
         downtime = model.variables['flow|downtime'].sel(flow=flow_label, drop=True)
@@ -719,7 +721,7 @@ class TestFlowOnModel:
         )
 
         # Check that initial constraint exists (with previous downtime incorporated)
-        assert 'flow|downtime|initial_lb' in model.constraints
+        assert 'flow|downtime|initial' in model.constraints
 
     def test_switch_on_constraints(self, basic_flow_system_linopy_coords, coords_config):
         """Test flow with constraints on the number of startups."""
