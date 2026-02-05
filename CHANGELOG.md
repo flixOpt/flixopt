@@ -52,7 +52,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
-## [6.0.2] - 2026-02-04
+## [6.0.2] - 2026-02-05
 
 **Summary**: Patch release which improves `Comparison` coordinate handling.
 
