@@ -11,7 +11,7 @@ from ...conftest import (
     create_linopy_model,
 )
 
-pytestmark = pytest.mark.skip(reason='Stale: model-building tests implicitly covered by tests/test_math/')
+pytestmark = pytest.mark.skip(reason='Superseded: model-building tests implicitly covered by tests/test_math/')
 
 
 class TestEffectModel:

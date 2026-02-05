@@ -1,7 +1,7 @@
 """Tests for the new solution persistence API.
 
 .. deprecated::
-    STALE — The IO roundtrip tests (TestSolutionPersistence, TestFlowSystemFileIO)
+    Superseded — The IO roundtrip tests (TestSolutionPersistence, TestFlowSystemFileIO)
     are superseded by the test_math/ ``optimize`` fixture which runs every math test
     in 3 modes: solve, save→reload→solve, solve→save→reload — totalling 274 implicit
     IO roundtrips across all component types.
@@ -25,7 +25,7 @@ from ..conftest import (
 )
 
 pytestmark = pytest.mark.skip(
-    reason='Stale: IO roundtrips superseded by tests/test_math/ optimize fixture — see module docstring'
+    reason='Superseded: IO roundtrips covered by tests/test_math/ optimize fixture — see module docstring'
 )
 
 

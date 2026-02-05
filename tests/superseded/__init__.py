@@ -1,4 +1,4 @@
-"""Stale tests superseded by tests/test_math/.
+"""Superseded tests — replaced by tests/test_math/.
 
 These tests have been replaced by more thorough, analytically verified tests
 in tests/test_math/. They are kept temporarily for reference and will be

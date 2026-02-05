@@ -2,7 +2,7 @@
 Integration tests for complex energy systems.
 
 .. deprecated::
-    STALE — These regression baseline tests are partially superseded by tests/test_math/:
+    Superseded — These regression baseline tests are partially superseded by tests/test_math/:
     - test_simple_flow_system → test_math/test_conversion.py + test_math/test_effects.py
     - test_model_components → test_math/test_conversion.py (boiler/CHP flow rates)
     - test_basic_flow_system → spread across test_math/ (effects, conversion, storage)
@@ -18,7 +18,7 @@ from ..conftest import (
     assert_almost_equal_numeric,
 )
 
-pytestmark = pytest.mark.skip(reason='Stale: superseded by tests/test_math/ — see module docstring')
+pytestmark = pytest.mark.skip(reason='Superseded by tests/test_math/ — see module docstring')
 
 
 class TestFlowSystem:

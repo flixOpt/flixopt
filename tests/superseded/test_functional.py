@@ -2,7 +2,7 @@
 Unit tests for the flixopt framework.
 
 .. deprecated::
-    STALE — These tests are superseded by tests/test_math/ which provides more thorough,
+    Superseded — These tests are superseded by tests/test_math/ which provides more thorough,
     analytically verified coverage with sensitivity documentation. Specifically:
     - Investment tests → test_math/test_flow_invest.py (9 tests + 3 invest+status combo tests)
     - Status tests → test_math/test_flow_status.py (9 tests + 6 previous_flow_rate tests)
@@ -22,7 +22,7 @@ import flixopt as fx
 
 np.random.seed(45)
 
-pytestmark = pytest.mark.skip(reason='Stale: superseded by tests/test_math/ — see module docstring')
+pytestmark = pytest.mark.skip(reason='Superseded by tests/test_math/ — see module docstring')
 
 
 class Data:
