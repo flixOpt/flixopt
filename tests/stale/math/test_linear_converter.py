@@ -4,7 +4,9 @@ import xarray as xr
 
 import flixopt as fx
 
-from .conftest import assert_conequal, assert_dims_compatible, assert_var_equal, create_linopy_model
+from ...conftest import assert_conequal, assert_dims_compatible, assert_var_equal, create_linopy_model
+
+pytestmark = pytest.mark.skip(reason='Stale: model-building tests implicitly covered by tests/test_math/')
 
 
 class TestLinearConverterModel:
