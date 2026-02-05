@@ -400,11 +400,8 @@ class Sources:
 # ============================================================================
 
 
-@pytest.fixture
-def simple_flow_system() -> fx.FlowSystem:
-    """
-    Create a simple energy system for testing
-    """
+def build_simple_flow_system() -> fx.FlowSystem:
+    """Create a simple energy system for testing (factory function)."""
     base_timesteps = pd.date_range('2020-01-01', periods=9, freq='h', name='time')
     timesteps_length = len(base_timesteps)
     base_thermal_load = LoadProfiles.thermal_simple(timesteps_length)
@@ -429,6 +426,12 @@ def simple_flow_system() -> fx.FlowSystem:
     flow_system.add_elements(storage, costs, co2, boiler, heat_load, gas_tariff, electricity_feed_in, chp)
 
     return flow_system
+
+
+@pytest.fixture
+def simple_flow_system() -> fx.FlowSystem:
+    """Create a simple energy system for testing."""
+    return build_simple_flow_system()
 
 
 @pytest.fixture
