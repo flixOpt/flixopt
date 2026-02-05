@@ -12,6 +12,15 @@ on:
       - 'docs/**'
       - 'mkdocs.yml'
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy docs to GitHub Pages'
+        type: boolean
+        default: false
+      version:
+        description: 'Version to deploy (e.g., v6.0.0)'
+        type: string
+        required: false
   workflow_call:
     inputs:
       deploy:
