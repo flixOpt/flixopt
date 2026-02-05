@@ -19,6 +19,7 @@ each verifying a different pipeline:
 import pathlib
 import tempfile
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -31,6 +32,40 @@ def make_flow_system(n_timesteps: int = 3) -> fx.FlowSystem:
     """Create a minimal FlowSystem with the given number of hourly timesteps."""
     ts = pd.date_range('2020-01-01', periods=n_timesteps, freq='h')
     return fx.FlowSystem(ts)
+
+
+def make_multi_period_flow_system(
+    n_timesteps: int = 3,
+    periods=None,
+    weight_of_last_period=None,
+) -> fx.FlowSystem:
+    """Create a FlowSystem with multi-period support."""
+    ts = pd.date_range('2020-01-01', periods=n_timesteps, freq='h')
+    if periods is None:
+        periods = [2020, 2025]
+    return fx.FlowSystem(
+        ts,
+        periods=pd.Index(periods, name='period'),
+        weight_of_last_period=weight_of_last_period,
+    )
+
+
+def make_scenario_flow_system(
+    n_timesteps: int = 3,
+    scenarios=None,
+    scenario_weights=None,
+) -> fx.FlowSystem:
+    """Create a FlowSystem with scenario support."""
+    ts = pd.date_range('2020-01-01', periods=n_timesteps, freq='h')
+    if scenarios is None:
+        scenarios = ['low', 'high']
+    if scenario_weights is not None and not isinstance(scenario_weights, np.ndarray):
+        scenario_weights = np.array(scenario_weights)
+    return fx.FlowSystem(
+        ts,
+        scenarios=pd.Index(scenarios, name='scenario'),
+        scenario_weights=scenario_weights,
+    )
 
 
 def _netcdf_roundtrip(fs: fx.FlowSystem) -> fx.FlowSystem:
