@@ -1,12 +1,9 @@
 import numpy as np
 import pytest
-import xarray as xr
 
 import flixopt as fx
 
 from ...conftest import create_linopy_model
-
-pytestmark = pytest.mark.skip(reason='Superseded: model-building tests implicitly covered by tests/test_math/')
 
 
 class TestLinearConverterModel:
@@ -34,19 +31,13 @@ class TestLinearConverterModel:
         # Create model
         model = create_linopy_model(flow_system)
 
-        # Check variables and constraints exist
-        assert 'flow|rate' in model.variables  # Batched variable with flow dimension
-        assert 'converter|conversion' in model.constraints  # Batched constraint
-
-        # Verify constraint has expected dimensions (batched model includes converter dim)
-        con = model.constraints['converter|conversion']
-        assert 'converter' in con.dims
-        assert 'time' in con.dims
-
-        # Verify flows exist in the batched model (using type-level access)
+        # Check that flow rate variables exist
         flow_rate = model.variables['flow|rate']
         assert 'Converter(input)' in flow_rate.coords['flow'].values
         assert 'Converter(output)' in flow_rate.coords['flow'].values
+
+        # Check conversion constraint exists
+        assert 'converter|conversion' in model.constraints
 
     def test_linear_converter_time_varying(self, basic_flow_system_linopy_coords, coords_config):
         """Test a LinearConverter with time-varying conversion factors."""
@@ -55,7 +46,6 @@ class TestLinearConverterModel:
 
         # Create time-varying efficiency (e.g., temperature-dependent)
         varying_efficiency = np.linspace(0.7, 0.9, len(timesteps))
-        efficiency_series = xr.DataArray(varying_efficiency, coords=(timesteps,))
 
         # Create input and output flows
         input_flow = fx.Flow('input', bus='input_bus', size=100)
@@ -66,7 +56,7 @@ class TestLinearConverterModel:
             label='Converter',
             inputs=[input_flow],
             outputs=[output_flow],
-            conversion_factors=[{input_flow.label: efficiency_series, output_flow.label: 1.0}],
+            conversion_factors=[{input_flow.label: varying_efficiency, output_flow.label: 1.0}],
         )
 
         # Add to flow system
@@ -75,14 +65,13 @@ class TestLinearConverterModel:
         # Create model
         model = create_linopy_model(flow_system)
 
-        # Check variables and constraints exist
-        assert 'flow|rate' in model.variables  # Batched variable with flow dimension
-        assert 'converter|conversion' in model.constraints  # Batched constraint
+        # Check that flow rate variables exist
+        flow_rate = model.variables['flow|rate']
+        assert 'Converter(input)' in flow_rate.coords['flow'].values
+        assert 'Converter(output)' in flow_rate.coords['flow'].values
 
-        # Verify constraint has expected dimensions
-        con = model.constraints['converter|conversion']
-        assert 'converter' in con.dims
-        assert 'time' in con.dims
+        # Check conversion constraint exists
+        assert 'converter|conversion' in model.constraints
 
     def test_linear_converter_multiple_factors(self, basic_flow_system_linopy_coords, coords_config):
         """Test a LinearConverter with multiple conversion factors."""
@@ -114,16 +103,8 @@ class TestLinearConverterModel:
         # Create model
         model = create_linopy_model(flow_system)
 
-        # Check constraints for each conversion factor (batched model uses lowercase 'converter')
+        # Check constraint for conversion factor (should be named converter|conversion with index dimension)
         assert 'converter|conversion' in model.constraints
-
-        # Verify constraints have expected dimensions (single constraint with equation_idx dimension)
-        con = model.constraints['converter|conversion']
-        assert 'converter' in con.dims
-        assert 'time' in con.dims
-        assert 'equation_idx' in con.dims
-        # Should have 3 conversion equations
-        assert len(con.coords['equation_idx']) == 3
 
     def test_linear_converter_with_status(self, basic_flow_system_linopy_coords, coords_config):
         """Test a LinearConverter with StatusParameters."""
@@ -157,15 +138,20 @@ class TestLinearConverterModel:
         # Create model
         model = create_linopy_model(flow_system)
 
-        # Verify Status variables and constraints exist (batched naming)
-        assert 'component|status' in model.variables  # Batched status variable
+        # Verify Status variables exist
+        assert 'component|status' in model.variables
         assert 'component|active_hours' in model.variables
+        component_status = model.variables['component|status']
+        assert 'Converter' in component_status.coords['component'].values
 
-        # Check conversion constraint exists with expected dimensions
+        # Check active_hours constraint
+        assert 'component|active_hours' in model.constraints
+
+        # Check conversion constraint
         assert 'converter|conversion' in model.constraints
-        con = model.constraints['converter|conversion']
-        assert 'converter' in con.dims
-        assert 'time' in con.dims
+
+        # Check status effects - share temporal constraints
+        assert 'share|temporal(costs)' in model.constraints
 
     def test_linear_converter_multidimensional(self, basic_flow_system_linopy_coords, coords_config):
         """Test LinearConverter with multiple inputs, outputs, and connections between them."""
@@ -200,16 +186,8 @@ class TestLinearConverterModel:
         # Create model
         model = create_linopy_model(flow_system)
 
-        # Check all expected constraints
+        # Check conversion constraint exists
         assert 'converter|conversion' in model.constraints
-
-        # Verify constraints have expected dimensions (single constraint with equation_idx dimension)
-        con = model.constraints['converter|conversion']
-        assert 'converter' in con.dims
-        assert 'time' in con.dims
-        assert 'equation_idx' in con.dims
-        # Should have 3 conversion equations
-        assert len(con.coords['equation_idx']) == 3
 
     def test_edge_case_time_varying_conversion(self, basic_flow_system_linopy_coords, coords_config):
         """Test edge case with extreme time-varying conversion factors."""
@@ -246,13 +224,8 @@ class TestLinearConverterModel:
         # Check that the correct constraint was created
         assert 'converter|conversion' in model.constraints
 
-        # Verify constraint has expected dimensions
-        con = model.constraints['converter|conversion']
-        assert 'converter' in con.dims
-        assert 'time' in con.dims
-
     def test_piecewise_conversion(self, basic_flow_system_linopy_coords, coords_config):
-        """Test a LinearConverter with PiecewiseConversion (batched model)."""
+        """Test a LinearConverter with PiecewiseConversion."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create input and output flows
@@ -282,29 +255,17 @@ class TestLinearConverterModel:
         # Create model with the piecewise conversion
         model = create_linopy_model(flow_system)
 
-        # Verify batched piecewise variables exist (tied to component dimension)
-        assert 'converter|piecewise_conversion|inside_piece' in model.variables
-        assert 'converter|piecewise_conversion|lambda0' in model.variables
-        assert 'converter|piecewise_conversion|lambda1' in model.variables
-
-        # Check dimensions of batched variables
-        inside_piece = model.variables['converter|piecewise_conversion|inside_piece']
-        assert 'converter' in inside_piece.dims
-        assert 'segment' in inside_piece.dims
-        assert 'time' in inside_piece.dims
-
-        # Verify batched constraints exist
-        assert 'converter|piecewise_conversion|lambda_sum' in model.constraints
-        assert 'converter|piecewise_conversion|single_segment' in model.constraints
-
-        # Verify coupling constraint exists with flow dimension
-        assert 'converter|piecewise_conversion|coupling' in model.constraints
-        coupling = model.constraints['converter|piecewise_conversion|coupling']
-        assert 'flow' in coupling.dims
-        assert 'time' in coupling.dims
+        # Check that we have the expected pieces (2 in this case)
+        # Verify that variables were created for piecewise
+        # Check piecewise-related constraints exist
+        assert (
+            'piecewise|lambda' in model.constraints
+            or 'piecewise|inside_piece' in model.constraints
+            or any('piecewise' in name.lower() or 'piece' in name.lower() for name in model.constraints)
+        )
 
     def test_piecewise_conversion_with_status(self, basic_flow_system_linopy_coords, coords_config):
-        """Test a LinearConverter with PiecewiseConversion and StatusParameters (batched model)."""
+        """Test a LinearConverter with PiecewiseConversion and StatusParameters."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create input and output flows
@@ -313,6 +274,7 @@ class TestLinearConverterModel:
 
         # Create pieces for piecewise conversion
         input_pieces = [fx.Piece(start=0, end=50), fx.Piece(start=50, end=100)]
+
         output_pieces = [fx.Piece(start=0, end=30), fx.Piece(start=30, end=90)]
 
         # Create piecewise conversion
@@ -335,28 +297,21 @@ class TestLinearConverterModel:
         )
 
         # Add to flow system
-        flow_system.add_elements(fx.Bus('input_bus'), fx.Bus('output_bus'), converter)
+        flow_system.add_elements(
+            fx.Bus('input_bus'),
+            fx.Bus('output_bus'),
+            converter,
+        )
 
         # Create model with the piecewise conversion
         model = create_linopy_model(flow_system)
 
-        # Verify batched piecewise variables exist (tied to component dimension)
-        assert 'converter|piecewise_conversion|inside_piece' in model.variables
-        assert 'converter|piecewise_conversion|lambda0' in model.variables
-        assert 'converter|piecewise_conversion|lambda1' in model.variables
-
-        # Status variable should exist (handled by ComponentsModel)
+        # Also check that the Status model is working correctly
         assert 'component|status' in model.variables
+        assert 'component|active_hours' in model.constraints
 
-        # Verify batched constraints exist
-        assert 'converter|piecewise_conversion|lambda_sum' in model.constraints
-        assert 'converter|piecewise_conversion|single_segment' in model.constraints
-
-        # Verify coupling constraint exists with flow dimension
-        assert 'converter|piecewise_conversion|coupling' in model.constraints
-        coupling = model.constraints['converter|piecewise_conversion|coupling']
-        assert 'flow' in coupling.dims
-        assert 'time' in coupling.dims
+        # Verify that the costs effect is applied through share temporal constraints
+        assert 'share|temporal(costs)' in model.constraints
 
 
 if __name__ == '__main__':

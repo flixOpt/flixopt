@@ -101,15 +101,52 @@ class LegacySolutionWrapper:
             if not isinstance(key, str):
                 raise e
 
-            # Try legacy effect access: solution['costs'] -> solution['effect|total'].sel(effect='costs')
-            if 'effect' in ds.coords and key in ds.coords['effect'].values:
-                warnings.warn(
-                    f"Legacy solution access: solution['{key}'] is deprecated. "
-                    f"Use solution['effect|total'].sel(effect='{key}') instead.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-                return ds['effect|total'].sel(effect=key)
+            # Try legacy effect access patterns
+            if 'effect' in ds.coords:
+                # Pattern: 'costs' -> 'effect|total'.sel(effect='costs')
+                if key in ds.coords['effect'].values:
+                    warnings.warn(
+                        f"Legacy solution access: solution['{key}'] is deprecated. "
+                        f"Use solution['effect|total'].sel(effect='{key}') instead.",
+                        DeprecationWarning,
+                        stacklevel=2,
+                    )
+                    return ds['effect|total'].sel(effect=key)
+
+                # Pattern: 'costs(periodic)' -> 'effect|periodic'.sel(effect='costs')
+                # Pattern: 'costs(temporal)' -> 'effect|temporal'.sel(effect='costs')
+                import re
+
+                match = re.match(r'^(.+)\((periodic|temporal)\)$', key)
+                if match:
+                    effect_name, aspect = match.groups()
+                    if effect_name in ds.coords['effect'].values:
+                        new_key = f'effect|{aspect}'
+                        if new_key in ds:
+                            warnings.warn(
+                                f"Legacy solution access: solution['{key}'] is deprecated. "
+                                f"Use solution['{new_key}'].sel(effect='{effect_name}') instead.",
+                                DeprecationWarning,
+                                stacklevel=2,
+                            )
+                            return ds[new_key].sel(effect=effect_name)
+
+                # Pattern: 'costs(temporal)|per_timestep' -> 'effect|per_timestep'.sel(effect='costs')
+                if '|' in key:
+                    prefix, suffix = key.rsplit('|', 1)
+                    match = re.match(r'^(.+)\((temporal|periodic)\)$', prefix)
+                    if match:
+                        effect_name, aspect = match.groups()
+                        if effect_name in ds.coords['effect'].values:
+                            new_key = f'effect|{suffix}'
+                            if new_key in ds:
+                                warnings.warn(
+                                    f"Legacy solution access: solution['{key}'] is deprecated. "
+                                    f"Use solution['{new_key}'].sel(effect='{effect_name}') instead.",
+                                    DeprecationWarning,
+                                    stacklevel=2,
+                                )
+                                return ds[new_key].sel(effect=effect_name)
 
             # Try legacy flow/storage access: solution['Src(heat)|flow_rate'] -> solution['flow|rate'].sel(flow='Src(heat)')
             if '|' in key:
