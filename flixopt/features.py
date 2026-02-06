@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 if TYPE_CHECKING:
@@ -163,17 +164,25 @@ def sparse_multiply_sum(
 def fast_notnull(arr: xr.DataArray) -> xr.DataArray:
     """Fast notnull check using numpy (~55x faster than xr.DataArray.notnull()).
 
+    Handles non-float dtypes (integer, object) via safe fallback to pd.isnull.
+
     Args:
         arr: DataArray to check for non-null values.
 
     Returns:
         Boolean DataArray with True where values are not NaN.
     """
-    return xr.DataArray(~np.isnan(arr.values), dims=arr.dims, coords=arr.coords)
+    try:
+        mask = ~np.isnan(arr.values)
+    except (TypeError, ValueError):
+        mask = ~pd.isnull(arr.values)
+    return xr.DataArray(mask, dims=arr.dims, coords=arr.coords)
 
 
 def fast_isnull(arr: xr.DataArray) -> xr.DataArray:
     """Fast isnull check using numpy (~55x faster than xr.DataArray.isnull()).
+
+    Handles non-float dtypes (integer, object) via safe fallback to pd.isnull.
 
     Args:
         arr: DataArray to check for null values.
@@ -181,7 +190,11 @@ def fast_isnull(arr: xr.DataArray) -> xr.DataArray:
     Returns:
         Boolean DataArray with True where values are NaN.
     """
-    return xr.DataArray(np.isnan(arr.values), dims=arr.dims, coords=arr.coords)
+    try:
+        mask = np.isnan(arr.values)
+    except (TypeError, ValueError):
+        mask = pd.isnull(arr.values)
+    return xr.DataArray(mask, dims=arr.dims, coords=arr.coords)
 
 
 def stack_along_dim(
