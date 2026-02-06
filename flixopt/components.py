@@ -1144,8 +1144,13 @@ class StorageModel(ComponentModel):
             min_final_da = min_final_da.assign_coords(time=[timesteps_extra[-1]])
             min_bounds = xr.concat([rel_min, min_final_da], dim='time')
         else:
-            # Original is scalar - broadcast to full time range (constant value)
-            min_bounds = rel_min.expand_dims(time=timesteps_extra)
+            # Original is scalar - expand to regular timesteps, then concat with final value
+            regular_min = rel_min.expand_dims(time=timesteps_extra[:-1])
+            min_final_da = (
+                min_final_value.expand_dims('time') if 'time' not in min_final_value.dims else min_final_value
+            )
+            min_final_da = min_final_da.assign_coords(time=[timesteps_extra[-1]])
+            min_bounds = xr.concat([regular_min, min_final_da], dim='time')
 
         if 'time' in rel_max.dims:
             # Original has time dim - concat with final value
@@ -1155,8 +1160,13 @@ class StorageModel(ComponentModel):
             max_final_da = max_final_da.assign_coords(time=[timesteps_extra[-1]])
             max_bounds = xr.concat([rel_max, max_final_da], dim='time')
         else:
-            # Original is scalar - broadcast to full time range (constant value)
-            max_bounds = rel_max.expand_dims(time=timesteps_extra)
+            # Original is scalar - expand to regular timesteps, then concat with final value
+            regular_max = rel_max.expand_dims(time=timesteps_extra[:-1])
+            max_final_da = (
+                max_final_value.expand_dims('time') if 'time' not in max_final_value.dims else max_final_value
+            )
+            max_final_da = max_final_da.assign_coords(time=[timesteps_extra[-1]])
+            max_bounds = xr.concat([regular_max, max_final_da], dim='time')
 
         # Ensure both bounds have matching dimensions (broadcast once here,
         # so downstream code doesn't need to handle dimension mismatches)

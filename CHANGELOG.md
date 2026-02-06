@@ -52,6 +52,33 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
+## [6.0.3] - Upcoming
+
+**Summary**: Bugfix release fixing `cluster_weight` loss during NetCDF roundtrip for manually constructed clustered FlowSystems.
+
+### 🐛 Fixed
+
+- **Clustering IO**: `cluster_weight` is now preserved during NetCDF roundtrip for manually constructed clustered FlowSystems (i.e. `FlowSystem(..., clusters=..., cluster_weight=...)`). Previously, `cluster_weight` was silently dropped to `None` during `save->reload->solve`, causing incorrect objective values. Systems created via `.transform.cluster()` were not affected.
+
+### 👷 Development
+
+- **New `test_math/` test suite**: Comprehensive mathematical correctness tests with exact, hand-calculated assertions. Each test runs in 3 IO modes (solve, save→reload→solve, solve→save→reload) via the `optimize` fixture:
+    - `test_flow.py` — flow bounds, merit order, relative min/max, on/off hours
+    - `test_flow_invest.py` — investment sizing, fixed-size, optional invest, piecewise invest
+    - `test_flow_status.py` — startup costs, switch-on/off constraints, status penalties
+    - `test_bus.py` — bus balance, excess/shortage penalties
+    - `test_effects.py` — effect aggregation, periodic/temporal effects, multi-effect objectives
+    - `test_components.py` — SourceAndSink, converters, links, combined heat-and-power
+    - `test_conversion.py` — linear converter balance, multi-input/output, efficiency
+    - `test_piecewise.py` — piecewise-linear efficiency, segment selection
+    - `test_storage.py` — charge/discharge, SOC tracking, final charge state, losses
+    - `test_multi_period.py` — period weights, invest across periods
+    - `test_scenarios.py` — scenario weights, scenario-independent flows
+    - `test_clustering.py` — exact per-timestep flow_rates, effects, and charge_state in clustered systems (incl. non-equal cluster weights to cover IO roundtrip)
+    - `test_validation.py` — plausibility checks and error messages
+
+---
+
 ## [6.0.2] - 2026-02-05
 
 **Summary**: Patch release which improves `Comparison` coordinate handling.

@@ -636,7 +636,7 @@ class TestFlowSystemFromOldResults:
 
         import flixopt as fx
 
-        resources_path = pathlib.Path(__file__).parent / 'ressources'
+        resources_path = pathlib.Path(__file__).parent.parent / 'ressources'
 
         # Load old results using new method
         fs = fx.FlowSystem.from_old_results(resources_path, 'Sim1')
@@ -655,7 +655,7 @@ class TestFlowSystemFromOldResults:
 
         import flixopt as fx
 
-        resources_path = pathlib.Path(__file__).parent / 'ressources'
+        resources_path = pathlib.Path(__file__).parent.parent / 'ressources'
 
         # Load old results
         fs = fx.FlowSystem.from_old_results(resources_path, 'Sim1')
@@ -674,7 +674,7 @@ class TestFlowSystemFromOldResults:
 class TestV4APIConversion:
     """Tests for converting v4 API result files to the new format."""
 
-    V4_API_PATH = pathlib.Path(__file__).parent / 'ressources' / 'v4-api'
+    V4_API_PATH = pathlib.Path(__file__).parent.parent / 'ressources' / 'v4-api'
 
     # All result names in the v4-api folder
     V4_RESULT_NAMES = [
