@@ -78,9 +78,13 @@ def _ensure_coords(
             return data.transpose(*coord_dims)
         return data
 
-    # Broadcast to full coords (broadcast_like ensures correct dim order)
+    # Broadcast to full coords. We must create a fresh DataArray from values because
+    # broadcast_like creates a lazy view that retains the original dim ordering internally.
+    # When linopy later calls xr.broadcast on a Dataset, it can reorder dims based on
+    # that internal ordering, ignoring the apparent dim order.
     template = xr.DataArray(coords=coords, dims=coord_dims)
-    return data.broadcast_like(template)
+    broadcasted = data.broadcast_like(template).transpose(*coord_dims)
+    return xr.DataArray(broadcasted.values, coords=coords, dims=coord_dims)
 
 
 class ExpansionMode(Enum):
@@ -551,14 +555,9 @@ class TypeModel(ABC):
         # Add model dimensions
         model_coords = self.model.get_coords(dims=dims, extra_timestep=extra_timestep)
         if model_coords is not None:
-            if dims is None:
-                # Include all model coords
-                for dim, coord in model_coords.items():
-                    coord_dict[dim] = coord
-            else:
-                for dim in dims:
-                    if dim in model_coords:
-                        coord_dict[dim] = model_coords[dim]
+            # Add all returned model coords (get_coords handles auto-pairing, e.g., cluster+time)
+            for dim, coord in model_coords.items():
+                coord_dict[dim] = coord
 
         return xr.Coordinates(coord_dict)
 
