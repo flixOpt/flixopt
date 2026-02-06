@@ -649,7 +649,7 @@ class TestFlowWithFixedProfile:
 
         # Check that flow rate variables exist
         assert 'flow|rate' in model.variables
-        assert 'Sink(Wärme)' in model.variables['flow|rate'].flow.values
+        assert 'Sink(Wärme)' in model.variables['flow|rate'].coords['flow'].values
 
         # Check that investment variables exist
         assert 'flow|size' in model.variables
