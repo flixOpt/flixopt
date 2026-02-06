@@ -78,13 +78,15 @@ def _ensure_coords(
             return data.transpose(*coord_dims)
         return data
 
-    # Broadcast to full coords. We must create a fresh DataArray from values because
-    # broadcast_like creates a lazy view that retains the original dim ordering internally.
-    # When linopy later calls xr.broadcast on a Dataset, it can reorder dims based on
-    # that internal ordering, ignoring the apparent dim order.
-    template = xr.DataArray(coords=coords, dims=coord_dims)
-    broadcasted = data.broadcast_like(template).transpose(*coord_dims)
-    return xr.DataArray(broadcasted.values, coords=coords, dims=coord_dims)
+    # Broadcast to full coords using np.broadcast_to (zero-copy view).
+    # We avoid xarray's broadcast_like because it creates lazy views whose internal
+    # dim ordering can leak through xr.broadcast in linopy, causing wrong dim order.
+    target_shape = tuple(len(coords[d]) for d in coord_dims)
+    existing_dims = [d for d in coord_dims if d in data.dims]
+    data_transposed = data.transpose(*existing_dims)
+    shape_for_broadcast = tuple(len(coords[d]) if d in data.dims else 1 for d in coord_dims)
+    values = np.broadcast_to(data_transposed.values.reshape(shape_for_broadcast), target_shape)
+    return xr.DataArray(values, coords=coords, dims=coord_dims)
 
 
 class ExpansionMode(Enum):
