@@ -1430,24 +1430,26 @@ class StoragesModel(TypeModel):
             name_prefix,
         )
 
-        # Build zero_point array if any storages are non-mandatory
-        zero_point = None
-        if invested_var is not None:
-            non_mandatory_ids = [sid for sid in element_ids if not self.invest_params[sid].mandatory]
-            if non_mandatory_ids:
-                available_ids = [sid for sid in non_mandatory_ids if sid in invested_var.coords.get(dim, [])]
-                if available_ids:
-                    zero_point = invested_var.sel({dim: element_ids})
-
         # Create piecewise constraints
         PiecewiseBuilder.create_piecewise_constraints(
             self.model,
             piecewise_vars,
             segment_mask,
-            zero_point,
             dim,
             name_prefix,
         )
+
+        # Tighten single_segment constraint for optional elements: sum(inside_piece) <= invested
+        # This helps the LP relaxation by immediately forcing inside_piece=0 when invested=0.
+        if invested_var is not None:
+            invested_ids = set(invested_var.coords[dim].values)
+            optional_ids = [sid for sid in element_ids if sid in invested_ids]
+            if optional_ids:
+                inside_piece = piecewise_vars['inside_piece'].sel({dim: optional_ids})
+                self.model.add_constraints(
+                    inside_piece.sum('segment') <= invested_var.sel({dim: optional_ids}),
+                    name=f'{name_prefix}|single_segment_invested',
+                )
 
         # Create coupling constraint for size (origin)
         size_subset = size_var.sel({dim: element_ids})

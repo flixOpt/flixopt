@@ -1183,25 +1183,26 @@ class FlowsModel(TypeModel):
             name_prefix,
         )
 
-        # Build zero_point array if any flows are non-mandatory
-        invest_params = self.data.invest_params
-        zero_point = None
-        if invested_var is not None:
-            non_mandatory_ids = [fid for fid in element_ids if not invest_params[fid].mandatory]
-            if non_mandatory_ids:
-                available_ids = [fid for fid in non_mandatory_ids if fid in invested_var.coords.get(dim, [])]
-                if available_ids:
-                    zero_point = invested_var.sel({dim: element_ids})
-
         # Create piecewise constraints
         PiecewiseBuilder.create_piecewise_constraints(
             self.model,
             piecewise_vars,
             segment_mask,
-            zero_point,
             dim,
             name_prefix,
         )
+
+        # Tighten single_segment constraint for optional elements: sum(inside_piece) <= invested
+        # This helps the LP relaxation by immediately forcing inside_piece=0 when invested=0.
+        if invested_var is not None:
+            invested_ids = set(invested_var.coords[dim].values)
+            optional_ids = [fid for fid in element_ids if fid in invested_ids]
+            if optional_ids:
+                inside_piece = piecewise_vars['inside_piece'].sel({dim: optional_ids})
+                self.model.add_constraints(
+                    inside_piece.sum('segment') <= invested_var.sel({dim: optional_ids}),
+                    name=f'{name_prefix}|single_segment_invested',
+                )
 
         # Create coupling constraint for size (origin)
         size_subset = size_var.sel({dim: element_ids})
@@ -2618,16 +2619,12 @@ class ConvertersModel(TypeModel):
         if not self.converters_with_piecewise:
             return
 
-        # Get zero_point for each converter (status variable if available)
-        # TODO: Integrate status from ComponentsModel when converters overlap
-        zero_point = None
-
         # Create lambda_sum and single_segment constraints
+        # TODO: Integrate status from ComponentsModel when converters overlap
         self._PiecewiseBuilder.create_piecewise_constraints(
             self.model,
             self._piecewise_variables,
             self._piecewise_segment_mask,
-            zero_point,
             self._piecewise_dim_name,
             ConverterVarName.PIECEWISE_PREFIX,
         )

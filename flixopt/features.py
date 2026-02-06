@@ -870,7 +870,7 @@ class PiecewiseBuilder:
 
     Constraints:
         - lambda0 + lambda1 == inside_piece (per element, segment)
-        - sum(inside_piece, segment) <= 1 or zero_point (per element)
+        - sum(inside_piece, segment) <= 1 (per element)
         - var == sum(lambda0 * starts + lambda1 * ends) (coupling)
     """
 
@@ -1067,7 +1067,6 @@ class PiecewiseBuilder:
         model: FlowSystemModel,
         variables: dict[str, linopy.Variable],
         segment_mask: xr.DataArray,
-        zero_point: linopy.Variable | xr.DataArray | None,
         dim_name: str,
         name_prefix: str,
     ) -> None:
@@ -1075,13 +1074,12 @@ class PiecewiseBuilder:
 
         Creates:
             - lambda0 + lambda1 == inside_piece (for valid segments only)
-            - sum(inside_piece, segment) <= 1 or zero_point
+            - sum(inside_piece, segment) <= 1
 
         Args:
             model: The FlowSystemModel.
             variables: Dict with 'inside_piece', 'lambda0', 'lambda1'.
             segment_mask: (element, segment) validity mask.
-            zero_point: Optional variable/array for zero-point constraint.
             dim_name: Name for the element dimension.
             name_prefix: Prefix for constraint names.
         """
@@ -1096,11 +1094,11 @@ class PiecewiseBuilder:
             name=f'{name_prefix}|lambda_sum',
         )
 
-        # Constraint: sum(inside_piece) <= 1 (or <= zero_point)
-        # This ensures at most one segment is active per element
-        rhs = 1 if zero_point is None else zero_point
+        # Constraint: sum(inside_piece) <= 1
+        # This ensures at most one segment is active per element.
+        # Callers may add tighter constraints (e.g., <= invested) separately.
         model.add_constraints(
-            inside_piece.sum('segment') <= rhs,
+            inside_piece.sum('segment') <= 1,
             name=f'{name_prefix}|single_segment',
         )
 
