@@ -434,7 +434,7 @@ class ComparisonStatistics:
                 warnings.warn(f"Skipping case '{name}': {e}", stacklevel=3)
                 continue
         if not arrays:
-            return xr.DataArray()
+            return xr.DataArray(dims=['case'], coords={'case': []})
         arrays, merged_coords = _extract_nonindex_coords(*arrays)
         result = xr.concat(
             arrays, dim='case', join='outer', fill_value=float('nan'), coords='minimal', compat='override'
