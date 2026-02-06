@@ -59,6 +59,7 @@ def _extract_nonindex_coords(datasets: list[xr.Dataset]) -> tuple[list[xr.Datase
                     f"'{merged[name][0]}' vs '{dim}'. Dropping this coordinate.",
                     stacklevel=4,
                 )
+                del merged[name]
                 continue
 
             for dv, cv in zip(ds.coords[dim].values, coord.values, strict=False):

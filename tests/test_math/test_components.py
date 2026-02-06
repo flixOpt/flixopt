@@ -368,7 +368,7 @@ class TestComponentStatus:
             fx.LinearConverter(
                 'ExpensiveBoiler',
                 inputs=[fx.Flow('fuel', bus='Gas', size=40, previous_flow_rate=20)],
-                outputs=[fx.Flow('heat', bus='Heat', size=20, previous_flow_rate=10)],
+                outputs=[fx.Flow('heat', bus='Heat', size=20, relative_minimum=0.5, previous_flow_rate=10)],
                 conversion_factors=[
                     {'fuel': 1, 'heat': 2}
                 ],  # eta=0.5 (fuel:heat = 1:2 → eta = 1/2) (1 fuel → 0.5 heat)
