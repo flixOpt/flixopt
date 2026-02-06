@@ -485,11 +485,12 @@ class TypeModel(ABC):
 
         # Broadcast mask to match coords if needed
         if mask is not None:
-            mask = mask.reindex({self.dim_name: coords[self.dim_name]})
+            mask = mask.reindex({self.dim_name: coords[self.dim_name]}, fill_value=False)
             dim_order = list(coords.keys())
             for dim in dim_order:
                 if dim not in mask.dims:
                     mask = mask.expand_dims({dim: coords[dim]})
+            mask = mask.astype(bool)
             kwargs['mask'] = mask.transpose(*dim_order)
 
         variable = self.model.add_variables(
@@ -783,7 +784,7 @@ class FlowSystemModel(linopy.Model):
                     except (KeyError, AttributeError):
                         pass
                 # Also check for element-specific constraints (e.g., bus|BusLabel|balance)
-                elif element_id in con_name:
+                elif element_id in con_name.split('|'):
                     con_names.append(con_name)
             return con_names
 
