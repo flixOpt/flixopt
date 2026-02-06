@@ -11,9 +11,16 @@ from numpy.testing import assert_allclose
 
 import flixopt as fx
 
-fx.CONFIG.Legacy.solution_access = True
-
 _SOLVER = fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=60, log_to_console=False)
+
+
+@pytest.fixture(autouse=True)
+def _enable_legacy_access():
+    """Enable legacy solution access for all tests in this module, then restore."""
+    original = fx.CONFIG.Legacy.solution_access
+    fx.CONFIG.Legacy.solution_access = True
+    yield
+    fx.CONFIG.Legacy.solution_access = original
 
 
 @pytest.fixture

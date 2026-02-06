@@ -2076,11 +2076,14 @@ class SourceAndSink(Component):
         meta_data: dict | None = None,
         color: str | None = None,
     ):
+        # Convert dict to list for deserialization compatibility (FlowContainers serialize as dicts)
+        _inputs_list = list(inputs.values()) if isinstance(inputs, dict) else (inputs or [])
+        _outputs_list = list(outputs.values()) if isinstance(outputs, dict) else (outputs or [])
         super().__init__(
             label,
-            inputs=inputs,
-            outputs=outputs,
-            prevent_simultaneous_flows=(inputs or []) + (outputs or []) if prevent_simultaneous_flow_rates else None,
+            inputs=_inputs_list,
+            outputs=_outputs_list,
+            prevent_simultaneous_flows=_inputs_list + _outputs_list if prevent_simultaneous_flow_rates else None,
             meta_data=meta_data,
             color=color,
         )

@@ -717,7 +717,10 @@ class StoragesData:
                 min_final_da = min_final_da.assign_coords(time=[self._timesteps_extra[-1]])
                 min_bounds = xr.concat([rel_min, min_final_da], dim='time')
             else:
-                min_bounds = rel_min.expand_dims(time=self._timesteps_extra)
+                # Scalar: broadcast to timesteps_extra, then override the final timestep
+                min_bounds = rel_min.expand_dims(time=self._timesteps_extra).copy().astype(float)
+                if s.relative_minimum_final_charge_state is not None:
+                    min_bounds.loc[dict(time=self._timesteps_extra[-1])] = min_final_value
 
             if 'time' in rel_max.dims:
                 max_final_da = (
@@ -726,7 +729,10 @@ class StoragesData:
                 max_final_da = max_final_da.assign_coords(time=[self._timesteps_extra[-1]])
                 max_bounds = xr.concat([rel_max, max_final_da], dim='time')
             else:
-                max_bounds = rel_max.expand_dims(time=self._timesteps_extra)
+                # Scalar: broadcast to timesteps_extra, then override the final timestep
+                max_bounds = rel_max.expand_dims(time=self._timesteps_extra).copy().astype(float)
+                if s.relative_maximum_final_charge_state is not None:
+                    max_bounds.loc[dict(time=self._timesteps_extra[-1])] = max_final_value
 
             min_bounds, max_bounds = xr.broadcast(min_bounds, max_bounds)
             rel_mins.append(min_bounds)

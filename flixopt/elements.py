@@ -153,6 +153,8 @@ class Component(Element):
     ):
         super().__init__(label, meta_data=meta_data, color=color)
         self.status_parameters = status_parameters
+        if isinstance(prevent_simultaneous_flows, dict):
+            prevent_simultaneous_flows = list(prevent_simultaneous_flows.values())
         self.prevent_simultaneous_flows: list[Flow] = prevent_simultaneous_flows or []
 
         # FlowContainers serialize as dicts, but constructor expects lists
@@ -981,7 +983,7 @@ class FlowsModel(TypeModel):
     def constraint_load_factor(self) -> None:
         """Load factor min/max constraints for flows that have them."""
         dim = self.dim_name
-        total_time = self.model.timestep_duration.sum(self.model.temporal_dims)
+        total_time = self.model.temporal_weight.sum(self.model.temporal_dims)
 
         # Min constraint: hours >= total_time * load_factor_min * size
         if self.data.load_factor_minimum is not None:
