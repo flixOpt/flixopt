@@ -179,7 +179,7 @@ class StatusData:
                 # For time-varying values, use the minimum for min_* and maximum for max_*
                 # This provides conservative bounds for the duration tracking
                 return float(np.nanmin(value)) if np.any(np.isfinite(value)) else np.nan
-            return float(value) if value else np.nan
+            return float(value)
 
         min_vals = np.empty(len(ids), dtype=float)
         max_vals = np.empty(len(ids), dtype=float)
