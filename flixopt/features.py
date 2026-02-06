@@ -1066,8 +1066,6 @@ class PiecewiseBuilder:
     def create_piecewise_constraints(
         model: FlowSystemModel,
         variables: dict[str, linopy.Variable],
-        segment_mask: xr.DataArray,
-        dim_name: str,
         name_prefix: str,
     ) -> None:
         """Create batched piecewise constraints.
@@ -1079,8 +1077,6 @@ class PiecewiseBuilder:
         Args:
             model: The FlowSystemModel.
             variables: Dict with 'inside_piece', 'lambda0', 'lambda1'.
-            segment_mask: (element, segment) validity mask.
-            dim_name: Name for the element dimension.
             name_prefix: Prefix for constraint names.
         """
         inside_piece = variables['inside_piece']

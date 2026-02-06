@@ -1187,8 +1187,6 @@ class FlowsModel(TypeModel):
         PiecewiseBuilder.create_piecewise_constraints(
             self.model,
             piecewise_vars,
-            segment_mask,
-            dim,
             name_prefix,
         )
 
@@ -2624,8 +2622,6 @@ class ConvertersModel(TypeModel):
         self._PiecewiseBuilder.create_piecewise_constraints(
             self.model,
             self._piecewise_variables,
-            self._piecewise_segment_mask,
-            self._piecewise_dim_name,
             ConverterVarName.PIECEWISE_PREFIX,
         )
 

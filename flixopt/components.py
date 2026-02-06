@@ -1434,8 +1434,6 @@ class StoragesModel(TypeModel):
         PiecewiseBuilder.create_piecewise_constraints(
             self.model,
             piecewise_vars,
-            segment_mask,
-            dim,
             name_prefix,
         )
 
