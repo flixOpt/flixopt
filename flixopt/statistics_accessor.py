@@ -2065,7 +2065,7 @@ class StatisticsPlotAccessor:
             arr = da.sel(variable=var, drop=True)
             # Sort descending along time
             if 'time' in arr.dims:
-                sorted_vals = np.sort(arr.values, axis=arr.dims.index('time'))[::-1]
+                sorted_vals = np.flip(np.sort(arr.values, axis=arr.dims.index('time')), axis=arr.dims.index('time'))
                 duration_dim = np.arange(len(arr.coords['time']))
                 if normalize:
                     duration_dim = duration_dim / len(duration_dim) * 100
