@@ -287,6 +287,16 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
         self.timesteps_extra = self.solution.indexes['time']
         self.timestep_duration = ModelCoordinates.calculate_timestep_duration(self.timesteps_extra)
+        if self.timestep_duration is None:
+            # Fallback: try to get timestep_duration from flow_system_data (e.g. segmented/RangeIndex systems)
+            if 'timestep_duration' in self.flow_system_data:
+                self.timestep_duration = self.flow_system_data['timestep_duration']
+            else:
+                raise ValueError(
+                    'timestep_duration could not be computed from the time index (RangeIndex) '
+                    'and was not found in flow_system_data. Provide timestep_duration explicitly '
+                    'or use DatetimeIndex timesteps.'
+                )
         self.scenarios = self.solution.indexes['scenario'] if 'scenario' in self.solution.indexes else None
         self.periods = self.solution.indexes['period'] if 'period' in self.solution.indexes else None
 
