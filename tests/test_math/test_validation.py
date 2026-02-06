@@ -29,7 +29,7 @@ class TestValidation:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
+                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([0.1, 0.1, 0.1])),
                 ],
             ),
             fx.SourceAndSink(

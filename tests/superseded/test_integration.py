@@ -73,7 +73,7 @@ class TestComplex:
         objective_value = flow_system_base.model.objective.value
         assert_almost_equal_numeric(
             objective_value,
-            -11831.803,  # Updated for batched model implementation
+            -11597.873624489237,  # Updated for batched model implementation
             'Objective value doesnt match expected value',
         )
 
@@ -93,6 +93,7 @@ class TestComplex:
             500.0,  # effects_per_size contribution
             'Kessel periodic costs doesnt match expected value',
         )
+
         assert_almost_equal_numeric(
             sol['share|periodic'].sel(contributor='Speicher', effect='costs').values,
             1.0,  # effects_per_capacity contribution

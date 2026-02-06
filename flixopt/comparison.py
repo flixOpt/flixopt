@@ -59,6 +59,7 @@ def _extract_nonindex_coords(
                     f"'{merged[name][0]}' vs '{dim}'. Dropping this coordinate.",
                     stacklevel=4,
                 )
+                del merged[name]
                 continue
 
             for dv, cv in zip(da.coords[dim].values, coord.values, strict=False):

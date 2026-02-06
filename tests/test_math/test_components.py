@@ -271,7 +271,7 @@ class TestComponentStatus:
         fs = optimize(fs)
         # With previous 1h uptime + max_uptime=2: can run 1 more hour, then must stop.
         # Pattern forced: [on,off,on,on,off] or similar with blocks of ≤2 consecutive.
-        # CheapBoiler runs 4 hours, ExpensiveBackup runs 1 hour.
+        # CheapBoiler runs 3 hours, ExpensiveBackup runs 2 hours.
         # Without max_uptime: 5 hours cheap = 50
         # Verify no more than 2 consecutive on-hours for cheap boiler
         status = fs.solution['CheapBoiler(heat)|status'].values[:-1]
@@ -368,7 +368,7 @@ class TestComponentStatus:
             fx.LinearConverter(
                 'ExpensiveBoiler',
                 inputs=[fx.Flow('fuel', bus='Gas', size=40, previous_flow_rate=20)],
-                outputs=[fx.Flow('heat', bus='Heat', size=20, previous_flow_rate=10)],
+                outputs=[fx.Flow('heat', bus='Heat', size=20, relative_minimum=0.5, previous_flow_rate=10)],
                 conversion_factors=[
                     {'fuel': 1, 'heat': 2}
                 ],  # eta=0.5 (fuel:heat = 1:2 → eta = 1/2) (1 fuel → 0.5 heat)
@@ -398,8 +398,8 @@ class TestComponentStatus:
         With relative_minimum, CheapBoiler can't stay on at t=1 (would overproduce).
         Two peaks would need 2 startups, but limit=1 → backup covers one peak.
 
-        Sensitivity: Without startup_limit, CheapBoiler serves both peaks → cost=25.
-        With startup_limit=1, backup serves one peak → cost=32.5.
+        Sensitivity: Without startup_limit, CheapBoiler serves both peaks → cost=20.
+        With startup_limit=1, backup serves one peak → cost=30.
         """
         fs = make_flow_system(3)
         fs.add_elements(
