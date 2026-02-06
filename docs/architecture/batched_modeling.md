@@ -6,7 +6,7 @@ This document describes the architecture for batched (vectorized) modeling in fl
 
 The batched modeling architecture separates concerns into three layers:
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                        User-Facing Layer                         │
 │   Flow, Component, Storage, LinearConverter, Effect, Bus         │
@@ -442,7 +442,7 @@ The actual build sequence lives in `FlowSystemModel.build_model()` (`structure.p
 
 ### Pre-Build: `connect_and_transform()`
 
-```
+```text
 1. _connect_network()           — wire flows to buses
 2. _register_missing_carriers() — auto-register carriers from CONFIG
 3. _assign_element_colors()     — assign default colors
@@ -456,7 +456,7 @@ The actual build sequence lives in `FlowSystemModel.build_model()` (`structure.p
 
 Each step creates a `*Model` instance which immediately creates its variables and constraints:
 
-```
+```text
 1.  EffectsModel         — effect variables (periodic, temporal, total, ...)
 2.  FlowsModel           — flow rate, status, size, investment constraints
 3.  BusesModel            — bus balance constraints, imbalance variables
@@ -521,7 +521,7 @@ For the complete list of variable names and dimensions, see [Variable Names](../
 
 ### Flow Rate Bounds Example
 
-```
+```text
 Flow.relative_minimum (user input)
     │
     ▼
@@ -539,7 +539,7 @@ linopy.Variable with proper bounds
 
 ### Investment Effects Example
 
-```
+```text
 InvestParameters.effects_of_investment_per_size (user input)
     │
     ▼

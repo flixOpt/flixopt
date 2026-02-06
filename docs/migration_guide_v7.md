@@ -16,7 +16,7 @@ LP file writing is also 4-13x faster.
 
 v7 uses batched variables with element coordinates instead of individual variables per element:
 
-```
+```text
 v6: 859 variables, 997 constraints (720h, 50 converters)
 v7:  21 variables,  30 constraints (same model!)
 ```
@@ -118,7 +118,7 @@ for flow_name in rates.coords['flow'].values:
 ```python
 # v7 - get element names from coordinates
 flow_names = list(solution['flow|rate'].coords['flow'].values)
-storage_names = list(solution['storage|charge_state'].coords['storage'].values)
+storage_names = list(solution['storage|charge'].coords['storage'].values)
 ```
 
 ---
