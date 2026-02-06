@@ -428,16 +428,22 @@ class EffectsModel:
         expr: linopy.LinearExpression,
         effect: str | None = None,
     ) -> None:
-        """Append expression to per-effect list."""
-        # accum structure: {effect_id: [(expr, contributor_ids), ...]}
+        """Append expression to per-effect list, dropping zero-coefficient contributors."""
+        # accum structure: {effect_id: [expr1, expr2, ...]}
         if effect is not None:
             # Expression has no effect dim — tagged with specific effect
             accum.setdefault(effect, []).append(expr)
         elif 'effect' in expr.dims:
-            # Expression has effect dim — split per effect (DataArray sel is cheap)
+            # Expression has effect dim — split per effect, drop all-zero contributors
+            # to avoid inflating the model with unused (contributor, effect) variable slots.
             for eid in expr.data.coords['effect'].values:
-                eid_str = str(eid)
-                accum.setdefault(eid_str, []).append(expr.sel(effect=eid, drop=True))
+                sliced = expr.sel(effect=eid, drop=True)
+                # Keep only contributors with at least one non-zero coefficient
+                reduce_dims = [d for d in sliced.coeffs.dims if d != 'contributor']
+                nonzero = (sliced.coeffs != 0).any(dim=reduce_dims)
+                if nonzero.any():
+                    active_contributors = nonzero.coords['contributor'].values[nonzero.values]
+                    accum.setdefault(str(eid), []).append(sliced.sel(contributor=active_contributors))
         else:
             raise ValueError('Expression must have effect dim or effect parameter must be given')
 
