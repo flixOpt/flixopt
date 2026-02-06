@@ -16,6 +16,17 @@ fx.CONFIG.Legacy.solution_access = True
 _SOLVER = fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=60, log_to_console=False)
 
 
+@pytest.fixture
+def optimize():
+    """Fixture that returns a callable to optimize a FlowSystem and return it."""
+
+    def _optimize(fs: fx.FlowSystem) -> fx.FlowSystem:
+        fs.optimize(_SOLVER)
+        return fs
+
+    return _optimize
+
+
 def make_flow_system(n_timesteps: int = 3) -> fx.FlowSystem:
     """Create a minimal FlowSystem with the given number of hourly timesteps."""
     ts = pd.date_range('2020-01-01', periods=n_timesteps, freq='h')
