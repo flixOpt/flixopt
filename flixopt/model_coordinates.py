@@ -54,6 +54,7 @@ class ModelCoordinates:
         self.periods = None if periods is None else self._validate_periods(periods)
         self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
         self.clusters = clusters
+        self._fit_to_model_coords = fit_to_model_coords
 
         # Compute all time-related metadata
         (
@@ -83,7 +84,6 @@ class ModelCoordinates:
 
         # Scenario weights (set via property for normalization)
         self._scenario_weights: xr.DataArray | None = None
-        self._fit_to_model_coords = fit_to_model_coords
         if scenario_weights is not None:
             self.scenario_weights = scenario_weights
         else:
