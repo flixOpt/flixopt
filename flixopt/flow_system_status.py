@@ -115,6 +115,9 @@ def _clear_model_built(fs: FlowSystem) -> None:
     for element in fs.values():
         element._variable_names = []
         element._constraint_names = []
+    # Reset the model-built flag so status downgrades to MODEL_CREATED
+    if fs.model is not None:
+        fs.model._is_built = False
 
 
 def _clear_model_created(fs: FlowSystem) -> None:
