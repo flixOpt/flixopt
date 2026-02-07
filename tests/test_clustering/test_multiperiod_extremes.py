@@ -302,7 +302,7 @@ class TestMultiPeriodDifferentTimeSeries:
         assert fs_clustered.solution is not None
 
         # Solution should have period dimension
-        flow_var = 'Boiler(Q_th)|flow_rate'
+        flow_var = 'flow|rate'
         assert flow_var in fs_clustered.solution
         assert 'period' in fs_clustered.solution[flow_var].dims
 
@@ -323,7 +323,7 @@ class TestMultiPeriodDifferentTimeSeries:
         assert len(fs_expanded.periods) == 2
 
         # Each period should map using its own cluster assignments
-        flow_var = 'Boiler(Q_th)|flow_rate'
+        flow_var = 'flow|rate'
         for period in periods_2:
             flow_period = fs_expanded.solution[flow_var].sel(period=period)
             assert len(flow_period.coords['time']) == 193  # 192 + 1 extra
@@ -356,11 +356,11 @@ class TestMultiPeriodDifferentTimeSeries:
         fs_clustered.optimize(solver_fixture)
 
         # Get stats from clustered system
-        total_effects_clustered = fs_clustered.stats.total_effects['costs']
+        total_effects_clustered = fs_clustered.stats.total_effects.sel(effect='costs')
 
         # Expand and get stats
         fs_expanded = fs_clustered.transform.expand()
-        total_effects_expanded = fs_expanded.stats.total_effects['costs']
+        total_effects_expanded = fs_expanded.stats.total_effects.sel(effect='costs')
 
         # Total effects should match between clustered and expanded
         assert_allclose(
@@ -394,7 +394,7 @@ class TestExtremeConfigNewCluster:
         fs_clustered.optimize(solver_fixture)
 
         # The peak should be captured in the solution
-        flow_rates = fs_clustered.solution['Boiler(Q_th)|flow_rate']
+        flow_rates = fs_clustered.solution['flow|rate'].sel(flow='Boiler(Q_th)')
         max_flow = float(flow_rates.max())
         # Peak demand is ~100, boiler efficiency 0.9, so max flow should be ~100
         assert max_flow >= 90, f'Peak not captured: max_flow={max_flow}'
@@ -627,7 +627,7 @@ class TestExtremeConfigMultiPeriod:
         fs_clustered.optimize(solver_fixture)
 
         # Solution should have both dimensions
-        flow_var = 'Boiler(Q_th)|flow_rate'
+        flow_var = 'flow|rate'
         assert 'period' in fs_clustered.solution[flow_var].dims
         assert 'scenario' in fs_clustered.solution[flow_var].dims
 
@@ -755,7 +755,7 @@ class TestMultiScenarioWithClustering:
         fs_clustered.optimize(solver_fixture)
 
         # Solution should have scenario dimension
-        flow_var = 'Boiler(Q_th)|flow_rate'
+        flow_var = 'flow|rate'
         assert 'scenario' in fs_clustered.solution[flow_var].dims
 
     def test_scenarios_with_extremes(self, solver_fixture, timesteps_8_days, scenarios_2):
@@ -798,7 +798,7 @@ class TestFullDimensionalClustering:
         fs_clustered.optimize(solver_fixture)
 
         # Solution should have all dimensions
-        flow_var = 'Boiler(Q_th)|flow_rate'
+        flow_var = 'flow|rate'
         assert 'period' in fs_clustered.solution[flow_var].dims
         assert 'scenario' in fs_clustered.solution[flow_var].dims
         assert 'cluster' in fs_clustered.solution[flow_var].dims
@@ -818,7 +818,7 @@ class TestFullDimensionalClustering:
         assert len(fs_expanded.scenarios) == 2
 
         # Solution should maintain dimensions
-        flow_var = 'Boiler(Q_th)|flow_rate'
+        flow_var = 'flow|rate'
         assert 'period' in fs_expanded.solution[flow_var].dims
         assert 'scenario' in fs_expanded.solution[flow_var].dims
 

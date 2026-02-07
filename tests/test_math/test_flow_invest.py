@@ -543,6 +543,7 @@ class TestFlowInvestWithStatus:
                 thermal_flow=fx.Flow(
                     'heat',
                     bus='Heat',
+                    relative_minimum=0.5,
                     size=fx.InvestParameters(
                         maximum_size=100,
                         effects_of_investment=10,

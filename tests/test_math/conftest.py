@@ -25,6 +25,17 @@ import pytest
 
 import flixopt as fx
 
+
+# Enable legacy solution access for backward compatibility in test_math tests
+@pytest.fixture(autouse=True)
+def _enable_legacy_access():
+    """Enable legacy solution access for all test_math tests, then restore."""
+    original = fx.CONFIG.Legacy.solution_access
+    fx.CONFIG.Legacy.solution_access = True
+    yield
+    fx.CONFIG.Legacy.solution_access = original
+
+
 _SOLVER = fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=60, log_to_console=False)
 
 

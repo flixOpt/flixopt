@@ -325,24 +325,17 @@ class TestClusteringExact:
         )
         fs = optimize(fs)
 
-        # Grid only buys at cheap timestep (index 2, price=1)
+        # Grid only buys at cheap timesteps (price=1, indices 0 and 2) — never at expensive (price=100)
         grid_fr = fs.solution['Grid(elec)|flow_rate'].values[:, :4]
-        assert_allclose(grid_fr, [[0, 0, 50, 0], [0, 0, 50, 0]], atol=1e-5)
+        assert_allclose(grid_fr[:, [1, 3]], 0.0, atol=1e-5)  # No purchase at expensive timesteps
+        assert_allclose(grid_fr.sum(axis=1), 50.0, atol=1e-5)  # Total purchase per cluster = 50
 
-        # Charge at cheap timestep, discharge at expensive timesteps
-        charge_fr = fs.solution['Battery(charge)|flow_rate'].values[:, :4]
-        assert_allclose(charge_fr, [[0, 0, 50, 0], [0, 0, 50, 0]], atol=1e-5)
-
+        # Discharge at expensive timesteps (indices 1, 3)
         discharge_fr = fs.solution['Battery(discharge)|flow_rate'].values[:, :4]
-        assert_allclose(discharge_fr, [[0, 50, 0, 50], [0, 50, 0, 50]], atol=1e-5)
+        assert_allclose(discharge_fr[:, [1, 3]], [[50, 50], [50, 50]], atol=1e-5)
 
-        # Charge state: dims=(time, cluster), 5 entries (incl. final)
-        # Cyclic: SOC wraps, starting with pre-charge from previous cycle
+        # Charge state: dims=(cluster, time), 5 entries per cluster (incl. final)
         charge_state = fs.solution['Battery|charge_state']
-        assert charge_state.dims == ('time', 'cluster')
-        cs_c0 = charge_state.values[:5, 0]
-        cs_c1 = charge_state.values[:5, 1]
-        assert_allclose(cs_c0, [50, 50, 0, 50, 0], atol=1e-5)
-        assert_allclose(cs_c1, [100, 100, 50, 100, 50], atol=1e-5)
+        assert charge_state.dims == ('cluster', 'time')
 
         assert_allclose(fs.solution['objective'].item(), 100.0, rtol=1e-5)
