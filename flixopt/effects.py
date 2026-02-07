@@ -436,7 +436,7 @@ class EffectsModel:
         elif 'effect' in expr.dims:
             # Expression has effect dim — split per effect, drop all-zero contributors
             # to avoid inflating the model with unused (contributor, effect) variable slots.
-            for eid in expr.data.coords['effect'].values:
+            for eid in expr.coords['effect'].values:
                 sliced = expr.sel(effect=eid, drop=True)
                 # Keep only contributors with at least one non-zero coefficient
                 reduce_dims = [d for d in sliced.coeffs.dims if d != 'contributor']
