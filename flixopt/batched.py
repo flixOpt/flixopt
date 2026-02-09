@@ -1831,6 +1831,17 @@ class BusesData:
         """Bus objects that allow imbalance."""
         return [b for b in self._buses if b.allows_imbalance]
 
+    @cached_property
+    def balance_coefficients(self) -> dict[tuple[str, str], float]:
+        """Sparse (bus_id, flow_id) -> +1/-1 coefficients for bus balance."""
+        coefficients = {}
+        for bus in self._buses:
+            for f in bus.inputs.values():
+                coefficients[(bus.label_full, f.label_full)] = 1.0
+            for f in bus.outputs.values():
+                coefficients[(bus.label_full, f.label_full)] = -1.0
+        return coefficients
+
     def validate(self) -> None:
         """Validate all buses (config + DataArray checks).
 
@@ -1852,9 +1863,19 @@ class BusesData:
 class ComponentsData:
     """Batched data container for components with status."""
 
-    def __init__(self, components_with_status: list[Component], all_components: list[Component]):
+    def __init__(
+        self,
+        components_with_status: list[Component],
+        all_components: list[Component],
+        flows_data: FlowsData,
+        effect_ids: list[str],
+        timestep_duration: xr.DataArray | float,
+    ):
         self._components_with_status = components_with_status
         self._all_components = all_components
+        self._flows_data = flows_data
+        self._effect_ids = effect_ids
+        self._timestep_duration = timestep_duration
         self.elements: ElementContainer = ElementContainer(components_with_status)
 
     @property
@@ -1868,6 +1889,110 @@ class ComponentsData:
     @property
     def all_components(self) -> list[Component]:
         return self._all_components
+
+    @cached_property
+    def with_prevent_simultaneous(self) -> list[Component]:
+        """Generic components (non-Storage, non-Transmission) with prevent_simultaneous_flows.
+
+        Storage and Transmission handle their own prevent_simultaneous constraints
+        in StoragesModel and TransmissionsModel respectively.
+        """
+        from .components import Storage, Transmission
+
+        return [
+            c
+            for c in self._all_components
+            if c.prevent_simultaneous_flows and not isinstance(c, (Storage, Transmission))
+        ]
+
+    @cached_property
+    def status_params(self) -> dict[str, StatusParameters]:
+        """Dict of component_id -> StatusParameters."""
+        return {c.label: c.status_parameters for c in self._components_with_status}
+
+    @cached_property
+    def previous_status_dict(self) -> dict[str, xr.DataArray]:
+        """Dict of component_id -> previous_status DataArray."""
+        result = {}
+        for c in self._components_with_status:
+            prev = self._get_previous_status_for_component(c)
+            if prev is not None:
+                result[c.label] = prev
+        return result
+
+    def _get_previous_status_for_component(self, component) -> xr.DataArray | None:
+        """Get previous status for a single component (OR of flow statuses).
+
+        Args:
+            component: The component to get previous status for.
+
+        Returns:
+            DataArray of previous status, or None if no flows have previous status.
+        """
+        from .config import CONFIG
+        from .modeling import ModelingUtilitiesAbstract
+
+        previous_status = []
+        for flow in component.flows.values():
+            if flow.previous_flow_rate is not None:
+                prev = ModelingUtilitiesAbstract.to_binary(
+                    values=xr.DataArray(
+                        [flow.previous_flow_rate] if np.isscalar(flow.previous_flow_rate) else flow.previous_flow_rate,
+                        dims='time',
+                    ),
+                    epsilon=CONFIG.Modeling.epsilon,
+                    dims='time',
+                )
+                previous_status.append(prev)
+
+        if not previous_status:
+            return None
+
+        # Combine flow statuses using OR (any flow active = component active)
+        max_len = max(da.sizes['time'] for da in previous_status)
+        padded = [
+            da.assign_coords(time=range(-da.sizes['time'], 0)).reindex(time=range(-max_len, 0), fill_value=0)
+            for da in previous_status
+        ]
+        return xr.concat(padded, dim='flow').any(dim='flow').astype(int)
+
+    @cached_property
+    def status_data(self) -> StatusData:
+        """StatusData instance for component status."""
+        return StatusData(
+            params=self.status_params,
+            dim_name=self.dim_name,
+            effect_ids=self._effect_ids,
+            timestep_duration=self._timestep_duration,
+            previous_states=self.previous_status_dict,
+        )
+
+    @cached_property
+    def flow_mask(self) -> xr.DataArray:
+        """(component, flow) mask: 1 if flow belongs to component."""
+        from .features import MaskHelpers
+
+        membership = MaskHelpers.build_flow_membership(
+            self._components_with_status,
+            lambda c: list(c.flows.values()),
+        )
+        return MaskHelpers.build_mask(
+            row_dim='component',
+            row_ids=self.element_ids,
+            col_dim='flow',
+            col_ids=self._flows_data.element_ids,
+            membership=membership,
+        )
+
+    @cached_property
+    def flow_count(self) -> xr.DataArray:
+        """(component,) number of flows per component."""
+        counts = [len(c.inputs) + len(c.outputs) for c in self._components_with_status]
+        return xr.DataArray(
+            counts,
+            dims=['component'],
+            coords={'component': self.element_ids},
+        )
 
     def validate(self) -> None:
         """Validate generic components (config checks only).
@@ -1885,8 +2010,10 @@ class ComponentsData:
 class ConvertersData:
     """Batched data container for converters."""
 
-    def __init__(self, converters: list[LinearConverter]):
+    def __init__(self, converters: list[LinearConverter], flow_ids: list[str], timesteps: pd.DatetimeIndex):
         self._converters = converters
+        self._flow_ids = flow_ids
+        self._timesteps = timesteps
         self.elements: ElementContainer = ElementContainer(converters)
 
     @property
@@ -1907,6 +2034,208 @@ class ConvertersData:
         """Converters with piecewise_conversion."""
         return [c for c in self._converters if c.piecewise_conversion]
 
+    # === Linear Conversion Properties ===
+
+    @cached_property
+    def factor_element_ids(self) -> list[str]:
+        """Element IDs for converters with linear conversion factors."""
+        return [c.label for c in self.with_factors]
+
+    @cached_property
+    def max_equations(self) -> int:
+        """Maximum number of conversion equations across all converters."""
+        if not self.with_factors:
+            return 0
+        return max(len(c.conversion_factors) for c in self.with_factors)
+
+    @cached_property
+    def equation_mask(self) -> xr.DataArray:
+        """(converter, equation_idx) mask: 1 if equation exists, 0 otherwise."""
+        max_eq = self.max_equations
+        mask_data = np.zeros((len(self.factor_element_ids), max_eq))
+
+        for i, conv in enumerate(self.with_factors):
+            for eq_idx in range(len(conv.conversion_factors)):
+                mask_data[i, eq_idx] = 1.0
+
+        return xr.DataArray(
+            mask_data,
+            dims=['converter', 'equation_idx'],
+            coords={'converter': self.factor_element_ids, 'equation_idx': list(range(max_eq))},
+        )
+
+    @cached_property
+    def signed_coefficients(self) -> dict[tuple[str, str], float | xr.DataArray]:
+        """Sparse (converter_id, flow_id) -> signed coefficient mapping.
+
+        Returns a dict where keys are (converter_id, flow_id) tuples and values
+        are the signed coefficients (positive for inputs, negative for outputs).
+
+        For converters with multiple equations, values are DataArrays with an
+        equation_idx dimension.
+        """
+        from collections import defaultdict
+
+        max_eq = self.max_equations
+        all_flow_ids_set = set(self._flow_ids)
+
+        # Collect signed coefficients per (converter, flow) across equations
+        intermediate: dict[tuple[str, str], list[tuple[int, float | xr.DataArray]]] = defaultdict(list)
+
+        for conv in self.with_factors:
+            flow_map = {fl.label: fl.label_full for fl in conv.flows.values()}
+            # +1 for inputs, -1 for outputs
+            flow_signs = {f.label_full: 1.0 for f in conv.inputs.values() if f.label_full in all_flow_ids_set}
+            flow_signs.update({f.label_full: -1.0 for f in conv.outputs.values() if f.label_full in all_flow_ids_set})
+
+            for eq_idx, conv_factors in enumerate(conv.conversion_factors):
+                for flow_label, coeff in conv_factors.items():
+                    flow_id = flow_map.get(flow_label)
+                    sign = flow_signs.get(flow_id, 0.0) if flow_id else 0.0
+                    if sign != 0.0:
+                        intermediate[(conv.label, flow_id)].append((eq_idx, coeff * sign))
+
+        # Stack each (converter, flow) pair's per-equation values into a DataArray
+        result: dict[tuple[str, str], float | xr.DataArray] = {}
+        eq_coords = list(range(max_eq))
+
+        for key, entries in intermediate.items():
+            # Build a list indexed by equation_idx (0.0 where equation doesn't use this flow)
+            per_eq: list[float | xr.DataArray] = [0.0] * max_eq
+            for eq_idx, val in entries:
+                per_eq[eq_idx] = val
+            result[key] = stack_along_dim(per_eq, dim='equation_idx', coords=eq_coords)
+
+        return result
+
+    @cached_property
+    def n_equations_per_converter(self) -> xr.DataArray:
+        """(converter,) number of conversion equations per converter."""
+        return xr.DataArray(
+            [len(c.conversion_factors) for c in self.with_factors],
+            dims=['converter'],
+            coords={'converter': self.factor_element_ids},
+        )
+
+    # === Piecewise Conversion Properties ===
+
+    @cached_property
+    def piecewise_element_ids(self) -> list[str]:
+        """Element IDs for converters with piecewise conversion."""
+        return [c.label for c in self.with_piecewise]
+
+    @cached_property
+    def piecewise_segment_counts_dict(self) -> dict[str, int]:
+        """Dict mapping converter_id -> number of segments."""
+        return {c.label: len(list(c.piecewise_conversion.piecewises.values())[0]) for c in self.with_piecewise}
+
+    @cached_property
+    def piecewise_max_segments(self) -> int:
+        """Maximum segment count across all converters."""
+        if not self.with_piecewise:
+            return 0
+        return max(self.piecewise_segment_counts_dict.values())
+
+    @cached_property
+    def piecewise_segment_mask(self) -> xr.DataArray:
+        """(converter, segment) mask: 1=valid, 0=padded."""
+        from .features import PiecewiseBuilder
+
+        _, mask = PiecewiseBuilder.collect_segment_info(
+            self.piecewise_element_ids, self.piecewise_segment_counts_dict, self.dim_name
+        )
+        return mask
+
+    @cached_property
+    def piecewise_flow_breakpoints(self) -> dict[str, tuple[xr.DataArray, xr.DataArray]]:
+        """Dict mapping flow_id -> (starts, ends) padded DataArrays."""
+        from .features import PiecewiseBuilder
+
+        # Collect all flow ids that appear in piecewise conversions
+        all_flow_ids: set[str] = set()
+        for conv in self.with_piecewise:
+            for flow_label in conv.piecewise_conversion.piecewises:
+                flow_id = conv.flows[flow_label].label_full
+                all_flow_ids.add(flow_id)
+
+        result = {}
+        for flow_id in all_flow_ids:
+            breakpoints: dict[str, tuple[list[float], list[float]]] = {}
+            for conv in self.with_piecewise:
+                # Check if this converter has this flow
+                found = False
+                for flow_label, piecewise in conv.piecewise_conversion.piecewises.items():
+                    if conv.flows[flow_label].label_full == flow_id:
+                        starts = [p.start for p in piecewise]
+                        ends = [p.end for p in piecewise]
+                        breakpoints[conv.label] = (starts, ends)
+                        found = True
+                        break
+                if not found:
+                    # This converter doesn't have this flow - use NaN
+                    breakpoints[conv.label] = (
+                        [np.nan] * self.piecewise_max_segments,
+                        [np.nan] * self.piecewise_max_segments,
+                    )
+
+            # Get time coordinates for time-varying breakpoints
+            time_coords = self._timesteps
+            starts, ends = PiecewiseBuilder.pad_breakpoints(
+                self.piecewise_element_ids,
+                breakpoints,
+                self.piecewise_max_segments,
+                self.dim_name,
+                time_coords=time_coords,
+            )
+            result[flow_id] = (starts, ends)
+
+        return result
+
+    @cached_property
+    def piecewise_segment_counts_array(self) -> xr.DataArray | None:
+        """(converter,) - number of segments per converter with piecewise conversion."""
+        if not self.with_piecewise:
+            return None
+        counts = [len(list(c.piecewise_conversion.piecewises.values())[0]) for c in self.with_piecewise]
+        return xr.DataArray(
+            counts,
+            dims=[self.dim_name],
+            coords={self.dim_name: self.piecewise_element_ids},
+        )
+
+    @cached_property
+    def piecewise_breakpoints(self) -> xr.Dataset | None:
+        """Dataset with (converter, segment, flow) or (converter, segment, flow, time) breakpoints.
+
+        Variables:
+            - starts: segment start values
+            - ends: segment end values
+
+        When breakpoints are time-varying, an additional 'time' dimension is included.
+        """
+        if not self.with_piecewise:
+            return None
+
+        # Collect all flows
+        all_flows = list(self.piecewise_flow_breakpoints.keys())
+
+        # Build a list of DataArrays for each flow, then combine with xr.concat
+        starts_list = []
+        ends_list = []
+        for flow_id in all_flows:
+            starts_da, ends_da = self.piecewise_flow_breakpoints[flow_id]
+            # Add 'flow' as a new coordinate
+            starts_da = starts_da.expand_dims(flow=[flow_id])
+            ends_da = ends_da.expand_dims(flow=[flow_id])
+            starts_list.append(starts_da)
+            ends_list.append(ends_da)
+
+        # Concatenate along 'flow' dimension
+        starts_combined = xr.concat(starts_list, dim='flow')
+        ends_combined = xr.concat(ends_list, dim='flow')
+
+        return xr.Dataset({'starts': starts_combined, 'ends': ends_combined})
+
     def validate(self) -> None:
         """Validate all converters (config checks, no DataArray operations needed)."""
         for converter in self._converters:
@@ -1916,8 +2245,9 @@ class ConvertersData:
 class TransmissionsData:
     """Batched data container for transmissions."""
 
-    def __init__(self, transmissions: list[Transmission]):
+    def __init__(self, transmissions: list[Transmission], flow_ids: list[str]):
         self._transmissions = transmissions
+        self._flow_ids = flow_ids
         self.elements: ElementContainer = ElementContainer(transmissions)
 
     @property
@@ -1937,6 +2267,104 @@ class TransmissionsData:
     def balanced(self) -> list[Transmission]:
         """Transmissions with balanced flow sizes."""
         return [t for t in self._transmissions if t.balanced]
+
+    @cached_property
+    def bidirectional_ids(self) -> list[str]:
+        """Element IDs for bidirectional transmissions."""
+        return [t.label for t in self.bidirectional]
+
+    @cached_property
+    def balanced_ids(self) -> list[str]:
+        """Element IDs for balanced transmissions."""
+        return [t.label for t in self.balanced]
+
+    # === Flow Masks for Batched Selection ===
+
+    def _build_flow_mask(self, transmission_ids: list[str], flow_getter) -> xr.DataArray:
+        """Build (transmission, flow) mask: 1 if flow belongs to transmission.
+
+        Args:
+            transmission_ids: List of transmission labels to include.
+            flow_getter: Function that takes a transmission and returns its flow label_full.
+        """
+        all_flow_ids = self._flow_ids
+        mask_data = np.zeros((len(transmission_ids), len(all_flow_ids)))
+
+        for t_idx, t_id in enumerate(transmission_ids):
+            t = next(t for t in self._transmissions if t.label == t_id)
+            flow_id = flow_getter(t)
+            if flow_id in all_flow_ids:
+                f_idx = all_flow_ids.index(flow_id)
+                mask_data[t_idx, f_idx] = 1.0
+
+        return xr.DataArray(
+            mask_data,
+            dims=[self.dim_name, 'flow'],
+            coords={self.dim_name: transmission_ids, 'flow': all_flow_ids},
+        )
+
+    @cached_property
+    def in1_mask(self) -> xr.DataArray:
+        """(transmission, flow) mask: 1 if flow is in1 for transmission."""
+        return self._build_flow_mask(self.element_ids, lambda t: t.in1.label_full)
+
+    @cached_property
+    def out1_mask(self) -> xr.DataArray:
+        """(transmission, flow) mask: 1 if flow is out1 for transmission."""
+        return self._build_flow_mask(self.element_ids, lambda t: t.out1.label_full)
+
+    @cached_property
+    def in2_mask(self) -> xr.DataArray:
+        """(transmission, flow) mask for bidirectional: 1 if flow is in2."""
+        return self._build_flow_mask(self.bidirectional_ids, lambda t: t.in2.label_full)
+
+    @cached_property
+    def out2_mask(self) -> xr.DataArray:
+        """(transmission, flow) mask for bidirectional: 1 if flow is out2."""
+        return self._build_flow_mask(self.bidirectional_ids, lambda t: t.out2.label_full)
+
+    # === Loss Properties ===
+
+    @cached_property
+    def relative_losses(self) -> xr.DataArray:
+        """(transmission, [time, ...]) relative losses. 0 if None."""
+        if not self._transmissions:
+            return xr.DataArray()
+        values = []
+        for t in self._transmissions:
+            loss = t.relative_losses if t.relative_losses is not None else 0
+            values.append(loss)
+        return stack_along_dim(values, self.dim_name, self.element_ids)
+
+    @cached_property
+    def absolute_losses(self) -> xr.DataArray:
+        """(transmission, [time, ...]) absolute losses. 0 if None."""
+        if not self._transmissions:
+            return xr.DataArray()
+        values = []
+        for t in self._transmissions:
+            loss = t.absolute_losses if t.absolute_losses is not None else 0
+            values.append(loss)
+        return stack_along_dim(values, self.dim_name, self.element_ids)
+
+    @cached_property
+    def has_absolute_losses_mask(self) -> xr.DataArray:
+        """(transmission,) bool mask for transmissions with absolute losses."""
+        if not self._transmissions:
+            return xr.DataArray()
+        has_abs = [t.absolute_losses is not None and np.any(t.absolute_losses != 0) for t in self._transmissions]
+        return xr.DataArray(
+            has_abs,
+            dims=[self.dim_name],
+            coords={self.dim_name: self.element_ids},
+        )
+
+    @cached_property
+    def transmissions_with_abs_losses(self) -> list[str]:
+        """Element IDs for transmissions with absolute losses."""
+        return [
+            t.label for t in self._transmissions if t.absolute_losses is not None and np.any(t.absolute_losses != 0)
+        ]
 
     def validate(self) -> None:
         """Validate all transmissions (config + DataArray checks).
@@ -2063,7 +2491,13 @@ class BatchedAccessor:
         if self._components is None:
             all_components = list(self._fs.components.values())
             components_with_status = [c for c in all_components if c.status_parameters is not None]
-            self._components = ComponentsData(components_with_status, all_components)
+            self._components = ComponentsData(
+                components_with_status,
+                all_components,
+                flows_data=self.flows,
+                effect_ids=list(self._fs.effects.keys()),
+                timestep_duration=self._fs.timestep_duration,
+            )
         return self._components
 
     @property
@@ -2073,7 +2507,7 @@ class BatchedAccessor:
             from .components import LinearConverter
 
             converters = [c for c in self._fs.components.values() if isinstance(c, LinearConverter)]
-            self._converters = ConvertersData(converters)
+            self._converters = ConvertersData(converters, flow_ids=self.flows.element_ids, timesteps=self._fs.timesteps)
         return self._converters
 
     @property
@@ -2083,7 +2517,7 @@ class BatchedAccessor:
             from .components import Transmission
 
             transmissions = [c for c in self._fs.components.values() if isinstance(c, Transmission)]
-            self._transmissions = TransmissionsData(transmissions)
+            self._transmissions = TransmissionsData(transmissions, flow_ids=self.flows.element_ids)
         return self._transmissions
 
     def _reset(self) -> None:
