@@ -2470,12 +2470,9 @@ class TransmissionsModel(TypeModel):
         # === Balanced constraints: in1.size == in2.size (batched) ===
         if d.balanced:
             flow_size = self._flows_model[FlowVarName.SIZE]
-            # Build masks for balanced transmissions only
-            in1_size_mask = d._build_flow_mask(d.balanced_ids, lambda t: t.in1.label_full)
-            in2_size_mask = d._build_flow_mask(d.balanced_ids, lambda t: t.in2.label_full)
 
-            in1_size_batched = (flow_size * in1_size_mask).sum('flow')
-            in2_size_batched = (flow_size * in2_size_mask).sum('flow')
+            in1_size_batched = (flow_size * d.balanced_in1_mask).sum('flow')
+            in2_size_batched = (flow_size * d.balanced_in2_mask).sum('flow')
 
             self.add_constraints(
                 in1_size_batched == in2_size_batched,

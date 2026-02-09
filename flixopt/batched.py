@@ -1368,7 +1368,7 @@ class FlowsData:
             coords={self.dim_name: self._ids_index},
         )
 
-    @cached_property
+    @property
     def dim_name(self) -> str:
         """Dimension name for this data container."""
         return 'flow'
@@ -2322,6 +2322,16 @@ class TransmissionsData:
     def out2_mask(self) -> xr.DataArray:
         """(transmission, flow) mask for bidirectional: 1 if flow is out2."""
         return self._build_flow_mask(self.bidirectional_ids, lambda t: t.out2.label_full)
+
+    @cached_property
+    def balanced_in1_mask(self) -> xr.DataArray:
+        """(transmission, flow) mask for balanced: 1 if flow is in1."""
+        return self._build_flow_mask(self.balanced_ids, lambda t: t.in1.label_full)
+
+    @cached_property
+    def balanced_in2_mask(self) -> xr.DataArray:
+        """(transmission, flow) mask for balanced: 1 if flow is in2."""
+        return self._build_flow_mask(self.balanced_ids, lambda t: t.in2.label_full)
 
     # === Loss Properties ===
 
