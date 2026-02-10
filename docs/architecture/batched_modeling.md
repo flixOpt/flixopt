@@ -110,7 +110,6 @@ share = size_var * type_model.effects_per_size.fillna(0)
 |---------------|---------|---------|
 | `StatusBuilder` | `FlowsModel`, `ComponentsModel` | Duration tracking (uptime/downtime), startup/shutdown variables |
 | `InvestmentBuilder` | `FlowsModel`, `StoragesModel` | Optional size bounds, linked periods, effect share creation |
-| `PiecewiseBuilder` | `ConvertersModel` | Segment variables (lambda interpolation), coupling constraints |
 | `MaskHelpers` | `BusesModel`, `ComponentsModel` | Mask matrices for batching element→flow relationships |
 
 ## Architecture Details

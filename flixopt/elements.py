@@ -1142,103 +1142,84 @@ class FlowsModel(TypeModel):
         self.add_constraints(flow_rate >= rhs, name='status+invest_lb')  # TODO Rename to status+size_lb2
 
     def _create_piecewise_effects(self) -> None:
-        """Create batched piecewise effects for flows with piecewise_effects_of_investment.
+        """Create piecewise effects for flows with piecewise_effects_of_investment.
 
-        Uses PiecewiseBuilder for pad-to-max batching across all flows with
-        piecewise effects. Creates batched segment variables, share variables,
-        and coupling constraints.
+        Uses linopy's disjunctive PWL API per element. For each element with
+        piecewise effects, creates a disjunctive formulation linking the size
+        variable to cost/effect share variables.
         """
-        from .features import PiecewiseBuilder
+        from .features import pieces_to_breakpoints
 
         dim = self.dim_name
         size_var = self.get(FlowVarName.SIZE)
-        invested_var = self.get(FlowVarName.INVESTED)
 
         if size_var is None:
             return
 
         inv = self.data._investment_data
-        if inv is None or not inv.piecewise_element_ids:
+        if inv is None or not inv.with_piecewise_effects:
             return
 
-        element_ids = inv.piecewise_element_ids
-        segment_mask = inv.piecewise_segment_mask
-        origin_starts = inv.piecewise_origin_starts
-        origin_ends = inv.piecewise_origin_ends
-        effect_starts = inv.piecewise_effect_starts
-        effect_ends = inv.piecewise_effect_ends
-        effect_names = inv.piecewise_effect_names
-        max_segments = inv.piecewise_max_segments
+        element_ids = inv.with_piecewise_effects  # list[str]
+        share_parts = []
+        for eid in element_ids:
+            pe = inv._params[eid].piecewise_effects_of_investment
 
-        # Create batched piecewise variables
-        base_coords = self.model.get_coords(['period', 'scenario'])
-        name_prefix = f'{dim}|piecewise_effects'
-        piecewise_vars = PiecewiseBuilder.create_piecewise_variables(
-            self.model,
-            element_ids,
-            max_segments,
-            dim,
-            segment_mask,
-            base_coords,
-            name_prefix,
-        )
+            # Check if the first piece starts at 0. If not, prepend a zero-point segment
+            # so the disjunctive formulation can select "off" (size=0, effects=0).
+            # This is needed because sum(y_k)=1 in disjunctive formulation, so without
+            # a zero segment the minimum value equals the first piece's start.
+            first_start = pe.piecewise_origin.pieces[0].start
+            origin_starts_at_zero = (
+                np.isclose(first_start, 0.0) if np.isscalar(first_start) else np.allclose(first_start, 0.0)
+            )
+            needs_zero = not origin_starts_at_zero
 
-        # Create piecewise constraints
-        PiecewiseBuilder.create_piecewise_constraints(
-            self.model,
-            piecewise_vars,
-            name_prefix,
-        )
+            # Build piecewise dicts: origin (size) + effect shares
+            piecewises_dict: dict[str, object] = {'__origin__': pe.piecewise_origin}
+            for eff_name, pw in pe.piecewise_shares.items():
+                piecewises_dict[eff_name] = pw
 
-        # Tighten single_segment constraint for optional elements: sum(inside_piece) <= invested
-        # This helps the LP relaxation by immediately forcing inside_piece=0 when invested=0.
-        if invested_var is not None:
-            invested_ids = set(invested_var.coords[dim].values)
-            optional_ids = [fid for fid in element_ids if fid in invested_ids]
-            if optional_ids:
-                inside_piece = piecewise_vars['inside_piece'].sel({dim: optional_ids})
-                self.model.add_constraints(
-                    inside_piece.sum('segment') <= invested_var.sel({dim: optional_ids}),
-                    name=f'{name_prefix}|single_segment_invested',
-                )
+            breakpoints = pieces_to_breakpoints(
+                piecewises_dict,
+                link_dim='link',
+                include_zero=needs_zero,
+            )
 
-        # Create coupling constraint for size (origin)
-        size_subset = size_var.sel({dim: element_ids})
-        PiecewiseBuilder.create_coupling_constraint(
-            self.model,
-            size_subset,
-            piecewise_vars['lambda0'],
-            piecewise_vars['lambda1'],
-            origin_starts,
-            origin_ends,
-            f'{name_prefix}|size|coupling',
-        )
+            # Build expression dict: origin = size variable, effects = share variables
+            base_coords = self.model.get_coords(['period', 'scenario'])
+            effect_names = list(pe.piecewise_shares.keys())
+            share_coords = {'effect': pd.Index(effect_names, name='effect')}
+            if base_coords is not None:
+                share_coords.update(dict(base_coords))
 
-        # Create share variable with (dim, effect) and vectorized coupling constraint
-        coords_dict = {dim: pd.Index(element_ids, name=dim), 'effect': effect_names}
-        if base_coords is not None:
-            coords_dict.update(dict(base_coords))
+            share_var_el = self.model.add_variables(
+                lower=-np.inf,
+                upper=np.inf,
+                coords=xr.Coordinates(share_coords),
+                name=f'{dim}|piecewise_effects|{eid}|share',
+            )
 
-        share_var = self.model.add_variables(
-            lower=-np.inf,
-            upper=np.inf,
-            coords=xr.Coordinates(coords_dict),
-            name=f'{name_prefix}|share',
-        )
-        PiecewiseBuilder.create_coupling_constraint(
-            self.model,
-            share_var,
-            piecewise_vars['lambda0'],
-            piecewise_vars['lambda1'],
-            effect_starts,
-            effect_ends,
-            f'{name_prefix}|coupling',
-        )
+            expr_dict = {'__origin__': size_var.sel({dim: eid})}
+            for eff_name in effect_names:
+                expr_dict[eff_name] = share_var_el.sel(effect=eff_name)
 
-        # Sum over element dim, keep effect dim
-        self.model.effects.add_share_periodic(share_var.sum(dim))
+            name = f'{dim}|piecewise_effects|{eid}'
+            self.model.add_disjunctive_piecewise_constraints(
+                expr_dict,
+                breakpoints,
+                link_dim='link',
+                name=name,
+            )
 
-        logger.debug(f'Created batched piecewise effects for {len(element_ids)} flows')
+            share_parts.append(share_var_el)
+
+        # Sum all share parts and register with effects
+        if share_parts:
+            total_share = share_parts[0] if len(share_parts) == 1 else sum(share_parts[1:], share_parts[0])
+            self.model.effects.add_share_periodic(total_share)
+
+        logger.debug(f'Created piecewise effects for {len(element_ids)} flows')
 
     def add_effect_contributions(self, effects_model) -> None:
         """Push ALL effect contributions from flows to EffectsModel.
@@ -2216,16 +2197,10 @@ class ConvertersModel(TypeModel):
             data: ConvertersData container.
             flows_model: The FlowsModel that owns flow variables.
         """
-        from .features import PiecewiseBuilder
-
         super().__init__(model, data)
         self.converters_with_factors = data.with_factors
         self.converters_with_piecewise = data.with_piecewise
         self._flows_model = flows_model
-        self._PiecewiseBuilder = PiecewiseBuilder
-
-        # Piecewise conversion variables
-        self._piecewise_variables: dict[str, linopy.Variable] = {}
 
         logger.debug(
             f'ConvertersModel initialized: {len(self.converters_with_factors)} with factors, '
@@ -2269,97 +2244,52 @@ class ConvertersModel(TypeModel):
         logger.debug(f'ConvertersModel created linear constraints for {len(self.converters_with_factors)} converters')
 
     def create_variables(self) -> None:
-        """Create all batched variables for converters (piecewise variables)."""
-        self._create_piecewise_variables()
+        """Create all batched variables for converters (no-op, PWL variables created by linopy)."""
 
     def create_constraints(self) -> None:
         """Create all batched constraints for converters."""
         self.create_linear_constraints()
         self._create_piecewise_constraints()
 
-    def _create_piecewise_variables(self) -> dict[str, linopy.Variable]:
-        """Create batched piecewise conversion variables.
-
-        Returns:
-            Dict with 'inside_piece', 'lambda0', 'lambda1' variables.
-        """
-        if not self.converters_with_piecewise:
-            return {}
-
-        d = self.data  # ConvertersData
-        base_coords = self.model.get_coords(['time', 'period', 'scenario'])
-
-        self._piecewise_variables = self._PiecewiseBuilder.create_piecewise_variables(
-            self.model,
-            d.piecewise_element_ids,
-            d.piecewise_max_segments,
-            d.dim_name,
-            d.piecewise_segment_mask,
-            base_coords,
-            ConverterVarName.PIECEWISE_PREFIX,
-        )
-
-        logger.debug(
-            f'ConvertersModel created piecewise variables for {len(self.converters_with_piecewise)} converters'
-        )
-        return self._piecewise_variables
-
     def _create_piecewise_constraints(self) -> None:
-        """Create batched piecewise constraints and coupling constraints."""
+        """Create per-converter disjunctive piecewise constraints."""
         if not self.converters_with_piecewise:
             return
 
-        # Create lambda_sum and single_segment constraints
-        # TODO: Integrate status from ComponentsModel when converters overlap
-        self._PiecewiseBuilder.create_piecewise_constraints(
-            self.model,
-            self._piecewise_variables,
-            ConverterVarName.PIECEWISE_PREFIX,
-        )
-
-        # Create batched coupling constraints for all piecewise flows
-        bp = self.data.piecewise_breakpoints  # Dataset with (converter, segment, flow) dims
-        if bp is None:
-            return
+        from .features import pieces_to_breakpoints
 
         flow_rate = self._flows_model[FlowVarName.RATE]
-        lambda0 = self._piecewise_variables['lambda0']
-        lambda1 = self._piecewise_variables['lambda1']
 
-        # Each flow belongs to exactly one converter. Select the owning converter
-        # per flow directly instead of broadcasting across all (converter × flow).
-        starts = bp['starts']  # (converter, segment, flow, [time])
-        ends = bp['ends']
+        for conv in self.converters_with_piecewise:
+            pc = conv.piecewise_conversion
+            flow_map = {fl: conv.flows[fl].label_full for fl in pc.piecewises}
 
-        # Find which converter owns each flow (first non-NaN along converter)
-        notnull = fast_notnull(starts)
-        for d in notnull.dims:
-            if d not in ('flow', 'converter'):
-                notnull = notnull.any(d)
-        owner_idx = notnull.argmax('converter')  # (flow,)
-        owner_ids = starts.coords['converter'].values[owner_idx.values]
+            expr_dict = {fid: flow_rate.sel(flow=fid) for fid in flow_map.values()}
 
-        # Select breakpoints and lambdas for the owning converter per flow
-        owner_da = xr.DataArray(owner_ids, dims=['flow'], coords={'flow': starts.coords['flow']})
-        flow_starts = starts.sel(converter=owner_da).drop_vars('converter')
-        flow_ends = ends.sel(converter=owner_da).drop_vars('converter')
-        flow_lambda0 = lambda0.sel(converter=owner_da)
-        flow_lambda1 = lambda1.sel(converter=owner_da)
+            piecewises_dict = {flow_map[fl]: pw for fl, pw in pc.piecewises.items()}
 
-        # Reconstruct: sum over segments only (no converter dim)
-        reconstructed_per_flow = (flow_lambda0 * flow_starts + flow_lambda1 * flow_ends).sum('segment')
-        # Drop dangling converter coord left by vectorized sel()
-        reconstructed_per_flow = reconstructed_per_flow.drop_vars('converter', errors='ignore')
+            # Check if any flow's first piece doesn't start at 0.
+            # If so, prepend a zero-segment so the disjunctive formulation
+            # can select "off" (all flows = 0) — matching the old
+            # sum(inside_piece) <= 1 semantics.
+            needs_zero = any(
+                not (
+                    np.isclose(pw.pieces[0].start, 0.0)
+                    if np.isscalar(pw.pieces[0].start)
+                    else np.allclose(pw.pieces[0].start, 0.0)
+                )
+                for pw in pc.piecewises.values()
+            )
 
-        # Get flow rates for piecewise flows
-        flow_ids = list(bp.coords['flow'].values)
-        piecewise_flow_rate = flow_rate.sel(flow=flow_ids)
+            breakpoints = pieces_to_breakpoints(piecewises_dict, link_dim='flow', include_zero=needs_zero)
 
-        # Add single batched constraint
-        self.add_constraints(
-            piecewise_flow_rate == reconstructed_per_flow,
-            name=ConverterVarName.Constraint.PIECEWISE_COUPLING,
-        )
+            name = f'converter|piecewise_conversion|{conv.label}'
+            self.model.add_disjunctive_piecewise_constraints(
+                expr_dict,
+                breakpoints,
+                link_dim='flow',
+                name=name,
+            )
 
         logger.debug(
             f'ConvertersModel created piecewise constraints for {len(self.converters_with_piecewise)} converters'

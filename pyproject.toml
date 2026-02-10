@@ -36,7 +36,7 @@ dependencies = [
     "pandas >= 2.0.0, < 3",
     "xarray >= 2024.2.0, < 2026.0", # CalVer: allow through next calendar year
     # Optimization and data handling
-    "linopy >= 0.5.1, < 0.6", # Widened from patch pin to minor range
+    "linopy >= 0.6, < 0.7",  # Requires add_sos_constraints (0.6+); PWL monkey-patched from PR #576
     "netcdf4 >=1.6.1, <1.7.5",  # 1.7.4 missing wheels, revert to < 2 later
     # Utilities
     "pyyaml >= 6.0.0, < 7",

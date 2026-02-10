@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
     from .interface import (
         InvestParameters,
+        Piecewise,
     )
     from .structure import FlowSystemModel
 
@@ -850,276 +851,76 @@ class MaskHelpers:
         return {e.label: [f.label_full for f in get_flows(e)] for e in elements}
 
 
-class PiecewiseBuilder:
-    """Static helper methods for batched piecewise linear modeling.
+def pieces_to_breakpoints(
+    piecewises: dict[str, Piecewise],
+    link_dim: str = 'link',
+    include_zero: bool = False,
+) -> xr.DataArray:
+    """Convert a ``{label: Piecewise}`` dict into a breakpoints DataArray.
 
-    Enables batching of piecewise constraints across multiple elements with
-    potentially different segment counts using the "pad to max" approach.
+    Each ``Piecewise`` contains ``pieces: list[Piece]``, where each Piece has
+    ``start`` and ``end`` attributes (scalar or DataArray).
 
-    Pattern:
-        1. Collect segment counts from elements
-        2. Build segment mask (valid vs padded segments)
-        3. Pad breakpoints to max segment count
-        4. Create batched variables (inside_piece, lambda0, lambda1)
-        5. Create batched constraints
+    Returns a DataArray with dims ``(link_dim, segment, breakpoint, [extra…])``,
+    where each segment has exactly 2 breakpoints ``[start, end]``.
 
-    Variables created (all with element and segment dimensions):
-        - inside_piece: binary, 1 if segment is active
-        - lambda0: continuous [0,1], weight for segment start
-        - lambda1: continuous [0,1], weight for segment end
-
-    Constraints:
-        - lambda0 + lambda1 == inside_piece (per element, segment)
-        - sum(inside_piece, segment) <= 1 (per element)
-        - var == sum(lambda0 * starts + lambda1 * ends) (coupling)
+    If *include_zero* is True and the first piece of any linked expression
+    does not start at 0, an extra zero-point segment ``[0, 0]`` is prepended
+    so the disjunctive formulation can select the "off" state.
     """
+    labels = list(piecewises.keys())
 
-    @staticmethod
-    def collect_segment_info(
-        element_ids: list[str],
-        segment_counts: dict[str, int],
-        dim_name: str,
-    ) -> tuple[int, xr.DataArray]:
-        """Collect segment counts and build validity mask.
+    # Check if all values are scalar (fast numpy path)
+    all_scalar = all(np.isscalar(p.start) and np.isscalar(p.end) for pw in piecewises.values() for p in pw.pieces)
 
-        Args:
-            element_ids: List of element identifiers.
-            segment_counts: Dict mapping element_id -> number of segments.
-            dim_name: Name for the element dimension.
+    if all_scalar:
+        # Fast path: build numpy array directly
+        segments_list = []
+        for label in labels:
+            pw = piecewises[label]
+            segs = [[p.start, p.end] for p in pw.pieces]
+            if include_zero:
+                # Prepend zero-point segment if first piece doesn't start at 0
+                if not np.isclose(pw.pieces[0].start, 0.0):
+                    segs.insert(0, [0.0, 0.0])
+            segments_list.append(segs)
 
-        Returns:
-            max_segments: Maximum segment count across all elements.
-            segment_mask: (element, segment) DataArray, 1=valid, 0=padded.
-        """
-        max_segments = max(segment_counts.values())
+        # Pad to max segments (in case include_zero added one for some but not all)
+        max_segs = max(len(s) for s in segments_list)
+        for segs in segments_list:
+            while len(segs) < max_segs:
+                segs.append([np.nan, np.nan])
 
-        # Build segment validity mask
-        mask_data = np.zeros((len(element_ids), max_segments))
-        for i, eid in enumerate(element_ids):
-            n_segments = segment_counts[eid]
-            mask_data[i, :n_segments] = 1
-
-        segment_mask = xr.DataArray(
-            mask_data,
-            dims=[dim_name, 'segment'],
-            coords={dim_name: element_ids, 'segment': list(range(max_segments))},
+        data = np.array(segments_list)  # (link, segment, breakpoint=2)
+        return xr.DataArray(
+            data,
+            dims=[link_dim, 'segment', 'breakpoint'],
+            coords={link_dim: labels},
         )
+    else:
+        # Time-varying path: use xr.concat
+        all_segments = []
+        for label in labels:
+            pw = piecewises[label]
+            seg_arrays = []
+            if include_zero:
+                first_start = pw.pieces[0].start
+                needs_zero = (
+                    not np.allclose(first_start, 0.0)
+                    if not np.isscalar(first_start)
+                    else not np.isclose(first_start, 0.0)
+                )
+                if needs_zero:
+                    zero_bp = xr.DataArray([0.0, 0.0], dims=['breakpoint'])
+                    seg_arrays.append(zero_bp)
+            for piece in pw.pieces:
+                bp = xr.concat(
+                    [xr.DataArray(piece.start), xr.DataArray(piece.end)],
+                    dim='breakpoint',
+                )
+                seg_arrays.append(bp)
+            seg_da = xr.concat(seg_arrays, dim='segment')
+            all_segments.append(seg_da)
 
-        return max_segments, segment_mask
-
-    @staticmethod
-    def pad_breakpoints(
-        element_ids: list[str],
-        breakpoints: dict[str, tuple[list, list]],
-        max_segments: int,
-        dim_name: str,
-        time_coords: xr.DataArray | None = None,
-    ) -> tuple[xr.DataArray, xr.DataArray]:
-        """Pad breakpoints to (element, segment) or (element, segment, time) arrays.
-
-        Handles both scalar and time-varying (array) breakpoints.
-
-        Args:
-            element_ids: List of element identifiers.
-            breakpoints: Dict mapping element_id -> (starts, ends) lists.
-                Values can be scalars or time-varying arrays.
-            max_segments: Maximum segment count to pad to.
-            dim_name: Name for the element dimension.
-            time_coords: Optional time coordinates for time-varying breakpoints.
-
-        Returns:
-            starts: (element, segment) or (element, segment, time) DataArray.
-            ends: (element, segment) or (element, segment, time) DataArray.
-        """
-        # Detect if any breakpoints are time-varying (arrays/xr.DataArray with dim > 0)
-        is_time_varying = False
-        time_length = None
-        for eid in element_ids:
-            element_starts, element_ends = breakpoints[eid]
-            for val in list(element_starts) + list(element_ends):
-                if isinstance(val, xr.DataArray):
-                    # Check if it has any dimensions (not a scalar)
-                    if val.ndim > 0:
-                        is_time_varying = True
-                        time_length = val.shape[0]
-                        break
-                elif isinstance(val, np.ndarray):
-                    # Check if it's not a 0-d array
-                    if val.ndim > 0 and val.size > 1:
-                        is_time_varying = True
-                        time_length = len(val)
-                        break
-            if is_time_varying:
-                break
-
-        if is_time_varying and time_length is not None:
-            # 3D arrays: (element, segment, time)
-            starts_data = np.zeros((len(element_ids), max_segments, time_length))
-            ends_data = np.zeros((len(element_ids), max_segments, time_length))
-
-            for i, eid in enumerate(element_ids):
-                element_starts, element_ends = breakpoints[eid]
-                n_segments = len(element_starts)
-                for j in range(n_segments):
-                    start_val = element_starts[j]
-                    end_val = element_ends[j]
-                    # Handle scalar vs array values
-                    if isinstance(start_val, (np.ndarray, xr.DataArray)):
-                        starts_data[i, j, :] = np.asarray(start_val)
-                    else:
-                        starts_data[i, j, :] = start_val
-                    if isinstance(end_val, (np.ndarray, xr.DataArray)):
-                        ends_data[i, j, :] = np.asarray(end_val)
-                    else:
-                        ends_data[i, j, :] = end_val
-
-            # Build coordinates including time if available
-            coords = {dim_name: element_ids, 'segment': list(range(max_segments))}
-            if time_coords is not None:
-                coords['time'] = time_coords
-            starts = xr.DataArray(starts_data, dims=[dim_name, 'segment', 'time'], coords=coords)
-            ends = xr.DataArray(ends_data, dims=[dim_name, 'segment', 'time'], coords=coords)
-        else:
-            # 2D arrays: (element, segment) - scalar breakpoints
-            starts_data = np.zeros((len(element_ids), max_segments))
-            ends_data = np.zeros((len(element_ids), max_segments))
-
-            for i, eid in enumerate(element_ids):
-                element_starts, element_ends = breakpoints[eid]
-                n_segments = len(element_starts)
-                starts_data[i, :n_segments] = element_starts
-                ends_data[i, :n_segments] = element_ends
-
-            coords = {dim_name: element_ids, 'segment': list(range(max_segments))}
-            starts = xr.DataArray(starts_data, dims=[dim_name, 'segment'], coords=coords)
-            ends = xr.DataArray(ends_data, dims=[dim_name, 'segment'], coords=coords)
-
-        return starts, ends
-
-    @staticmethod
-    def create_piecewise_variables(
-        model: FlowSystemModel,
-        element_ids: list[str],
-        max_segments: int,
-        dim_name: str,
-        segment_mask: xr.DataArray,
-        base_coords: xr.Coordinates | None,
-        name_prefix: str,
-    ) -> dict[str, linopy.Variable]:
-        """Create batched piecewise variables.
-
-        Args:
-            model: The FlowSystemModel.
-            element_ids: List of element identifiers.
-            max_segments: Number of segments (after padding).
-            dim_name: Name for the element dimension.
-            segment_mask: (element, segment) validity mask.
-            base_coords: Additional coordinates (time, period, scenario).
-            name_prefix: Prefix for variable names.
-
-        Returns:
-            Dict with 'inside_piece', 'lambda0', 'lambda1' variables.
-        """
-        import pandas as pd
-
-        # Build coordinates
-        coords_dict = {
-            dim_name: pd.Index(element_ids, name=dim_name),
-            'segment': pd.Index(list(range(max_segments)), name='segment'),
-        }
-        if base_coords is not None:
-            coords_dict.update(dict(base_coords))
-
-        full_coords = xr.Coordinates(coords_dict)
-
-        # inside_piece: binary, but upper=0 for padded segments
-        inside_piece = model.add_variables(
-            lower=0,
-            upper=segment_mask,  # 0 for padded, 1 for valid
-            binary=True,
-            coords=full_coords,
-            name=f'{name_prefix}|inside_piece',
-        )
-
-        # lambda0, lambda1: continuous [0, 1], but upper=0 for padded segments
-        lambda0 = model.add_variables(
-            lower=0,
-            upper=segment_mask,
-            coords=full_coords,
-            name=f'{name_prefix}|lambda0',
-        )
-
-        lambda1 = model.add_variables(
-            lower=0,
-            upper=segment_mask,
-            coords=full_coords,
-            name=f'{name_prefix}|lambda1',
-        )
-
-        return {
-            'inside_piece': inside_piece,
-            'lambda0': lambda0,
-            'lambda1': lambda1,
-        }
-
-    @staticmethod
-    def create_piecewise_constraints(
-        model: FlowSystemModel,
-        variables: dict[str, linopy.Variable],
-        name_prefix: str,
-    ) -> None:
-        """Create batched piecewise constraints.
-
-        Creates:
-            - lambda0 + lambda1 == inside_piece (for valid segments only)
-            - sum(inside_piece, segment) <= 1
-
-        Args:
-            model: The FlowSystemModel.
-            variables: Dict with 'inside_piece', 'lambda0', 'lambda1'.
-            name_prefix: Prefix for constraint names.
-        """
-        inside_piece = variables['inside_piece']
-        lambda0 = variables['lambda0']
-        lambda1 = variables['lambda1']
-
-        # Constraint: lambda0 + lambda1 == inside_piece (only for valid segments)
-        # For padded segments, all variables are 0, so constraint is 0 == 0 (trivially satisfied)
-        model.add_constraints(
-            lambda0 + lambda1 == inside_piece,
-            name=f'{name_prefix}|lambda_sum',
-        )
-
-        # Constraint: sum(inside_piece) <= 1
-        # This ensures at most one segment is active per element.
-        # Callers may add tighter constraints (e.g., <= invested) separately.
-        model.add_constraints(
-            inside_piece.sum('segment') <= 1,
-            name=f'{name_prefix}|single_segment',
-        )
-
-    @staticmethod
-    def create_coupling_constraint(
-        model: FlowSystemModel,
-        target_var: linopy.Variable,
-        lambda0: linopy.Variable,
-        lambda1: linopy.Variable,
-        starts: xr.DataArray,
-        ends: xr.DataArray,
-        name: str,
-    ) -> None:
-        """Create variable coupling constraint.
-
-        Creates: target_var == sum(lambda0 * starts + lambda1 * ends, segment)
-
-        Args:
-            model: The FlowSystemModel.
-            target_var: The variable to couple (e.g., flow_rate, size).
-            lambda0: Lambda0 variable from create_piecewise_variables.
-            lambda1: Lambda1 variable from create_piecewise_variables.
-            starts: (element, segment) array of segment start values.
-            ends: (element, segment) array of segment end values.
-            name: Name for the constraint.
-        """
-        reconstructed = (lambda0 * starts + lambda1 * ends).sum('segment')
-        model.add_constraints(target_var == reconstructed, name=name)
+        result = xr.concat(all_segments, dim=pd.Index(labels, name=link_dim))
+        return result

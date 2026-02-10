@@ -10,6 +10,7 @@ import warnings
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from . import io as fx_io
@@ -1389,105 +1390,84 @@ class StoragesModel(TypeModel):
     # Investment effect properties are defined above, delegating to _investment_data
 
     def _create_piecewise_effects(self) -> None:
-        """Create batched piecewise effects for storages with piecewise_effects_of_investment.
+        """Create piecewise effects for storages with piecewise_effects_of_investment.
 
-        Uses PiecewiseBuilder for pad-to-max batching across all storages with
-        piecewise effects. Creates batched segment variables, share variables,
-        and coupling constraints.
+        Uses linopy's disjunctive PWL API per element. For each element with
+        piecewise effects, creates a disjunctive formulation linking the size
+        variable to cost/effect share variables.
         """
-        from .features import PiecewiseBuilder
+        from .features import pieces_to_breakpoints
 
         dim = self.dim_name
         size_var = self.size
-        invested_var = self.invested
 
         if size_var is None:
             return
 
         inv = self._investment_data
-        if inv is None or not inv.piecewise_element_ids:
+        if inv is None or not inv.with_piecewise_effects:
             return
 
-        element_ids = inv.piecewise_element_ids
-        segment_mask = inv.piecewise_segment_mask
-        origin_starts = inv.piecewise_origin_starts
-        origin_ends = inv.piecewise_origin_ends
-        effect_starts = inv.piecewise_effect_starts
-        effect_ends = inv.piecewise_effect_ends
-        effect_names = inv.piecewise_effect_names
-        max_segments = inv.piecewise_max_segments
+        element_ids = inv.with_piecewise_effects  # list[str]
+        share_parts = []
+        for eid in element_ids:
+            pe = inv._params[eid].piecewise_effects_of_investment
 
-        # Create batched piecewise variables
-        base_coords = self.model.get_coords(['period', 'scenario'])
-        name_prefix = f'{dim}|piecewise_effects'
-        piecewise_vars = PiecewiseBuilder.create_piecewise_variables(
-            self.model,
-            element_ids,
-            max_segments,
-            dim,
-            segment_mask,
-            base_coords,
-            name_prefix,
-        )
+            # Check if the first piece starts at 0. If not, prepend a zero-point segment
+            # so the disjunctive formulation can select "off" (size=0, effects=0).
+            # This is needed for both optional (invested binary) and mandatory investments
+            # where minimum_size allows 0, because the old formulation used sum(inside_piece)<=1.
+            first_start = pe.piecewise_origin.pieces[0].start
+            origin_starts_at_zero = (
+                np.isclose(first_start, 0.0) if np.isscalar(first_start) else np.allclose(first_start, 0.0)
+            )
+            needs_zero = not origin_starts_at_zero
 
-        # Create piecewise constraints
-        PiecewiseBuilder.create_piecewise_constraints(
-            self.model,
-            piecewise_vars,
-            name_prefix,
-        )
+            # Build piecewise dicts: origin (size) + effect shares
+            piecewises_dict: dict[str, object] = {'__origin__': pe.piecewise_origin}
+            for eff_name, pw in pe.piecewise_shares.items():
+                piecewises_dict[eff_name] = pw
 
-        # Tighten single_segment constraint for optional elements: sum(inside_piece) <= invested
-        # This helps the LP relaxation by immediately forcing inside_piece=0 when invested=0.
-        if invested_var is not None:
-            invested_ids = set(invested_var.coords[dim].values)
-            optional_ids = [sid for sid in element_ids if sid in invested_ids]
-            if optional_ids:
-                inside_piece = piecewise_vars['inside_piece'].sel({dim: optional_ids})
-                self.model.add_constraints(
-                    inside_piece.sum('segment') <= invested_var.sel({dim: optional_ids}),
-                    name=f'{name_prefix}|single_segment_invested',
-                )
+            breakpoints = pieces_to_breakpoints(
+                piecewises_dict,
+                link_dim='link',
+                include_zero=needs_zero,
+            )
 
-        # Create coupling constraint for size (origin)
-        size_subset = size_var.sel({dim: element_ids})
-        PiecewiseBuilder.create_coupling_constraint(
-            self.model,
-            size_subset,
-            piecewise_vars['lambda0'],
-            piecewise_vars['lambda1'],
-            origin_starts,
-            origin_ends,
-            f'{name_prefix}|size|coupling',
-        )
+            # Build expression dict: origin = size variable, effects = share variables
+            base_coords = self.model.get_coords(['period', 'scenario'])
+            effect_names = list(pe.piecewise_shares.keys())
+            share_coords = {'effect': pd.Index(effect_names, name='effect')}
+            if base_coords is not None:
+                share_coords.update(dict(base_coords))
 
-        # Create share variable with (dim, effect) and vectorized coupling constraint
-        import pandas as pd
+            share_var_el = self.model.add_variables(
+                lower=-np.inf,
+                upper=np.inf,
+                coords=xr.Coordinates(share_coords),
+                name=f'{dim}|piecewise_effects|{eid}|share',
+            )
 
-        coords_dict = {dim: pd.Index(element_ids, name=dim), 'effect': effect_names}
-        if base_coords is not None:
-            coords_dict.update(dict(base_coords))
+            expr_dict = {'__origin__': size_var.sel({dim: eid})}
+            for eff_name in effect_names:
+                expr_dict[eff_name] = share_var_el.sel(effect=eff_name)
 
-        share_var = self.model.add_variables(
-            lower=-np.inf,
-            upper=np.inf,
-            coords=xr.Coordinates(coords_dict),
-            name=f'{name_prefix}|share',
-        )
-        PiecewiseBuilder.create_coupling_constraint(
-            self.model,
-            share_var,
-            piecewise_vars['lambda0'],
-            piecewise_vars['lambda1'],
-            effect_starts,
-            effect_ends,
-            f'{name_prefix}|coupling',
-        )
+            name = f'{dim}|piecewise_effects|{eid}'
+            self.model.add_disjunctive_piecewise_constraints(
+                expr_dict,
+                breakpoints,
+                link_dim='link',
+                name=name,
+            )
 
-        # Sum over element dim, keep effect dim
-        self.model.effects.add_share_periodic(share_var.sum(dim))
+            share_parts.append(share_var_el)
 
-        logger.debug(f'Created batched piecewise effects for {len(element_ids)} storages')
+        # Sum all share parts and register with effects
+        if share_parts:
+            total_share = share_parts[0] if len(share_parts) == 1 else sum(share_parts[1:], share_parts[0])
+            self.model.effects.add_share_periodic(total_share)
+
+        logger.debug(f'Created piecewise effects for {len(element_ids)} storages')
 
 
 class InterclusterStoragesModel(TypeModel):

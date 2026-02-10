@@ -55,8 +55,10 @@ def _ensure_coords(
     Note: Infinity values (-inf, inf) are kept as scalars because linopy uses
     special checks like `if (lower != -inf)` that fail with DataArrays.
     """
-    # Handle both dict and xr.Coordinates
-    if isinstance(coords, dict):
+    # Handle dict, xr.Coordinates, and list of pd.Index (from linopy PWL API)
+    if isinstance(coords, list):
+        coord_dims = [idx.name for idx in coords]
+    elif isinstance(coords, dict):
         coord_dims = list(coords.keys())
     else:
         coord_dims = list(coords.dims)
@@ -288,16 +290,10 @@ class ConverterVarName:
 
     All variable and constraint names for ConvertersModel should reference these constants.
     Pattern: converter|{variable_name}
+
+    Piecewise conversion variables/constraints are created per-converter by linopy's
+    disjunctive PWL API with names like ``converter|piecewise_conversion|{label}_*``.
     """
-
-    # === Piecewise Conversion Variables ===
-    # Prefix for all piecewise-related names (used by PiecewiseBuilder)
-    PIECEWISE_PREFIX = 'converter|piecewise_conversion'
-
-    # Full variable names (prefix + suffix added by PiecewiseBuilder)
-    PIECEWISE_INSIDE = f'{PIECEWISE_PREFIX}|inside_piece'
-    PIECEWISE_LAMBDA0 = f'{PIECEWISE_PREFIX}|lambda0'
-    PIECEWISE_LAMBDA1 = f'{PIECEWISE_PREFIX}|lambda1'
 
 
 # Constraint names for ConvertersModel
@@ -309,11 +305,6 @@ class _ConverterConstraint:
 
     # Linear conversion constraints (indexed by equation number)
     CONVERSION = 'conversion'
-
-    # Piecewise conversion constraints
-    PIECEWISE_LAMBDA_SUM = 'piecewise_conversion|lambda_sum'
-    PIECEWISE_SINGLE_SEGMENT = 'piecewise_conversion|single_segment'
-    PIECEWISE_COUPLING = 'piecewise_conversion|coupling'
 
 
 ConverterVarName.Constraint = _ConverterConstraint
