@@ -70,7 +70,7 @@ Complete rewrite of the model building pipeline using batched operations instead
 **Architecture Changes**:
 
 - **Type-level batched models**: New `FlowsModel`, `StoragesModel`, `BusesModel` classes process all elements of a type in single vectorized operations
-- **Pre-computed element data**: `FlowsData` and `StoragesData` cache element parameters as xarray DataArrays with element dimensions
+- **Pre-computed element data**: All `*Data` classes (`FlowsData`, `StoragesData`, `EffectsData`, `BusesData`, `ComponentsData`, `ConvertersData`, `TransmissionsData`) cache element parameters as xarray DataArrays with element dimensions
 - **Mask-based variables**: Use linopy's `mask=` parameter for heterogeneous elements (e.g., only some flows have status variables)
 - **Fast NumPy helpers**: `fast_notnull()` / `fast_isnull()` are ~55x faster than xarray equivalents
 
