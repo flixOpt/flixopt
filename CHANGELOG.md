@@ -56,6 +56,10 @@ Until here -->
 
 **Summary**: Bugfix release fixing `cluster_weight` loss during NetCDF roundtrip for manually constructed clustered FlowSystems.
 
+### ✨ Added
+
+- **Solver log capture**: New `CONFIG.Solving.capture_solver_log` option routes solver output (HiGHS, Gurobi, etc.) through the `flixopt.solver` Python logger at INFO level instead of printing directly to the console. This allows capturing solver output in any Python log handler (console, file, or both) and filtering it independently from flixopt application logs. Enabled automatically by `CONFIG.debug()`, `CONFIG.exploring()`, `CONFIG.production()`, and `CONFIG.notebook()` presets. ([#606](https://github.com/flixOpt/flixopt/pull/606))
+
 ### 🐛 Fixed
 
 - **Clustering IO**: `cluster_weight` is now preserved during NetCDF roundtrip for manually constructed clustered FlowSystems (i.e. `FlowSystem(..., clusters=..., cluster_weight=...)`). Previously, `cluster_weight` was silently dropped to `None` during `save->reload->solve`, causing incorrect objective values. Systems created via `.transform.cluster()` were not affected.
