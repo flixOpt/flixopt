@@ -731,7 +731,7 @@ class CONFIG:
             ```
         """
         cls.Logging.enable_console('DEBUG')
-        cls.Solving.log_to_console = True
+        cls.Solving.log_to_console = False
         cls.Solving.log_main_results = True
         cls.Solving.capture_solver_log = True
         return cls
@@ -753,7 +753,7 @@ class CONFIG:
             ```
         """
         cls.Logging.enable_console('INFO')
-        cls.Solving.log_to_console = True
+        cls.Solving.log_to_console = False
         cls.Solving.log_main_results = True
         cls.Solving.capture_solver_log = True
         cls.browser_plotting()
