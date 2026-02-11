@@ -1439,11 +1439,20 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if self.model is None:
             raise RuntimeError('Model has not been built. Call build_model() first.')
 
-        self.model.solve(
-            solver_name=solver.name,
-            progress=CONFIG.Solving.log_to_console,
-            **solver.options,
-        )
+        if CONFIG.Solving.capture_solver_log:
+            with fx_io.stream_solver_log(solver.options) as (log_path, options):
+                self.model.solve(
+                    log_fn=log_path,
+                    solver_name=solver.name,
+                    progress=CONFIG.Solving.log_to_console,
+                    **options,
+                )
+        else:
+            self.model.solve(
+                solver_name=solver.name,
+                progress=CONFIG.Solving.log_to_console,
+                **solver.options,
+            )
 
         if self.model.termination_condition in ('infeasible', 'infeasible_or_unbounded'):
             if CONFIG.Solving.compute_infeasibilities:

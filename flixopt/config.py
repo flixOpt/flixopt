@@ -173,6 +173,7 @@ _DEFAULTS = MappingProxyType(
                 'log_to_console': True,
                 'log_main_results': True,
                 'compute_infeasibilities': True,
+                'capture_solver_log': False,
             }
         ),
     }
@@ -529,6 +530,13 @@ class CONFIG:
             log_to_console: Whether solver should output to console.
             log_main_results: Whether to log main results after solving.
             compute_infeasibilities: Whether to compute infeasibility analysis when the model is infeasible.
+            capture_solver_log: Whether to route solver output through the
+                ``flixopt.solver`` Python logger instead of printing directly
+                to the console.  When enabled, the solver's native console
+                output is disabled and each log line is forwarded at INFO level
+                to ``logging.getLogger('flixopt.solver')``.  This allows
+                capturing solver output in Python log handlers (console, file,
+                or both) without double-logging.
 
         Examples:
             ```python
@@ -536,6 +544,11 @@ class CONFIG:
             CONFIG.Solving.mip_gap = 0.001
             CONFIG.Solving.time_limit_seconds = 600
             CONFIG.Solving.log_to_console = False
+
+            # Route solver output through Python logging
+            CONFIG.Solving.capture_solver_log = True
+            CONFIG.Logging.enable_console('INFO')
+            # Solver output now appears via the 'flixopt.solver' logger
             ```
         """
 
@@ -544,6 +557,7 @@ class CONFIG:
         log_to_console: bool = _DEFAULTS['solving']['log_to_console']
         log_main_results: bool = _DEFAULTS['solving']['log_main_results']
         compute_infeasibilities: bool = _DEFAULTS['solving']['compute_infeasibilities']
+        capture_solver_log: bool = _DEFAULTS['solving']['capture_solver_log']
 
     class Plotting:
         """Plotting configuration.
@@ -668,6 +682,7 @@ class CONFIG:
                 'log_to_console': cls.Solving.log_to_console,
                 'log_main_results': cls.Solving.log_main_results,
                 'compute_infeasibilities': cls.Solving.compute_infeasibilities,
+                'capture_solver_log': cls.Solving.capture_solver_log,
             },
             'plotting': {
                 'default_show': cls.Plotting.default_show,
@@ -698,13 +713,15 @@ class CONFIG:
         cls.Plotting.default_show = False
         cls.Solving.log_to_console = False
         cls.Solving.log_main_results = False
+        cls.Solving.capture_solver_log = False
         return cls
 
     @classmethod
     def debug(cls) -> type[CONFIG]:
         """Configure for debug mode with verbose output.
 
-        Enables console logging at DEBUG level and all solver output for troubleshooting.
+        Enables console logging at DEBUG level and routes solver output through
+        the ``flixopt.solver`` Python logger for full capture.
 
         Examples:
             ```python
@@ -716,13 +733,15 @@ class CONFIG:
         cls.Logging.enable_console('DEBUG')
         cls.Solving.log_to_console = True
         cls.Solving.log_main_results = True
+        cls.Solving.capture_solver_log = True
         return cls
 
     @classmethod
     def exploring(cls) -> type[CONFIG]:
         """Configure for exploring flixopt.
 
-        Enables console logging at INFO level and all solver output.
+        Enables console logging at INFO level and routes solver output through
+        the ``flixopt.solver`` Python logger.
         Also enables browser plotting for plotly with showing plots per default.
 
         Examples:
@@ -736,6 +755,7 @@ class CONFIG:
         cls.Logging.enable_console('INFO')
         cls.Solving.log_to_console = True
         cls.Solving.log_main_results = True
+        cls.Solving.capture_solver_log = True
         cls.browser_plotting()
         return cls
 
@@ -761,6 +781,7 @@ class CONFIG:
         cls.Plotting.default_show = False
         cls.Solving.log_to_console = False
         cls.Solving.log_main_results = False
+        cls.Solving.capture_solver_log = True
         return cls
 
     @classmethod
@@ -865,6 +886,7 @@ class CONFIG:
         # Disable verbose solver output for cleaner notebook cells
         cls.Solving.log_to_console = False
         cls.Solving.log_main_results = False
+        cls.Solving.capture_solver_log = True
 
         return cls
 

@@ -7,6 +7,9 @@ import os
 import pathlib
 import re
 import sys
+import tempfile
+import threading
+import time
 import warnings
 from collections import defaultdict
 from contextlib import contextmanager
@@ -1505,6 +1508,110 @@ def suppress_output():
                     os.close(fd)
                 except OSError:
                     pass  # FD already closed or invalid
+
+
+def _disable_solver_console(solver_options: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of solver options with console logging disabled.
+
+    Handles solver-specific option names (HiGHS: ``log_to_console``,
+    Gurobi: ``LogToConsole``).
+    """
+    result = dict(solver_options)
+    if 'log_to_console' in result:
+        result['log_to_console'] = False
+    if 'LogToConsole' in result:
+        result['LogToConsole'] = 0
+    return result
+
+
+@contextmanager
+def stream_solver_log(
+    solver_options: dict[str, Any],
+    log_fn: pathlib.Path | None = None,
+):
+    """Stream solver log file contents to the ``flixopt.solver`` Python logger.
+
+    Redirects solver output from console to a log file, then tails that file in
+    a background thread, forwarding each line to
+    ``logging.getLogger('flixopt.solver')`` at INFO level.
+
+    This avoids double-logging: the solver's own console output is disabled, and
+    the Python logger controls all output routing (console, file, both, neither).
+
+    Args:
+        solver_options: Solver options dict (from ``solver.options``). A copy is
+            made with console logging disabled.
+        log_fn: Path to the solver log file. If *None*, a temporary file is
+            created and deleted after the context exits. If a path is provided,
+            the file is kept (useful when the caller wants a persistent solver
+            log alongside the Python logger stream).
+
+    Yields:
+        A ``(log_path, modified_options)`` tuple. Pass ``log_path`` as
+        ``log_fn`` and unpack ``modified_options`` as ``**kwargs`` to
+        ``linopy.Model.solve``.
+
+    Warning:
+        Not thread-safe. Use only with sequential execution.
+    """
+    solver_logger = logging.getLogger('flixopt.solver')
+
+    # Disable solver console output — the logger handles routing
+    modified_options = _disable_solver_console(solver_options)
+
+    # Resolve log file path
+    cleanup = log_fn is None
+    if cleanup:
+        fd, tmp_path = tempfile.mkstemp(suffix='.log', prefix='flixopt_solver_')
+        os.close(fd)
+        log_path = pathlib.Path(tmp_path)
+    else:
+        log_path = pathlib.Path(log_fn)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    stop_event = threading.Event()
+
+    def _tail() -> None:
+        """Read lines from the log file and forward to the solver logger."""
+        # Wait for the file to appear (linopy creates it)
+        while not log_path.exists() and not stop_event.is_set():
+            time.sleep(0.01)
+
+        if not log_path.exists():
+            return
+
+        with open(log_path) as f:
+            while not stop_event.is_set():
+                line = f.readline()
+                if line:
+                    stripped = line.rstrip('\n\r')
+                    if stripped:
+                        solver_logger.info(stripped)
+                else:
+                    time.sleep(0.05)
+
+            # Drain remaining lines after solve completes
+            for line in f:
+                stripped = line.rstrip('\n\r')
+                if stripped:
+                    solver_logger.info(stripped)
+
+    thread = threading.Thread(target=_tail, daemon=True)
+    thread.start()
+
+    try:
+        yield log_path, modified_options
+    finally:
+        # Give the tail thread a moment to catch the last writes
+        time.sleep(0.1)
+        stop_event.set()
+        thread.join(timeout=5)
+
+        if cleanup:
+            try:
+                log_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 # ============================================================================
