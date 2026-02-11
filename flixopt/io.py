@@ -1535,8 +1535,14 @@ def stream_solver_log(
     a background thread, forwarding each line to
     ``logging.getLogger('flixopt.solver')`` at INFO level.
 
-    This avoids double-logging: the solver's own console output is disabled, and
-    the Python logger controls all output routing (console, file, both, neither).
+    The solver's native console output is disabled via solver options, and the
+    Python logger controls all output routing (console, file, both, neither).
+
+    Note:
+        Some solvers (e.g. Gurobi) may print a small amount of output (license
+        banner, LP reading) directly to stdout before the ``LogToConsole``
+        option takes effect.  This is a solver/linopy limitation and does not
+        go through the Python logger.
 
     Args:
         solver_options: Solver options dict (from ``solver.options``). A copy is

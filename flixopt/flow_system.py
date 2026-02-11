@@ -1444,7 +1444,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 self.model.solve(
                     log_fn=log_path,
                     solver_name=solver.name,
-                    progress=CONFIG.Solving.log_to_console,
+                    progress=False,
                     **options,
                 )
         else:
