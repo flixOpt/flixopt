@@ -7,10 +7,12 @@ on:
       - 'docs/**'
       - 'mkdocs.yml'
       - 'flixopt/**'
+      - 'scripts/**'
   pull_request:
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
+      - 'scripts/**'
   workflow_dispatch:
     inputs:
       deploy:

@@ -57,6 +57,8 @@ nav:
       - Release Notes: changelog.md
       - Roadmap: roadmap.md
 
+  - Playground: playground.md
+
   - Examples:
     - Overview: notebooks/index.md
     - Basics:
@@ -246,6 +248,7 @@ plugins:
       include_requirejs: true
       ignore:
         - "notebooks/data/*.py"  # Data generation scripts, not notebooks
+        - "wasm/*.py"  # Marimo notebooks, exported to WASM separately
       execute_ignore:
         - "notebooks/data/*.py"
 
@@ -379,6 +382,9 @@ extra_javascript:
   - javascripts/plotly-instant.js
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
   - https://polyfill.io/v3/polyfill.min.js?features=es6
+
+hooks:
+  - scripts/marimo_wasm_hook.py
 
 watch:
   - flixopt
