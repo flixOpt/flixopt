@@ -245,12 +245,13 @@ class Optimization:
 
         log_fn = pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log'
         if CONFIG.Solving.capture_solver_log:
-            with fx_io.stream_solver_log(solver.options, log_fn=log_fn) as (log_path, options):
+            solver.log_to_console = False
+            with fx_io.stream_solver_log(log_fn=log_fn) as log_path:
                 self.model.solve(
                     log_fn=log_path,
                     solver_name=solver.name,
                     progress=False,
-                    **options,
+                    **solver.options,
                 )
         else:
             self.model.solve(

@@ -1510,60 +1510,36 @@ def suppress_output():
                     pass  # FD already closed or invalid
 
 
-def _disable_solver_console(solver_options: dict[str, Any]) -> dict[str, Any]:
-    """Return a copy of solver options with console logging disabled.
-
-    Handles solver-specific option names (HiGHS: ``log_to_console``,
-    Gurobi: ``LogToConsole``).
-    """
-    result = dict(solver_options)
-    if 'log_to_console' in result:
-        result['log_to_console'] = False
-    if 'LogToConsole' in result:
-        result['LogToConsole'] = 0
-    return result
-
-
 @contextmanager
-def stream_solver_log(
-    solver_options: dict[str, Any],
-    log_fn: pathlib.Path | None = None,
-):
+def stream_solver_log(log_fn: pathlib.Path | None = None):
     """Stream solver log file contents to the ``flixopt.solver`` Python logger.
 
-    Redirects solver output from console to a log file, then tails that file in
-    a background thread, forwarding each line to
+    Tails a solver log file in a background thread, forwarding each line to
     ``logging.getLogger('flixopt.solver')`` at INFO level.
 
-    The solver's native console output is disabled via solver options, and the
-    Python logger controls all output routing (console, file, both, neither).
+    Use together with ``solver.options_for_log_capture`` to disable the
+    solver's native console output and route everything through the Python
+    logger instead.
 
     Note:
         Some solvers (e.g. Gurobi) may print a small amount of output (license
-        banner, LP reading) directly to stdout before the ``LogToConsole``
-        option takes effect.  This is a solver/linopy limitation and does not
-        go through the Python logger.
+        banner, LP reading) directly to stdout before their console-log option
+        takes effect.  This is a solver/linopy limitation.
 
     Args:
-        solver_options: Solver options dict (from ``solver.options``). A copy is
-            made with console logging disabled.
         log_fn: Path to the solver log file. If *None*, a temporary file is
             created and deleted after the context exits. If a path is provided,
             the file is kept (useful when the caller wants a persistent solver
             log alongside the Python logger stream).
 
     Yields:
-        A ``(log_path, modified_options)`` tuple. Pass ``log_path`` as
-        ``log_fn`` and unpack ``modified_options`` as ``**kwargs`` to
+        Path to the log file. Pass it as ``log_fn`` to
         ``linopy.Model.solve``.
 
     Warning:
         Not thread-safe. Use only with sequential execution.
     """
     solver_logger = logging.getLogger('flixopt.solver')
-
-    # Disable solver console output — the logger handles routing
-    modified_options = _disable_solver_console(solver_options)
 
     # Resolve log file path
     cleanup = log_fn is None
@@ -1606,7 +1582,7 @@ def stream_solver_log(
     thread.start()
 
     try:
-        yield log_path, modified_options
+        yield log_path
     finally:
         # Give the tail thread a moment to catch the last writes
         time.sleep(0.1)
