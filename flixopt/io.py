@@ -1550,6 +1550,9 @@ def stream_solver_log(log_fn: pathlib.Path | None = None):
     else:
         log_path = pathlib.Path(log_fn)
         log_path.parent.mkdir(parents=True, exist_ok=True)
+        # Truncate existing file so the tail thread only streams new output
+        if log_path.exists():
+            log_path.write_text('')
 
     stop_event = threading.Event()
 
