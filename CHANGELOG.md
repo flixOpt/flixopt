@@ -52,13 +52,20 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
-## [6.0.3] - Upcoming
+## [6.1.0] - Upcoming
 
-**Summary**: Bugfix release fixing `cluster_weight` loss during NetCDF roundtrip for manually constructed clustered FlowSystems.
+**Summary**: Adds solver log capture through the Python logging system, exposes `progress` and `log_fn` parameters on solve/optimize, and fixes `cluster_weight` loss during NetCDF roundtrip.
 
 ### ✨ Added
 
-- **Solver log capture**: New `CONFIG.Solving.capture_solver_log` option routes solver output (HiGHS, Gurobi, etc.) through the `flixopt.solver` Python logger at INFO level instead of printing directly to the console. This allows capturing solver output in any Python log handler (console, file, or both) and filtering it independently from flixopt application logs. Enabled automatically by `CONFIG.debug()`, `CONFIG.exploring()`, `CONFIG.production()`, and `CONFIG.notebook()` presets. ([#606](https://github.com/flixOpt/flixopt/pull/606))
+- **Solver log capture**: New `CONFIG.Solving.capture_solver_log` option routes solver output (HiGHS, Gurobi, etc.) through the `flixopt.solver` Python logger at INFO level. This allows capturing solver output in any Python log handler (console, file, or both) and filtering it independently from flixopt application logs. Enabled automatically by `CONFIG.debug()`, `CONFIG.exploring()`, `CONFIG.production()`, and `CONFIG.notebook()` presets. ([#606](https://github.com/flixOpt/flixopt/pull/606))
+- **`progress` parameter**: `solve()`, `optimize()`, and `rolling_horizon()` now accept a `progress` parameter (default `True`) to control the tqdm progress bar independently of CONFIG settings.
+- **`log_fn` parameter**: `solve()` now accepts a `log_fn` parameter to persist the solver log to a file.
+
+### ♻️ Changed
+
+- **Presets**: `CONFIG.debug()` and `CONFIG.exploring()` now set `log_to_console=False` (solver output is routed through the Python logger instead of native console output).
+- **`CONFIG.Solving.log_to_console`** now exclusively controls the solver's native console output. It no longer affects the tqdm progress bar (use the `progress` parameter instead).
 
 ### 🐛 Fixed
 
