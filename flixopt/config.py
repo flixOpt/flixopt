@@ -531,24 +531,35 @@ class CONFIG:
             log_main_results: Whether to log main results after solving.
             compute_infeasibilities: Whether to compute infeasibility analysis when the model is infeasible.
             capture_solver_log: Whether to route solver output through the
-                ``flixopt.solver`` Python logger instead of printing directly
-                to the console.  When enabled, the solver's native console
-                output is disabled and each log line is forwarded at INFO level
-                to ``logging.getLogger('flixopt.solver')``.  This allows
-                capturing solver output in Python log handlers (console, file,
-                or both) without double-logging.
+                ``flixopt.solver`` Python logger.  When enabled, each solver
+                log line is forwarded at INFO level to
+                ``logging.getLogger('flixopt.solver')``.  This setting is
+                independent of ``log_to_console`` — both can be active at the
+                same time.
+
+                .. note::
+                    If ``capture_solver_log`` is ``True`` **and**
+                    ``log_to_console`` is ``True`` **and** the ``flixopt``
+                    logger has a console handler, solver output will appear
+                    on the console twice (once natively, once via the logger).
+                    To avoid this, set ``log_to_console = False`` when
+                    capturing to a console logger.
 
         Examples:
             ```python
-            # Set tighter convergence and longer timeout
-            CONFIG.Solving.mip_gap = 0.001
-            CONFIG.Solving.time_limit_seconds = 600
-            CONFIG.Solving.log_to_console = False
-
-            # Route solver output through Python logging
+            # Capture solver output to file only (no double console logging)
             CONFIG.Solving.capture_solver_log = True
+            CONFIG.Solving.log_to_console = False  # avoid double console output
+            CONFIG.Logging.enable_file('INFO', 'flixopt.log')
+
+            # Capture through logger to console (disable native solver console)
+            CONFIG.Solving.capture_solver_log = True
+            CONFIG.Solving.log_to_console = False
             CONFIG.Logging.enable_console('INFO')
-            # Solver output now appears via the 'flixopt.solver' logger
+
+            # Native solver console only (no Python logger capture)
+            CONFIG.Solving.capture_solver_log = False
+            CONFIG.Solving.log_to_console = True
             ```
         """
 
