@@ -1412,7 +1412,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return self
 
-    def solve(self, solver: _Solver, log_fn: pathlib.Path | str | None = None) -> FlowSystem:
+    def solve(self, solver: _Solver, log_fn: pathlib.Path | str | None = None, progress: bool = True) -> FlowSystem:
         """
         Solve the optimization model and populate the solution.
 
@@ -1427,6 +1427,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 ``capture_solver_log`` is enabled, a temporary file is used
                 (deleted after streaming). If a path is provided, the solver
                 log is persisted there regardless of capture settings.
+            progress: Whether to show a tqdm progress bar during solving.
 
         Returns:
             Self, for method chaining.
@@ -1449,14 +1450,14 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 self.model.solve(
                     log_fn=captured_path,
                     solver_name=solver.name,
-                    progress=False,
+                    progress=progress,
                     **solver.options,
                 )
         else:
             self.model.solve(
                 **({'log_fn': log_path} if log_path is not None else {}),
                 solver_name=solver.name,
-                progress=CONFIG.Solving.log_to_console,
+                progress=progress,
                 **solver.options,
             )
 

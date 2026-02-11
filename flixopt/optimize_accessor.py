@@ -59,6 +59,7 @@ class OptimizeAccessor:
         self,
         solver: _Solver,
         before_solve: Callable[[FlowSystem], None] | None = None,
+        progress: bool = True,
         normalize_weights: bool | None = None,
     ) -> FlowSystem:
         """
@@ -73,6 +74,7 @@ class OptimizeAccessor:
             before_solve: Optional callback function that receives the FlowSystem
                 after building the model and before solving. Use this to add custom
                 constraints via `flow_system.model.add_constraints()`.
+            progress: Whether to show a tqdm progress bar during solving.
             normalize_weights: Deprecated. Scenario weights are now always normalized in FlowSystem.
 
         Returns:
@@ -122,7 +124,7 @@ class OptimizeAccessor:
         self._fs.build_model()
         if before_solve is not None:
             before_solve(self._fs)
-        self._fs.solve(solver)
+        self._fs.solve(solver, progress=progress)
         return self._fs
 
     def rolling_horizon(
@@ -260,7 +262,7 @@ class OptimizeAccessor:
                                 self._check_no_investments(segment_fs)
                             if before_solve is not None:
                                 before_solve(segment_fs)
-                            segment_fs.solve(solver)
+                            segment_fs.solve(solver, progress=False)
                     finally:
                         logger.setLevel(original_level)
                 else:
@@ -277,7 +279,7 @@ class OptimizeAccessor:
                         self._check_no_investments(segment_fs)
                     if before_solve is not None:
                         before_solve(segment_fs)
-                    segment_fs.solve(solver)
+                    segment_fs.solve(solver, progress=False)
 
                 segment_flow_systems.append(segment_fs)
 
