@@ -12,6 +12,21 @@ def _():
 
 
 @app.cell(hide_code=True)
+async def _(mo):
+    import sys
+
+    if 'pyodide' in sys.modules:
+        with mo.status.spinner('Installing packages...'):
+            import micropip  # noqa: I001
+
+            # highspy is a pre-built Pyodide package (C extension) — install it
+            # from Pyodide's package index before flixopt tries to find it on PyPI
+            await micropip.install('highspy')
+            # keep_going=True skips unavailable C-extension deps (e.g. netcdf4)
+            await micropip.install('flixopt', keep_going=True)
+
+
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     # Quickstart
