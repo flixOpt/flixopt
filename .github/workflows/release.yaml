@@ -90,7 +90,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           version: "0.9.30"
           enable-cache: true
@@ -133,7 +133,7 @@ jobs:
     needs: [publish-pypi]
     runs-on: ubuntu-24.04
     steps:
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           version: "0.9.30"
 
