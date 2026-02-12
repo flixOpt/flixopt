@@ -7,6 +7,9 @@ import os
 import pathlib
 import re
 import sys
+import tempfile
+import threading
+import time
 import warnings
 from collections import defaultdict
 from contextlib import contextmanager
@@ -1505,6 +1508,95 @@ def suppress_output():
                     os.close(fd)
                 except OSError:
                     pass  # FD already closed or invalid
+
+
+@contextmanager
+def stream_solver_log(log_fn: pathlib.Path | None = None):
+    """Stream solver log file contents to the ``flixopt.solver`` Python logger.
+
+    Tails a solver log file in a background thread, forwarding each line to
+    ``logging.getLogger('flixopt.solver')`` at INFO level.
+
+    Use together with ``solver.options_for_log_capture`` to disable the
+    solver's native console output and route everything through the Python
+    logger instead.
+
+    Note:
+        Some solvers (e.g. Gurobi) may print a small amount of output (license
+        banner, LP reading) directly to stdout before their console-log option
+        takes effect.  This is a solver/linopy limitation.
+
+    Args:
+        log_fn: Path to the solver log file. If *None*, a temporary file is
+            created and deleted after the context exits. If a path is provided,
+            the file is kept (useful when the caller wants a persistent solver
+            log alongside the Python logger stream).
+
+    Yields:
+        Path to the log file. Pass it as ``log_fn`` to
+        ``linopy.Model.solve``.
+
+    Warning:
+        Not thread-safe. Use only with sequential execution.
+    """
+    solver_logger = logging.getLogger('flixopt.solver')
+
+    # Resolve log file path
+    cleanup = log_fn is None
+    if cleanup:
+        fd, tmp_path = tempfile.mkstemp(suffix='.log', prefix='flixopt_solver_')
+        os.close(fd)
+        log_path = pathlib.Path(tmp_path)
+    else:
+        log_path = pathlib.Path(log_fn)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        # Truncate existing file so the tail thread only streams new output
+        if log_path.exists():
+            log_path.write_text('')
+
+    stop_event = threading.Event()
+
+    def _tail() -> None:
+        """Read lines from the log file and forward to the solver logger."""
+        # Wait for the file to appear (linopy creates it)
+        while not log_path.exists() and not stop_event.is_set():
+            time.sleep(0.01)
+
+        if not log_path.exists():
+            return
+
+        with open(log_path) as f:
+            while not stop_event.is_set():
+                line = f.readline()
+                if line:
+                    stripped = line.rstrip('\n\r')
+                    if stripped:
+                        solver_logger.info(stripped)
+                else:
+                    time.sleep(0.05)
+
+            # Drain remaining lines after solve completes
+            for line in f:
+                stripped = line.rstrip('\n\r')
+                if stripped:
+                    solver_logger.info(stripped)
+
+    thread = threading.Thread(target=_tail, daemon=True)
+    thread.start()
+
+    try:
+        yield log_path
+    finally:
+        # Give the tail thread a moment to catch the last writes
+        time.sleep(0.1)
+        stop_event.set()
+        thread.join(timeout=5)
+
+        if cleanup:
+            try:
+                log_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 # ============================================================================

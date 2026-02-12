@@ -282,6 +282,56 @@ Common solver parameters:
 - `mip_gap` - Acceptable optimality gap (0.01 = 1%)
 - `log_to_console` - Show solver output
 
+## Logging & Solver Output
+
+By default, solvers print directly to the console. You can route this output
+through Python's logging system using `capture_solver_log`, which forwards each
+line to the `flixopt.solver` logger at INFO level.
+
+### Quick Setup with Presets
+
+```python
+from flixopt import CONFIG
+
+CONFIG.exploring()   # Console logging + solver capture (recommended for interactive use)
+CONFIG.debug()       # Verbose DEBUG logging + solver capture
+CONFIG.production('flixopt.log')  # File logging + solver capture, no console
+```
+
+### Manual Configuration
+
+`capture_solver_log` and `log_to_console` are independent settings:
+
+```python
+# Route solver output through logger to console
+CONFIG.Solving.capture_solver_log = True
+CONFIG.Solving.log_to_console = False
+CONFIG.Logging.enable_console('INFO')
+
+# Route solver output through logger to file
+CONFIG.Solving.capture_solver_log = True
+CONFIG.Solving.log_to_console = False
+CONFIG.Logging.enable_file('INFO', 'flixopt.log')
+
+# Native solver console only (no Python logger)
+CONFIG.Solving.capture_solver_log = False
+CONFIG.Solving.log_to_console = True
+```
+
+!!! warning "Avoiding double console output"
+    If `capture_solver_log` and `log_to_console` are both `True` **and** the
+    `flixopt` logger has a console handler, solver output appears twice. Set
+    `log_to_console = False` when capturing to a console logger.
+
+### Persistent Solver Log File
+
+Pass `log_fn` to `solve()` to keep the raw solver log on disk:
+
+```python
+flow_system.build_model()
+flow_system.solve(fx.solvers.HighsSolver(), log_fn='solver.log')
+```
+
 ## Performance Tips
 
 ### Model Size Reduction
