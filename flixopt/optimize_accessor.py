@@ -360,18 +360,25 @@ class OptimizeAccessor:
 
     def _check_no_investments(self, segment_fs: FlowSystem) -> None:
         """Check that no InvestParameters are used (not supported in rolling horizon)."""
-        from .features import InvestmentModel
+        from .interface import InvestParameters
 
         invest_elements = []
-        for component in segment_fs.components.values():
-            for model in component.submodel.all_submodels:
-                if isinstance(model, InvestmentModel):
-                    invest_elements.append(model.label_full)
+        # Check flows for InvestParameters
+        for flow in segment_fs.flows.values():
+            if isinstance(flow.size, InvestParameters):
+                invest_elements.append(flow.label_full)
+
+        # Check storages for InvestParameters
+        from .components import Storage
+
+        for comp in segment_fs.components.values():
+            if isinstance(comp, Storage) and isinstance(comp.capacity, InvestParameters):
+                invest_elements.append(comp.label_full)
 
         if invest_elements:
             raise ValueError(
                 f'InvestParameters are not supported in rolling horizon optimization. '
-                f'Found InvestmentModels: {invest_elements}. '
+                f'Found investments: {invest_elements}. '
                 f'Use standard optimize() for problems with investments.'
             )
 
@@ -401,7 +408,6 @@ class OptimizeAccessor:
         if not segment_flow_systems:
             raise ValueError('No segments to combine.')
 
-        effect_labels = set(self._fs.effects.keys())
         combined_vars: dict[str, xr.DataArray] = {}
         first_solution = segment_flow_systems[0].solution
         first_variables = first_solution.variables
@@ -420,11 +426,10 @@ class OptimizeAccessor:
                 combined_vars[var_name] = xr.DataArray(float('nan'))
 
         # Step 2: Recompute effect totals from per-timestep values
-        for effect in effect_labels:
-            per_ts = f'{effect}(temporal)|per_timestep'
-            if per_ts in combined_vars:
-                temporal_sum = combined_vars[per_ts].sum(dim='time', skipna=True)
-                combined_vars[f'{effect}(temporal)'] = temporal_sum
-                combined_vars[effect] = temporal_sum  # Total = temporal (periodic is NaN/unsupported)
+        if 'effect|per_timestep' in combined_vars:
+            per_ts = combined_vars['effect|per_timestep']
+            temporal_sum = per_ts.sum(dim='time', skipna=True)
+            combined_vars['effect|temporal'] = temporal_sum
+            combined_vars['effect|total'] = temporal_sum  # Total = temporal (periodic is NaN/unsupported)
 
         return xr.Dataset(combined_vars)

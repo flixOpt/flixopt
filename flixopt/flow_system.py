@@ -11,11 +11,11 @@ import warnings
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Literal
 
-import numpy as np
 import pandas as pd
 import xarray as xr
 
 from . import io as fx_io
+from .batched import BatchedAccessor
 from .components import Storage
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 from .core import (
@@ -26,6 +26,8 @@ from .core import (
 )
 from .effects import Effect, EffectCollection
 from .elements import Bus, Component, Flow
+from .flow_system_status import FlowSystemStatus, get_status, invalidate_to_status
+from .model_coordinates import ModelCoordinates
 from .optimize_accessor import OptimizeAccessor
 from .statistics_accessor import StatisticsAccessor
 from .structure import (
@@ -34,7 +36,6 @@ from .structure import (
     ElementContainer,
     FlowSystemModel,
     Interface,
-    VariableCategory,
 )
 from .topology_accessor import TopologyAccessor
 from .transform_accessor import TransformAccessor
@@ -42,6 +43,7 @@ from .transform_accessor import TransformAccessor
 if TYPE_CHECKING:
     from collections.abc import Collection
 
+    import numpy as np
     import pyvis
 
     from .clustering import Clustering
@@ -56,6 +58,150 @@ from .clustering.base import _register_clustering_classes
 _register_clustering_classes()
 
 logger = logging.getLogger('flixopt')
+
+
+class LegacySolutionWrapper:
+    """Wrapper for xr.Dataset that provides legacy solution access patterns.
+
+    When CONFIG.Legacy.solution_access is True, this wrapper intercepts
+    __getitem__ calls to translate legacy access patterns like:
+        fs.solution['costs'] -> fs.solution['effect|total'].sel(effect='costs')
+        fs.solution['Src(heat)|flow_rate'] -> fs.solution['flow|rate'].sel(flow='Src(heat)')
+
+    All other operations are proxied directly to the underlying Dataset.
+    """
+
+    __slots__ = ('_dataset',)
+
+    # Mapping from old variable suffixes to new type|variable format
+    # Format: old_suffix -> (dimension, new_variable_suffix)
+    _LEGACY_VAR_MAP = {
+        # Flow variables
+        'flow_rate': ('flow', 'rate'),
+        'size': ('flow', 'size'),  # For flows: Comp(flow)|size
+        'status': ('flow', 'status'),
+        'invested': ('flow', 'invested'),
+    }
+
+    # Storage-specific mappings (no parentheses in label, e.g., 'Battery|size')
+    _LEGACY_STORAGE_VAR_MAP = {
+        'size': ('storage', 'size'),
+        'invested': ('storage', 'invested'),
+        'charge_state': ('storage', 'charge'),  # Old: charge_state -> New: charge
+    }
+
+    def __init__(self, dataset: xr.Dataset) -> None:
+        object.__setattr__(self, '_dataset', dataset)
+
+    def __getitem__(self, key):
+        ds = object.__getattribute__(self, '_dataset')
+        try:
+            return ds[key]
+        except KeyError as e:
+            if not isinstance(key, str):
+                raise e
+
+            # Try legacy effect access patterns
+            if 'effect' in ds.coords:
+                # Pattern: 'costs' -> 'effect|total'.sel(effect='costs')
+                if key in ds.coords['effect'].values:
+                    warnings.warn(
+                        f"Legacy solution access: solution['{key}'] is deprecated. "
+                        f"Use solution['effect|total'].sel(effect='{key}') instead.",
+                        DeprecationWarning,
+                        stacklevel=2,
+                    )
+                    return ds['effect|total'].sel(effect=key)
+
+                # Pattern: 'costs(periodic)' -> 'effect|periodic'.sel(effect='costs')
+                # Pattern: 'costs(temporal)' -> 'effect|temporal'.sel(effect='costs')
+                import re
+
+                match = re.match(r'^(.+)\((periodic|temporal)\)$', key)
+                if match:
+                    effect_name, aspect = match.groups()
+                    if effect_name in ds.coords['effect'].values:
+                        new_key = f'effect|{aspect}'
+                        if new_key in ds:
+                            warnings.warn(
+                                f"Legacy solution access: solution['{key}'] is deprecated. "
+                                f"Use solution['{new_key}'].sel(effect='{effect_name}') instead.",
+                                DeprecationWarning,
+                                stacklevel=2,
+                            )
+                            return ds[new_key].sel(effect=effect_name)
+
+                # Pattern: 'costs(temporal)|per_timestep' -> 'effect|per_timestep'.sel(effect='costs')
+                if '|' in key:
+                    prefix, suffix = key.rsplit('|', 1)
+                    match = re.match(r'^(.+)\((temporal|periodic)\)$', prefix)
+                    if match:
+                        effect_name, aspect = match.groups()
+                        if effect_name in ds.coords['effect'].values:
+                            new_key = f'effect|{suffix}'
+                            if new_key in ds:
+                                warnings.warn(
+                                    f"Legacy solution access: solution['{key}'] is deprecated. "
+                                    f"Use solution['{new_key}'].sel(effect='{effect_name}') instead.",
+                                    DeprecationWarning,
+                                    stacklevel=2,
+                                )
+                                return ds[new_key].sel(effect=effect_name)
+
+            # Try legacy flow/storage access: solution['Src(heat)|flow_rate'] -> solution['flow|rate'].sel(flow='Src(heat)')
+            if '|' in key:
+                parts = key.rsplit('|', 1)
+                if len(parts) == 2:
+                    element_label, var_suffix = parts
+
+                    # Try flow variables first (labels have parentheses like 'Src(heat)')
+                    if var_suffix in self._LEGACY_VAR_MAP:
+                        dim, var_name = self._LEGACY_VAR_MAP[var_suffix]
+                        new_key = f'{dim}|{var_name}'
+                        if new_key in ds and dim in ds.coords and element_label in ds.coords[dim].values:
+                            warnings.warn(
+                                f"Legacy solution access: solution['{key}'] is deprecated. "
+                                f"Use solution['{new_key}'].sel({dim}='{element_label}') instead.",
+                                DeprecationWarning,
+                                stacklevel=2,
+                            )
+                            return ds[new_key].sel({dim: element_label})
+
+                    # Try storage variables (labels without parentheses like 'Battery')
+                    if var_suffix in self._LEGACY_STORAGE_VAR_MAP:
+                        dim, var_name = self._LEGACY_STORAGE_VAR_MAP[var_suffix]
+                        new_key = f'{dim}|{var_name}'
+                        if new_key in ds and dim in ds.coords and element_label in ds.coords[dim].values:
+                            warnings.warn(
+                                f"Legacy solution access: solution['{key}'] is deprecated. "
+                                f"Use solution['{new_key}'].sel({dim}='{element_label}') instead.",
+                                DeprecationWarning,
+                                stacklevel=2,
+                            )
+                            return ds[new_key].sel({dim: element_label})
+
+            raise e
+
+    def __getattr__(self, name):
+        return getattr(object.__getattribute__(self, '_dataset'), name)
+
+    def __setattr__(self, name, value):
+        if name == '_dataset':
+            object.__setattr__(self, name, value)
+        else:
+            setattr(object.__getattribute__(self, '_dataset'), name, value)
+
+    def __repr__(self):
+        return repr(object.__getattribute__(self, '_dataset'))
+
+    def __iter__(self):
+        return iter(object.__getattribute__(self, '_dataset'))
+
+    def __len__(self):
+        return len(object.__getattribute__(self, '_dataset'))
+
+    def __contains__(self, key):
+        return key in object.__getattribute__(self, '_dataset')
 
 
 class FlowSystem(Interface, CompositeContainerMixin[Element]):
@@ -193,55 +339,19 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         name: str | None = None,
         timestep_duration: xr.DataArray | None = None,
     ):
-        self.timesteps = self._validate_timesteps(timesteps)
-
-        # Compute all time-related metadata using shared helper
-        (
-            self.timesteps_extra,
-            self.hours_of_last_timestep,
-            self.hours_of_previous_timesteps,
-            computed_timestep_duration,
-        ) = self._compute_time_metadata(self.timesteps, hours_of_last_timestep, hours_of_previous_timesteps)
-
-        self.periods = None if periods is None else self._validate_periods(periods)
-        self.scenarios = None if scenarios is None else self._validate_scenarios(scenarios)
-        self.clusters = clusters  # Cluster dimension for clustered FlowSystems
-
-        # Use provided timestep_duration if given (for segmented systems), otherwise use computed value
-        # For RangeIndex (segmented systems), computed_timestep_duration is None
-        if timestep_duration is not None:
-            self.timestep_duration = self.fit_to_model_coords('timestep_duration', timestep_duration)
-        elif computed_timestep_duration is not None:
-            self.timestep_duration = self.fit_to_model_coords('timestep_duration', computed_timestep_duration)
-        else:
-            # RangeIndex (segmented systems) requires explicit timestep_duration
-            if isinstance(self.timesteps, pd.RangeIndex):
-                raise ValueError(
-                    'timestep_duration is required when using RangeIndex timesteps (segmented systems). '
-                    'Provide timestep_duration explicitly or use DatetimeIndex timesteps.'
-                )
-            self.timestep_duration = None
-
-        # Cluster weight for cluster() optimization (default 1.0)
-        # Represents how many original timesteps each cluster represents
-        # May have period/scenario dimensions if cluster() was used with those
-        self.cluster_weight: xr.DataArray | None = (
-            self.fit_to_model_coords(
-                'cluster_weight',
-                cluster_weight,
-            )
-            if cluster_weight is not None
-            else None
+        self.model_coords = ModelCoordinates(
+            timesteps=timesteps,
+            periods=periods,
+            scenarios=scenarios,
+            clusters=clusters,
+            hours_of_last_timestep=hours_of_last_timestep,
+            hours_of_previous_timesteps=hours_of_previous_timesteps,
+            weight_of_last_period=weight_of_last_period,
+            scenario_weights=scenario_weights,
+            cluster_weight=cluster_weight,
+            timestep_duration=timestep_duration,
+            fit_to_model_coords=self.fit_to_model_coords,
         )
-
-        self.scenario_weights = scenario_weights  # Use setter
-
-        # Compute all period-related metadata using shared helper
-        (self.periods_extra, self.weight_of_last_period, weight_per_period) = self._compute_period_metadata(
-            self.periods, weight_of_last_period
-        )
-
-        self.period_weights: xr.DataArray | None = weight_per_period
 
         # Element collections
         self.components: ElementContainer[Component] = ElementContainer(
@@ -261,18 +371,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Solution dataset - populated after optimization or loaded from file
         self._solution: xr.Dataset | None = None
 
-        # Variable categories for segment expansion handling
-        # Populated when model is built, used by transform.expand()
-        self._variable_categories: dict[str, VariableCategory] = {}
-
         # Aggregation info - populated by transform.cluster()
-        self.clustering: Clustering | None = None
+        self._clustering: Clustering | None = None
 
         # Statistics accessor cache - lazily initialized, invalidated on new solution
         self._statistics: StatisticsAccessor | None = None
 
         # Topology accessor cache - lazily initialized, invalidated on structure change
         self._topology: TopologyAccessor | None = None
+
+        # Batched data accessor - provides indexed/batched access to element properties
+        self._batched: BatchedAccessor | None = None
 
         # Carrier container - local carriers override CONFIG.Carriers
         self._carriers: CarrierContainer = CarrierContainer()
@@ -287,370 +396,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         # Optional name for identification (derived from filename on load)
         self.name = name
 
-    @staticmethod
-    def _validate_timesteps(
-        timesteps: pd.DatetimeIndex | pd.RangeIndex,
-    ) -> pd.DatetimeIndex | pd.RangeIndex:
-        """Validate timesteps format and rename if needed.
-
-        Accepts either DatetimeIndex (standard) or RangeIndex (for segmented systems).
-        """
-        if not isinstance(timesteps, (pd.DatetimeIndex, pd.RangeIndex)):
-            raise TypeError('timesteps must be a pandas DatetimeIndex or RangeIndex')
-        if len(timesteps) < 2:
-            raise ValueError('timesteps must contain at least 2 timestamps')
-        if timesteps.name != 'time':
-            timesteps = timesteps.rename('time')
-        if not timesteps.is_monotonic_increasing:
-            raise ValueError('timesteps must be sorted')
-        return timesteps
-
-    @staticmethod
-    def _validate_scenarios(scenarios: pd.Index) -> pd.Index:
-        """
-        Validate and prepare scenario index.
-
-        Args:
-            scenarios: The scenario index to validate
-        """
-        if not isinstance(scenarios, pd.Index) or len(scenarios) == 0:
-            raise ConversionError('Scenarios must be a non-empty Index')
-
-        if scenarios.name != 'scenario':
-            scenarios = scenarios.rename('scenario')
-
-        return scenarios
-
-    @staticmethod
-    def _validate_periods(periods: pd.Index) -> pd.Index:
-        """
-        Validate and prepare period index.
-
-        Args:
-            periods: The period index to validate
-        """
-        if not isinstance(periods, pd.Index) or len(periods) == 0:
-            raise ConversionError(f'Periods must be a non-empty Index. Got {periods}')
-
-        if not (
-            periods.dtype.kind == 'i'  # integer dtype
-            and periods.is_monotonic_increasing  # rising
-            and periods.is_unique
-        ):
-            raise ConversionError(f'Periods must be a monotonically increasing and unique Index. Got {periods}')
-
-        if periods.name != 'period':
-            periods = periods.rename('period')
-
-        return periods
-
-    @staticmethod
-    def _create_timesteps_with_extra(
-        timesteps: pd.DatetimeIndex | pd.RangeIndex, hours_of_last_timestep: float | None
-    ) -> pd.DatetimeIndex | pd.RangeIndex:
-        """Create timesteps with an extra step at the end.
-
-        For DatetimeIndex, adds an extra timestep using hours_of_last_timestep.
-        For RangeIndex (segmented systems), simply appends the next integer.
-        """
-        if isinstance(timesteps, pd.RangeIndex):
-            # For RangeIndex, preserve start and step, extend by one step
-            new_stop = timesteps.stop + timesteps.step
-            return pd.RangeIndex(start=timesteps.start, stop=new_stop, step=timesteps.step, name='time')
-
-        if hours_of_last_timestep is None:
-            hours_of_last_timestep = (timesteps[-1] - timesteps[-2]) / pd.Timedelta(hours=1)
-
-        last_date = pd.DatetimeIndex([timesteps[-1] + pd.Timedelta(hours=hours_of_last_timestep)], name='time')
-        return pd.DatetimeIndex(timesteps.append(last_date), name='time')
-
-    @staticmethod
-    def calculate_timestep_duration(
-        timesteps_extra: pd.DatetimeIndex | pd.RangeIndex,
-    ) -> xr.DataArray | None:
-        """Calculate duration of each timestep in hours as a 1D DataArray.
-
-        For RangeIndex (segmented systems), returns None since duration cannot be
-        computed from the index. Use timestep_duration parameter instead.
-        """
-        if isinstance(timesteps_extra, pd.RangeIndex):
-            # Cannot compute duration from RangeIndex - must be provided externally
-            return None
-
-        hours_per_step = np.diff(timesteps_extra) / pd.Timedelta(hours=1)
-        return xr.DataArray(
-            hours_per_step, coords={'time': timesteps_extra[:-1]}, dims='time', name='timestep_duration'
-        )
-
-    @staticmethod
-    def _calculate_hours_of_previous_timesteps(
-        timesteps: pd.DatetimeIndex | pd.RangeIndex, hours_of_previous_timesteps: float | np.ndarray | None
-    ) -> float | np.ndarray | None:
-        """Calculate duration of regular timesteps.
-
-        For RangeIndex (segmented systems), returns None if not provided.
-        """
-        if hours_of_previous_timesteps is not None:
-            return hours_of_previous_timesteps
-        if isinstance(timesteps, pd.RangeIndex):
-            # Cannot compute from RangeIndex
-            return None
-        # Calculate from the first interval
-        first_interval = timesteps[1] - timesteps[0]
-        return first_interval.total_seconds() / 3600  # Convert to hours
-
-    @staticmethod
-    def _create_periods_with_extra(periods: pd.Index, weight_of_last_period: int | float | None) -> pd.Index:
-        """Create periods with an extra period at the end.
-
-        Args:
-            periods: The period index (must be monotonically increasing integers)
-            weight_of_last_period: Weight of the last period. If None, computed from the period index.
-
-        Returns:
-            Period index with an extra period appended at the end
-        """
-        if weight_of_last_period is None:
-            if len(periods) < 2:
-                raise ValueError(
-                    'FlowSystem: weight_of_last_period must be provided explicitly when only one period is defined.'
-                )
-            # Calculate weight from difference between last two periods
-            weight_of_last_period = int(periods[-1]) - int(periods[-2])
-
-        # Create the extra period value
-        last_period_value = int(periods[-1]) + weight_of_last_period
-        periods_extra = periods.append(pd.Index([last_period_value], name='period'))
-        return periods_extra
-
-    @staticmethod
-    def calculate_weight_per_period(periods_extra: pd.Index) -> xr.DataArray:
-        """Calculate weight of each period from period index differences.
-
-        Args:
-            periods_extra: Period index with an extra period at the end
-
-        Returns:
-            DataArray with weights for each period (1D, 'period' dimension)
-        """
-        weights = np.diff(periods_extra.to_numpy().astype(int))
-        return xr.DataArray(weights, coords={'period': periods_extra[:-1]}, dims='period', name='weight_per_period')
-
-    @classmethod
-    def _compute_time_metadata(
-        cls,
-        timesteps: pd.DatetimeIndex | pd.RangeIndex,
-        hours_of_last_timestep: int | float | None = None,
-        hours_of_previous_timesteps: int | float | np.ndarray | None = None,
-    ) -> tuple[
-        pd.DatetimeIndex | pd.RangeIndex,
-        float | None,
-        float | np.ndarray | None,
-        xr.DataArray | None,
-    ]:
-        """
-        Compute all time-related metadata from timesteps.
-
-        This is the single source of truth for time metadata computation, used by both
-        __init__ and dataset operations (sel/isel/resample) to ensure consistency.
-
-        For RangeIndex (segmented systems), timestep_duration cannot be calculated from
-        the index and must be provided externally after FlowSystem creation.
-
-        Args:
-            timesteps: The time index to compute metadata from (DatetimeIndex or RangeIndex)
-            hours_of_last_timestep: Duration of the last timestep. If None, computed from the time index.
-            hours_of_previous_timesteps: Duration of previous timesteps. If None, computed from the time index.
-                Can be a scalar or array.
-
-        Returns:
-            Tuple of (timesteps_extra, hours_of_last_timestep, hours_of_previous_timesteps, timestep_duration)
-            For RangeIndex, hours_of_last_timestep and timestep_duration may be None.
-        """
-        # Create timesteps with extra step at the end
-        timesteps_extra = cls._create_timesteps_with_extra(timesteps, hours_of_last_timestep)
-
-        # Calculate timestep duration (returns None for RangeIndex)
-        timestep_duration = cls.calculate_timestep_duration(timesteps_extra)
-
-        # Extract hours_of_last_timestep if not provided
-        if hours_of_last_timestep is None and timestep_duration is not None:
-            hours_of_last_timestep = timestep_duration.isel(time=-1).item()
-
-        # Compute hours_of_previous_timesteps (handles both None and provided cases)
-        hours_of_previous_timesteps = cls._calculate_hours_of_previous_timesteps(timesteps, hours_of_previous_timesteps)
-
-        return timesteps_extra, hours_of_last_timestep, hours_of_previous_timesteps, timestep_duration
-
-    @classmethod
-    def _compute_period_metadata(
-        cls, periods: pd.Index | None, weight_of_last_period: int | float | None = None
-    ) -> tuple[pd.Index | None, int | float | None, xr.DataArray | None]:
-        """
-        Compute all period-related metadata from periods.
-
-        This is the single source of truth for period metadata computation, used by both
-        __init__ and dataset operations to ensure consistency.
-
-        Args:
-            periods: The period index to compute metadata from (or None if no periods)
-            weight_of_last_period: Weight of the last period. If None, computed from the period index.
-
-        Returns:
-            Tuple of (periods_extra, weight_of_last_period, weight_per_period)
-            All return None if periods is None
-        """
-        if periods is None:
-            return None, None, None
-
-        # Create periods with extra period at the end
-        periods_extra = cls._create_periods_with_extra(periods, weight_of_last_period)
-
-        # Calculate weight per period
-        weight_per_period = cls.calculate_weight_per_period(periods_extra)
-
-        # Extract weight_of_last_period if not provided
-        if weight_of_last_period is None:
-            weight_of_last_period = weight_per_period.isel(period=-1).item()
-
-        return periods_extra, weight_of_last_period, weight_per_period
-
-    @classmethod
-    def _update_time_metadata(
-        cls,
-        dataset: xr.Dataset,
-        hours_of_last_timestep: int | float | None = None,
-        hours_of_previous_timesteps: int | float | np.ndarray | None = None,
-    ) -> xr.Dataset:
-        """
-        Update time-related attributes and data variables in dataset based on its time index.
-
-        Recomputes hours_of_last_timestep, hours_of_previous_timesteps, and timestep_duration
-        from the dataset's time index when these parameters are None. This ensures time metadata
-        stays synchronized with the actual timesteps after operations like resampling or selection.
-
-        Args:
-            dataset: Dataset to update (will be modified in place)
-            hours_of_last_timestep: Duration of the last timestep. If None, computed from the time index.
-            hours_of_previous_timesteps: Duration of previous timesteps. If None, computed from the time index.
-                Can be a scalar or array.
-
-        Returns:
-            The same dataset with updated time-related attributes and data variables
-        """
-        new_time_index = dataset.indexes.get('time')
-        if new_time_index is not None and len(new_time_index) >= 2:
-            # Use shared helper to compute all time metadata
-            _, hours_of_last_timestep, hours_of_previous_timesteps, timestep_duration = cls._compute_time_metadata(
-                new_time_index, hours_of_last_timestep, hours_of_previous_timesteps
-            )
-
-            # Update timestep_duration DataArray if it exists in the dataset and new value is computed
-            # This prevents stale data after resampling operations
-            # Skip for RangeIndex (segmented systems) where timestep_duration is None
-            if 'timestep_duration' in dataset.data_vars and timestep_duration is not None:
-                dataset['timestep_duration'] = timestep_duration
-
-        # Update time-related attributes only when new values are provided/computed
-        # This preserves existing metadata instead of overwriting with None
-        if hours_of_last_timestep is not None:
-            dataset.attrs['hours_of_last_timestep'] = hours_of_last_timestep
-        if hours_of_previous_timesteps is not None:
-            dataset.attrs['hours_of_previous_timesteps'] = hours_of_previous_timesteps
-
-        return dataset
-
-    @classmethod
-    def _update_period_metadata(
-        cls,
-        dataset: xr.Dataset,
-        weight_of_last_period: int | float | None = None,
-    ) -> xr.Dataset:
-        """
-        Update period-related attributes and data variables in dataset based on its period index.
-
-        Recomputes weight_of_last_period and period_weights from the dataset's
-        period index. This ensures period metadata stays synchronized with the actual
-        periods after operations like selection.
-
-        When the period dimension is dropped (single value selected), this method
-        removes the scalar coordinate, period_weights DataArray, and cleans up attributes.
-
-        This is analogous to _update_time_metadata() for time-related metadata.
-
-        Args:
-            dataset: Dataset to update (will be modified in place)
-            weight_of_last_period: Weight of the last period. If None, reused from dataset attrs
-                (essential for single-period subsets where it cannot be inferred from intervals).
-
-        Returns:
-            The same dataset with updated period-related attributes and data variables
-        """
-        new_period_index = dataset.indexes.get('period')
-
-        if new_period_index is None:
-            # Period dimension was dropped (single value selected)
-            if 'period' in dataset.coords:
-                dataset = dataset.drop_vars('period')
-            dataset = dataset.drop_vars(['period_weights'], errors='ignore')
-            dataset.attrs.pop('weight_of_last_period', None)
-            return dataset
-
-        if len(new_period_index) >= 1:
-            # Reuse stored weight_of_last_period when not explicitly overridden.
-            # This is essential for single-period subsets where it cannot be inferred from intervals.
-            if weight_of_last_period is None:
-                weight_of_last_period = dataset.attrs.get('weight_of_last_period')
-
-            # Use shared helper to compute all period metadata
-            _, weight_of_last_period, period_weights = cls._compute_period_metadata(
-                new_period_index, weight_of_last_period
-            )
-
-            # Update period_weights DataArray if it exists in the dataset
-            if 'period_weights' in dataset.data_vars:
-                dataset['period_weights'] = period_weights
-
-        # Update period-related attributes only when new values are provided/computed
-        if weight_of_last_period is not None:
-            dataset.attrs['weight_of_last_period'] = weight_of_last_period
-
-        return dataset
-
-    @classmethod
-    def _update_scenario_metadata(cls, dataset: xr.Dataset) -> xr.Dataset:
-        """
-        Update scenario-related attributes and data variables in dataset based on its scenario index.
-
-        Recomputes or removes scenario weights. This ensures scenario metadata stays synchronized with the actual
-        scenarios after operations like selection.
-
-        When the scenario dimension is dropped (single value selected), this method
-        removes the scalar coordinate, scenario_weights DataArray, and cleans up attributes.
-
-        This is analogous to _update_period_metadata() for time-related metadata.
-
-        Args:
-            dataset: Dataset to update (will be modified in place)
-
-        Returns:
-            The same dataset with updated scenario-related attributes and data variables
-        """
-        new_scenario_index = dataset.indexes.get('scenario')
-
-        if new_scenario_index is None:
-            # Scenario dimension was dropped (single value selected)
-            if 'scenario' in dataset.coords:
-                dataset = dataset.drop_vars('scenario')
-            dataset = dataset.drop_vars(['scenario_weights'], errors='ignore')
-            dataset.attrs.pop('scenario_weights', None)
-            return dataset
-
-        if len(new_scenario_index) <= 1:
-            dataset.attrs.pop('scenario_weights', None)
-
-        return dataset
-
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """
         Override Interface method to handle FlowSystem-specific serialization.
@@ -664,11 +409,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Remove timesteps, as it's directly stored in dataset index
         reference_structure.pop('timesteps', None)
-        # For DatetimeIndex, timestep_duration can be computed from timesteps_extra on load
-        # For RangeIndex (segmented systems), it must be saved as it cannot be computed
-        if isinstance(self.timesteps, pd.DatetimeIndex):
-            reference_structure.pop('timestep_duration', None)
-            all_extracted_arrays.pop('timestep_duration', None)
 
         # Extract from components
         components_structure = {}
@@ -980,7 +720,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Creates a new FlowSystem with copies of all elements, but without:
         - The solution dataset
         - The optimization model
-        - Element submodels and variable/constraint names
+        - Element variable/constraint names
 
         This is useful for creating variations of a FlowSystem for different
         optimization scenarios without affecting the original.
@@ -1139,11 +879,19 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._register_missing_carriers()
         self._assign_element_colors()
 
+        # Prepare effects BEFORE transform_data,
+        # so the penalty Effect gets transformed too.
+        # Note: status parameter propagation happens inside Component.transform_data()
+        self._prepare_effects()
+
         for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
             element.transform_data()
 
-        # Validate cross-element references immediately after transformation
+        # Validate cross-element references after transformation
         self._validate_system_integrity()
+
+        # Unified validation AFTER transformation (config + DataArray checks)
+        self._run_validation()
 
         self._connected_and_transformed = True
 
@@ -1211,7 +959,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 stacklevel=2,
             )
         # Always invalidate when adding elements to ensure new elements get transformed
-        if self.model is not None or self._connected_and_transformed:
+        if self.status > FlowSystemStatus.INITIALIZED:
             self._invalidate_model()
 
         for new_element in list(elements):
@@ -1279,7 +1027,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 stacklevel=2,
             )
         # Always invalidate when adding carriers to ensure proper re-transformation
-        if self.model is not None or self._connected_and_transformed:
+        if self.status > FlowSystemStatus.INITIALIZED:
             self._invalidate_model()
 
         for carrier in list(carriers):
@@ -1303,10 +1051,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Raises:
             RuntimeError: If FlowSystem is not connected_and_transformed.
         """
-        if not self.connected_and_transformed:
-            raise RuntimeError(
-                'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
-            )
+        self._require_status(FlowSystemStatus.CONNECTED, 'get carrier')
 
         # Try as bus label
         bus = self.buses.get(label)
@@ -1338,10 +1083,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Raises:
             RuntimeError: If FlowSystem is not connected_and_transformed.
         """
-        if not self.connected_and_transformed:
-            raise RuntimeError(
-                'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
-            )
+        self._require_status(FlowSystemStatus.CONNECTED, 'access flow_carriers')
 
         if self._flow_carriers is None:
             self._flow_carriers = {}
@@ -1366,10 +1108,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 DeprecationWarning,
                 stacklevel=2,
             )
-        if not self.connected_and_transformed:
-            raise RuntimeError(
-                'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
-            )
+        self._require_status(FlowSystemStatus.CONNECTED, 'create model')
         # System integrity was already validated in connect_and_transform()
         self.model = FlowSystemModel(self)
         return self.model
@@ -1407,9 +1146,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             )
         self.connect_and_transform()
         self.create_model()
-
-        self.model.do_modeling()
-
+        self.model.build_model()
         return self
 
     def solve(self, solver: _Solver, log_fn: pathlib.Path | str | None = None, progress: bool = True) -> FlowSystem:
@@ -1441,8 +1178,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             >>> flow_system.solve(HighsSolver())
             >>> print(flow_system.solution)
         """
-        if self.model is None:
-            raise RuntimeError('Model has not been built. Call build_model() first.')
+        self._require_status(FlowSystemStatus.MODEL_BUILT, 'solve')
 
         log_path = pathlib.Path(log_fn) if log_fn is not None else None
         if CONFIG.Solving.capture_solver_log:
@@ -1462,32 +1198,33 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             )
 
         if self.model.termination_condition in ('infeasible', 'infeasible_or_unbounded'):
-            if CONFIG.Solving.compute_infeasibilities:
-                import io
-                from contextlib import redirect_stdout
-
-                f = io.StringIO()
-
-                # Redirect stdout to our buffer
-                with redirect_stdout(f):
-                    self.model.print_infeasibilities()
-
-                infeasibilities = f.getvalue()
-                logger.error('Successfully extracted infeasibilities: \n%s', infeasibilities)
+            self._log_infeasibilities()
             raise RuntimeError(f'Model was infeasible. Status: {self.model.status}. Check your constraints and bounds.')
 
         # Store solution on FlowSystem for direct Element access
         self.solution = self.model.solution
 
-        # Copy variable categories for segment expansion handling
-        self._variable_categories = self.model.variable_categories.copy()
-
         logger.info(f'Optimization solved successfully. Objective: {self.model.objective.value:.4f}')
 
         return self
 
+    def _log_infeasibilities(self) -> None:
+        """Log infeasibility details if configured and model supports it."""
+        if not CONFIG.Solving.compute_infeasibilities:
+            return
+
+        import io
+        from contextlib import redirect_stdout
+
+        f = io.StringIO()
+        with redirect_stdout(f):
+            self.model.print_infeasibilities()
+
+        infeasibilities = f.getvalue()
+        logger.error('Successfully extracted infeasibilities: \n%s', infeasibilities)
+
     @property
-    def solution(self) -> xr.Dataset | None:
+    def solution(self) -> xr.Dataset | LegacySolutionWrapper | None:
         """
         Access the optimization solution as an xarray Dataset.
 
@@ -1495,6 +1232,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         one additional timestep at the end). Variables that do not have data for the
         extra timestep (most variables except storage charge states) will contain
         NaN values at the final timestep.
+
+        When ``CONFIG.Legacy.solution_access`` is True, returns a wrapper that
+        supports legacy access patterns like ``solution['effect_name']``.
 
         Returns:
             xr.Dataset: The solution dataset with all optimization variable results,
@@ -1504,6 +1244,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             >>> flow_system.optimize(solver)
             >>> flow_system.solution.isel(time=slice(None, -1))  # Exclude trailing NaN (and final charge states)
         """
+        if self._solution is None:
+            return None
+        if CONFIG.Legacy.solution_access:
+            return LegacySolutionWrapper(self._solution)
         return self._solution
 
     @solution.setter
@@ -1513,82 +1257,80 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._statistics = None  # Invalidate cached statistics
 
     @property
-    def variable_categories(self) -> dict[str, VariableCategory]:
-        """Variable categories for filtering and segment expansion.
-
-        Returns:
-            Dict mapping variable names to their VariableCategory.
-        """
-        return self._variable_categories
-
-    def get_variables_by_category(self, *categories: VariableCategory, from_solution: bool = True) -> list[str]:
-        """Get variable names matching any of the specified categories.
-
-        Args:
-            *categories: One or more VariableCategory values to filter by.
-            from_solution: If True, only return variables present in solution.
-                If False, return all registered variables matching categories.
-
-        Returns:
-            List of variable names matching any of the specified categories.
-
-        Example:
-            >>> fs.get_variables_by_category(VariableCategory.FLOW_RATE)
-            ['Boiler(Q_th)|flow_rate', 'CHP(Q_th)|flow_rate', ...]
-            >>> fs.get_variables_by_category(VariableCategory.SIZE, VariableCategory.INVESTED)
-            ['Boiler(Q_th)|size', 'Boiler(Q_th)|invested', ...]
-        """
-        category_set = set(categories)
-
-        if self._variable_categories:
-            # Use registered categories
-            matching = [name for name, cat in self._variable_categories.items() if cat in category_set]
-        elif self._solution is not None:
-            # Fallback for old files without categories: match by suffix pattern
-            # Category values match the variable suffix (e.g., FLOW_RATE.value = 'flow_rate')
-            matching = []
-            for cat in category_set:
-                # Handle new sub-categories that map to old |size suffix
-                if cat == VariableCategory.FLOW_SIZE:
-                    flow_labels = set(self.flows.keys())
-                    matching.extend(
-                        v
-                        for v in self._solution.data_vars
-                        if v.endswith('|size') and v.rsplit('|', 1)[0] in flow_labels
-                    )
-                elif cat == VariableCategory.STORAGE_SIZE:
-                    storage_labels = set(self.storages.keys())
-                    matching.extend(
-                        v
-                        for v in self._solution.data_vars
-                        if v.endswith('|size') and v.rsplit('|', 1)[0] in storage_labels
-                    )
-                else:
-                    # Standard suffix matching
-                    suffix = f'|{cat.value}'
-                    matching.extend(v for v in self._solution.data_vars if v.endswith(suffix))
-        else:
-            matching = []
-
-        if from_solution and self._solution is not None:
-            solution_vars = set(self._solution.data_vars)
-            matching = [v for v in matching if v in solution_vars]
-        return matching
-
-    @property
     def is_locked(self) -> bool:
         """Check if the FlowSystem is locked (has a solution).
 
         A locked FlowSystem cannot be modified. Use `reset()` to unlock it.
+
+        This is equivalent to ``status >= FlowSystemStatus.SOLVED``.
         """
-        return self._solution is not None
+        return self.status >= FlowSystemStatus.SOLVED
+
+    @property
+    def status(self) -> FlowSystemStatus:
+        """Current lifecycle status of this FlowSystem.
+
+        The status progresses through these stages:
+
+        - INITIALIZED: FlowSystem created, elements can be added
+        - CONNECTED: Network connected, data transformed to xarray
+        - MODEL_CREATED: linopy Model instantiated
+        - MODEL_BUILT: Variables and constraints populated
+        - SOLVED: Optimization complete, solution exists
+
+        Use this to check what operations are available or what has been done.
+
+        Examples:
+            >>> fs = FlowSystem(timesteps)
+            >>> fs.status
+            <FlowSystemStatus.INITIALIZED: 1>
+            >>> fs.add_elements(bus, component)
+            >>> fs.connect_and_transform()
+            >>> fs.status
+            <FlowSystemStatus.CONNECTED: 2>
+            >>> fs.optimize(solver)
+            >>> fs.status
+            <FlowSystemStatus.SOLVED: 5>
+        """
+        return get_status(self)
+
+    def _require_status(self, minimum: FlowSystemStatus, action: str) -> None:
+        """Raise if FlowSystem is not in the required status.
+
+        Args:
+            minimum: The minimum required status.
+            action: Description of the action being attempted (for error message).
+
+        Raises:
+            RuntimeError: If current status is below the minimum required.
+        """
+        current = self.status
+        if current < minimum:
+            raise RuntimeError(
+                f'Cannot {action}: FlowSystem is in status {current.name}, but requires at least {minimum.name}.'
+            )
+
+    def _invalidate_to(self, target: FlowSystemStatus) -> None:
+        """Invalidate FlowSystem down to target status.
+
+        This clears all data/caches associated with statuses above the target.
+        If the FlowSystem is already at or below the target status, this is a no-op.
+
+        Args:
+            target: The target status to invalidate down to.
+
+        See Also:
+            :meth:`invalidate`: Public method for manual invalidation.
+            :meth:`reset`: Clears solution and invalidates (for locked FlowSystems).
+        """
+        invalidate_to_status(self, target)
 
     def _invalidate_model(self) -> None:
-        """Invalidate the model and element submodels when structure changes.
+        """Invalidate the model when structure changes.
 
         This clears the model, resets the ``connected_and_transformed`` flag,
-        clears all element submodels and variable/constraint names, and invalidates
-        the topology accessor cache.
+        clears all element variable/constraint names, and invalidates the
+        topology accessor cache.
 
         Called internally by :meth:`add_elements`, :meth:`add_carriers`,
         :meth:`reset`, and :meth:`invalidate`.
@@ -1597,15 +1339,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             :meth:`invalidate`: Public method for manual invalidation.
             :meth:`reset`: Clears solution and invalidates (for locked FlowSystems).
         """
-        self.model = None
-        self._connected_and_transformed = False
-        self._topology = None  # Invalidate topology accessor (and its cached colors)
-        self._flow_carriers = None  # Invalidate flow-to-carrier mapping
-        self._variable_categories.clear()  # Clear stale categories for segment expansion
-        for element in self.values():
-            element.submodel = None
-            element._variable_names = []
-            element._constraint_names = []
+        self._invalidate_to(FlowSystemStatus.INITIALIZED)
 
     def reset(self) -> FlowSystem:
         """Clear optimization state to allow modifications.
@@ -1613,7 +1347,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         This method unlocks the FlowSystem by clearing:
         - The solution dataset
         - The optimization model
-        - All element submodels and variable/constraint names
+        - All element variable/constraint names
         - The connected_and_transformed flag
 
         After calling reset(), the FlowSystem can be modified again
@@ -1796,6 +1530,62 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self._topology = TopologyAccessor(self)
         return self._topology
 
+    @property
+    def batched(self) -> BatchedAccessor:
+        """
+        Access batched data containers for element properties.
+
+        This property returns a BatchedAccessor that provides indexed/batched
+        access to element properties as xarray DataArrays with element dimensions.
+
+        Returns:
+            A cached BatchedAccessor instance.
+
+        Examples:
+            Access flow categorizations:
+
+            >>> flow_system.batched.flows.with_status  # List of flow IDs with status
+            >>> flow_system.batched.flows.with_investment  # List of flow IDs with investment
+
+            Access batched parameters:
+
+            >>> flow_system.batched.flows.relative_minimum  # DataArray with flow dimension
+            >>> flow_system.batched.flows.effective_size_upper  # DataArray with flow dimension
+
+            Access individual flows:
+
+            >>> flow = flow_system.batched.flows['Boiler(gas_in)']
+        """
+        if self._batched is None:
+            self._batched = BatchedAccessor(self)
+        return self._batched
+
+    @property
+    def clustering(self) -> Clustering | None:
+        """Clustering metadata for this FlowSystem.
+
+        This property is populated by `transform.cluster()` or when loading
+        a clustered FlowSystem from file. It contains information about the
+        original timesteps, cluster assignments, and aggregation metrics.
+
+        Setting this property resets the batched accessor cache to ensure
+        storage categorization (basic vs intercluster) is correctly computed
+        based on the new clustering state.
+
+        Returns:
+            Clustering object if this is a clustered FlowSystem, None otherwise.
+        """
+        return self._clustering
+
+    @clustering.setter
+    def clustering(self, value: Clustering | None) -> None:
+        """Set clustering and reset batched accessor cache."""
+        self._clustering = value
+        # Reset batched accessor so storage categorization is recomputed
+        # with the new clustering state (basic vs intercluster storages)
+        if self._batched is not None:
+            self._batched._reset()
+
     def plot_network(
         self,
         path: bool | str | pathlib.Path = 'flow_system.html',
@@ -1888,6 +1678,38 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 f'To use this element in multiple systems, create a copy: '
                 f'flow_system.add_elements(element.copy())'
             )
+
+    def _prepare_effects(self) -> None:
+        """Create the penalty effect if needed.
+
+        Called before transform_data() so the penalty effect gets transformed.
+        Validation is done after transformation via _run_validation().
+        """
+        if self.effects._penalty_effect is None:
+            penalty = self.effects._create_penalty_effect()
+            if penalty._flow_system is None:
+                penalty.link_to_flow_system(self)
+
+    def _run_validation(self) -> None:
+        """Run all validation through batched *Data classes.
+
+        Each *Data.validate() method handles both:
+        - Config validation (simple checks)
+        - DataArray validation (post-transformation checks)
+
+        Called after transform_data(). The cached *Data instances are
+        reused during model building.
+        """
+        batched = self.batched
+        # Validate buses first - catches "Bus with no flows" before FlowsData fails on empty arrays
+        batched.buses.validate()
+        batched.effects.validate()
+        batched.flows.validate()
+        batched.storages.validate()
+        batched.intercluster_storages.validate()
+        batched.converters.validate()
+        batched.transmissions.validate()
+        batched.components.validate()
 
     def _validate_system_integrity(self) -> None:
         """
@@ -2056,70 +1878,123 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self._storages_cache = ElementContainer(storages, element_type_name='storages', truncate_repr=10)
         return self._storages_cache
 
+    # --- Forwarding properties for model coordinate state ---
+
+    @property
+    def timesteps(self):
+        return self.model_coords.timesteps
+
+    @timesteps.setter
+    def timesteps(self, value):
+        self.model_coords.timesteps = value
+
+    @property
+    def timesteps_extra(self):
+        return self.model_coords.timesteps_extra
+
+    @timesteps_extra.setter
+    def timesteps_extra(self, value):
+        self.model_coords.timesteps_extra = value
+
+    @property
+    def hours_of_last_timestep(self):
+        return self.model_coords.hours_of_last_timestep
+
+    @hours_of_last_timestep.setter
+    def hours_of_last_timestep(self, value):
+        self.model_coords.hours_of_last_timestep = value
+
+    @property
+    def hours_of_previous_timesteps(self):
+        return self.model_coords.hours_of_previous_timesteps
+
+    @hours_of_previous_timesteps.setter
+    def hours_of_previous_timesteps(self, value):
+        self.model_coords.hours_of_previous_timesteps = value
+
+    @property
+    def timestep_duration(self):
+        return self.model_coords.timestep_duration
+
+    @timestep_duration.setter
+    def timestep_duration(self, value):
+        self.model_coords.timestep_duration = value
+
+    @property
+    def periods(self):
+        return self.model_coords.periods
+
+    @periods.setter
+    def periods(self, value):
+        self.model_coords.periods = value
+
+    @property
+    def periods_extra(self):
+        return self.model_coords.periods_extra
+
+    @periods_extra.setter
+    def periods_extra(self, value):
+        self.model_coords.periods_extra = value
+
+    @property
+    def weight_of_last_period(self):
+        return self.model_coords.weight_of_last_period
+
+    @weight_of_last_period.setter
+    def weight_of_last_period(self, value):
+        self.model_coords.weight_of_last_period = value
+
+    @property
+    def period_weights(self):
+        return self.model_coords.period_weights
+
+    @period_weights.setter
+    def period_weights(self, value):
+        self.model_coords.period_weights = value
+
+    @property
+    def scenarios(self):
+        return self.model_coords.scenarios
+
+    @scenarios.setter
+    def scenarios(self, value):
+        self.model_coords.scenarios = value
+
+    @property
+    def clusters(self):
+        return self.model_coords.clusters
+
+    @clusters.setter
+    def clusters(self, value):
+        self.model_coords.clusters = value
+
+    @property
+    def cluster_weight(self):
+        return self.model_coords.cluster_weight
+
+    @cluster_weight.setter
+    def cluster_weight(self, value):
+        self.model_coords.cluster_weight = value
+
     @property
     def dims(self) -> list[str]:
-        """Active dimension names.
-
-        Returns:
-            List of active dimension names in order.
-
-        Example:
-            >>> fs.dims
-            ['time']  # simple case
-            >>> fs_clustered.dims
-            ['cluster', 'time', 'period', 'scenario']  # full case
-        """
-        result = []
-        if self.clusters is not None:
-            result.append('cluster')
-        result.append('time')
-        if self.periods is not None:
-            result.append('period')
-        if self.scenarios is not None:
-            result.append('scenario')
-        return result
+        """Active dimension names."""
+        return self.model_coords.dims
 
     @property
     def indexes(self) -> dict[str, pd.Index]:
-        """Indexes for active dimensions.
-
-        Returns:
-            Dict mapping dimension names to pandas Index objects.
-
-        Example:
-            >>> fs.indexes['time']
-            DatetimeIndex(['2024-01-01', ...], dtype='datetime64[ns]', name='time')
-        """
-        result: dict[str, pd.Index] = {}
-        if self.clusters is not None:
-            result['cluster'] = self.clusters
-        result['time'] = self.timesteps
-        if self.periods is not None:
-            result['period'] = self.periods
-        if self.scenarios is not None:
-            result['scenario'] = self.scenarios
-        return result
+        """Indexes for active dimensions."""
+        return self.model_coords.indexes
 
     @property
     def temporal_dims(self) -> list[str]:
-        """Temporal dimensions for summing over time.
-
-        Returns ['time', 'cluster'] for clustered systems, ['time'] otherwise.
-        """
-        if self.clusters is not None:
-            return ['time', 'cluster']
-        return ['time']
+        """Temporal dimensions for summing over time."""
+        return self.model_coords.temporal_dims
 
     @property
     def temporal_weight(self) -> xr.DataArray:
-        """Combined temporal weight (timestep_duration × cluster_weight).
-
-        Use for converting rates to totals before summing.
-        Note: cluster_weight is used even without a clusters dimension.
-        """
-        # Use cluster_weight directly if set, otherwise check weights dict, fallback to 1.0
-        cluster_weight = self.weights.get('cluster', self.cluster_weight if self.cluster_weight is not None else 1.0)
-        return self.weights['time'] * cluster_weight
+        """Combined temporal weight (timestep_duration x cluster_weight)."""
+        return self.model_coords.temporal_weight
 
     @property
     def coords(self) -> dict[FlowSystemDimensions, pd.Index]:
@@ -2184,107 +2059,26 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     @property
     def scenario_weights(self) -> xr.DataArray | None:
-        """
-        Weights for each scenario.
-
-        Returns:
-            xr.DataArray: Scenario weights with 'scenario' dimension
-        """
-        return self._scenario_weights
+        """Weights for each scenario."""
+        return self.model_coords.scenario_weights
 
     @scenario_weights.setter
     def scenario_weights(self, value: Numeric_S | None) -> None:
-        """
-        Set scenario weights (always normalized to sum to 1).
-
-        Args:
-            value: Scenario weights to set (will be converted to DataArray with 'scenario' dimension
-                and normalized to sum to 1), or None to clear weights.
-
-        Raises:
-            ValueError: If value is not None and no scenarios are defined in the FlowSystem.
-            ValueError: If weights sum to zero (cannot normalize).
-        """
-        if value is None:
-            self._scenario_weights = None
-            return
-
-        if self.scenarios is None:
-            raise ValueError(
-                'FlowSystem.scenario_weights cannot be set when no scenarios are defined. '
-                'Either define scenarios in FlowSystem(scenarios=...) or set scenario_weights to None.'
-            )
-
-        weights = self.fit_to_model_coords('scenario_weights', value, dims=['scenario'])
-
-        # Normalize to sum to 1
-        norm = weights.sum('scenario')
-        if np.isclose(norm, 0.0).any().item():
-            # Provide detailed error for multi-dimensional weights
-            if norm.ndim > 0:
-                zero_locations = np.argwhere(np.isclose(norm.values, 0.0))
-                coords_info = ', '.join(
-                    f'{dim}={norm.coords[dim].values[idx]}'
-                    for idx, dim in zip(zero_locations[0], norm.dims, strict=False)
-                )
-                raise ValueError(
-                    f'scenario_weights sum to 0 at {coords_info}; cannot normalize. '
-                    f'Ensure all scenario weight combinations sum to a positive value.'
-                )
-            raise ValueError('scenario_weights sum to 0; cannot normalize.')
-        self._scenario_weights = weights / norm
+        """Set scenario weights (always normalized to sum to 1)."""
+        self.model_coords.scenario_weights = value
 
     def _unit_weight(self, dim: str) -> xr.DataArray:
         """Create a unit weight DataArray (all 1.0) for a dimension."""
-        index = self.indexes[dim]
-        return xr.DataArray(
-            np.ones(len(index), dtype=float),
-            coords={dim: index},
-            dims=[dim],
-            name=f'{dim}_weight',
-        )
+        return self.model_coords._unit_weight(dim)
 
     @property
     def weights(self) -> dict[str, xr.DataArray]:
-        """Weights for active dimensions (unit weights if not explicitly set).
-
-        Returns:
-            Dict mapping dimension names to weight DataArrays.
-            Keys match :attr:`dims` and :attr:`indexes`.
-
-        Example:
-            >>> fs.weights['time']  # timestep durations
-            >>> fs.weights['cluster']  # cluster weights (unit if not set)
-        """
-        result: dict[str, xr.DataArray] = {'time': self.timestep_duration}
-        if self.clusters is not None:
-            result['cluster'] = self.cluster_weight if self.cluster_weight is not None else self._unit_weight('cluster')
-        if self.periods is not None:
-            result['period'] = self.period_weights if self.period_weights is not None else self._unit_weight('period')
-        if self.scenarios is not None:
-            result['scenario'] = (
-                self.scenario_weights if self.scenario_weights is not None else self._unit_weight('scenario')
-            )
-        return result
+        """Weights for active dimensions (unit weights if not explicitly set)."""
+        return self.model_coords.weights
 
     def sum_temporal(self, data: xr.DataArray) -> xr.DataArray:
-        """Sum data over temporal dimensions with full temporal weighting.
-
-        Applies both timestep_duration and cluster_weight, then sums over temporal dimensions.
-        Use this to convert rates to totals (e.g., flow_rate → total_energy).
-
-        Args:
-            data: Data with time dimension (and optionally cluster).
-                  Typically a rate (e.g., flow_rate in MW, status as 0/1).
-
-        Returns:
-            Data summed over temporal dims with full temporal weighting applied.
-
-        Example:
-            >>> total_energy = fs.sum_temporal(flow_rate)  # MW → MWh total
-            >>> active_hours = fs.sum_temporal(status)  # count → hours
-        """
-        return (data * self.temporal_weight).sum(self.temporal_dims)
+        """Sum data over temporal dimensions with full temporal weighting."""
+        return self.model_coords.sum_temporal(data)
 
     @property
     def is_clustered(self) -> bool:
@@ -2640,4 +2434,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     @property
     def connected_and_transformed(self) -> bool:
-        return self._connected_and_transformed
+        """Check if the FlowSystem has been connected and transformed.
+
+        This is equivalent to ``status >= FlowSystemStatus.CONNECTED``.
+        """
+        return self.status >= FlowSystemStatus.CONNECTED
