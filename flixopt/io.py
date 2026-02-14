@@ -1225,8 +1225,9 @@ def _format_value_for_repr(value) -> str:
 def build_repr_from_init(
     obj: object,
     excluded_params: set[str] | None = None,
-    label_as_positional: bool = True,
+    id_as_positional: bool = True,
     skip_default_size: bool = False,
+    label_as_positional: bool | None = None,
 ) -> str:
     """Build a repr string from __init__ signature, showing non-default parameter values.
 
@@ -1237,39 +1238,43 @@ def build_repr_from_init(
     Args:
         obj: The object to create repr for
         excluded_params: Set of parameter names to exclude (e.g., {'self', 'inputs', 'outputs'})
-                        Default excludes 'self', 'label', and 'kwargs'
-        label_as_positional: If True and 'label' param exists, show it as first positional arg
+                        Default excludes 'self', 'id', and 'kwargs'
+        id_as_positional: If True and 'id' param exists, show it as first positional arg
         skip_default_size: Deprecated. Previously skipped size=CONFIG.Modeling.big, now size=None is default.
+        label_as_positional: Deprecated alias for id_as_positional.
 
     Returns:
-        Formatted repr string like: ClassName("label", param=value)
+        Formatted repr string like: ClassName("id", param=value)
     """
+    if label_as_positional is not None:
+        id_as_positional = label_as_positional
+
     if excluded_params is None:
-        excluded_params = {'self', 'label', 'kwargs'}
+        excluded_params = {'self', 'id', 'label', 'kwargs'}
     else:
-        # Always exclude 'self'
-        excluded_params = excluded_params | {'self'}
+        # Always exclude 'self' and deprecated 'label'
+        excluded_params = excluded_params | {'self', 'label'}
 
     try:
         # Get the constructor arguments and their current values
         init_signature = inspect.signature(obj.__init__)
         init_params = init_signature.parameters
 
-        # Check if this has a 'label' parameter - if so, show it first as positional
-        has_label = 'label' in init_params and label_as_positional
+        # Check if this has an 'id' parameter - if so, show it first as positional
+        has_id = 'id' in init_params and id_as_positional
 
         # Build kwargs for non-default parameters
         kwargs_parts = []
-        label_value = None
+        id_value = None
 
         for param_name, param in init_params.items():
             # Skip *args and **kwargs
             if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
                 continue
 
-            # Handle label separately if showing as positional (check BEFORE excluded_params)
-            if param_name == 'label' and has_label:
-                label_value = getattr(obj, param_name, None)
+            # Handle id separately if showing as positional (check BEFORE excluded_params)
+            if param_name == 'id' and has_id:
+                id_value = getattr(obj, param_name, None)
                 continue
 
             # Now check if parameter should be excluded
@@ -1341,17 +1346,13 @@ def build_repr_from_init(
             value_repr = _format_value_for_repr(value)
             kwargs_parts.append(f'{param_name}={value_repr}')
 
-        # Build args string with label first as positional if present
-        if has_label and label_value is not None:
-            # Use label_full if available, otherwise label
-            if hasattr(obj, 'label_full'):
-                label_repr = repr(obj.label_full)
-            else:
-                label_repr = repr(label_value)
+        # Build args string with id first as positional if present
+        if has_id and id_value is not None:
+            id_repr = repr(id_value)
 
-            if len(label_repr) > 50:
-                label_repr = label_repr[:47] + '...'
-            args_str = label_repr
+            if len(id_repr) > 50:
+                id_repr = id_repr[:47] + '...'
+            args_str = id_repr
             if kwargs_parts:
                 args_str += ', ' + ', '.join(kwargs_parts)
         else:

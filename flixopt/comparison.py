@@ -375,7 +375,7 @@ class Comparison:
 
         Returns:
             xr.Dataset with all input parameters. Variable naming follows
-            the pattern ``{element.label_full}|{parameter_name}``.
+            the pattern ``{element.id}|{parameter_name}``.
 
         Examples:
             ```python

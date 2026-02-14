@@ -158,7 +158,7 @@ def flow_graph(flow_system: FlowSystem) -> nx.DiGraph:
     # Add nodes with attributes
     for node in nodes:
         graph.add_node(
-            node.label_full,
+            node.id,
             color=VisualizationConfig.DEFAULT_COLORS[get_element_type(node)],
             shape=get_shape(node),
             element_type=get_element_type(node),
@@ -171,7 +171,7 @@ def flow_graph(flow_system: FlowSystem) -> nx.DiGraph:
             graph.add_edge(
                 u_of_edge=edge.bus if edge.is_input_in_component else edge.component,
                 v_of_edge=edge.component if edge.is_input_in_component else edge.bus,
-                label=edge.label_full,
+                label=edge.id,
                 parameters=edge.__str__().replace(')', '\n)'),
             )
         except Exception as e:

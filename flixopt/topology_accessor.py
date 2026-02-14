@@ -169,10 +169,10 @@ class TopologyAccessor:
 
     @property
     def component_colors(self) -> dict[str, str]:
-        """Cached mapping of component label to hex color.
+        """Cached mapping of component id to hex color.
 
         Returns:
-            Dict mapping component labels to hex color strings.
+            Dict mapping component ids to hex color strings.
             Only components with a color defined are included.
 
         Examples:
@@ -185,12 +185,12 @@ class TopologyAccessor:
 
     @property
     def flow_colors(self) -> dict[str, str]:
-        """Cached mapping of flow label_full to hex color (from parent component).
+        """Cached mapping of flow id to hex color (from parent component).
 
         Flow colors are derived from their parent component's color.
 
         Returns:
-            Dict mapping flow labels (e.g., 'Boiler(Q_th)') to hex color strings.
+            Dict mapping flow ids (e.g., 'Boiler(Q_th)') to hex color strings.
             Only flows whose parent component has a color defined are included.
 
         Examples:
@@ -202,17 +202,17 @@ class TopologyAccessor:
             self._flow_colors = {}
             for flow in self._fs.flows.values():
                 if flow.component in component_colors:
-                    self._flow_colors[flow.label_full] = component_colors[flow.component]
+                    self._flow_colors[flow.id] = component_colors[flow.component]
         return self._flow_colors
 
     @property
     def bus_colors(self) -> dict[str, str]:
-        """Cached mapping of bus label to hex color (from carrier).
+        """Cached mapping of bus id to hex color (from carrier).
 
         Bus colors are derived from their associated carrier's color.
 
         Returns:
-            Dict mapping bus labels to hex color strings.
+            Dict mapping bus ids to hex color strings.
             Only buses with a carrier that has a color defined are included.
 
         Examples:
@@ -245,25 +245,25 @@ class TopologyAccessor:
 
     @cached_property
     def effect_units(self) -> dict[str, str]:
-        """Mapping of effect label to unit string.
+        """Mapping of effect id to unit string.
 
         Returns:
-            Dict mapping effect labels to unit strings.
+            Dict mapping effect ids to unit strings.
             Effects without a unit defined return an empty string.
 
         Examples:
             >>> fs.topology.effect_units
             {'costs': '€', 'CO2': 'kg'}
         """
-        return {effect.label: effect.unit or '' for effect in self._fs.effects.values()}
+        return {effect.id: effect.unit or '' for effect in self._fs.effects.values()}
 
     @cached_property
     def flows(self) -> xr.DataArray:
         """DataArray with 'flow' dimension and metadata coordinates.
 
         Coordinates on the 'flow' dimension:
-            - component: Parent component label
-            - bus: Connected bus label
+            - component: Parent component id
+            - bus: Connected bus id
             - carrier: Carrier name (lowercase)
             - unit: Unit string from carrier
             - is_input: Whether the flow is an input to its component
@@ -310,7 +310,7 @@ class TopologyAccessor:
 
         carrier_units = self.carrier_units
         for flow in self._fs.flows.values():
-            flow_labels.append(flow.label_full)
+            flow_labels.append(flow.id)
             components.append(flow.component)
             buses.append(flow.bus)
             bus_obj = self._fs.buses.get(flow.bus)
@@ -438,8 +438,8 @@ class TopologyAccessor:
 
         Returns:
             Tuple of (nodes_dict, edges_dict) where:
-                - nodes_dict maps node labels to their properties (label, class, infos)
-                - edges_dict maps edge labels to their properties (label, start, end, infos)
+                - nodes_dict maps node ids to their properties (label, class, infos)
+                - edges_dict maps edge ids to their properties (label, start, end, infos)
 
         Examples:
             >>> nodes, edges = flow_system.topology.infos()
@@ -452,8 +452,8 @@ class TopologyAccessor:
             self._fs.connect_and_transform()
 
         nodes = {
-            node.label_full: {
-                'label': node.label,
+            node.id: {
+                'label': node.id,
                 'class': 'Bus' if isinstance(node, Bus) else 'Component',
                 'infos': node.__str__(),
             }
@@ -466,9 +466,9 @@ class TopologyAccessor:
 
         edges = {}
         for flow in self._fs.flows.values():
-            carrier_name = flow_carriers.get(flow.label_full)
-            edges[flow.label_full] = {
-                'label': flow.label,
+            carrier_name = flow_carriers.get(flow.id)
+            edges[flow.id] = {
+                'label': flow._short_id,
                 'start': flow.bus if flow.is_input_in_component else flow.component,
                 'end': flow.component if flow.is_input_in_component else flow.bus,
                 'infos': flow.__str__(),
@@ -539,9 +539,9 @@ class TopologyAccessor:
         # Collect node hover info (format repr for HTML display)
         node_hover: dict[str, str] = {}
         for comp in self._fs.components.values():
-            node_hover[comp.label] = repr(comp).replace('\n', '<br>')
+            node_hover[comp.id] = repr(comp).replace('\n', '<br>')
         for bus in self._fs.buses.values():
-            node_hover[bus.label] = repr(bus).replace('\n', '<br>')
+            node_hover[bus.id] = repr(bus).replace('\n', '<br>')
 
         # Use cached colors for efficient lookup
         flow_carriers = self._fs.flow_carriers
@@ -563,11 +563,11 @@ class TopologyAccessor:
             links['source'].append(source)
             links['target'].append(target)
             links['value'].append(1)  # Equal width for all links (no solution data)
-            links['label'].append(flow.label_full)
+            links['label'].append(flow.id)
             links['customdata'].append(repr(flow).replace('\n', '<br>'))  # Flow repr for hover
 
             # Get carrier color for this flow (subtle/semi-transparent) using cached colors
-            carrier_name = flow_carriers.get(flow.label_full)
+            carrier_name = flow_carriers.get(flow.id)
             color = carrier_colors.get(carrier_name) if carrier_name else None
             links['color'].append(hex_to_rgba(color, alpha=0.4) if color else hex_to_rgba('', alpha=0.4))
 
@@ -581,7 +581,7 @@ class TopologyAccessor:
 
         # If user provided colors, process them for buses
         if colors is not None:
-            bus_labels = [bus.label for bus in self._fs.buses.values()]
+            bus_labels = [bus.id for bus in self._fs.buses.values()]
             bus_color_map = process_colors(colors, bus_labels)
         else:
             bus_color_map = bus_colors_cached

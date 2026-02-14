@@ -366,14 +366,14 @@ class OptimizeAccessor:
         # Check flows for InvestParameters
         for flow in segment_fs.flows.values():
             if isinstance(flow.size, InvestParameters):
-                invest_elements.append(flow.label_full)
+                invest_elements.append(flow.id)
 
         # Check storages for InvestParameters
         from .components import Storage
 
         for comp in segment_fs.components.values():
             if isinstance(comp, Storage) and isinstance(comp.capacity, InvestParameters):
-                invest_elements.append(comp.label_full)
+                invest_elements.append(comp.id)
 
         if invest_elements:
             raise ValueError(

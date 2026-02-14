@@ -31,10 +31,11 @@ from .components import (
 )
 from .config import CONFIG
 from .core import TimeSeriesData
-from .effects import PENALTY_EFFECT_LABEL, Effect
+from .effects import PENALTY_EFFECT_ID, PENALTY_EFFECT_LABEL, Effect
 from .elements import Bus, Flow
 from .flow_system import FlowSystem
 from .flow_system_status import FlowSystemStatus
+from .id_list import IdList
 from .interface import InvestParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects, StatusParameters
 from .optimization import Optimization, SegmentedOptimization
 from .plot_result import PlotResult
@@ -48,6 +49,8 @@ __all__ = [
     'Flow',
     'Bus',
     'Effect',
+    'IdList',
+    'PENALTY_EFFECT_ID',
     'PENALTY_EFFECT_LABEL',
     'Source',
     'Sink',

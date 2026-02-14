@@ -31,6 +31,7 @@ import xarray as xr
 from . import io as fx_io
 from .config import DEPRECATION_REMOVAL_VERSION
 from .core import FlowSystemDimensions, TimeSeriesData, get_dataarray_stats
+from .id_list import IdList
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from collections.abc import Collection
@@ -401,8 +402,8 @@ class TypeModel(ABC):
     Attributes:
         model: The FlowSystemModel to create variables/constraints in.
         data: Data object providing element_ids, dim_name, and elements.
-        elements: ElementContainer of elements this model manages.
-        element_ids: List of element identifiers (label_full).
+        elements: IdList of elements this model manages.
+        element_ids: List of element identifiers.
         dim_name: Dimension name for this element type (e.g., 'flow', 'storage').
 
     Example:
@@ -430,8 +431,8 @@ class TypeModel(ABC):
         self._constraints: dict[str, linopy.Constraint] = {}
 
     @property
-    def elements(self) -> ElementContainer:
-        """ElementContainer of elements in this model."""
+    def elements(self) -> IdList:
+        """IdList of elements in this model."""
         return self.data.elements
 
     @property
@@ -791,21 +792,21 @@ class FlowSystemModel(linopy.Model):
 
         # Populate flows
         for flow in self.flow_system.flows.values():
-            flow._variable_names = _find_vars_for_element(flow.label_full, 'flow')
-            flow._constraint_names = _find_constraints_for_element(flow.label_full, 'flow')
+            flow._variable_names = _find_vars_for_element(flow.id, 'flow')
+            flow._constraint_names = _find_constraints_for_element(flow.id, 'flow')
 
         # Populate buses
         for bus in self.flow_system.buses.values():
-            bus._variable_names = _find_vars_for_element(bus.label_full, 'bus')
-            bus._constraint_names = _find_constraints_for_element(bus.label_full, 'bus')
+            bus._variable_names = _find_vars_for_element(bus.id, 'bus')
+            bus._constraint_names = _find_constraints_for_element(bus.id, 'bus')
 
         # Populate storages
         from .components import Storage
 
         for comp in self.flow_system.components.values():
             if isinstance(comp, Storage):
-                comp._variable_names = _find_vars_for_element(comp.label_full, 'storage')
-                comp._constraint_names = _find_constraints_for_element(comp.label_full, 'storage')
+                comp._variable_names = _find_vars_for_element(comp.id, 'storage')
+                comp._constraint_names = _find_constraints_for_element(comp.id, 'storage')
                 # Also add flow variables (storages have charging/discharging flows)
                 for flow in comp.flows.values():
                     comp._variable_names.extend(flow._variable_names)
@@ -815,8 +816,8 @@ class FlowSystemModel(linopy.Model):
                 comp._variable_names = []
                 comp._constraint_names = []
                 # Add component-level variables (status, etc.)
-                comp._variable_names.extend(_find_vars_for_element(comp.label_full, 'component'))
-                comp._constraint_names.extend(_find_constraints_for_element(comp.label_full, 'component'))
+                comp._variable_names.extend(_find_vars_for_element(comp.id, 'component'))
+                comp._constraint_names.extend(_find_constraints_for_element(comp.id, 'component'))
                 # Add flow variables
                 for flow in comp.flows.values():
                     comp._variable_names.extend(flow._variable_names)
@@ -824,8 +825,8 @@ class FlowSystemModel(linopy.Model):
 
         # Populate effects
         for effect in self.flow_system.effects.values():
-            effect._variable_names = _find_vars_for_element(effect.label, 'effect')
-            effect._constraint_names = _find_constraints_for_element(effect.label, 'effect')
+            effect._variable_names = _find_vars_for_element(effect.id, 'effect')
+            effect._constraint_names = _find_constraints_for_element(effect.id, 'effect')
 
     def _build_results_structure(self) -> dict[str, dict]:
         """Build results structure for all elements using type-level models."""
@@ -838,45 +839,45 @@ class FlowSystemModel(linopy.Model):
         }
 
         # Components
-        for comp in sorted(self.flow_system.components.values(), key=lambda c: c.label_full.upper()):
-            flow_labels = [f.label_full for f in comp.flows.values()]
-            results['Components'][comp.label_full] = {
-                'label': comp.label_full,
+        for comp in sorted(self.flow_system.components.values(), key=lambda c: c.id.upper()):
+            flow_ids = [f.id for f in comp.flows.values()]
+            results['Components'][comp.id] = {
+                'id': comp.id,
                 'variables': comp._variable_names,
                 'constraints': comp._constraint_names,
                 'inputs': ['flow|rate'] * len(comp.inputs),
                 'outputs': ['flow|rate'] * len(comp.outputs),
-                'flows': flow_labels,
+                'flows': flow_ids,
             }
 
         # Buses
-        for bus in sorted(self.flow_system.buses.values(), key=lambda b: b.label_full.upper()):
+        for bus in sorted(self.flow_system.buses.values(), key=lambda b: b.id.upper()):
             input_vars = ['flow|rate'] * len(bus.inputs)
             output_vars = ['flow|rate'] * len(bus.outputs)
             if bus.allows_imbalance:
                 input_vars.append('bus|virtual_supply')
                 output_vars.append('bus|virtual_demand')
-            results['Buses'][bus.label_full] = {
-                'label': bus.label_full,
+            results['Buses'][bus.id] = {
+                'id': bus.id,
                 'variables': bus._variable_names,
                 'constraints': bus._constraint_names,
                 'inputs': input_vars,
                 'outputs': output_vars,
-                'flows': [f.label_full for f in bus.flows.values()],
+                'flows': [f.id for f in bus.flows.values()],
             }
 
         # Effects
-        for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.label_full.upper()):
-            results['Effects'][effect.label_full] = {
-                'label': effect.label_full,
+        for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.id.upper()):
+            results['Effects'][effect.id] = {
+                'id': effect.id,
                 'variables': effect._variable_names,
                 'constraints': effect._constraint_names,
             }
 
         # Flows
-        for flow in sorted(self.flow_system.flows.values(), key=lambda f: f.label_full.upper()):
-            results['Flows'][flow.label_full] = {
-                'label': flow.label_full,
+        for flow in sorted(self.flow_system.flows.values(), key=lambda f: f.id.upper()):
+            results['Flows'][flow.id] = {
+                'id': flow.id,
                 'variables': flow._variable_names,
                 'constraints': flow._constraint_names,
                 'start': flow.bus if flow.is_input_in_component else flow.component,
@@ -984,28 +985,28 @@ class FlowSystemModel(linopy.Model):
         if 'scenario' not in batched_var.dims:
             return  # No scenario dimension, nothing to equalize
 
-        all_flow_labels = list(batched_var.coords['flow'].values)
+        all_flow_ids = list(batched_var.coords['flow'].values)
 
         if config is True:
             # All flows should be scenario-independent
-            flows_to_constrain = all_flow_labels
+            flows_to_constrain = all_flow_ids
         else:
             # Only those in the list should be scenario-independent
-            flows_to_constrain = [f for f in config if f in all_flow_labels]
+            flows_to_constrain = [f for f in config if f in all_flow_ids]
             # Validate that all specified flows exist
-            missing = [f for f in config if f not in all_flow_labels]
+            missing = [f for f in config if f not in all_flow_ids]
             if missing:
                 param_name = (
                     'scenario_independent_sizes' if parameter_type == 'size' else 'scenario_independent_flow_rates'
                 )
-                logger.warning(f'{param_name} contains labels not in {batched_var_name}: {missing}')
+                logger.warning(f'{param_name} contains ids not in {batched_var_name}: {missing}')
 
         logger.debug(f'Adding scenario equality constraints for {len(flows_to_constrain)} {parameter_type} variables')
-        for flow_label in flows_to_constrain:
-            var_slice = batched_var.sel(flow=flow_label)
+        for flow_id in flows_to_constrain:
+            var_slice = batched_var.sel(flow=flow_id)
             self.add_constraints(
                 var_slice.isel(scenario=0) == var_slice.isel(scenario=slice(1, None)),
-                name=f'{flow_label}|{parameter_type}|scenario_independent',
+                name=f'{flow_id}|{parameter_type}|scenario_independent',
             )
 
     def _add_scenario_equality_constraints(self):
@@ -1268,7 +1269,7 @@ class Interface:
             # In a Model class
             if flow.status_parameters is None:
                 flow.status_parameters = StatusParameters()
-                flow.status_parameters.link_to_flow_system(self._model.flow_system, f'{flow.label_full}')
+                flow.status_parameters.link_to_flow_system(self._model.flow_system, f'{flow.id}')
             ```
         """
         self._flow_system = flow_system
@@ -1349,11 +1350,19 @@ class Interface:
         reference_structure = {'__class__': self.__class__.__name__}
         all_extracted_arrays = {}
 
+        # Deprecated init params that should not be serialized (they alias other params)
+        _deprecated_init_params = {'label', 'label_as_positional'}
+
         for name in self._cached_init_params:
-            if name == 'self':  # Skip self and timesteps. Timesteps are directly stored in Datasets
+            if name == 'self' or name in _deprecated_init_params:
                 continue
 
-            value = getattr(self, name, None)
+            # For 'id' param, use _short_id to get the raw constructor value
+            # (Flow.id property returns qualified name, but constructor expects short name)
+            if name == 'id' and hasattr(self, '_short_id'):
+                value = self._short_id
+            else:
+                value = getattr(self, name, None)
 
             if value is None:
                 continue
@@ -1438,6 +1447,16 @@ class Interface:
                 extracted_arrays.update(nested_arrays)
                 processed_items.append(processed_item)
             return processed_items, extracted_arrays
+
+        # Handle IdList containers (treat as dict for serialization)
+        elif isinstance(obj, IdList):
+            processed_dict = {}
+            for key, value in obj.items():
+                key_context = f'{context_name}.{key}' if context_name else str(key)
+                processed_value, nested_arrays = self._extract_dataarrays_recursive(value, key_context)
+                extracted_arrays.update(nested_arrays)
+                processed_dict[key] = processed_value
+            return processed_dict, extracted_arrays
 
         # Handle dictionaries
         elif isinstance(obj, dict):
@@ -1683,6 +1702,10 @@ class Interface:
                     deferred_attr_names = getattr(nested_class, '_deferred_init_attrs', set())
                     deferred_attrs = {k: v for k, v in resolved_nested_data.items() if k in deferred_attr_names}
                     constructor_data = {k: v for k, v in resolved_nested_data.items() if k not in deferred_attr_names}
+
+                    # Handle renamed parameters from old serialized data
+                    if 'label' in constructor_data and 'label' not in init_params:
+                        constructor_data['id'] = constructor_data.pop('label')
 
                     # Check for unknown parameters - these could be typos or renamed params
                     unknown_params = set(constructor_data.keys()) - init_params
@@ -1931,7 +1954,7 @@ class Interface:
 
     def __repr__(self):
         """Return a detailed string representation for debugging."""
-        return fx_io.build_repr_from_init(self, excluded_params={'self', 'label', 'kwargs'})
+        return fx_io.build_repr_from_init(self, excluded_params={'self', 'id', 'label', 'kwargs'})
 
     def copy(self) -> Interface:
         """
@@ -1957,7 +1980,7 @@ class Interface:
 
 
 class Element(Interface):
-    """This class is the basic Element of flixopt. Every Element has a label"""
+    """This class is the basic Element of flixopt. Every Element has an id."""
 
     # Attributes that are serialized but set after construction (not passed to child __init__)
     # These are internal state populated during modeling, not user-facing parameters
@@ -1965,21 +1988,26 @@ class Element(Interface):
 
     def __init__(
         self,
-        label: str,
+        id: str | None = None,
         meta_data: dict | None = None,
         color: str | None = None,
         _variable_names: list[str] | None = None,
         _constraint_names: list[str] | None = None,
+        **kwargs,
     ):
         """
         Args:
-            label: The label of the element
+            id: The id of the element
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
             color: Optional color for visualizations (e.g., '#FF6B6B'). If not provided, a color will be automatically assigned during FlowSystem.connect_and_transform().
             _variable_names: Internal. Variable names for this element (populated after modeling).
             _constraint_names: Internal. Constraint names for this element (populated after modeling).
         """
-        self.label = Element._valid_label(label)
+        id = self._handle_deprecated_kwarg(kwargs, 'label', 'id', id)
+        if id is None:
+            raise TypeError(f'{self.__class__.__name__}.__init__() requires an "id" argument.')
+        self._validate_kwargs(kwargs)
+        self._short_id: str = Element._valid_id(id)
         self.meta_data = meta_data if meta_data is not None else {}
         self.color = color
         self._flow_system: FlowSystem | None = None
@@ -1993,8 +2021,56 @@ class Element(Interface):
         raise NotImplementedError('Every Element needs a _plausibility_checks() method')
 
     @property
+    def id(self) -> str:
+        """The unique identifier of this element.
+
+        For most elements this is the name passed to the constructor.
+        For flows this returns the qualified form: ``component(short_id)``.
+        """
+        return self._short_id
+
+    @id.setter
+    def id(self, value: str) -> None:
+        self._short_id = value
+
+    @property
+    def label(self) -> str:
+        """Deprecated: Use ``id`` instead."""
+        warnings.warn(
+            f'Accessing ".label" is deprecated. Use ".id" instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._short_id
+
+    @label.setter
+    def label(self, value: str) -> None:
+        warnings.warn(
+            f'Setting ".label" is deprecated. Use ".id" instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._short_id = value
+
+    @property
     def label_full(self) -> str:
-        return self.label
+        """Deprecated: Use ``id`` instead."""
+        warnings.warn(
+            f'Accessing ".label_full" is deprecated. Use ".id" instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.id
+
+    @property
+    def id_full(self) -> str:
+        """Deprecated: Use ``id`` instead."""
+        warnings.warn(
+            f'Accessing ".id_full" is deprecated. Use ".id" instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.id
 
     @property
     def solution(self) -> xr.Dataset:
@@ -2007,11 +2083,11 @@ class Element(Interface):
             ValueError: If no solution is available (optimization not run or not solved).
         """
         if self._flow_system is None:
-            raise ValueError(f'Element "{self.label}" is not linked to a FlowSystem.')
+            raise ValueError(f'Element "{self.id}" is not linked to a FlowSystem.')
         if self._flow_system.solution is None:
-            raise ValueError(f'No solution available for "{self.label}". Run optimization first or load results.')
+            raise ValueError(f'No solution available for "{self.id}". Run optimization first or load results.')
         if not self._variable_names:
-            raise ValueError(f'No variable names available for "{self.label}". Element may not have been modeled yet.')
+            raise ValueError(f'No variable names available for "{self.id}". Element may not have been modeled yet.')
         full_solution = self._flow_system.solution
         data_vars = {}
         for var_name in self._variable_names:
@@ -2022,8 +2098,8 @@ class Element(Interface):
             for dim in var.dims:
                 if dim in ('time', 'period', 'scenario', 'cluster'):
                     continue
-                if self.label_full in var.coords[dim].values:
-                    var = var.sel({dim: self.label_full}, drop=True)
+                if self.id in var.coords[dim].values:
+                    var = var.sel({dim: self.id}, drop=True)
                     break
             data_vars[var_name] = var
         return xr.Dataset(data_vars)
@@ -2047,25 +2123,35 @@ class Element(Interface):
 
     def __repr__(self) -> str:
         """Return string representation."""
-        return fx_io.build_repr_from_init(self, excluded_params={'self', 'label', 'kwargs'}, skip_default_size=True)
+        return fx_io.build_repr_from_init(self, excluded_params={'self', 'id', 'kwargs'}, skip_default_size=True)
+
+    @staticmethod
+    def _valid_id(id: str) -> str:
+        """Checks if the id is valid.
+
+        Raises:
+            ValueError: If the id is not valid.
+        """
+        not_allowed = ['(', ')', '|', '->', '\\', '-slash-']  # \\ is needed to check for \
+        if any([sign in id for sign in not_allowed]):
+            raise ValueError(
+                f'Id "{id}" is not valid. Ids cannot contain the following characters: {not_allowed}. '
+                f'Use any other symbol instead'
+            )
+        if id.endswith(' '):
+            logger.error(f'Id "{id}" ends with a space. This will be removed.')
+            return id.rstrip()
+        return id
 
     @staticmethod
     def _valid_label(label: str) -> str:
-        """Checks if the label is valid. If not, it is replaced by the default label.
-
-        Raises:
-            ValueError: If the label is not valid.
-        """
-        not_allowed = ['(', ')', '|', '->', '\\', '-slash-']  # \\ is needed to check for \
-        if any([sign in label for sign in not_allowed]):
-            raise ValueError(
-                f'Label "{label}" is not valid. Labels cannot contain the following characters: {not_allowed}. '
-                f'Use any other symbol instead'
-            )
-        if label.endswith(' '):
-            logger.error(f'Label "{label}" ends with a space. This will be removed.')
-            return label.rstrip()
-        return label
+        """Deprecated: Use ``_valid_id`` instead."""
+        warnings.warn(
+            f'_valid_label is deprecated. Use _valid_id instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return Element._valid_id(label)
 
 
 # Precompiled regex pattern for natural sorting
@@ -2244,31 +2330,31 @@ class ContainerMixin(dict[str, T]):
 
 
 class FlowContainer(ContainerMixin[T]):
-    """Container for Flow objects with dual access: by index or by label_full.
+    """Container for Flow objects with dual access: by index or by id.
 
     Supports:
-        - container['Boiler(Q_th)']  # label_full-based access
-        - container['Q_th']          # short-label access (when all flows share same component)
+        - container['Boiler(Q_th)']  # id-based access
+        - container['Q_th']          # short-id access (when all flows share same component)
         - container[0]               # index-based access
         - container.add(flow)
         - for flow in container.values()
         - container1 + container2    # concatenation
 
     Examples:
-        >>> boiler = Boiler(label='Boiler', inputs=[Flow('Q_th', bus=heat_bus)])
+        >>> boiler = Boiler(id='Boiler', inputs=[Flow('heat_bus')])
         >>> boiler.inputs[0]  # Index access
-        >>> boiler.inputs['Boiler(Q_th)']  # Full label access
-        >>> boiler.inputs['Q_th']  # Short label access (same component)
+        >>> boiler.inputs['Boiler(heat_bus)']  # Full id access
+        >>> boiler.inputs['heat_bus']  # Short id access (same component)
         >>> for flow in boiler.inputs.values():
-        ...     print(flow.label_full)
+        ...     print(flow.id)
     """
 
     def _get_label(self, flow: T) -> str:
-        """Extract label_full from Flow."""
-        return flow.label_full
+        """Extract id from Flow."""
+        return flow.id
 
     def __getitem__(self, key: str | int) -> T:
-        """Get flow by label_full, short label, or index."""
+        """Get flow by id, short id, or index."""
         if isinstance(key, int):
             try:
                 return list(self.values())[key]
@@ -2278,7 +2364,7 @@ class FlowContainer(ContainerMixin[T]):
         if dict.__contains__(self, key):
             return super().__getitem__(key)
 
-        # Try short-label match if all flows share the same component
+        # Try short-id match if all flows share the same component
         if len(self) > 0:
             components = {flow.component for flow in self.values()}
             if len(components) == 1:
@@ -2290,7 +2376,7 @@ class FlowContainer(ContainerMixin[T]):
         raise KeyError(f"'{key}' not found in {self._element_type_name}")
 
     def __contains__(self, key: object) -> bool:
-        """Check if key exists (supports label_full or short label)."""
+        """Check if key exists (supports id or short id)."""
         if not isinstance(key, str):
             return False
         if dict.__contains__(self, key):
@@ -2308,24 +2394,24 @@ class ElementContainer(ContainerMixin[T]):
     """
     Container for Element objects (Component, Bus, Flow, Effect).
 
-    Uses element.label_full for keying.
+    Uses element.id for keying.
     """
 
     def _get_label(self, element: T) -> str:
-        """Extract label_full from Element."""
-        return element.label_full
+        """Extract id from Element."""
+        return element.id
 
 
 class ResultsContainer(ContainerMixin[T]):
     """
     Container for Results objects (ComponentResults, BusResults, etc).
 
-    Uses element.label for keying.
+    Uses element.id for keying.
     """
 
     def _get_label(self, element: T) -> str:
-        """Extract label from Results object."""
-        return element.label
+        """Extract id from Results object."""
+        return element.id
 
 
 T_element = TypeVar('T_element')
@@ -2383,12 +2469,12 @@ class CompositeContainerMixin(Generic[T_element]):
         interface while preserving their individual functionality.
     """
 
-    def _get_container_groups(self) -> dict[str, ContainerMixin[Any]]:
+    def _get_container_groups(self) -> dict[str, IdList[Any]]:
         """
         Return ordered dict of container groups to aggregate.
 
         Returns:
-            Dictionary mapping group names to container objects (e.g., ElementContainer, ResultsContainer).
+            Dictionary mapping group names to IdList containers.
             Group names should be capitalized (e.g., 'Components', 'Buses').
             Order determines display order in __repr__.
 
@@ -2422,17 +2508,17 @@ class CompositeContainerMixin(Generic[T_element]):
                 return container[key]
 
         # Element not found - provide helpful error
-        all_elements = {}
+        all_keys: list[str] = []
         for container in self._get_container_groups().values():
-            all_elements.update(container)
+            all_keys.extend(container.keys())
 
-        suggestions = get_close_matches(key, all_elements.keys(), n=3, cutoff=0.6)
+        suggestions = get_close_matches(key, all_keys, n=3, cutoff=0.6)
         error_msg = f'Element "{key}" not found.'
 
         if suggestions:
             error_msg += f' Did you mean: {", ".join(suggestions)}?'
         else:
-            available = list(all_elements.keys())
+            available = all_keys
             if len(available) <= 5:
                 error_msg += f' Available: {", ".join(available)}'
             else:

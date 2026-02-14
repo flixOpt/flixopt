@@ -22,6 +22,7 @@ from .features import (
     sparse_multiply_sum,
     sparse_weighted_sum,
 )
+from .id_list import IdList, flow_id_list
 from .interface import InvestParameters, StatusParameters
 from .modeling import ModelingUtilitiesAbstract
 from .structure import (
@@ -29,7 +30,6 @@ from .structure import (
     ComponentVarName,
     ConverterVarName,
     Element,
-    FlowContainer,
     FlowSystemModel,
     FlowVarName,
     TransmissionVarName,
@@ -79,7 +79,7 @@ def _add_prevent_simultaneous_constraints(
     )
     mask = MaskHelpers.build_mask(
         row_dim='component',
-        row_ids=[c.label for c in with_prevent],
+        row_ids=[c.id for c in with_prevent],
         col_dim='flow',
         col_ids=flows_model.element_ids,
         membership=membership,
@@ -106,7 +106,7 @@ class Component(Element):
     enabling the modeling of complex energy system topologies and operational constraints.
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem.
+        id: The id of the Element. Used to identify it in the FlowSystem.
         inputs: list of input Flows feeding into the component. These represent
             energy/material consumption by the component.
         outputs: list of output Flows leaving the component. These represent
@@ -141,21 +141,22 @@ class Component(Element):
 
     def __init__(
         self,
-        label: str,
+        id: str | None = None,
         inputs: list[Flow] | dict[str, Flow] | None = None,
         outputs: list[Flow] | dict[str, Flow] | None = None,
         status_parameters: StatusParameters | None = None,
         prevent_simultaneous_flows: list[Flow] | None = None,
         meta_data: dict | None = None,
         color: str | None = None,
+        **kwargs,
     ):
-        super().__init__(label, meta_data=meta_data, color=color)
+        super().__init__(id, meta_data=meta_data, color=color, **kwargs)
         self.status_parameters = status_parameters
         if isinstance(prevent_simultaneous_flows, dict):
             prevent_simultaneous_flows = list(prevent_simultaneous_flows.values())
         self.prevent_simultaneous_flows: list[Flow] = prevent_simultaneous_flows or []
 
-        # FlowContainers serialize as dicts, but constructor expects lists
+        # IdLists serialize as dicts, but constructor expects lists
         if isinstance(inputs, dict):
             inputs = list(inputs.values())
         if isinstance(outputs, dict):
@@ -165,29 +166,29 @@ class Component(Element):
         _outputs = outputs or []
 
         # Check uniqueness on raw lists (before connecting)
-        all_flow_labels = [flow.label for flow in _inputs + _outputs]
-        if len(set(all_flow_labels)) != len(all_flow_labels):
-            duplicates = {label for label in all_flow_labels if all_flow_labels.count(label) > 1}
-            raise ValueError(f'Flow names must be unique! "{self.label_full}" got 2 or more of: {duplicates}')
+        all_flow_ids = [flow._short_id for flow in _inputs + _outputs]
+        if len(set(all_flow_ids)) != len(all_flow_ids):
+            duplicates = {fid for fid in all_flow_ids if all_flow_ids.count(fid) > 1}
+            raise ValueError(f'Flow names must be unique! "{self.id}" got 2 or more of: {duplicates}')
 
-        # Connect flows (sets component name / label_full) before creating FlowContainers
+        # Connect flows (sets component name) before creating IdLists
         self._connect_flows(_inputs, _outputs)
 
-        # Now label_full is set, so FlowContainer can key by it
-        self.inputs: FlowContainer = FlowContainer(_inputs, element_type_name='inputs')
-        self.outputs: FlowContainer = FlowContainer(_outputs, element_type_name='outputs')
+        # Now flow.id is qualified, so IdList can key by it
+        self.inputs: IdList = flow_id_list(_inputs, display_name='inputs')
+        self.outputs: IdList = flow_id_list(_outputs, display_name='outputs')
 
     @cached_property
-    def flows(self) -> FlowContainer:
-        """All flows (inputs and outputs) as a FlowContainer."""
+    def flows(self) -> IdList:
+        """All flows (inputs and outputs) as an IdList."""
         return self.inputs + self.outputs
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested Interface objects and flows.
 
-        Elements use their label_full as prefix by default, ignoring the passed prefix.
+        Elements use their id_full as prefix by default, ignoring the passed prefix.
         """
-        super().link_to_flow_system(flow_system, self.label_full)
+        super().link_to_flow_system(flow_system, self.id)
         if self.status_parameters is not None:
             self.status_parameters.link_to_flow_system(flow_system, self._sub_prefix('status_parameters'))
         for flow in self.flows.values():
@@ -215,27 +216,23 @@ class Component(Element):
             for flow in self.flows.values():
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
-                    flow.status_parameters.link_to_flow_system(
-                        self._flow_system, f'{flow.label_full}|status_parameters'
-                    )
+                    flow.status_parameters.link_to_flow_system(self._flow_system, f'{flow.id}|status_parameters')
         if self.prevent_simultaneous_flows:
             for flow in self.prevent_simultaneous_flows:
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
-                    flow.status_parameters.link_to_flow_system(
-                        self._flow_system, f'{flow.label_full}|status_parameters'
-                    )
+                    flow.status_parameters.link_to_flow_system(self._flow_system, f'{flow.id}|status_parameters')
 
-    def _check_unique_flow_labels(self, inputs: list = None, outputs: list = None):
+    def _check_unique_flow_ids(self, inputs: list = None, outputs: list = None):
         if inputs is None:
             inputs = list(self.inputs.values())
         if outputs is None:
             outputs = list(self.outputs.values())
-        all_flow_labels = [flow.label for flow in inputs + outputs]
+        all_flow_ids = [flow._short_id for flow in inputs + outputs]
 
-        if len(set(all_flow_labels)) != len(all_flow_labels):
-            duplicates = {label for label in all_flow_labels if all_flow_labels.count(label) > 1}
-            raise ValueError(f'Flow names must be unique! "{self.label_full}" got 2 or more of: {duplicates}')
+        if len(set(all_flow_ids)) != len(all_flow_ids):
+            duplicates = {fid for fid in all_flow_ids if all_flow_ids.count(fid) > 1}
+            raise ValueError(f'Flow names must be unique! "{self.id}" got 2 or more of: {duplicates}')
 
     def validate_config(self) -> None:
         """Validate configuration consistency.
@@ -243,15 +240,15 @@ class Component(Element):
         Called BEFORE transformation via FlowSystem._run_config_validation().
         These are simple checks that don't require DataArray operations.
         """
-        self._check_unique_flow_labels()
+        self._check_unique_flow_ids()
 
         # Component with status_parameters requires all flows to have sizes set
         # (status_parameters are propagated to flows in _do_modeling, which need sizes for big-M constraints)
         if self.status_parameters is not None:
-            flows_without_size = [flow.label for flow in self.flows.values() if flow.size is None]
+            flows_without_size = [flow._short_id for flow in self.flows.values() if flow.size is None]
             if flows_without_size:
                 raise PlausibilityError(
-                    f'Component "{self.label_full}" has status_parameters, but the following flows have no size: '
+                    f'Component "{self.id}" has status_parameters, but the following flows have no size: '
                     f'{flows_without_size}. All flows need explicit sizes when the component uses status_parameters '
                     f'(required for big-M constraints).'
                 )
@@ -267,21 +264,19 @@ class Component(Element):
             outputs = list(self.outputs.values())
         # Inputs
         for flow in inputs:
-            if flow.component not in ('UnknownComponent', self.label_full):
+            if flow.component not in ('UnknownComponent', self.id):
                 raise ValueError(
-                    f'Flow "{flow.label}" already assigned to component "{flow.component}". '
-                    f'Cannot attach to "{self.label_full}".'
+                    f'Flow "{flow.id}" already assigned to component "{flow.component}". Cannot attach to "{self.id}".'
                 )
-            flow.component = self.label_full
+            flow.component = self.id
             flow.is_input_in_component = True
         # Outputs
         for flow in outputs:
-            if flow.component not in ('UnknownComponent', self.label_full):
+            if flow.component not in ('UnknownComponent', self.id):
                 raise ValueError(
-                    f'Flow "{flow.label}" already assigned to component "{flow.component}". '
-                    f'Cannot attach to "{self.label_full}".'
+                    f'Flow "{flow.id}" already assigned to component "{flow.component}". Cannot attach to "{self.id}".'
                 )
-            flow.component = self.label_full
+            flow.component = self.id
             flow.is_input_in_component = False
 
         # Validate prevent_simultaneous_flows: only allow local flows
@@ -294,16 +289,16 @@ class Component(Element):
             local = set(inputs + outputs)
             foreign = [f for f in self.prevent_simultaneous_flows if f not in local]
             if foreign:
-                names = ', '.join(f.label_full for f in foreign)
+                names = ', '.join(f.id for f in foreign)
                 raise ValueError(
-                    f'prevent_simultaneous_flows for "{self.label_full}" must reference its own flows. '
+                    f'prevent_simultaneous_flows for "{self.id}" must reference its own flows. '
                     f'Foreign flows detected: {names}'
                 )
 
     def __repr__(self) -> str:
         """Return string representation with flow information."""
         return fx_io.build_repr_from_init(
-            self, excluded_params={'self', 'label', 'inputs', 'outputs', 'kwargs'}, skip_default_size=True
+            self, excluded_params={'self', 'id', 'inputs', 'outputs', 'kwargs'}, skip_default_size=True
         ) + fx_io.format_flow_details(self)
 
 
@@ -373,33 +368,38 @@ class Bus(Element):
 
     def __init__(
         self,
-        label: str,
+        id: str | None = None,
         carrier: str | None = None,
         imbalance_penalty_per_flow_hour: Numeric_TPS | None = None,
         meta_data: dict | None = None,
         **kwargs,
     ):
-        super().__init__(label, meta_data=meta_data)
-        imbalance_penalty_per_flow_hour = self._handle_deprecated_kwarg(
-            kwargs, 'excess_penalty_per_flow_hour', 'imbalance_penalty_per_flow_hour', imbalance_penalty_per_flow_hour
-        )
-        self._validate_kwargs(kwargs)
+        # Handle Bus-specific deprecated kwarg before passing kwargs to super
+        old_penalty = kwargs.pop('excess_penalty_per_flow_hour', None)
+        super().__init__(id, meta_data=meta_data, **kwargs)
+        if old_penalty is not None:
+            imbalance_penalty_per_flow_hour = self._handle_deprecated_kwarg(
+                {'excess_penalty_per_flow_hour': old_penalty},
+                'excess_penalty_per_flow_hour',
+                'imbalance_penalty_per_flow_hour',
+                imbalance_penalty_per_flow_hour,
+            )
         self.carrier = carrier.lower() if carrier else None  # Store as lowercase string
         self.imbalance_penalty_per_flow_hour = imbalance_penalty_per_flow_hour
-        self.inputs: FlowContainer = FlowContainer(element_type_name='inputs')
-        self.outputs: FlowContainer = FlowContainer(element_type_name='outputs')
+        self.inputs: IdList = flow_id_list(display_name='inputs')
+        self.outputs: IdList = flow_id_list(display_name='outputs')
 
     @property
-    def flows(self) -> FlowContainer:
-        """All flows (inputs and outputs) as a FlowContainer."""
+    def flows(self) -> IdList:
+        """All flows (inputs and outputs) as an IdList."""
         return self.inputs + self.outputs
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested flows.
 
-        Elements use their label_full as prefix by default, ignoring the passed prefix.
+        Elements use their id_full as prefix by default, ignoring the passed prefix.
         """
-        super().link_to_flow_system(flow_system, self.label_full)
+        super().link_to_flow_system(flow_system, self.id)
         for flow in self.flows.values():
             flow.link_to_flow_system(flow_system)
 
@@ -415,9 +415,7 @@ class Bus(Element):
         These are simple checks that don't require DataArray operations.
         """
         if len(self.inputs) == 0 and len(self.outputs) == 0:
-            raise ValueError(
-                f'Bus "{self.label_full}" has no Flows connected to it. Please remove it from the FlowSystem'
-            )
+            raise ValueError(f'Bus "{self.id}" has no Flows connected to it. Please remove it from the FlowSystem')
 
     def _plausibility_checks(self) -> None:
         """Legacy validation method - delegates to validate_config().
@@ -587,8 +585,9 @@ class Flow(Element):
 
     def __init__(
         self,
-        label: str,
-        bus: str,
+        *args,
+        bus: str | None = None,
+        id: str | None = None,
         size: Numeric_PS | InvestParameters | None = None,
         fixed_relative_profile: Numeric_TPS | None = None,
         relative_minimum: Numeric_TPS = 0,
@@ -603,8 +602,64 @@ class Flow(Element):
         load_factor_max: Numeric_PS | None = None,
         previous_flow_rate: Scalar | list[Scalar] | None = None,
         meta_data: dict | None = None,
+        label: str | None = None,
+        **kwargs,
     ):
-        super().__init__(label, meta_data=meta_data)
+        # --- Resolve positional args + deprecation bridge ---
+        import warnings
+
+        from .config import DEPRECATION_REMOVAL_VERSION
+
+        if len(args) == 2:
+            # Old API: Flow(label, bus)
+            warnings.warn(
+                f'Flow(label, bus) positional form is deprecated. '
+                f'Use Flow(bus, id=...) instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if id is None and label is None:
+                id = args[0]
+            if bus is None:
+                bus = args[1]
+        elif len(args) == 1:
+            if bus is not None:
+                # Old API: Flow(label, bus=...)
+                warnings.warn(
+                    f'Flow(label, bus=...) positional form is deprecated. '
+                    f'Use Flow(bus, id=...) instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                if id is None and label is None:
+                    id = args[0]
+            else:
+                # New API: Flow(bus) — bus is the positional arg
+                bus = args[0]
+        elif len(args) > 2:
+            raise TypeError(f'Flow() takes at most 2 positional arguments ({len(args)} given)')
+
+        # Handle deprecated label kwarg
+        if label is not None:
+            warnings.warn(
+                f'The "label" argument is deprecated. Use "id" instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if id is not None:
+                raise ValueError('Either label or id can be specified, but not both.')
+            id = label
+
+        # Default id to bus name
+        if id is None:
+            if bus is None:
+                raise TypeError('Flow() requires a bus argument.')
+            id = bus if isinstance(bus, str) else str(bus)
+
+        if bus is None:
+            raise TypeError('Flow() requires a bus argument.')
+
+        super().__init__(id, meta_data=meta_data, **kwargs)
         self.size = size
         self.relative_minimum = relative_minimum
         self.relative_maximum = relative_maximum
@@ -613,7 +668,6 @@ class Flow(Element):
         self.load_factor_min = load_factor_min
         self.load_factor_max = load_factor_max
 
-        # self.positive_gradient = TimeSeries('positive_gradient', positive_gradient, self)
         self.effects_per_flow_hour = effects_per_flow_hour if effects_per_flow_hour is not None else {}
         self.flow_hours_max = flow_hours_max
         self.flow_hours_min = flow_hours_min
@@ -627,17 +681,17 @@ class Flow(Element):
         self.is_input_in_component: bool | None = None
         if isinstance(bus, Bus):
             raise TypeError(
-                f'Bus {bus.label} is passed as a Bus object to Flow {self.label}. '
-                f'This is no longer supported. Add the Bus to the FlowSystem and pass its label (string) to the Flow.'
+                f'Bus {bus.id} is passed as a Bus object to Flow {self.id}. '
+                f'This is no longer supported. Add the Bus to the FlowSystem and pass its id (string) to the Flow.'
             )
         self.bus = bus
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested Interface objects.
 
-        Elements use their label_full as prefix by default, ignoring the passed prefix.
+        Elements use their id_full as prefix by default, ignoring the passed prefix.
         """
-        super().link_to_flow_system(flow_system, self.label_full)
+        super().link_to_flow_system(flow_system, self.id)
         if self.status_parameters is not None:
             self.status_parameters.link_to_flow_system(flow_system, self._sub_prefix('status_parameters'))
         if isinstance(self.size, InvestParameters):
@@ -685,26 +739,26 @@ class Flow(Element):
         # Size is required when using StatusParameters (for big-M constraints)
         if self.status_parameters is not None and self.size is None:
             raise PlausibilityError(
-                f'Flow "{self.label_full}" has status_parameters but no size defined. '
+                f'Flow "{self.id}" has status_parameters but no size defined. '
                 f'A size is required when using status_parameters to bound the flow rate.'
             )
 
         if self.size is None and self.fixed_relative_profile is not None:
             raise PlausibilityError(
-                f'Flow "{self.label_full}" has a fixed_relative_profile but no size defined. '
+                f'Flow "{self.id}" has a fixed_relative_profile but no size defined. '
                 f'A size is required because flow_rate = size * fixed_relative_profile.'
             )
 
         # Size is required for load factor constraints (total_flow_hours / size)
         if self.size is None and self.load_factor_min is not None:
             raise PlausibilityError(
-                f'Flow "{self.label_full}" has load_factor_min but no size defined. '
+                f'Flow "{self.id}" has load_factor_min but no size defined. '
                 f'A size is required because the constraint is total_flow_hours >= size * load_factor_min * hours.'
             )
 
         if self.size is None and self.load_factor_max is not None:
             raise PlausibilityError(
-                f'Flow "{self.label_full}" has load_factor_max but no size defined. '
+                f'Flow "{self.id}" has load_factor_max but no size defined. '
                 f'A size is required because the constraint is total_flow_hours <= size * load_factor_max * hours.'
             )
 
@@ -725,7 +779,7 @@ class Flow(Element):
         # Warning: fixed_relative_profile + status_parameters is unusual
         if self.fixed_relative_profile is not None and self.status_parameters is not None:
             logger.warning(
-                f'Flow {self.label_full} has both a fixed_relative_profile and status_parameters. '
+                f'Flow {self.id} has both a fixed_relative_profile and status_parameters. '
                 f'This will allow the flow to be switched active and inactive, effectively differing from the fixed_flow_rate.'
             )
 
@@ -737,8 +791,13 @@ class Flow(Element):
         self.validate_config()
 
     @property
-    def label_full(self) -> str:
-        return f'{self.component}({self.label})'
+    def id(self) -> str:
+        """The qualified identifier: ``component(short_id)``."""
+        return f'{self.component}({self._short_id})'
+
+    @id.setter
+    def id(self, value: str) -> None:
+        self._short_id = value
 
     # =========================================================================
     # Type-Level Model Access (for FlowsModel integration)
@@ -761,23 +820,23 @@ class Flow(Element):
         """
         if self._flows_model is None:
             return None
-        return self._flows_model.get_variable(FlowVarName.RATE, self.label_full)
+        return self._flows_model.get_variable(FlowVarName.RATE, self.id)
 
     @property
     def total_flow_hours_from_type_model(self) -> linopy.Variable | None:
         """Get total_flow_hours from FlowsModel (if using type-level modeling)."""
         if self._flows_model is None:
             return None
-        return self._flows_model.get_variable(FlowVarName.TOTAL_FLOW_HOURS, self.label_full)
+        return self._flows_model.get_variable(FlowVarName.TOTAL_FLOW_HOURS, self.id)
 
     @property
     def status_from_type_model(self) -> linopy.Variable | None:
         """Get status from FlowsModel (if using type-level modeling)."""
         if self._flows_model is None or FlowVarName.STATUS not in self._flows_model:
             return None
-        if self.label_full not in self._flows_model.status_ids:
+        if self.id not in self._flows_model.status_ids:
             return None
-        return self._flows_model.get_variable(FlowVarName.STATUS, self.label_full)
+        return self._flows_model.get_variable(FlowVarName.STATUS, self.id)
 
     @property
     def size_is_fixed(self) -> bool:
@@ -1586,7 +1645,7 @@ class FlowsModel(TypeModel):
         Returns:
             DataArray of previous status (time dimension), or None if no previous status.
         """
-        fid = flow.label_full
+        fid = flow.id
         return self.data.previous_states.get(fid)
 
 
@@ -1686,7 +1745,7 @@ class BusesModel(TypeModel):
         balance = sparse_multiply_sum(flow_rate, self.data.balance_coefficients, sum_dim=flow_dim, group_dim=bus_dim)
 
         if self.buses_with_imbalance:
-            imbalance_ids = [b.label_full for b in self.buses_with_imbalance]
+            imbalance_ids = [b.id for b in self.buses_with_imbalance]
             is_imbalance = xr.DataArray(
                 [b in imbalance_ids for b in bus_ids], dims=[bus_dim], coords={bus_dim: bus_ids}
             )
@@ -1715,7 +1774,7 @@ class BusesModel(TypeModel):
         dim = self.dim_name
         penalty_specs = []
         for bus in self.buses_with_imbalance:
-            bus_label = bus.label_full
+            bus_label = bus.id
             imbalance_penalty = bus.imbalance_penalty_per_flow_hour * self.model.timestep_duration
 
             virtual_supply = self[BusVarName.VIRTUAL_SUPPLY].sel({dim: bus_label})
@@ -1823,8 +1882,8 @@ class ComponentsModel(TypeModel):
         flow_sum = sparse_weighted_sum(flow_status, mask, sum_dim='flow', group_dim='component')
 
         # Separate single-flow vs multi-flow components
-        single_flow_ids = [c.label for c in self.components if len(c.inputs) + len(c.outputs) == 1]
-        multi_flow_ids = [c.label for c in self.components if len(c.inputs) + len(c.outputs) > 1]
+        single_flow_ids = [c.id for c in self.components if len(c.inputs) + len(c.outputs) == 1]
+        multi_flow_ids = [c.id for c in self.components if len(c.inputs) + len(c.outputs) > 1]
 
         # Single-flow: exact equality
         if single_flow_ids:
@@ -1878,7 +1937,7 @@ class ComponentsModel(TypeModel):
                     for da in previous_status
                 ]
                 comp_prev_status = xr.concat(padded, dim='flow').any(dim='flow').astype(int)
-                comp_prev_status = comp_prev_status.expand_dims({self.dim_name: [component.label]})
+                comp_prev_status = comp_prev_status.expand_dims({self.dim_name: [component.id]})
                 previous_arrays.append(comp_prev_status)
                 components_with_previous.append(component)
 
@@ -2447,7 +2506,7 @@ class TransmissionsModel(TypeModel):
             efficiency_expr_2 = in2_rate * (1 - rel_losses_bidir)
 
             # Add absolute losses for bidirectional if any have them
-            bidir_with_abs = [t.label for t in d.bidirectional if t.label in d.transmissions_with_abs_losses]
+            bidir_with_abs = [t.id for t in d.bidirectional if t.id in d.transmissions_with_abs_losses]
             if bidir_with_abs:
                 flow_status = self._flows_model[FlowVarName.STATUS]
                 in2_status = (flow_status * d.in2_mask).sum('flow')

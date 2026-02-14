@@ -27,13 +27,13 @@ from .core import (
 from .effects import Effect, EffectCollection
 from .elements import Bus, Component, Flow
 from .flow_system_status import FlowSystemStatus, get_status, invalidate_to_status
+from .id_list import IdList, element_id_list
 from .model_coordinates import ModelCoordinates
 from .optimize_accessor import OptimizeAccessor
 from .statistics_accessor import StatisticsAccessor
 from .structure import (
     CompositeContainerMixin,
     Element,
-    ElementContainer,
     FlowSystemModel,
     Interface,
 )
@@ -83,7 +83,7 @@ class LegacySolutionWrapper:
         'invested': ('flow', 'invested'),
     }
 
-    # Storage-specific mappings (no parentheses in label, e.g., 'Battery|size')
+    # Storage-specific mappings (no parentheses in id, e.g., 'Battery|size')
     _LEGACY_STORAGE_VAR_MAP = {
         'size': ('storage', 'size'),
         'invested': ('storage', 'invested'),
@@ -152,33 +152,33 @@ class LegacySolutionWrapper:
             if '|' in key:
                 parts = key.rsplit('|', 1)
                 if len(parts) == 2:
-                    element_label, var_suffix = parts
+                    element_id, var_suffix = parts
 
-                    # Try flow variables first (labels have parentheses like 'Src(heat)')
+                    # Try flow variables first (ids have parentheses like 'Src(heat)')
                     if var_suffix in self._LEGACY_VAR_MAP:
                         dim, var_name = self._LEGACY_VAR_MAP[var_suffix]
                         new_key = f'{dim}|{var_name}'
-                        if new_key in ds and dim in ds.coords and element_label in ds.coords[dim].values:
+                        if new_key in ds and dim in ds.coords and element_id in ds.coords[dim].values:
                             warnings.warn(
                                 f"Legacy solution access: solution['{key}'] is deprecated. "
-                                f"Use solution['{new_key}'].sel({dim}='{element_label}') instead.",
+                                f"Use solution['{new_key}'].sel({dim}='{element_id}') instead.",
                                 DeprecationWarning,
                                 stacklevel=2,
                             )
-                            return ds[new_key].sel({dim: element_label})
+                            return ds[new_key].sel({dim: element_id})
 
-                    # Try storage variables (labels without parentheses like 'Battery')
+                    # Try storage variables (ids without parentheses like 'Battery')
                     if var_suffix in self._LEGACY_STORAGE_VAR_MAP:
                         dim, var_name = self._LEGACY_STORAGE_VAR_MAP[var_suffix]
                         new_key = f'{dim}|{var_name}'
-                        if new_key in ds and dim in ds.coords and element_label in ds.coords[dim].values:
+                        if new_key in ds and dim in ds.coords and element_id in ds.coords[dim].values:
                             warnings.warn(
                                 f"Legacy solution access: solution['{key}'] is deprecated. "
-                                f"Use solution['{new_key}'].sel({dim}='{element_label}') instead.",
+                                f"Use solution['{new_key}'].sel({dim}='{element_id}') instead.",
                                 DeprecationWarning,
                                 stacklevel=2,
                             )
-                            return ds[new_key].sel({dim: element_label})
+                            return ds[new_key].sel({dim: element_id})
 
             raise e
 
@@ -210,7 +210,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     This is the main container class that users work with to build and manage their energy or material flow system.
     FlowSystem provides both direct container access (via .components, .buses, .effects, .flows) and a unified
-    dict-like interface for accessing any element by label across all container types.
+    dict-like interface for accessing any element by id across all container types.
 
     Args:
         timesteps: The timesteps of the model.
@@ -232,11 +232,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         scenario_independent_sizes: Controls whether investment sizes are equalized across scenarios.
             - True: All sizes are shared/equalized across scenarios
             - False: All sizes are optimized separately per scenario
-            - list[str]: Only specified components (by label_full) are equalized across scenarios
+            - list[str]: Only specified components (by id) are equalized across scenarios
         scenario_independent_flow_rates: Controls whether flow rates are equalized across scenarios.
             - True: All flow rates are shared/equalized across scenarios
             - False: All flow rates are optimized separately per scenario
-            - list[str]: Only specified flows (by label_full) are equalized across scenarios
+            - list[str]: Only specified flows (by id) are equalized across scenarios
 
     Examples:
         Creating a FlowSystem and accessing elements:
@@ -254,7 +254,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         Unified dict-like access (recommended for most cases):
 
-        >>> # Access any element by label, regardless of type
+        >>> # Access any element by id, regardless of type
         >>> boiler = flow_system['Boiler']  # Returns Component
         >>> heat_bus = flow_system['Heat']  # Returns Bus
         >>> costs = flow_system['costs']  # Returns Effect
@@ -264,25 +264,25 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         ...     print('Boiler found in system')
         >>>
         >>> # Iterate over all elements
-        >>> for label in flow_system.keys():
-        ...     element = flow_system[label]
-        ...     print(f'{label}: {type(element).__name__}')
+        >>> for element_id in flow_system.keys():
+        ...     element = flow_system[element_id]
+        ...     print(f'{element_id}: {type(element).__name__}')
         >>>
-        >>> # Get all element labels and objects
-        >>> all_labels = list(flow_system.keys())
+        >>> # Get all element ids and objects
+        >>> all_ids = list(flow_system.keys())
         >>> all_elements = list(flow_system.values())
-        >>> for label, element in flow_system.items():
-        ...     print(f'{label}: {element}')
+        >>> for element_id, element in flow_system.items():
+        ...     print(f'{element_id}: {element}')
 
         Direct container access for type-specific operations:
 
         >>> # Access specific container when you need type filtering
         >>> for component in flow_system.components.values():
-        ...     print(f'{component.label}: {len(component.inputs)} inputs')
+        ...     print(f'{component.id}: {len(component.inputs)} inputs')
         >>>
         >>> # Access buses directly
         >>> for bus in flow_system.buses.values():
-        ...     print(f'{bus.label}')
+        ...     print(f'{bus.id}')
         >>>
         >>> # Flows are automatically collected from all components
 
@@ -302,17 +302,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         >>> # - FlowSystem._dataset_isel(dataset, time=..., period=..., scenario=...)
         >>> # - flow_system._dataset_resample(dataset, freq=..., method=..., **kwargs)
         >>> for flow in flow_system.flows.values():
-        ...     print(f'{flow.label_full}: {flow.size}')
+        ...     print(f'{flow.id}: {flow.size}')
         >>>
         >>> # Access effects
         >>> for effect in flow_system.effects.values():
-        ...     print(f'{effect.label}')
+        ...     print(f'{effect.id}')
 
     Notes:
         - The dict-like interface (`flow_system['element']`) searches across all containers
-          (components, buses, effects, flows) to find the element with the matching label.
-        - Element labels must be unique across all container types. Attempting to add
-          elements with duplicate labels will raise an error, ensuring each label maps to exactly one element.
+          (components, buses, effects, flows) to find the element with the matching id.
+        - Element ids must be unique across all container types. Attempting to add
+          elements with duplicate ids will raise an error, ensuring each id maps to exactly one element.
         - Direct container access (`.components`, `.buses`, `.effects`, `.flows`) is useful
           when you need type-specific filtering or operations.
         - The `.flows` container is automatically populated from all component inputs and outputs.
@@ -354,10 +354,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         )
 
         # Element collections
-        self.components: ElementContainer[Component] = ElementContainer(
-            element_type_name='components', truncate_repr=10
-        )
-        self.buses: ElementContainer[Bus] = ElementContainer(element_type_name='buses', truncate_repr=10)
+        self.components: IdList[Component] = element_id_list(display_name='components', truncate_repr=10)
+        self.buses: IdList[Bus] = element_id_list(display_name='buses', truncate_repr=10)
         self.effects: EffectCollection = EffectCollection(truncate_repr=10)
         self.model: FlowSystemModel | None = None
 
@@ -365,8 +363,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._used_in_optimization = False
 
         self._network_app = None
-        self._flows_cache: ElementContainer[Flow] | None = None
-        self._storages_cache: ElementContainer[Storage] | None = None
+        self._flows_cache: IdList[Flow] | None = None
+        self._storages_cache: IdList[Storage] | None = None
 
         # Solution dataset - populated after optimization or loaded from file
         self._solution: xr.Dataset | None = None
@@ -412,18 +410,18 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         # Extract from components
         components_structure = {}
-        for comp_label, component in self.components.items():
+        for comp_id, component in self.components.items():
             comp_structure, comp_arrays = component._create_reference_structure()
             all_extracted_arrays.update(comp_arrays)
-            components_structure[comp_label] = comp_structure
+            components_structure[comp_id] = comp_structure
         reference_structure['components'] = components_structure
 
         # Extract from buses
         buses_structure = {}
-        for bus_label, bus in self.buses.items():
+        for bus_id, bus in self.buses.items():
             bus_structure, bus_arrays = bus._create_reference_structure()
             all_extracted_arrays.update(bus_arrays)
-            buses_structure[bus_label] = bus_structure
+            buses_structure[bus_id] = bus_structure
         reference_structure['buses'] = buses_structure
 
         # Extract from effects
@@ -431,7 +429,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         for effect in self.effects.values():
             effect_structure, effect_arrays = effect._create_reference_structure()
             all_extracted_arrays.update(effect_arrays)
-            effects_structure[effect.label] = effect_structure
+            effects_structure[effect.id] = effect_structure
         reference_structure['effects'] = effects_structure
 
         return reference_structure, all_extracted_arrays
@@ -920,8 +918,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         from .color_processing import process_colors
 
         # Collect elements without colors (components only - buses use carrier colors)
-        # Use label_full for consistent keying with ElementContainer
-        elements_without_colors = [comp.label_full for comp in self.components.values() if comp.color is None]
+        # Use id for consistent keying with IdList
+        elements_without_colors = [comp.id for comp in self.components.values() if comp.color is None]
 
         if not elements_without_colors:
             return
@@ -931,9 +929,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         color_mapping = process_colors(colorscale, elements_without_colors)
 
         # Assign colors to elements
-        for label_full, color in color_mapping.items():
-            self.components[label_full].color = color
-            logger.debug(f"Auto-assigned color '{color}' to component '{label_full}'")
+        for element_id, color in color_mapping.items():
+            self.components[element_id].color = color
+            logger.debug(f"Auto-assigned color '{color}' to component '{element_id}'")
 
     def add_elements(self, *elements: Element) -> None:
         """
@@ -983,7 +981,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
             # Log registration
             element_type = type(new_element).__name__
-            logger.info(f'Registered new {element_type}: {new_element.label_full}')
+            logger.info(f'Registered new {element_type}: {new_element.id}')
 
     def add_carriers(self, *carriers: Carrier) -> None:
         """Register a custom carrier for this FlowSystem.
@@ -1036,11 +1034,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self._carriers.add(carrier)
             logger.debug(f'Adding carrier {carrier} to FlowSystem')
 
-    def get_carrier(self, label: str) -> Carrier | None:
+    def get_carrier(self, element_id: str) -> Carrier | None:
         """Get the carrier for a bus or flow.
 
         Args:
-            label: Bus label (e.g., 'Fernwärme') or flow label (e.g., 'Boiler(Q_th)').
+            element_id: Bus id (e.g., 'Fernwärme') or flow id (e.g., 'Boiler(Q_th)').
 
         Returns:
             Carrier or None if not found.
@@ -1053,13 +1051,13 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         self._require_status(FlowSystemStatus.CONNECTED, 'get carrier')
 
-        # Try as bus label
-        bus = self.buses.get(label)
+        # Try as bus id
+        bus = self.buses.get(element_id)
         if bus and bus.carrier:
             return self._carriers.get(bus.carrier.lower())
 
-        # Try as flow label
-        flow = self.flows.get(label)
+        # Try as flow id
+        flow = self.flows.get(element_id)
         if flow and flow.bus:
             bus = self.buses.get(flow.bus)
             if bus and bus.carrier:
@@ -1074,10 +1072,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     @property
     def flow_carriers(self) -> dict[str, str]:
-        """Cached mapping of flow labels to carrier names.
+        """Cached mapping of flow ids to carrier names.
 
         Returns:
-            Dict mapping flow label to carrier name (lowercase).
+            Dict mapping flow id to carrier name (lowercase).
             Flows without a carrier are not included.
 
         Raises:
@@ -1087,10 +1085,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         if self._flow_carriers is None:
             self._flow_carriers = {}
-            for flow_label, flow in self.flows.items():
+            for flow_id, flow in self.flows.items():
                 bus = self.buses.get(flow.bus)
                 if bus and bus.carrier:
-                    self._flow_carriers[flow_label] = bus.carrier.lower()
+                    self._flow_carriers[flow_id] = bus.carrier.lower()
 
         return self._flow_carriers
 
@@ -1652,14 +1650,14 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     def _check_if_element_is_unique(self, element: Element) -> None:
         """
-        checks if element or label of element already exists in list
+        checks if element or id of element already exists in list
 
         Args:
             element: new element to check
         """
-        # check if name is already used:
-        if element.label_full in self:
-            raise ValueError(f'Label of Element {element.label_full} already used in another element!')
+        # check if id is already used:
+        if element.id in self:
+            raise ValueError(f'ID of Element {element.id} already used in another element!')
 
     def _check_if_element_already_assigned(self, element: Element) -> None:
         """
@@ -1673,7 +1671,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         if element._flow_system is not None and element._flow_system is not self:
             raise ValueError(
-                f'Element "{element.label_full}" is already assigned to another FlowSystem. '
+                f'Element "{element.id}" is already assigned to another FlowSystem. '
                 f'Each element can only belong to one FlowSystem at a time. '
                 f'To use this element in multiple systems, create a copy: '
                 f'flow_system.add_elements(element.copy())'
@@ -1729,7 +1727,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             if flow.bus not in self.buses:
                 available_buses = list(self.buses.keys())
                 raise ValueError(
-                    f'Flow "{flow.label_full}" references bus "{flow.bus}" which does not exist in FlowSystem. '
+                    f'Flow "{flow.id}" references bus "{flow.bus}" which does not exist in FlowSystem. '
                     f'Available buses: {available_buses}. '
                     f'Did you forget to add the bus using flow_system.add_elements(Bus("{flow.bus}"))?'
                 )
@@ -1761,19 +1759,18 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """Connects the network of components and buses. Can be rerun without changes if no elements were added"""
         for component in self.components.values():
             for flow in component.flows.values():
-                flow.component = component.label_full
-                flow.is_input_in_component = flow.label_full in component.inputs
+                flow.component = component.id
+                flow.is_input_in_component = flow.id in component.inputs
 
                 # Connect Buses
                 bus = self.buses.get(flow.bus)
                 if bus is None:
                     raise KeyError(
-                        f'Bus {flow.bus} not found in the FlowSystem, but used by "{flow.label_full}". '
-                        f'Please add it first.'
+                        f'Bus {flow.bus} not found in the FlowSystem, but used by "{flow.id}". Please add it first.'
                     )
-                if flow.is_input_in_component and flow.label_full not in bus.outputs:
+                if flow.is_input_in_component and flow.id not in bus.outputs:
                     bus.outputs.add(flow)
-                elif not flow.is_input_in_component and flow.label_full not in bus.inputs:
+                elif not flow.is_input_in_component and flow.id not in bus.inputs:
                     bus.inputs.add(flow)
 
         # Count flows manually to avoid triggering cache rebuild
@@ -1846,7 +1843,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return True
 
-    def _get_container_groups(self) -> dict[str, ElementContainer]:
+    def _get_container_groups(self) -> dict[str, IdList]:
         """Return ordered container groups for CompositeContainerMixin."""
         return {
             'Components': self.components,
@@ -1856,26 +1853,26 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         }
 
     @property
-    def flows(self) -> ElementContainer[Flow]:
+    def flows(self) -> IdList[Flow]:
         if self._flows_cache is None:
             flows = [f for c in self.components.values() for f in c.flows.values()]
             # Deduplicate by id and sort for reproducibility
-            flows = sorted({id(f): f for f in flows}.values(), key=lambda f: f.label_full.lower())
-            self._flows_cache = ElementContainer(flows, element_type_name='flows', truncate_repr=10)
+            flows = sorted({id(f): f for f in flows}.values(), key=lambda f: f.id.lower())
+            self._flows_cache = element_id_list(flows, display_name='flows', truncate_repr=10)
         return self._flows_cache
 
     @property
-    def storages(self) -> ElementContainer[Storage]:
-        """All storage components as an ElementContainer.
+    def storages(self) -> IdList[Storage]:
+        """All storage components as an IdList.
 
         Returns:
-            ElementContainer containing all Storage components in the FlowSystem,
-            sorted by label for reproducibility.
+            IdList containing all Storage components in the FlowSystem,
+            sorted by id for reproducibility.
         """
         if self._storages_cache is None:
             storages = [c for c in self.components.values() if isinstance(c, Storage)]
-            storages = sorted(storages, key=lambda s: s.label_full.lower())
-            self._storages_cache = ElementContainer(storages, element_type_name='storages', truncate_repr=10)
+            storages = sorted(storages, key=lambda s: s.id.lower())
+            self._storages_cache = element_id_list(storages, display_name='storages', truncate_repr=10)
         return self._storages_cache
 
     # --- Forwarding properties for model coordinate state ---
@@ -2104,7 +2101,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Args:
             value: The value to validate
             param_name: Name of the parameter (for error messages)
-            element_type: Type of elements expected in list (e.g., 'component label_full', 'flow label_full')
+            element_type: Type of elements expected in list (e.g., 'Element.id', 'Flow.id')
 
         Raises:
             TypeError: If value is not bool or list[str]
@@ -2134,13 +2131,13 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Set whether investment sizes should be equalized across scenarios.
 
         Args:
-            value: True (all equalized), False (all vary), or list of component label_full strings to equalize
+            value: True (all equalized), False (all vary), or list of component id strings to equalize
 
         Raises:
             TypeError: If value is not bool or list[str]
             ValueError: If list contains non-string elements
         """
-        self._validate_scenario_parameter(value, 'scenario_independent_sizes', 'Element.label_full')
+        self._validate_scenario_parameter(value, 'scenario_independent_sizes', 'Element.id')
         self._scenario_independent_sizes = value
 
     @property
@@ -2159,13 +2156,13 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Set whether flow rates should be equalized across scenarios.
 
         Args:
-            value: True (all equalized), False (all vary), or list of flow label_full strings to equalize
+            value: True (all equalized), False (all vary), or list of flow id strings to equalize
 
         Raises:
             TypeError: If value is not bool or list[str]
             ValueError: If list contains non-string elements
         """
-        self._validate_scenario_parameter(value, 'scenario_independent_flow_rates', 'Flow.label_full')
+        self._validate_scenario_parameter(value, 'scenario_independent_flow_rates', 'Flow.id')
         self._scenario_independent_flow_rates = value
 
     @classmethod
