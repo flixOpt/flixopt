@@ -40,8 +40,7 @@ def _import_polars() -> Any:
         import polars as pl
     except ImportError:
         raise ImportError(
-            'The `polars` package is required for table-based I/O. '
-            'Install it with: pip install flixopt[tables]'
+            'The `polars` package is required for table-based I/O. Install it with: pip install flixopt[tables]'
         ) from None
     return pl
 
@@ -225,9 +224,7 @@ def from_tables(
             for effect_label in flow_sub['effect'].unique().to_list():
                 effect_sub = flow_sub.filter(pl.col('effect') == effect_label)
                 if 'time' in effect_sub.columns and effect_sub['time'].drop_nulls().len() > 0:
-                    effects_dict[effect_label] = _rows_to_numeric(
-                        effect_sub, 'value', timesteps, periods, scenarios
-                    )
+                    effects_dict[effect_label] = _rows_to_numeric(effect_sub, 'value', timesteps, periods, scenarios)
                 else:
                     effects_dict[effect_label] = effect_sub['value'].to_list()[0]
             flow_effects[flow_label] = effects_dict
@@ -270,7 +267,11 @@ def from_tables(
         if row.get('rel_max') is not None and row['rel_max'] != 1.0:
             flow_kwargs['relative_maximum'] = row['rel_max']
         if row.get('previous_flow_rate') is not None:
-            flow_kwargs['previous_flow_rate'] = row['previous_flow_rate']
+            pfr_val = row['previous_flow_rate']
+            if isinstance(pfr_val, str) and ',' in pfr_val:
+                flow_kwargs['previous_flow_rate'] = [float(v) for v in pfr_val.split(',')]
+            else:
+                flow_kwargs['previous_flow_rate'] = pfr_val
 
         # PS-dimensioned params
         for col, kwarg in [
@@ -449,12 +450,15 @@ def from_tables(
             if storage_label not in storage_params:
                 continue
             sub = sts_df.filter(pl.col('storage') == storage_label)
-            for col in ['eta_charge', 'eta_discharge', 'relative_loss_per_hour',
-                        'rel_min_charge_state', 'rel_max_charge_state']:
+            for col in [
+                'eta_charge',
+                'eta_discharge',
+                'relative_loss_per_hour',
+                'rel_min_charge_state',
+                'rel_max_charge_state',
+            ]:
                 if col in sub.columns and sub[col].drop_nulls().len() > 0:
-                    storage_params[storage_label][col] = _rows_to_numeric(
-                        sub, col, timesteps, periods, scenarios
-                    )
+                    storage_params[storage_label][col] = _rows_to_numeric(sub, col, timesteps, periods, scenarios)
 
     # ------------------------------------------------------------------
     # 11. Parse transmissions (Phase 3)
@@ -503,9 +507,17 @@ def from_tables(
             sub = tts_df.filter(pl.col('transmission') == trans_label)
             for col in ['relative_losses', 'absolute_losses']:
                 if col in sub.columns and sub[col].drop_nulls().len() > 0:
-                    transmission_params[trans_label][col] = _rows_to_numeric(
-                        sub, col, timesteps, periods, scenarios
-                    )
+                    transmission_params[trans_label][col] = _rows_to_numeric(sub, col, timesteps, periods, scenarios)
+
+    # ------------------------------------------------------------------
+    # 11b. Parse component-level attributes (prevent_simultaneous_flow_rates)
+    # ------------------------------------------------------------------
+    prevent_simultaneous_labels: set[str] = set()
+    if 'components' in tables and len(tables['components']) > 0:
+        comp_attr_df = tables['components']
+        for row_dict in comp_attr_df.iter_rows(named=True):
+            if row_dict.get('prevent_simultaneous_flow_rates'):
+                prevent_simultaneous_labels.add(row_dict['component'])
 
     # ------------------------------------------------------------------
     # 12. Group flows by component and build component objects
@@ -610,7 +622,8 @@ def from_tables(
         else:
             # Infer Source / Sink / SourceAndSink
             comp_kwargs: dict[str, Any] = {'label': comp_label}
-            # Component-level status — not supported on Source/Sink/SourceAndSink
+            if comp_label in prevent_simultaneous_labels:
+                comp_kwargs['prevent_simultaneous_flow_rates'] = True
             if inputs and outputs:
                 comp_kwargs['inputs'] = inputs
                 comp_kwargs['outputs'] = outputs
@@ -656,7 +669,7 @@ def to_tables(flow_system: Any) -> dict[str, Any]:
         Dict mapping table name to polars DataFrame.
     """
     pl = _import_polars()
-    from .components import LinearConverter, Storage, Transmission
+    from .components import LinearConverter, Sink, Source, SourceAndSink, Storage, Transmission
     from .interface import InvestParameters
 
     tables: dict[str, Any] = {}
@@ -718,8 +731,11 @@ def to_tables(flow_system: Any) -> dict[str, Any]:
         if penalty is not None and not isinstance(penalty, (int, float, np.integer, np.floating)):
             # Time-varying — put in bus_timeseries
             row['imbalance_penalty'] = None
-            bus_ts_rows.extend(_numeric_to_rows(bus.label, 'bus', penalty, ts_index, mc.periods, mc.scenarios,
-                                                value_col='imbalance_penalty'))
+            bus_ts_rows.extend(
+                _numeric_to_rows(
+                    bus.label, 'bus', penalty, ts_index, mc.periods, mc.scenarios, value_col='imbalance_penalty'
+                )
+            )
         else:
             row['imbalance_penalty'] = float(penalty) if penalty is not None else None
         bus_rows.append(row)
@@ -735,16 +751,21 @@ def to_tables(flow_system: Any) -> dict[str, Any]:
     effect_bound_rows = []
     effect_share_rows = []
     for effect in flow_system.effects.values():
-        effect_rows.append({
-            'effect': effect.label,
-            'unit': effect.unit,
-            'is_standard': effect.is_standard,
-            'is_objective': effect.is_objective,
-        })
+        effect_rows.append(
+            {
+                'effect': effect.label,
+                'unit': effect.unit,
+                'is_standard': effect.is_standard,
+                'is_objective': effect.is_objective,
+            }
+        )
         # Effect bounds
-        bound_row = _extract_effect_bounds(effect, mc.periods, mc.scenarios, ts_index)
-        if bound_row:
-            effect_bound_rows.append(bound_row)
+        bound_result = _extract_effect_bounds(effect, mc.periods, mc.scenarios, ts_index)
+        if bound_result:
+            if isinstance(bound_result, list):
+                effect_bound_rows.extend(bound_result)
+            else:
+                effect_bound_rows.append(bound_result)
         # Effect shares
         share_rows = _extract_effect_shares(effect, ts_index, mc.periods, mc.scenarios)
         effect_share_rows.extend(share_rows)
@@ -761,6 +782,7 @@ def to_tables(flow_system: Any) -> dict[str, Any]:
     flow_rows = []
     flow_profile_rows = []
     flow_effect_rows = []
+    component_rows = []
     converter_rows = []
     piecewise_conv_rows = []
     storage_rows = []
@@ -772,18 +794,46 @@ def to_tables(flow_system: Any) -> dict[str, Any]:
     status_rows = []
     status_effect_rows = []
 
+    standard_effect_label = next((e.label for e in flow_system.effects.values() if e.is_standard), None)
+
     for component in flow_system.components.values():
         # Determine direction for each flow
         for flow in component.inputs.values():
-            _add_flow_rows(flow, component.label, 'in', flow_rows, flow_profile_rows, flow_effect_rows,
-                           investment_rows, investment_effect_rows, piecewise_invest_rows,
-                           status_rows, status_effect_rows,
-                           ts_index, mc.periods, mc.scenarios)
+            _add_flow_rows(
+                flow,
+                component.label,
+                'in',
+                flow_rows,
+                flow_profile_rows,
+                flow_effect_rows,
+                investment_rows,
+                investment_effect_rows,
+                piecewise_invest_rows,
+                status_rows,
+                status_effect_rows,
+                ts_index,
+                mc.periods,
+                mc.scenarios,
+                standard_effect_label,
+            )
         for flow in component.outputs.values():
-            _add_flow_rows(flow, component.label, 'out', flow_rows, flow_profile_rows, flow_effect_rows,
-                           investment_rows, investment_effect_rows, piecewise_invest_rows,
-                           status_rows, status_effect_rows,
-                           ts_index, mc.periods, mc.scenarios)
+            _add_flow_rows(
+                flow,
+                component.label,
+                'out',
+                flow_rows,
+                flow_profile_rows,
+                flow_effect_rows,
+                investment_rows,
+                investment_effect_rows,
+                piecewise_invest_rows,
+                status_rows,
+                status_effect_rows,
+                ts_index,
+                mc.periods,
+                mc.scenarios,
+                standard_effect_label,
+            )
 
         # Converter-specific
         if isinstance(component, LinearConverter):
@@ -792,17 +842,22 @@ def to_tables(flow_system: Any) -> dict[str, Any]:
                     for flow_label, coeff in eq.items():
                         qualified = f'{component.label}({flow_label})'
                         if _is_scalar(coeff):
-                            converter_rows.append({
-                                'converter': component.label,
-                                'eq_idx': eq_idx,
-                                'flow': qualified,
-                                'value': float(coeff),
-                            })
+                            converter_rows.append(
+                                {
+                                    'converter': component.label,
+                                    'eq_idx': eq_idx,
+                                    'flow': qualified,
+                                    'value': float(coeff),
+                                }
+                            )
                         else:
                             converter_rows.extend(
                                 _numeric_to_value_rows(
-                                    coeff, ts_index, mc.periods, mc.scenarios,
-                                    extra={'converter': component.label, 'eq_idx': eq_idx, 'flow': qualified}
+                                    coeff,
+                                    ts_index,
+                                    mc.periods,
+                                    mc.scenarios,
+                                    extra={'converter': component.label, 'eq_idx': eq_idx, 'flow': qualified},
                                 )
                             )
 
@@ -811,26 +866,38 @@ def to_tables(flow_system: Any) -> dict[str, Any]:
                     qualified = f'{component.label}({flow_label})'
                     for piece_idx, piece in enumerate(piecewise):
                         if _is_scalar(piece.start) and _is_scalar(piece.end):
-                            piecewise_conv_rows.append({
-                                'converter': component.label,
-                                'piece_idx': piece_idx,
-                                'flow': qualified,
-                                'start': float(piece.start),
-                                'end': float(piece.end),
-                            })
+                            piecewise_conv_rows.append(
+                                {
+                                    'converter': component.label,
+                                    'piece_idx': piece_idx,
+                                    'flow': qualified,
+                                    'start': float(piece.start),
+                                    'end': float(piece.end),
+                                }
+                            )
                         else:
                             piecewise_conv_rows.extend(
                                 _piece_to_rows(
-                                    piece, ts_index, mc.periods, mc.scenarios,
-                                    extra={'converter': component.label, 'piece_idx': piece_idx, 'flow': qualified}
+                                    piece,
+                                    ts_index,
+                                    mc.periods,
+                                    mc.scenarios,
+                                    extra={'converter': component.label, 'piece_idx': piece_idx, 'flow': qualified},
                                 )
                             )
 
             # Component-level status
             if component.status_parameters is not None:
                 _add_status_rows(
-                    component.label, 'component', component.status_parameters,
-                    status_rows, status_effect_rows, ts_index, mc.periods, mc.scenarios
+                    component.label,
+                    'component',
+                    component.status_parameters,
+                    status_rows,
+                    status_effect_rows,
+                    ts_index,
+                    mc.periods,
+                    mc.scenarios,
+                    standard_effect_label,
                 )
 
         elif isinstance(component, Storage):
@@ -842,9 +909,17 @@ def to_tables(flow_system: Any) -> dict[str, Any]:
 
             # capacity
             if isinstance(component.capacity_in_flow_hours, InvestParameters):
-                _add_invest_rows(component.label, 'storage', component.capacity_in_flow_hours,
-                                 investment_rows, investment_effect_rows, piecewise_invest_rows,
-                                 mc.periods, mc.scenarios)
+                _add_invest_rows(
+                    component.label,
+                    'storage',
+                    component.capacity_in_flow_hours,
+                    investment_rows,
+                    investment_effect_rows,
+                    piecewise_invest_rows,
+                    mc.periods,
+                    mc.scenarios,
+                    standard_effect_label,
+                )
                 stor_row['capacity'] = None
             else:
                 cap = component.capacity_in_flow_hours
@@ -865,8 +940,9 @@ def to_tables(flow_system: Any) -> dict[str, Any]:
                     stor_row[col] = default
                     # Time-varying → storage_timeseries
                     storage_ts_rows.extend(
-                        _numeric_to_rows(component.label, 'storage', val, ts_index, mc.periods, mc.scenarios,
-                                         value_col=col)
+                        _numeric_to_rows(
+                            component.label, 'storage', val, ts_index, mc.periods, mc.scenarios, value_col=col
+                        )
                     )
 
             # initial_charge_state
@@ -909,24 +985,44 @@ def to_tables(flow_system: Any) -> dict[str, Any]:
                 val = getattr(component, attr, None)
                 trans_row[col] = _scalar_or_none(val) if val is not None else None
 
-            trans_row['prevent_simultaneous'] = component.prevent_simultaneous_flows_in_both_directions
+            trans_row['prevent_simultaneous'] = bool(component.prevent_simultaneous_flows)
             trans_row['balanced'] = component.balanced
             transmission_rows.append(trans_row)
 
             # Component-level status
             if component.status_parameters is not None:
                 _add_status_rows(
-                    component.label, 'component', component.status_parameters,
-                    status_rows, status_effect_rows, ts_index, mc.periods, mc.scenarios
+                    component.label,
+                    'component',
+                    component.status_parameters,
+                    status_rows,
+                    status_effect_rows,
+                    ts_index,
+                    mc.periods,
+                    mc.scenarios,
+                    standard_effect_label,
                 )
 
-    tables['flows'] = pl.DataFrame(flow_rows) if flow_rows else pl.DataFrame(
-        schema={'flow': pl.Utf8, 'bus': pl.Utf8, 'component': pl.Utf8, 'direction': pl.Utf8}
+        elif isinstance(component, (Source, Sink, SourceAndSink)):
+            if getattr(component, 'prevent_simultaneous_flow_rates', False):
+                component_rows.append(
+                    {
+                        'component': component.label,
+                        'prevent_simultaneous_flow_rates': True,
+                    }
+                )
+
+    tables['flows'] = (
+        pl.DataFrame(flow_rows)
+        if flow_rows
+        else pl.DataFrame(schema={'flow': pl.Utf8, 'bus': pl.Utf8, 'component': pl.Utf8, 'direction': pl.Utf8})
     )
     if flow_profile_rows:
         tables['flow_profiles'] = pl.DataFrame(flow_profile_rows)
     if flow_effect_rows:
         tables['flow_effects'] = pl.DataFrame(flow_effect_rows)
+    if component_rows:
+        tables['components'] = pl.DataFrame(component_rows)
     if converter_rows:
         tables['converters'] = pl.DataFrame(converter_rows)
     if piecewise_conv_rows:
@@ -1009,6 +1105,7 @@ def _parse_timesteps(ts_df: Any) -> tuple[pd.DatetimeIndex | pd.RangeIndex, xr.D
 
     # Try to interpret as datetime
     import polars as pl
+
     if time_col.dtype == pl.Datetime or time_col.dtype == pl.Date:
         time_values = time_col.to_list()
         timesteps = pd.DatetimeIndex(time_values, name='time')
@@ -1189,7 +1286,7 @@ def _extract_short_label(flow_label: str, component_label: str) -> str:
     """Extract short flow label from qualified 'component(flow)' format."""
     prefix = f'{component_label}('
     if flow_label.startswith(prefix) and flow_label.endswith(')'):
-        return flow_label[len(prefix):-1]
+        return flow_label[len(prefix) : -1]
     return flow_label
 
 
@@ -1306,7 +1403,8 @@ def _parse_piecewise_investment_effects(
                 pieces.append(Piece(start=row['start'], end=row['end']))
             piecewises[type_label] = Piecewise(pieces)
 
-        result[element_label] = PiecewiseEffects(piecewises)
+        origin = piecewises.pop('__origin__')
+        result[element_label] = PiecewiseEffects(piecewise_origin=origin, piecewise_shares=piecewises)
     return result
 
 
@@ -1670,6 +1768,7 @@ def _add_flow_rows(
     timesteps: pd.Index,
     periods: pd.Index | None,
     scenarios: pd.Index | None,
+    standard_effect_label: str | None = None,
 ) -> None:
     """Add rows for a single Flow to the various output tables."""
     from .interface import InvestParameters
@@ -1687,9 +1786,15 @@ def _add_flow_rows(
     if isinstance(flow.size, InvestParameters):
         row['size'] = None
         _add_invest_rows(
-            flow_label, 'flow', flow.size,
-            investment_rows, investment_effect_rows, piecewise_invest_rows,
-            periods, scenarios,
+            flow_label,
+            'flow',
+            flow.size,
+            investment_rows,
+            investment_effect_rows,
+            piecewise_invest_rows,
+            periods,
+            scenarios,
+            standard_effect_label,
         )
     else:
         row['size'] = _scalar_or_none(flow.size)
@@ -1717,7 +1822,14 @@ def _add_flow_rows(
         val = getattr(flow, attr, None)
         row[col] = _scalar_or_none(val)
 
-    row['previous_flow_rate'] = flow.previous_flow_rate if isinstance(flow.previous_flow_rate, (int, float)) else None
+    pfr = flow.previous_flow_rate
+    if isinstance(pfr, (int, float)):
+        row['previous_flow_rate'] = pfr
+    elif pfr is not None:
+        # Array-like: serialize as comma-separated string
+        row['previous_flow_rate'] = ','.join(str(float(v)) for v in pfr)
+    else:
+        row['previous_flow_rate'] = None
 
     flow_rows.append(row)
 
@@ -1738,24 +1850,37 @@ def _add_flow_rows(
         _add_profile_rows(flow_label, profile_data, flow_profile_rows, timesteps, periods, scenarios)
 
     # Flow effects
-    if flow.effects_per_flow_hour:
-        for effect_label, effect_value in flow.effects_per_flow_hour.items():
+    effects = flow.effects_per_flow_hour
+    if effects is not None and not isinstance(effects, dict):
+        effects = {standard_effect_label: effects}
+    if effects:
+        for effect_label, effect_value in effects.items():
             if _is_scalar(effect_value):
-                flow_effect_rows.append({
-                    'flow': flow_label,
-                    'effect': effect_label,
-                    'value': float(effect_value),
-                })
+                flow_effect_rows.append(
+                    {
+                        'flow': flow_label,
+                        'effect': effect_label,
+                        'value': float(effect_value),
+                    }
+                )
             else:
-                for ts_row in _numeric_to_value_rows(effect_value, timesteps, periods, scenarios,
-                                                     extra={'flow': flow_label, 'effect': effect_label}):
+                for ts_row in _numeric_to_value_rows(
+                    effect_value, timesteps, periods, scenarios, extra={'flow': flow_label, 'effect': effect_label}
+                ):
                     flow_effect_rows.append(ts_row)
 
     # Status parameters
     if flow.status_parameters is not None:
         _add_status_rows(
-            flow_label, 'flow', flow.status_parameters,
-            status_rows, status_effect_rows, timesteps, periods, scenarios
+            flow_label,
+            'flow',
+            flow.status_parameters,
+            status_rows,
+            status_effect_rows,
+            timesteps,
+            periods,
+            scenarios,
+            standard_effect_label,
         )
 
 
@@ -1828,6 +1953,7 @@ def _add_invest_rows(
     piecewise_invest_rows: list[dict[str, Any]],
     periods: pd.Index | None,
     scenarios: pd.Index | None,
+    standard_effect_label: str | None = None,
 ) -> None:
     """Add rows for InvestParameters to the investments and investment_effects tables."""
     row: dict[str, Any] = {
@@ -1850,7 +1976,8 @@ def _add_invest_rows(
 
     investment_rows.append(row)
 
-    # Investment effects
+    # Investment effects — consolidate into one row per (element, effect)
+    merged_ie: dict[str, dict[str, Any]] = {}  # effect_label -> row dict
     for attr, col in [
         ('effects_of_investment_per_size', 'per_size'),
         ('effects_of_investment', 'on_invest'),
@@ -1858,26 +1985,43 @@ def _add_invest_rows(
     ]:
         effect_dict = getattr(invest, attr, None)
         if effect_dict:
+            if not isinstance(effect_dict, dict):
+                effect_dict = {standard_effect_label: effect_dict}
             for effect_label, effect_value in effect_dict.items():
-                ie_row: dict[str, Any] = {
-                    'element': element_label,
-                    'effect': effect_label,
-                }
-                ie_row[col] = _scalar_or_none(effect_value)
-                investment_effect_rows.append(ie_row)
+                if effect_label not in merged_ie:
+                    merged_ie[effect_label] = {
+                        'element': element_label,
+                        'effect': effect_label,
+                    }
+                merged_ie[effect_label][col] = _scalar_or_none(effect_value)
+    investment_effect_rows.extend(merged_ie.values())
 
     # Piecewise effects
     if invest.piecewise_effects_of_investment is not None:
         pw = invest.piecewise_effects_of_investment
-        for type_label, piecewise in pw.piecewises.items():
-            for piece_idx, piece in enumerate(piecewise):
-                piecewise_invest_rows.append({
+        # Origin pieces
+        for piece_idx, piece in enumerate(pw.piecewise_origin):
+            piecewise_invest_rows.append(
+                {
                     'element': element_label,
                     'piece_idx': piece_idx,
-                    'type': type_label,
+                    'type': '__origin__',
                     'start': float(piece.start),
                     'end': float(piece.end),
-                })
+                }
+            )
+        # Share pieces per effect
+        for effect_label, piecewise in pw.piecewise_shares.items():
+            for piece_idx, piece in enumerate(piecewise):
+                piecewise_invest_rows.append(
+                    {
+                        'element': element_label,
+                        'piece_idx': piece_idx,
+                        'type': effect_label,
+                        'start': float(piece.start),
+                        'end': float(piece.end),
+                    }
+                )
 
 
 def _add_status_rows(
@@ -1889,6 +2033,7 @@ def _add_status_rows(
     timesteps: pd.Index,
     periods: pd.Index | None,
     scenarios: pd.Index | None,
+    standard_effect_label: str | None = None,
 ) -> None:
     """Add rows for StatusParameters to status and status_effects tables."""
     row: dict[str, Any] = {
@@ -1923,25 +2068,32 @@ def _add_status_rows(
             if isinstance(effect_dict, dict):
                 for effect_label, effect_value in effect_dict.items():
                     if _is_scalar(effect_value):
-                        status_effect_rows.append({
-                            'element': element_label,
-                            'effect': effect_label,
-                            col: float(effect_value),
-                        })
+                        status_effect_rows.append(
+                            {
+                                'element': element_label,
+                                'effect': effect_label,
+                                col: float(effect_value),
+                            }
+                        )
                     else:
                         for ts_row in _numeric_to_value_rows(
-                            effect_value, timesteps, periods, scenarios,
-                            extra={'element': element_label, 'effect': effect_label}
+                            effect_value,
+                            timesteps,
+                            periods,
+                            scenarios,
+                            extra={'element': element_label, 'effect': effect_label},
                         ):
                             ts_row[col] = ts_row.pop('value')
                             status_effect_rows.append(ts_row)
             elif _is_scalar(effect_dict):
                 # Numeric value for the standard effect
-                status_effect_rows.append({
-                    'element': element_label,
-                    'effect': '__standard__',
-                    col: float(effect_dict),
-                })
+                status_effect_rows.append(
+                    {
+                        'element': element_label,
+                        'effect': standard_effect_label,
+                        col: float(effect_dict),
+                    }
+                )
 
 
 def _extract_effect_bounds(
@@ -1967,18 +2119,38 @@ def _extract_effect_bounds(
 
     row: dict[str, Any] = {'effect': effect.label}
     has_any = False
+    period_weight_da = None
     for attr, col in attr_map.items():
         val = getattr(effect, attr, None)
         if val is not None:
-            row[col] = _scalar_or_none(val)
-            if row[col] is not None:
+            if col == 'period_weight' and isinstance(val, xr.DataArray) and val.size > 1:
+                # period_weights is period-indexed; handle as multi-row expansion below
+                period_weight_da = val
+                row[col] = None
                 has_any = True
             else:
-                row[col] = None
+                row[col] = _scalar_or_none(val)
+                if row[col] is not None:
+                    has_any = True
+                else:
+                    row[col] = None
         else:
             row[col] = None
 
-    return row if has_any else None
+    if not has_any:
+        return None
+
+    if period_weight_da is not None:
+        # Expand into one row per period
+        rows = []
+        for p_idx, p_val in enumerate(period_weight_da.coords['period'].values):
+            r = dict(row)
+            r['period'] = _convert_coord(p_val)
+            r['period_weight'] = float(period_weight_da.values[p_idx])
+            rows.append(r)
+        return rows
+
+    return row
 
 
 def _extract_effect_shares(
@@ -1998,20 +2170,25 @@ def _extract_effect_shares(
         if share_dict and isinstance(share_dict, dict):
             for source_label, value in share_dict.items():
                 if _is_scalar(value):
-                    rows.append({
-                        'target_effect': effect.label,
-                        'source_effect': source_label,
-                        'share_type': share_type,
-                        'value': float(value),
-                    })
+                    rows.append(
+                        {
+                            'target_effect': effect.label,
+                            'source_effect': source_label,
+                            'share_type': share_type,
+                            'value': float(value),
+                        }
+                    )
                 else:
                     for ts_row in _numeric_to_value_rows(
-                        value, timesteps, periods, scenarios,
+                        value,
+                        timesteps,
+                        periods,
+                        scenarios,
                         extra={
                             'target_effect': effect.label,
                             'source_effect': source_label,
                             'share_type': share_type,
-                        }
+                        },
                     ):
                         rows.append(ts_row)
 

@@ -5,7 +5,7 @@ model and asserts that the objective (or key solution variables) match a
 hand-calculated value. This catches regressions in formulations without
 relying on recorded baselines.
 
-The ``optimize`` fixture is parametrized so every test runs three times,
+The ``optimize`` fixture is parametrized so every test runs four times,
 each verifying a different pipeline:
 
 ``solve``
@@ -14,6 +14,8 @@ each verifying a different pipeline:
     Proves the FlowSystem definition survives IO.
 ``solve->save->reload``
     Proves the solution data survives IO.
+``tables->rebuild->solve``
+    Proves the FlowSystem definition survives a tables round-trip.
 """
 
 import pathlib
@@ -87,11 +89,25 @@ def _netcdf_roundtrip(fs: fx.FlowSystem) -> fx.FlowSystem:
         return fx.FlowSystem.from_netcdf(path)
 
 
+def _tables_roundtrip(fs: fx.FlowSystem) -> fx.FlowSystem:
+    """Export FlowSystem to tables and re-import."""
+    tables = fx.tables.to_tables(fs)
+    mc = fs.model_coords
+    rebuilt = fx.tables.from_tables(
+        tables,
+        weight_of_last_period=mc.weight_of_last_period if mc.periods is not None else None,
+        scenario_independent_sizes=fs.scenario_independent_sizes,
+        scenario_independent_flow_rates=fs.scenario_independent_flow_rates,
+    )
+    return rebuilt
+
+
 @pytest.fixture(
     params=[
         'solve',
         'save->reload->solve',
         'solve->save->reload',
+        'tables->rebuild->solve',
     ]
 )
 def optimize(request):
@@ -100,6 +116,8 @@ def optimize(request):
     def _optimize(fs: fx.FlowSystem) -> fx.FlowSystem:
         if request.param == 'save->reload->solve':
             fs = _netcdf_roundtrip(fs)
+        elif request.param == 'tables->rebuild->solve':
+            fs = _tables_roundtrip(fs)
         fs.optimize(_SOLVER)
         if request.param == 'solve->save->reload':
             fs = _netcdf_roundtrip(fs)
