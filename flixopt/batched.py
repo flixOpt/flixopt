@@ -154,16 +154,6 @@ class StatusData:
         """IDs with startup limit."""
         return self._categorize(lambda p: p.startup_limit is not None)
 
-    @cached_property
-    def with_effects_per_active_hour(self) -> list[str]:
-        """IDs with effects_per_active_hour defined."""
-        return self._categorize(lambda p: p.effects_per_active_hour)
-
-    @cached_property
-    def with_effects_per_startup(self) -> list[str]:
-        """IDs with effects_per_startup defined."""
-        return self._categorize(lambda p: p.effects_per_startup)
-
     # === Bounds (combined min/max in single pass) ===
 
     def _build_bounds(self, ids: list[str], min_attr: str, max_attr: str) -> tuple[xr.DataArray, xr.DataArray] | None:

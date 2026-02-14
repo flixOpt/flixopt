@@ -30,7 +30,7 @@ from .structure import (
 if TYPE_CHECKING:
     import linopy
 
-    from .batched import InvestmentData, StoragesData
+    from .batched import StoragesData
     from .types import Numeric_PS, Numeric_TPS
 
 logger = logging.getLogger('flixopt')
@@ -826,47 +826,10 @@ class StoragesModel(TypeModel):
         """Get a storage by its label_full."""
         return self.elements[label]
 
-    # === Storage Categorization Properties (delegate to self.data) ===
-
-    @property
-    def with_investment(self) -> list[str]:
-        return self.data.with_investment
-
-    @property
-    def with_optional_investment(self) -> list[str]:
-        return self.data.with_optional_investment
-
-    @property
-    def with_mandatory_investment(self) -> list[str]:
-        return self.data.with_mandatory_investment
-
-    @property
-    def storages_with_investment(self) -> list[Storage]:
-        return [self.storage(sid) for sid in self.with_investment]
-
-    @property
-    def storages_with_optional_investment(self) -> list[Storage]:
-        return [self.storage(sid) for sid in self.with_optional_investment]
-
     @property
     def investment_ids(self) -> list[str]:
-        return self.with_investment
-
-    @property
-    def optional_investment_ids(self) -> list[str]:
-        return self.with_optional_investment
-
-    @property
-    def mandatory_investment_ids(self) -> list[str]:
-        return self.with_mandatory_investment
-
-    @property
-    def invest_params(self) -> dict[str, InvestParameters]:
-        return self.data.invest_params
-
-    @property
-    def _investment_data(self) -> InvestmentData | None:
-        return self.data.investment_data
+        """IDs of storages with investment parameters. Used by external code (optimization.py)."""
+        return self.data.with_investment
 
     def add_effect_contributions(self, effects_model) -> None:
         """Push ALL effect contributions from storages to EffectsModel.
@@ -879,7 +842,7 @@ class StoragesModel(TypeModel):
         Args:
             effects_model: The EffectsModel to register contributions with.
         """
-        inv = self._investment_data
+        inv = self.data.investment_data
         if inv is None:
             return
 
@@ -917,21 +880,21 @@ class StoragesModel(TypeModel):
     @functools.cached_property
     def _size_lower(self) -> xr.DataArray:
         """(storage,) - minimum size for investment storages."""
-        element_ids = self.with_investment
+        element_ids = self.data.with_investment
         values = [self.storage(sid).capacity_in_flow_hours.minimum_or_fixed_size for sid in element_ids]
         return stack_along_dim(values, self.dim_name, element_ids)
 
     @functools.cached_property
     def _size_upper(self) -> xr.DataArray:
         """(storage,) - maximum size for investment storages."""
-        element_ids = self.with_investment
+        element_ids = self.data.with_investment
         values = [self.storage(sid).capacity_in_flow_hours.maximum_or_fixed_size for sid in element_ids]
         return stack_along_dim(values, self.dim_name, element_ids)
 
     @functools.cached_property
     def _linked_periods_mask(self) -> xr.DataArray | None:
         """(storage, period) - linked periods for investment storages. None if no linking."""
-        element_ids = self.with_investment
+        element_ids = self.data.with_investment
         linked_list = [self.storage(sid).capacity_in_flow_hours.linked_periods for sid in element_ids]
         if not any(lp is not None for lp in linked_list):
             return None
@@ -942,27 +905,27 @@ class StoragesModel(TypeModel):
     @functools.cached_property
     def _mandatory_mask(self) -> xr.DataArray:
         """(storage,) bool - True if mandatory, False if optional."""
-        element_ids = self.with_investment
+        element_ids = self.data.with_investment
         values = [self.storage(sid).capacity_in_flow_hours.mandatory for sid in element_ids]
         return xr.DataArray(values, dims=[self.dim_name], coords={self.dim_name: element_ids})
 
     @functools.cached_property
     def _optional_lower(self) -> xr.DataArray | None:
         """(storage,) - minimum size for optional investment storages."""
-        if not self.with_optional_investment:
+        if not self.data.with_optional_investment:
             return None
 
-        element_ids = self.with_optional_investment
+        element_ids = self.data.with_optional_investment
         values = [self.storage(sid).capacity_in_flow_hours.minimum_or_fixed_size for sid in element_ids]
         return stack_along_dim(values, self.dim_name, element_ids)
 
     @functools.cached_property
     def _optional_upper(self) -> xr.DataArray | None:
         """(storage,) - maximum size for optional investment storages."""
-        if not self.with_optional_investment:
+        if not self.data.with_optional_investment:
             return None
 
-        element_ids = self.with_optional_investment
+        element_ids = self.data.with_optional_investment
         values = [self.storage(sid).capacity_in_flow_hours.maximum_or_fixed_size for sid in element_ids]
         return stack_along_dim(values, self.dim_name, element_ids)
 
@@ -1015,7 +978,7 @@ class StoragesModel(TypeModel):
 
         logger.debug(
             f'StoragesModel created variables: {len(self.elements)} storages, '
-            f'{len(self.storages_with_investment)} with investment'
+            f'{len(self.data.with_investment)} with investment'
         )
 
     def create_constraints(self) -> None:
@@ -1211,7 +1174,7 @@ class StoragesModel(TypeModel):
     @functools.cached_property
     def size(self) -> linopy.Variable | None:
         """(storage, period, scenario) - size variable for storages with investment."""
-        if not self.storages_with_investment:
+        if not self.data.with_investment:
             return None
 
         size_min = self._size_lower
@@ -1238,12 +1201,12 @@ class StoragesModel(TypeModel):
     @functools.cached_property
     def invested(self) -> linopy.Variable | None:
         """(storage, period, scenario) - binary invested variable for optional investment."""
-        if not self.optional_investment_ids:
+        if not self.data.with_optional_investment:
             return None
         return self.add_variables(
             StorageVarName.INVESTED,
             dims=('period', 'scenario'),
-            element_ids=self.optional_investment_ids,
+            element_ids=self.data.with_optional_investment,
             binary=True,
         )
 
@@ -1252,15 +1215,15 @@ class StoragesModel(TypeModel):
 
         Must be called BEFORE create_investment_constraints().
         """
-        if not self.storages_with_investment:
+        if not self.data.with_investment:
             return
 
         from .features import InvestmentBuilder
 
         dim = self.dim_name
         element_ids = self.investment_ids
-        non_mandatory_ids = self.optional_investment_ids
-        mandatory_ids = self.mandatory_investment_ids
+        non_mandatory_ids = self.data.with_optional_investment
+        mandatory_ids = self.data.with_mandatory_investment
 
         # Trigger variable creation via cached properties
         size_var = self.size
@@ -1283,7 +1246,7 @@ class StoragesModel(TypeModel):
         InvestmentBuilder.add_linked_periods_constraints(
             model=self.model,
             size_var=size_var,
-            params=self.invest_params,
+            params=self.data.invest_params,
             element_ids=element_ids,
             dim_name=dim,
         )
@@ -1307,7 +1270,7 @@ class StoragesModel(TypeModel):
 
         Uses the batched size variable for true vectorized constraint creation.
         """
-        if not self.storages_with_investment or StorageVarName.SIZE not in self:
+        if not self.data.with_investment or StorageVarName.SIZE not in self:
             return
 
         charge_state = self.charge
@@ -1344,7 +1307,7 @@ class StoragesModel(TypeModel):
             )
 
         logger.debug(
-            f'StoragesModel created batched investment constraints for {len(self.storages_with_investment)} storages'
+            f'StoragesModel created batched investment constraints for {len(self.data.with_investment)} storages'
         )
 
     def _add_initial_final_constraints_legacy(self, storage, cs) -> None:
@@ -1404,7 +1367,7 @@ class StoragesModel(TypeModel):
         if size_var is None:
             return
 
-        inv = self._investment_data
+        inv = self.data.investment_data
         if inv is None or not inv.piecewise_element_ids:
             return
 
