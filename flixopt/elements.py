@@ -1016,14 +1016,6 @@ class FlowsModel(TypeModel):
         self.create_status_model()
         self.create_constraints()
 
-    @property
-    def _previous_status(self) -> dict[str, xr.DataArray]:
-        """Previous status for flows that have it, keyed by label_full.
-
-        Delegates to FlowsData.previous_states.
-        """
-        return self.data.previous_states
-
     def _build_constraint_mask(self, selected_ids: set[str], reference_var: linopy.Variable) -> xr.DataArray:
         """Build a mask for constraint creation from selected flow IDs.
 
@@ -1473,11 +1465,11 @@ class FlowsModel(TypeModel):
         if self.startup is None:
             return
         dim = self.dim_name
-        ids = [eid for eid in self.data.with_startup_tracking if eid in self._previous_status]
+        ids = [eid for eid in self.data.with_startup_tracking if eid in self.data.previous_states]
         if not ids:
             return
 
-        prev_arrays = [self._previous_status[eid].expand_dims({dim: [eid]}) for eid in ids]
+        prev_arrays = [self.data.previous_states[eid].expand_dims({dim: [eid]}) for eid in ids]
         prev_state = xr.concat(prev_arrays, dim=dim).isel(time=-1)
 
         StatusBuilder.add_switch_initial_constraint(
@@ -1595,7 +1587,7 @@ class FlowsModel(TypeModel):
             DataArray of previous status (time dimension), or None if no previous status.
         """
         fid = flow.label_full
-        return self._previous_status.get(fid)
+        return self.data.previous_states.get(fid)
 
 
 class BusesModel(TypeModel):
