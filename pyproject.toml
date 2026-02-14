@@ -61,6 +61,11 @@ network_viz = [
     "flask >= 3.0.0, < 4",  # Explicit Flask cap to prevent transitive major bumps
 ]
 
+# Table-based I/O (CSV/DataFrame model definitions)
+tables = [
+    "polars >= 1.0.0, < 2",
+]
+
 # Full feature set (everything except dev tools)
 full = [
     "tsam >= 3.0.0, < 4, != 3.1.0",  # Time series aggregation for clustering
@@ -81,6 +86,7 @@ dev = [
     "pytest==8.4.2",
     "pytest-xdist==3.8.0",
     "nbformat==5.10.4",
+    "polars==1.27.0",
     "ruff==0.14.14",
     "pre-commit==4.5.1",
     "pyvis==0.3.2",

@@ -17,7 +17,7 @@ except (PackageNotFoundError, TypeError):
 # - xr.Dataset.fxstats (from stats_accessor)
 import xarray_plotly as _xpx  # noqa: F401
 
-from . import clustering, linear_converters, plotting, results, solvers
+from . import clustering, linear_converters, plotting, results, solvers, tables
 from . import stats_accessor as _fxstats  # noqa: F401
 from .carrier import Carrier, CarrierContainer
 from .comparison import Comparison
@@ -71,6 +71,7 @@ __all__ = [
     'results',
     'linear_converters',
     'solvers',
+    'tables',
 ]
 
 # Initialize logger with default configuration (silent: WARNING level, NullHandler).
