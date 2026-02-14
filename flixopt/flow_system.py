@@ -1149,7 +1149,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.model.build_model()
         return self
 
-    def solve(self, solver: _Solver) -> FlowSystem:
+    def solve(self, solver: _Solver, log_fn: pathlib.Path | str | None = None, progress: bool = True) -> FlowSystem:
         """
         Solve the optimization model and populate the solution.
 
@@ -1160,6 +1160,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         Args:
             solver: The solver to use (e.g., HighsSolver, GurobiSolver).
+            log_fn: Path to write the solver log file. If *None* and
+                ``capture_solver_log`` is enabled, a temporary file is used
+                (deleted after streaming). If a path is provided, the solver
+                log is persisted there regardless of capture settings.
+            progress: Whether to show a tqdm progress bar during solving.
 
         Returns:
             Self, for method chaining.
@@ -1175,11 +1180,22 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         self._require_status(FlowSystemStatus.MODEL_BUILT, 'solve')
 
-        self.model.solve(
-            solver_name=solver.name,
-            progress=CONFIG.Solving.log_to_console,
-            **solver.options,
-        )
+        log_path = pathlib.Path(log_fn) if log_fn is not None else None
+        if CONFIG.Solving.capture_solver_log:
+            with fx_io.stream_solver_log(log_fn=log_path) as captured_path:
+                self.model.solve(
+                    log_fn=captured_path,
+                    solver_name=solver.name,
+                    progress=progress,
+                    **solver.options,
+                )
+        else:
+            self.model.solve(
+                **({'log_fn': log_path} if log_path is not None else {}),
+                solver_name=solver.name,
+                progress=progress,
+                **solver.options,
+            )
 
         if self.model.termination_condition in ('infeasible', 'infeasible_or_unbounded'):
             self._log_infeasibilities()

@@ -243,12 +243,22 @@ class Optimization:
 
         t_start = timeit.default_timer()
 
-        self.model.solve(
-            log_fn=pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log',
-            solver_name=solver.name,
-            progress=CONFIG.Solving.log_to_console,
-            **solver.options,
-        )
+        log_fn = pathlib.Path(log_file) if log_file is not None else self.folder / f'{self.name}.log'
+        if CONFIG.Solving.capture_solver_log:
+            with fx_io.stream_solver_log(log_fn=log_fn) as log_path:
+                self.model.solve(
+                    log_fn=log_path,
+                    solver_name=solver.name,
+                    progress=False,
+                    **solver.options,
+                )
+        else:
+            self.model.solve(
+                log_fn=log_fn,
+                solver_name=solver.name,
+                progress=CONFIG.Solving.log_to_console,
+                **solver.options,
+            )
         self.durations['solving'] = round(timeit.default_timer() - t_start, 2)
         logger.log(SUCCESS_LEVEL, f'Model solved with {solver.name} in {self.durations["solving"]:.2f} seconds.')
         logger.info(f'Model status after solve: {self.model.status}')

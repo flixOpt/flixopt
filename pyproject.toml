@@ -34,7 +34,7 @@ dependencies = [
     # Core scientific computing
     "numpy >= 1.21.5, < 3",
     "pandas >= 2.0.0, < 3",
-    "xarray >= 2024.2.0, < 2026.0", # CalVer: allow through next calendar year
+    "xarray >=2024.2.0, <2026.2", # CalVer: allow through next calendar year
     # Optimization and data handling
     "linopy >= 0.5.1, < 0.6", # Widened from patch pin to minor range
     "netcdf4 >=1.6.1, <1.7.5",  # 1.7.4 missing wheels, revert to < 2 later
@@ -99,16 +99,16 @@ docs = [
     "mkdocs-material==9.7.1",
     "mkdocstrings-python==1.19.0",
     "mkdocs-table-reader-plugin==3.1.0",
-    "mkdocs-gen-files==0.5.0",
-    "mkdocs-include-markdown-plugin==7.2.0",
+    "mkdocs-gen-files==0.6.0",
+    "mkdocs-include-markdown-plugin==7.2.1",
     "mkdocs-literate-nav==0.6.2",
     "mkdocs-plotly-plugin==0.1.3",
     "mkdocs-jupyter==0.25.1",
     "markdown-include==0.8.1",
-    "pymdown-extensions==10.19.1",
+    "pymdown-extensions==10.20.1",
     "pygments==2.19.2",
     "mike==2.1.3",
-    "mkdocs-git-revision-date-localized-plugin==1.5.0",
+    "mkdocs-git-revision-date-localized-plugin==1.5.1",
     "mkdocs-minify-plugin==0.8.0",
     "notebook>=7.5.0",
     # Realistic profile generation for examples
