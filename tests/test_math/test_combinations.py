@@ -1040,6 +1040,10 @@ class TestStatusWithMultipleConstraints:
                         f'min_uptime violated: on-block of {on_block_len} at t<{i}: status={status}'
                     )
                 on_block_len = 0
+        if on_block_len > 0:
+            assert on_block_len >= 2, (
+                f'min_uptime violated: trailing on-block of {on_block_len} at t<{len(status)}: status={status}'
+            )
 
         # Verify min_downtime: each off-block is ≥2 hours (within horizon)
         off_block_len = 0
@@ -1120,7 +1124,7 @@ class TestEffectsWithConversion:
         StatusParameters (effects_per_startup) when constraining.
 
         CO2 has maximum_total=20. Boiler startup emits 15 kg CO2.
-        Fuel emits 0.5 kg CO2/kWh. Demand=[0,20,0,20] → would need 2 startups.
+        Fuel emits 0.1 kg CO2/kWh. Demand=[0,20,0,20] → would need 2 startups.
         2 startups = 30 kg CO2 (exceeds cap). With cap, optimizer limits startups.
 
         Sensitivity: Without CO2 cap, 2 startups → CO2=30+10=40.
