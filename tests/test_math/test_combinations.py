@@ -142,15 +142,20 @@ class TestPiecewiseWithInvestment:
 class TestPiecewiseWithStatus:
     """Tests combining PiecewiseConversion with StatusParameters."""
 
-    def test_piecewise_conversion_with_startup_cost(self, optimize):
-        """Proves: PiecewiseConversion with gap (off-state piece) and startup costs
-        interact correctly — startup cost is charged when entering the active segment.
+    def test_piecewise_nonlinear_conversion_with_startup_cost(self, optimize):
+        """Proves: PiecewiseConversion (non-1:1 ratio) and startup costs interact correctly.
 
-        Converter: off piece [0,0] and operating piece [30→60, 30→60].
-        Startup cost = 100€. Demand=[0, 40, 0, 40]. Two startups needed.
+        Converter: off piece [0,0] + operating piece [30→60 fuel, 30→50 heat].
+        The operating piece has ratio 30/20 = 1.5:1 (fuel:heat), NOT 1:1.
+        Startup cost = 100€. Demand=[0, 40, 0, 40]. Two startups.
 
-        Sensitivity: Without startup cost, cost = 2*40 = 80 (fuel only).
-        With 100€/startup × 2, cost = 80 + 200 = 280.
+        heat=40 in operating range: fuel = 30 + (40-30)/(50-30) * (60-30) = 30 + 15 = 45.
+
+        Sensitivity:
+        - Without piecewise (1:1 conversion): fuel=80, total=80+200=280.
+        - With piecewise (1.5:1 effective ratio): fuel=90, total=90+200=290.
+        - Without startup cost: total=90 (fuel only).
+        The 290 is unique to BOTH features being correct.
         """
         fs = make_flow_system(4)
         fs.add_elements(
@@ -186,32 +191,34 @@ class TestPiecewiseWithStatus:
                 outputs=[fx.Flow('heat', bus='Heat', size=100)],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
+                        # Non-1:1 ratio in operating range!
                         'fuel': fx.Piecewise([fx.Piece(0, 0), fx.Piece(30, 60)]),
-                        'heat': fx.Piecewise([fx.Piece(0, 0), fx.Piece(30, 60)]),
+                        'heat': fx.Piecewise([fx.Piece(0, 0), fx.Piece(30, 50)]),
                     }
                 ),
             ),
         )
         fs = optimize(fs)
-        # fuel per active ts = 40, 2 active timesteps → 80
+        # heat=40: fuel = 30 + (40-30)/(50-30) * (60-30) = 30 + 15 = 45 per active ts
+        # fuel = 2 * 45 = 90
         # 2 startups × 100 = 200
-        # total = 280
-        assert_allclose(fs.solution['costs'].item(), 280.0, rtol=1e-4)
+        # total = 290 (not 280 as with 1:1, not 90 without startups)
+        assert_allclose(fs.solution['Converter(fuel)|flow_rate'].values[1], 45.0, rtol=1e-4)
+        assert_allclose(fs.solution['costs'].item(), 290.0, rtol=1e-4)
 
-    def test_piecewise_with_min_uptime(self, optimize):
-        """Proves: Piecewise converter with gap and min_uptime interact correctly.
+    def test_piecewise_minimum_load_with_status(self, optimize):
+        """Proves: Piecewise gap enforces minimum load, interacting with status on/off.
 
-        Converter: off piece + operating piece [20→50, 20→50].
-        min_uptime=2. Demand=[0, 30, 30, 0, 30]. CheapBackup available.
+        Converter: off piece [0,0] + operating piece [20→50 fuel, 20→50 heat].
+        The gap between 0 and 20 creates a minimum load of 20.
+        Demand=[15, 40]. At t=0, demand=15 < min_load=20 → converter must be OFF.
+        Backup covers t=0 at 5€/kWh. Converter covers t=1 at 1€/kWh.
 
-        With min_uptime=2, once the converter starts, it must stay on for 2 hours.
-        Converter serves t=1,2 (one startup block). For t=4, starting would require
-        staying on past horizon — relaxed at end, so it's ok.
-
-        Sensitivity: Without min_uptime, converter could freely turn on/off each
-        timestep. With min_uptime=2, forced into blocks.
+        Sensitivity:
+        - Without piecewise gap (continuous 0→50): converter produces 15 at t=0, cost=55.
+        - With piecewise gap (min load 20): converter OFF at t=0, backup=75, conv=40, cost=115.
         """
-        fs = make_flow_system(5)
+        fs = make_flow_system(2)
         fs.add_elements(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
@@ -223,7 +230,7 @@ class TestPiecewiseWithStatus:
                         'heat',
                         bus='Heat',
                         size=1,
-                        fixed_relative_profile=np.array([0, 30, 30, 0, 30]),
+                        fixed_relative_profile=np.array([15, 40]),
                     ),
                 ],
             ),
@@ -233,19 +240,11 @@ class TestPiecewiseWithStatus:
             ),
             fx.Source(
                 'Backup',
-                outputs=[fx.Flow('heat', bus='Heat', effects_per_flow_hour=10)],
+                outputs=[fx.Flow('heat', bus='Heat', effects_per_flow_hour=5)],
             ),
             fx.LinearConverter(
                 'Converter',
-                inputs=[
-                    fx.Flow(
-                        'fuel',
-                        bus='Gas',
-                        size=100,
-                        previous_flow_rate=0,
-                        status_parameters=fx.StatusParameters(min_uptime=2),
-                    )
-                ],
+                inputs=[fx.Flow('fuel', bus='Gas', size=100)],
                 outputs=[fx.Flow('heat', bus='Heat', size=100)],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
@@ -256,25 +255,155 @@ class TestPiecewiseWithStatus:
             ),
         )
         fs = optimize(fs)
-        # Converter is cheaper (1€/kWh vs Backup 10€/kWh).
-        # All demand served by converter where possible.
-        # Total converter fuel = 30 + 30 + 30 = 90 for demand timesteps.
-        # min_uptime forces blocks of ≥2 hours.
-        # Verify cost is consistent and converter status respects min_uptime.
-        status = fs.solution['Converter(fuel)|status'].values[:-1]
-        # Check min_uptime: no isolated single on-hours
-        for i in range(len(status)):
-            if status[i] > 0.5:
-                # Must have neighbor also on (except at boundary)
-                has_neighbor = False
-                if i > 0 and status[i - 1] > 0.5:
-                    has_neighbor = True
-                if i < len(status) - 1 and status[i + 1] > 0.5:
-                    has_neighbor = True
-                # At boundary (last timestep), min_uptime not enforced
-                if i == len(status) - 1:
-                    has_neighbor = True
-                assert has_neighbor, f'Isolated on-hour at t={i}: status={status}'
+        # t=0: demand=15 < min_load=20 → converter OFF, backup: 15*5=75
+        # t=1: demand=40 → converter ON: fuel=40
+        # total = 75 + 40 = 115 (without gap: 15 + 40 = 55)
+        assert_allclose(fs.solution['costs'].item(), 115.0, rtol=1e-4)
+        # Verify converter off at t=0
+        conv_heat = fs.solution['Converter(heat)|flow_rate'].values[0]
+        assert conv_heat < 1e-5, f'Converter should be off at t=0 (demand < min_load), got {conv_heat}'
+
+    def test_piecewise_no_zero_point_with_status(self, optimize):
+        """Proves: Piecewise WITHOUT off-state piece (no zero point) interacts with
+        StatusParameters correctly. The piecewise defines a MANDATORY operating range
+        [20→60], meaning when ON the converter must produce ≥20. Status allows OFF.
+
+        Without an off-state [0,0] piece, the piecewise alone would force the converter
+        to always operate in [20,60]. But with status_parameters, the optimizer can
+        turn it OFF (flow=0) despite no zero piece in the piecewise definition.
+
+        Converter: fuel [20→60], heat [10→40] (no off piece!). Plus status_parameters.
+        Demand=[5, 35]. Backup at 5€/kWh.
+
+        t=0: demand=5 < min_heat=10 → converter must be OFF, backup covers: 5*5=25.
+        t=1: demand=35 in range → heat=35, fuel = 20 + (35-10)/(40-10)*40 = 20+33.3=53.3.
+
+        Sensitivity:
+        - Without status (converter always on): infeasible or forced to produce ≥10 at t=0.
+        - With status + no zero piece: converter can be OFF at t=0, ON at t=1.
+        - If piecewise conversion ignored (1:1): fuel at t=1 would be 35 instead of 53.3.
+        """
+        fs = make_flow_system(2)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow(
+                        'heat',
+                        bus='Heat',
+                        size=1,
+                        fixed_relative_profile=np.array([5, 35]),
+                    ),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+            ),
+            fx.Source(
+                'Backup',
+                outputs=[fx.Flow('heat', bus='Heat', effects_per_flow_hour=5)],
+            ),
+            fx.LinearConverter(
+                'Converter',
+                inputs=[
+                    fx.Flow(
+                        'fuel',
+                        bus='Gas',
+                        size=100,
+                        status_parameters=fx.StatusParameters(),
+                    )
+                ],
+                outputs=[fx.Flow('heat', bus='Heat', size=100)],
+                piecewise_conversion=fx.PiecewiseConversion(
+                    {
+                        # NO off-state piece — operating range only
+                        'fuel': fx.Piecewise([fx.Piece(20, 60)]),
+                        'heat': fx.Piecewise([fx.Piece(10, 40)]),
+                    }
+                ),
+            ),
+        )
+        fs = optimize(fs)
+        # t=0: demand=5 < min_heat=10 → OFF, backup=5*5=25
+        # t=1: heat=35 → fuel = 20 + (35-10)/(40-10) * (60-20) = 20 + 33.33 = 53.33
+        # total = 25 + 53.33 = 78.33
+        expected_fuel_t1 = 20 + (25 / 30) * 40
+        assert_allclose(fs.solution['Converter(fuel)|flow_rate'].values[1], expected_fuel_t1, rtol=1e-4)
+        assert_allclose(fs.solution['costs'].item(), 25.0 + expected_fuel_t1, rtol=1e-4)
+        # Verify converter OFF at t=0 (status allows it despite no zero piece)
+        assert fs.solution['Converter(fuel)|flow_rate'].values[0] < 1e-5
+
+    def test_piecewise_no_zero_point_startup_cost(self, optimize):
+        """Proves: Piecewise without zero point + startup cost work together.
+
+        Converter: fuel [30→80], heat [20→60] (no off piece). Plus startup cost=200€.
+        Demand=[0, 40, 0, 40]. Status allows OFF. Two startups.
+
+        heat=40: fuel = 30 + (40-20)/(60-20) * (80-30) = 30 + 25 = 55.
+
+        Sensitivity:
+        - Without startup cost: total = 2*55 = 110.
+        - With startup cost: total = 110 + 2*200 = 510.
+        - If piecewise ignored (1:1): fuel=40/ts, total = 80 + 400 = 480.
+        The 510 is unique to BOTH features.
+        """
+        fs = make_flow_system(4)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow(
+                        'heat',
+                        bus='Heat',
+                        size=1,
+                        fixed_relative_profile=np.array([0, 40, 0, 40]),
+                    ),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+            ),
+            fx.Source(
+                'Backup',
+                outputs=[fx.Flow('heat', bus='Heat', effects_per_flow_hour=100)],
+            ),
+            fx.LinearConverter(
+                'Converter',
+                inputs=[
+                    fx.Flow(
+                        'fuel',
+                        bus='Gas',
+                        size=100,
+                        previous_flow_rate=0,
+                        status_parameters=fx.StatusParameters(effects_per_startup=200),
+                    )
+                ],
+                outputs=[fx.Flow('heat', bus='Heat', size=100)],
+                piecewise_conversion=fx.PiecewiseConversion(
+                    {
+                        # NO off-state piece
+                        'fuel': fx.Piecewise([fx.Piece(30, 80)]),
+                        'heat': fx.Piecewise([fx.Piece(20, 60)]),
+                    }
+                ),
+            ),
+        )
+        fs = optimize(fs)
+        # heat=40: fuel = 30 + (40-20)/(60-20) * 50 = 30 + 25 = 55
+        # fuel = 2 * 55 = 110
+        # 2 startups × 200 = 400
+        # total = 510 (not 480 as with 1:1, not 110 without startups)
+        expected_fuel = 30 + (20 / 40) * 50
+        assert_allclose(fs.solution['Converter(fuel)|flow_rate'].values[1], expected_fuel, rtol=1e-4)
+        assert_allclose(fs.solution['costs'].item(), 2 * expected_fuel + 400, rtol=1e-4)
 
 
 class TestPiecewiseThreeSegments:
@@ -531,19 +660,22 @@ class TestInvestWithRelativeMinimum:
     """Tests combining InvestParameters with relative_minimum."""
 
     def test_invest_sizing_respects_relative_minimum(self, optimize):
-        """Proves: Investment sizing with relative_minimum forces the optimizer to
-        balance size against minimum load — a clever tradeoff.
+        """Proves: relative_minimum on an invested flow forces the boiler OFF at
+        low-demand timesteps, requiring expensive backup.
 
-        Boiler: invest (1€/kW), relative_minimum=0.5, status_parameters, eta=1.0.
-        Backup: eta=0.5, no invest. Demand=[15, 50].
+        Boiler: invest (0.5€/kW), relative_minimum=0.5, status_parameters, eta=1.0.
+        Backup at 10€/kWh (expensive). Demand=[5, 50].
 
-        Optimizer sizes to 30: relative_minimum * 30 = 15 = demand[0].
-        t=0: boiler ON at exactly 15 (min load). t=1: boiler ON at 30 + backup 20.
+        With relative_minimum=0.5: size=50 → min_load=25 > demand[0]=5.
+        Boiler must turn OFF at t=0 → expensive backup covers: 5*10=50.
+        t=1: boiler ON at 50 → fuel=50.
+        invest=25 + fuel=50 + backup=50 = 125.
 
-        Sensitivity: Without relative_minimum, boiler sized to 50, no backup needed.
-        invest(50)+fuel(65)=115. With relative_minimum, optimizer finds size=30,
-        invest(30)+boiler_fuel(45)+backup_fuel(40)=115 — same total but different size!
-        If relative_minimum were broken (ignored), size=50 and no backup needed.
+        Sensitivity:
+        - Without relative_minimum: boiler ON both hours, no backup needed.
+          invest=25 + fuel=55 = 80. The 45€ difference proves relative_minimum is active.
+        - Without status_parameters: relative_minimum prevents off → infeasible
+          (strict bus can't absorb min_load=25 excess when demand=5).
         """
         fs = make_flow_system(2)
         fs.add_elements(
@@ -553,12 +685,16 @@ class TestInvestWithRelativeMinimum:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([15, 50])),
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([5, 50])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+            ),
+            fx.Source(
+                'Backup',
+                outputs=[fx.Flow('heat', bus='Heat', effects_per_flow_hour=10)],
             ),
             fx.linear_converters.Boiler(
                 'Boiler',
@@ -571,24 +707,22 @@ class TestInvestWithRelativeMinimum:
                     size=fx.InvestParameters(
                         maximum_size=100,
                         mandatory=True,
-                        effects_of_investment_per_size=1,
+                        effects_of_investment_per_size=0.5,
                     ),
                     status_parameters=fx.StatusParameters(),
                 ),
             ),
-            fx.linear_converters.Boiler(
-                'Backup',
-                thermal_efficiency=0.5,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
-                thermal_flow=fx.Flow('heat', bus='Heat', size=100),
-            ),
         )
         fs = optimize(fs)
-        # Optimal: size=30, relative_min*30=15=demand[0]
-        # t=0: boiler=15, t=1: boiler=30 + backup=20 → backup_fuel=20/0.5=40
-        # invest=30, boiler_fuel=45, backup_fuel=40, total=115
-        assert_allclose(fs.solution['Boiler(heat)|size'].item(), 30.0, rtol=1e-4)
-        assert_allclose(fs.solution['costs'].item(), 115.0, rtol=1e-4)
+        # size=50 (peak demand), invest = 50*0.5 = 25
+        # t=0: min_load=25 > demand=5 → OFF, backup=5*10=50
+        # t=1: ON, boiler=50, fuel=50
+        # total = 25 + 50 + 50 = 125
+        # Without relative_minimum: size=50, ON both hours, fuel=55, total=80
+        assert_allclose(fs.solution['Boiler(heat)|size'].item(), 50.0, rtol=1e-4)
+        assert_allclose(fs.solution['costs'].item(), 125.0, rtol=1e-4)
+        # Verify boiler is OFF at t=0 (forced by relative_minimum)
+        assert fs.solution['Boiler(heat)|status'].values[0] < 0.5
 
 
 class TestConversionWithTimeVaryingEffects:
@@ -696,15 +830,18 @@ class TestPiecewiseInvestWithStatus:
     """Tests combining piecewise investment costs with status parameters."""
 
     def test_piecewise_invest_with_startup_cost(self, optimize):
-        """Proves: Piecewise investment cost and startup cost work together on the same flow.
+        """Proves: Piecewise investment cost (economies of scale) and startup cost
+        work together — the cost is unique to BOTH features being correct.
 
-        Boiler: piecewise invest (economies of scale) + startup cost = 50€.
-        Demand=[0, 30, 0, 30]. Two startups.
+        Boiler: piecewise invest + startup cost = 50€.
+        Demand=[0, 80, 0, 80]. Two startups.
         Piecewise invest: size 0→50 costs 0→100 (2€/kW), 50→200 costs 100→250 (1€/kW).
-        Peak demand=30 → invest in seg1: cost = 30/50*100 = 60.
+        Peak demand=80 → invest in seg2: cost = 100 + (80-50)/(200-50)*150 = 100 + 30 = 130.
 
-        Sensitivity: If either piecewise invest or startup cost were broken,
-        total would differ from 60 + 60 + 100 = 220.
+        Sensitivity:
+        - If linear cost at 2€/kW: invest = 160 (not 130). Total = 160+160+100 = 420.
+        - If piecewise correct but no startup: total = 130+160 = 290 (not 390).
+        - Correct: invest(130) + fuel(160) + startups(100) = 390. Unique.
         """
         fs = make_flow_system(4)
         fs.add_elements(
@@ -718,7 +855,7 @@ class TestPiecewiseInvestWithStatus:
                         'heat',
                         bus='Heat',
                         size=1,
-                        fixed_relative_profile=np.array([0, 30, 0, 30]),
+                        fixed_relative_profile=np.array([0, 80, 0, 80]),
                     ),
                 ],
             ),
@@ -749,12 +886,12 @@ class TestPiecewiseInvestWithStatus:
             ),
         )
         fs = optimize(fs)
-        # size=30 (peak demand), invest = 30/50*100 = 60
-        # fuel = 2*30 = 60 (eta=1.0)
+        # size=80, in seg2: invest = 100 + 30/150*150 = 130
+        # fuel = 2*80 = 160 (eta=1.0)
         # 2 startups × 50 = 100
-        # total = 60 + 60 + 100 = 220
-        assert_allclose(fs.solution['Boiler(heat)|size'].item(), 30.0, rtol=1e-4)
-        assert_allclose(fs.solution['costs'].item(), 220.0, rtol=1e-4)
+        # total = 130 + 160 + 100 = 390
+        assert_allclose(fs.solution['Boiler(heat)|size'].item(), 80.0, rtol=1e-4)
+        assert_allclose(fs.solution['costs'].item(), 390.0, rtol=1e-4)
 
 
 class TestStatusWithMultipleConstraints:
