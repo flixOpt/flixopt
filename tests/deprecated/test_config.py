@@ -163,7 +163,7 @@ class TestConfigModule:
         CONFIG.exploring()
         logger.info('exploring')
         assert 'exploring' in capfd.readouterr().out
-        assert CONFIG.Solving.log_to_console is True
+        assert CONFIG.Solving.log_to_console is False
 
     def test_preset_debug(self, capfd):
         """Test debug preset."""

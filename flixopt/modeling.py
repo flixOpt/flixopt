@@ -1,12 +1,28 @@
 import logging
-from typing import Any
+from typing import Any, Protocol
 
 import linopy
 import numpy as np
 import xarray as xr
 
 from .config import CONFIG
-from .structure import Submodel, VariableCategory
+
+
+class ConstraintAdder(Protocol):
+    """Protocol for objects that can add constraints (InvestmentModel, type-level models, etc.)."""
+
+    def add_constraints(self, expression: Any, name: str = None, **kwargs) -> linopy.Constraint: ...
+
+
+class ModelInterface(Protocol):
+    """Protocol for full model interface with get_coords, add_variables, add_constraints."""
+
+    def get_coords(self, coords: Any = None) -> xr.Coordinates: ...
+
+    def add_variables(self, **kwargs) -> linopy.Variable: ...
+
+    def add_constraints(self, expression: Any, **kwargs) -> linopy.Constraint: ...
+
 
 logger = logging.getLogger('flixopt')
 
@@ -285,13 +301,12 @@ class ModelingPrimitives:
 
     @staticmethod
     def expression_tracking_variable(
-        model: Submodel,
+        model: ModelInterface,
         tracked_expression: linopy.expressions.LinearExpression | linopy.Variable,
         name: str = None,
         short_name: str = None,
         bounds: tuple[xr.DataArray, xr.DataArray] = None,
         coords: str | list[str] | None = None,
-        category: VariableCategory = None,
     ) -> tuple[linopy.Variable, linopy.Constraint]:
         """Creates a variable constrained to equal a given expression.
 
@@ -300,24 +315,18 @@ class ModelingPrimitives:
             lower ≤ tracker ≤ upper  (if bounds provided)
 
         Args:
-            model: The submodel to add variables and constraints to
+            model: Object with get_coords, add_variables, and add_constraints methods
             tracked_expression: Expression that the tracker variable must equal
             name: Full name for the variable and constraint
             short_name: Short name for display purposes
             bounds: Optional (lower_bound, upper_bound) tuple for the tracker variable
             coords: Coordinate dimensions for the variable (None uses all model coords)
-            category: Category for segment expansion handling. See VariableCategory.
 
         Returns:
             Tuple of (tracker_variable, tracking_constraint)
         """
-        if not isinstance(model, Submodel):
-            raise ValueError('ModelingPrimitives.expression_tracking_variable() can only be used with a Submodel')
-
         if not bounds:
-            tracker = model.add_variables(
-                name=name, coords=model.get_coords(coords), short_name=short_name, category=category
-            )
+            tracker = model.add_variables(name=name, coords=model.get_coords(coords), short_name=short_name)
         else:
             tracker = model.add_variables(
                 lower=bounds[0] if bounds[0] is not None else -np.inf,
@@ -325,7 +334,6 @@ class ModelingPrimitives:
                 name=name,
                 coords=model.get_coords(coords),
                 short_name=short_name,
-                category=category,
             )
 
         # Constraint: tracker = expression
@@ -335,7 +343,7 @@ class ModelingPrimitives:
 
     @staticmethod
     def consecutive_duration_tracking(
-        model: Submodel,
+        model: ModelInterface,
         state: linopy.Variable,
         name: str = None,
         short_name: str = None,
@@ -362,7 +370,7 @@ class ModelingPrimitives:
         Where M is a big-M value (sum of all duration_per_step + previous_duration).
 
         Args:
-            model: The submodel to add variables and constraints to
+            model: Object with get_coords, add_variables, and add_constraints methods
             state: Binary state variable (1=active, 0=inactive) to track duration for
             name: Full name for the duration variable
             short_name: Short name for display purposes
@@ -382,8 +390,6 @@ class ModelingPrimitives:
             When minimum_duration is provided and previous_duration is not None and
             0 < previous_duration < minimum_duration[0], also contains: 'initial_lb'.
         """
-        if not isinstance(model, Submodel):
-            raise ValueError('ModelingPrimitives.consecutive_duration_tracking() can only be used with a Submodel')
 
         # Big-M value (use 0 for previous_duration if None)
         mega = duration_per_step.sum(duration_dim) + (previous_duration if previous_duration is not None else 0)
@@ -395,7 +401,6 @@ class ModelingPrimitives:
             coords=state.coords,
             name=name,
             short_name=short_name,
-            category=VariableCategory.DURATION,
         )
 
         constraints = {}
@@ -456,7 +461,7 @@ class ModelingPrimitives:
 
     @staticmethod
     def mutual_exclusivity_constraint(
-        model: Submodel,
+        model: ConstraintAdder,
         binary_variables: list[linopy.Variable],
         tolerance: float = 1,
         short_name: str = 'mutual_exclusivity',
@@ -469,7 +474,7 @@ class ModelingPrimitives:
             Σᵢ binary_vars[i] ≤ tolerance  ∀t
 
         Args:
-            model: The submodel to add the constraint to
+            model: Object with add_constraints method
             binary_variables: List of binary variables that should be mutually exclusive
             tolerance: Upper bound on the sum (default 1, allows slight numerical tolerance)
             short_name: Short name for the constraint
@@ -480,9 +485,6 @@ class ModelingPrimitives:
         Raises:
             AssertionError: If fewer than 2 variables provided or variables aren't binary
         """
-        if not isinstance(model, Submodel):
-            raise ValueError('ModelingPrimitives.mutual_exclusivity_constraint() can only be used with a Submodel')
-
         assert len(binary_variables) >= 2, (
             f'Mutual exclusivity requires at least 2 variables, got {len(binary_variables)}'
         )
@@ -503,7 +505,7 @@ class BoundingPatterns:
 
     @staticmethod
     def basic_bounds(
-        model: Submodel,
+        model: ConstraintAdder,
         variable: linopy.Variable,
         bounds: tuple[xr.DataArray, xr.DataArray],
         name: str = None,
@@ -514,7 +516,7 @@ class BoundingPatterns:
             lower_bound ≤ variable ≤ upper_bound
 
         Args:
-            model: The submodel to add constraints to
+            model: Object with add_constraints method
             variable: Variable to be bounded
             bounds: Tuple of (lower_bound, upper_bound) absolute bounds
             name: Optional name prefix for constraints
@@ -522,9 +524,6 @@ class BoundingPatterns:
         Returns:
             List of [lower_constraint, upper_constraint]
         """
-        if not isinstance(model, Submodel):
-            raise ValueError('BoundingPatterns.basic_bounds() can only be used with a Submodel')
-
         lower_bound, upper_bound = bounds
         name = name or f'{variable.name}'
 
@@ -535,7 +534,7 @@ class BoundingPatterns:
 
     @staticmethod
     def bounds_with_state(
-        model: Submodel,
+        model: ConstraintAdder,
         variable: linopy.Variable,
         bounds: tuple[xr.DataArray, xr.DataArray],
         state: linopy.Variable,
@@ -552,7 +551,7 @@ class BoundingPatterns:
         numerical stability when lower_bound is 0.
 
         Args:
-            model: The submodel to add constraints to
+            model: Object with add_constraints method
             variable: Variable to be bounded
             bounds: Tuple of (lower_bound, upper_bound) absolute bounds when state=1
             state: Binary variable (0=force variable to 0, 1=allow bounds)
@@ -561,9 +560,6 @@ class BoundingPatterns:
         Returns:
             List of [lower_constraint, upper_constraint] (or [fix_constraint] if lower=upper)
         """
-        if not isinstance(model, Submodel):
-            raise ValueError('BoundingPatterns.bounds_with_state() can only be used with a Submodel')
-
         lower_bound, upper_bound = bounds
         name = name or f'{variable.name}'
 
@@ -580,7 +576,7 @@ class BoundingPatterns:
 
     @staticmethod
     def scaled_bounds(
-        model: Submodel,
+        model: ConstraintAdder,
         variable: linopy.Variable,
         scaling_variable: linopy.Variable,
         relative_bounds: tuple[xr.DataArray, xr.DataArray],
@@ -594,7 +590,7 @@ class BoundingPatterns:
             scaling_variable · lower_factor ≤ variable ≤ scaling_variable · upper_factor
 
         Args:
-            model: The submodel to add constraints to
+            model: Object with add_constraints method
             variable: Variable to be bounded
             scaling_variable: Variable that scales the bound factors (e.g., equipment size)
             relative_bounds: Tuple of (lower_factor, upper_factor) relative to scaling_variable
@@ -603,9 +599,6 @@ class BoundingPatterns:
         Returns:
             List of [lower_constraint, upper_constraint] (or [fix_constraint] if lower=upper)
         """
-        if not isinstance(model, Submodel):
-            raise ValueError('BoundingPatterns.scaled_bounds() can only be used with a Submodel')
-
         rel_lower, rel_upper = relative_bounds
         name = name or f'{variable.name}'
 
@@ -619,7 +612,7 @@ class BoundingPatterns:
 
     @staticmethod
     def scaled_bounds_with_state(
-        model: Submodel,
+        model: ConstraintAdder,
         variable: linopy.Variable,
         scaling_variable: linopy.Variable,
         relative_bounds: tuple[xr.DataArray, xr.DataArray],
@@ -641,7 +634,7 @@ class BoundingPatterns:
             big_m_lower = max(ε, scaling_min · rel_lower)
 
         Args:
-            model: The submodel to add constraints to
+            model: Object with add_constraints method
             variable: Variable to be bounded
             scaling_variable: Variable that scales the bound factors (e.g., equipment size)
             relative_bounds: Tuple of (lower_factor, upper_factor) relative to scaling_variable
@@ -652,9 +645,6 @@ class BoundingPatterns:
         Returns:
             List of [scaling_lower, scaling_upper, binary_lower, binary_upper] constraints
         """
-        if not isinstance(model, Submodel):
-            raise ValueError('BoundingPatterns.scaled_bounds_with_state() can only be used with a Submodel')
-
         rel_lower, rel_upper = relative_bounds
         scaling_min, scaling_max = scaling_bounds
         name = name or f'{variable.name}'
@@ -676,7 +666,7 @@ class BoundingPatterns:
 
     @staticmethod
     def state_transition_bounds(
-        model: Submodel,
+        model: ConstraintAdder,
         state: linopy.Variable,
         activate: linopy.Variable,
         deactivate: linopy.Variable,
@@ -696,7 +686,7 @@ class BoundingPatterns:
             activate[t], deactivate[t] ∈ {0, 1}
 
         Args:
-            model: The submodel to add constraints to
+            model: Object with add_constraints method
             state: Binary state variable (0=inactive, 1=active)
             activate: Binary variable for transitions from inactive to active (0→1)
             deactivate: Binary variable for transitions from active to inactive (1→0)
@@ -709,8 +699,6 @@ class BoundingPatterns:
             Tuple of (transition_constraint, initial_constraint, mutex_constraint).
             initial_constraint is None when previous_state is None.
         """
-        if not isinstance(model, Submodel):
-            raise ValueError('BoundingPatterns.state_transition_bounds() can only be used with a Submodel')
 
         # State transition constraints for t > 0
         transition = model.add_constraints(
@@ -735,7 +723,7 @@ class BoundingPatterns:
 
     @staticmethod
     def continuous_transition_bounds(
-        model: Submodel,
+        model: ConstraintAdder,
         continuous_variable: linopy.Variable,
         activate: linopy.Variable,
         deactivate: linopy.Variable,
@@ -759,7 +747,7 @@ class BoundingPatterns:
             - When activate=1 or deactivate=1: variable can change within ±max_change
 
         Args:
-            model: The submodel to add constraints to
+            model: Object with add_constraints method
             continuous_variable: Continuous variable to constrain
             activate: Binary variable for transitions from inactive to active (0→1)
             deactivate: Binary variable for transitions from active to inactive (1→0)
@@ -771,8 +759,6 @@ class BoundingPatterns:
         Returns:
             Tuple of (transition_upper, transition_lower, initial_upper, initial_lower) constraints
         """
-        if not isinstance(model, Submodel):
-            raise ValueError('ModelingPrimitives.continuous_transition_bounds() can only be used with a Submodel')
 
         # Transition constraints for t > 0: continuous variable can only change when transitions occur
         transition_upper = model.add_constraints(
@@ -804,7 +790,7 @@ class BoundingPatterns:
 
     @staticmethod
     def link_changes_to_level_with_binaries(
-        model: Submodel,
+        model: ConstraintAdder,
         level_variable: linopy.Variable,
         increase_variable: linopy.Variable,
         decrease_variable: linopy.Variable,
@@ -826,7 +812,7 @@ class BoundingPatterns:
         5. increase_binary[t] + decrease_binary[t] <= 1  ∀t
 
         Args:
-            model: The submodel to add constraints to
+            model: Object with add_constraints method
             increase_variable: Incremental additions for ALL periods (>= 0)
             decrease_variable: Incremental reductions for ALL periods (>= 0)
             increase_binary: Binary indicators for increases for ALL periods
@@ -840,8 +826,6 @@ class BoundingPatterns:
         Returns:
             Tuple of (initial_constraint, transition_constraints, increase_bounds, decrease_bounds, mutual_exclusion)
         """
-        if not isinstance(model, Submodel):
-            raise ValueError('BoundingPatterns.link_changes_to_level_with_binaries() can only be used with a Submodel')
 
         # 1. Initial period: level[0] - initial_level =  increase[0] - decrease[0]
         initial_constraint = model.add_constraints(

@@ -10,14 +10,17 @@ from __future__ import annotations
 import logging
 import pathlib
 import warnings
+from functools import cached_property
 from itertools import chain
 from typing import TYPE_CHECKING, Any, Literal
 
+import numpy as np
 import plotly.graph_objects as go
 import xarray as xr
 
 from .color_processing import ColorType, hex_to_rgba, process_colors
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
+from .flow_system_status import FlowSystemStatus
 from .plot_result import PlotResult
 
 if TYPE_CHECKING:
@@ -142,15 +145,11 @@ class TopologyAccessor:
         """
         self._fs = flow_system
 
-        # Cached color mappings (lazily initialized)
+        # Cached color mappings (lazily initialized, invalidated by set_*_color methods)
         self._carrier_colors: dict[str, str] | None = None
         self._component_colors: dict[str, str] | None = None
         self._flow_colors: dict[str, str] | None = None
         self._bus_colors: dict[str, str] | None = None
-
-        # Cached unit mappings (lazily initialized)
-        self._carrier_units: dict[str, str] | None = None
-        self._effect_units: dict[str, str] | None = None
 
     @property
     def carrier_colors(self) -> dict[str, str]:
@@ -230,9 +229,9 @@ class TopologyAccessor:
                         self._bus_colors[label] = color
         return self._bus_colors
 
-    @property
+    @cached_property
     def carrier_units(self) -> dict[str, str]:
-        """Cached mapping of carrier name to unit string.
+        """Mapping of carrier name to unit string.
 
         Returns:
             Dict mapping carrier names (lowercase) to unit strings.
@@ -242,13 +241,11 @@ class TopologyAccessor:
             >>> fs.topology.carrier_units
             {'electricity': 'kW', 'heat': 'kW', 'gas': 'kW'}
         """
-        if self._carrier_units is None:
-            self._carrier_units = {name: carrier.unit or '' for name, carrier in self._fs.carriers.items()}
-        return self._carrier_units
+        return {name: carrier.unit or '' for name, carrier in self._fs.carriers.items()}
 
-    @property
+    @cached_property
     def effect_units(self) -> dict[str, str]:
-        """Cached mapping of effect label to unit string.
+        """Mapping of effect label to unit string.
 
         Returns:
             Dict mapping effect labels to unit strings.
@@ -258,9 +255,82 @@ class TopologyAccessor:
             >>> fs.topology.effect_units
             {'costs': '€', 'CO2': 'kg'}
         """
-        if self._effect_units is None:
-            self._effect_units = {effect.label: effect.unit or '' for effect in self._fs.effects.values()}
-        return self._effect_units
+        return {effect.label: effect.unit or '' for effect in self._fs.effects.values()}
+
+    @cached_property
+    def flows(self) -> xr.DataArray:
+        """DataArray with 'flow' dimension and metadata coordinates.
+
+        Coordinates on the 'flow' dimension:
+            - component: Parent component label
+            - bus: Connected bus label
+            - carrier: Carrier name (lowercase)
+            - unit: Unit string from carrier
+            - is_input: Whether the flow is an input to its component
+
+        Useful for filtering and groupby operations on flow data.
+
+        Examples:
+            Filter flow_rates by carrier:
+
+            >>> topo = flow_system.topology
+            >>> heat_flows = topo.flows.sel(flow=(topo.flows.carrier == 'heat')).flow.values
+            >>> flow_system.stats.flow_rates.sel(flow=heat_flows)
+
+            Filter by component:
+
+            >>> boiler_flows = topo.flows.sel(flow=(topo.flows.component == 'Boiler')).flow.values
+            >>> flow_system.stats.flow_rates.sel(flow=boiler_flows)
+
+            Filter by bus:
+
+            >>> bus_flows = topo.flows.sel(flow=(topo.flows.bus == 'HeatBus')).flow.values
+
+            Get only input flows (into components):
+
+            >>> inputs = topo.flows.sel(flow=topo.flows.is_input).flow.values
+
+            Combine filters (heat carrier inputs only):
+
+            >>> mask = (topo.flows.carrier == 'heat') & topo.flows.is_input
+            >>> topo.flows.sel(flow=mask).flow.values
+
+            GroupBy component (assign coord from topology, then group):
+
+            >>> rates = flow_system.stats.flow_rates
+            >>> rates = rates.assign_coords(component=topo.flows.component.sel(flow=rates.flow))
+            >>> rates.groupby('component').sum()
+        """
+        flow_labels = []
+        components = []
+        buses = []
+        carriers = []
+        units = []
+        is_inputs = []
+
+        carrier_units = self.carrier_units
+        for flow in self._fs.flows.values():
+            flow_labels.append(flow.label_full)
+            components.append(flow.component)
+            buses.append(flow.bus)
+            bus_obj = self._fs.buses.get(flow.bus)
+            carrier = bus_obj.carrier.lower() if bus_obj and bus_obj.carrier else ''
+            carriers.append(carrier)
+            units.append(carrier_units.get(carrier, ''))
+            is_inputs.append(flow.is_input_in_component)
+
+        return xr.DataArray(
+            data=np.ones(len(flow_labels)),  # Placeholder values
+            dims=['flow'],
+            coords={
+                'flow': flow_labels,
+                'component': ('flow', components),
+                'bus': ('flow', buses),
+                'carrier': ('flow', carriers),
+                'unit': ('flow', units),
+                'is_input': ('flow', is_inputs),
+            },
+        )
 
     def _invalidate_color_caches(self) -> None:
         """Reset all color caches so they are rebuilt on next access."""
@@ -557,14 +627,15 @@ class TopologyAccessor:
         title = plotly_kwargs.pop('title', 'Flow System Topology')
         fig.update_layout(title=title, **plotly_kwargs)
 
-        # Build xarray Dataset with topology data
-        data = xr.Dataset(
-            {
+        # Build xarray DataArray with topology data
+        data = xr.DataArray(
+            data=links['value'],
+            dims=['link'],
+            coords={
+                'link': links['label'],
                 'source': ('link', links['source']),
                 'target': ('link', links['target']),
-                'value': ('link', links['value']),
             },
-            coords={'link': links['label']},
         )
         result = PlotResult(data=data, figure=fig)
 
@@ -670,7 +741,7 @@ class TopologyAccessor:
                 f'Original error: {VISUALIZATION_ERROR}'
             )
 
-        if not self._fs._connected_and_transformed:
+        if self._fs.status < FlowSystemStatus.CONNECTED:
             self._fs._connect_network()
 
         if self._fs._network_app is not None:

@@ -125,10 +125,10 @@ def test_expand_maps_values_correctly(solver_fixture, timesteps_8_days):
     cluster_assignments = info.cluster_assignments.values
     timesteps_per_cluster = info.timesteps_per_cluster  # 24
 
-    reduced_flow = fs_reduced.solution['Boiler(Q_th)|flow_rate'].values
+    reduced_flow = fs_reduced.solution['flow|rate'].sel(flow='Boiler(Q_th)').values
 
     fs_expanded = fs_reduced.transform.expand()
-    expanded_flow = fs_expanded.solution['Boiler(Q_th)|flow_rate'].values
+    expanded_flow = fs_expanded.solution['flow|rate'].sel(flow='Boiler(Q_th)').values
 
     # Check that values are correctly mapped
     # For each original segment, values should match the corresponding typical cluster
@@ -167,11 +167,11 @@ def test_expand_enables_statistics_accessor(solver_fixture, timesteps_8_days):
 
     # These should work without errors
     flow_rates = fs_expanded.statistics.flow_rates
-    assert 'Boiler(Q_th)' in flow_rates
-    assert len(flow_rates['Boiler(Q_th)'].coords['time']) == 193  # 192 + 1 extra timestep
+    assert 'Boiler(Q_th)' in flow_rates.coords['flow'].values
+    assert len(flow_rates.sel(flow='Boiler(Q_th)').coords['time']) == 193  # 192 + 1 extra timestep
 
     flow_hours = fs_expanded.statistics.flow_hours
-    assert 'Boiler(Q_th)' in flow_hours
+    assert 'Boiler(Q_th)' in flow_hours.coords['flow'].values
 
 
 def test_expand_statistics_match_clustered(solver_fixture, timesteps_8_days):
@@ -187,17 +187,17 @@ def test_expand_statistics_match_clustered(solver_fixture, timesteps_8_days):
     fs_expanded = fs_reduced.transform.expand()
 
     # Total effects should match between clustered and expanded
-    reduced_total = fs_reduced.statistics.total_effects['costs'].sum('contributor').item()
-    expanded_total = fs_expanded.statistics.total_effects['costs'].sum('contributor').item()
+    reduced_total = fs_reduced.statistics.total_effects.sel(effect='costs', drop=True).sum('contributor').item()
+    expanded_total = fs_expanded.statistics.total_effects.sel(effect='costs', drop=True).sum('contributor').item()
 
     assert_allclose(reduced_total, expanded_total, rtol=1e-6)
 
     # Flow hours should also match (need to sum over time with proper weighting)
     # With 2D cluster structure, sum over both cluster and time dimensions
-    reduced_fh = fs_reduced.statistics.flow_hours['Boiler(Q_th)'] * fs_reduced.cluster_weight
+    reduced_fh = fs_reduced.statistics.flow_hours.sel(flow='Boiler(Q_th)') * fs_reduced.cluster_weight
     reduced_flow_hours = reduced_fh.sum().item()  # Sum over all dimensions
     # Expanded FlowSystem has no cluster_weight (implicitly 1.0 for all timesteps)
-    expanded_flow_hours = fs_expanded.statistics.flow_hours['Boiler(Q_th)'].sum().item()
+    expanded_flow_hours = fs_expanded.statistics.flow_hours.sel(flow='Boiler(Q_th)').sum().item()
 
     assert_allclose(reduced_flow_hours, expanded_flow_hours, rtol=1e-6)
 
@@ -318,10 +318,10 @@ def test_cluster_and_expand_with_scenarios(solver_fixture, timesteps_8_days, sce
     assert len(fs_expanded.timesteps) == 192
 
     # Solution should have scenario dimension
-    flow_var = 'Boiler(Q_th)|flow_rate'
-    assert flow_var in fs_expanded.solution
-    assert 'scenario' in fs_expanded.solution[flow_var].dims
-    assert len(fs_expanded.solution[flow_var].coords['time']) == 193  # 192 + 1 extra timestep
+    assert 'flow|rate' in fs_expanded.solution
+    flow_rate = fs_expanded.solution['flow|rate'].sel(flow='Boiler(Q_th)')
+    assert 'scenario' in flow_rate.dims
+    assert len(flow_rate.coords['time']) == 193  # 192 + 1 extra timestep
 
 
 def test_expand_maps_scenarios_independently(solver_fixture, timesteps_8_days, scenarios_2):
@@ -337,9 +337,9 @@ def test_expand_maps_scenarios_independently(solver_fixture, timesteps_8_days, s
     info = fs_reduced.clustering
     timesteps_per_cluster = info.timesteps_per_cluster  # 24
 
-    reduced_flow = fs_reduced.solution['Boiler(Q_th)|flow_rate']
+    reduced_flow = fs_reduced.solution['flow|rate'].sel(flow='Boiler(Q_th)')
     fs_expanded = fs_reduced.transform.expand()
-    expanded_flow = fs_expanded.solution['Boiler(Q_th)|flow_rate']
+    expanded_flow = fs_expanded.solution['flow|rate'].sel(flow='Boiler(Q_th)')
 
     # Check mapping for each scenario using its own cluster_assignments
     for scenario in scenarios_2:
@@ -416,10 +416,10 @@ class TestStorageClusterModes:
         fs_clustered.optimize(solver_fixture)
 
         # Should have charge_state in solution
-        assert 'Battery|charge_state' in fs_clustered.solution
+        assert 'storage|charge' in fs_clustered.solution
 
         # Independent mode should NOT have SOC_boundary
-        assert 'Battery|SOC_boundary' not in fs_clustered.solution
+        assert 'storage|SOC_boundary' not in fs_clustered.solution
 
         # Verify solution is valid (no errors)
         assert fs_clustered.solution is not None
@@ -431,10 +431,10 @@ class TestStorageClusterModes:
         fs_clustered.optimize(solver_fixture)
 
         # Should have charge_state in solution
-        assert 'Battery|charge_state' in fs_clustered.solution
+        assert 'storage|charge' in fs_clustered.solution
 
         # Cyclic mode should NOT have SOC_boundary (only intercluster modes do)
-        assert 'Battery|SOC_boundary' not in fs_clustered.solution
+        assert 'storage|SOC_boundary' not in fs_clustered.solution
 
     def test_storage_cluster_mode_intercluster(self, solver_fixture, timesteps_8_days):
         """Storage with cluster_mode='intercluster' - SOC links across clusters."""
@@ -443,9 +443,9 @@ class TestStorageClusterModes:
         fs_clustered.optimize(solver_fixture)
 
         # Intercluster mode SHOULD have SOC_boundary
-        assert 'Battery|SOC_boundary' in fs_clustered.solution
+        assert 'intercluster_storage|SOC_boundary' in fs_clustered.solution
 
-        soc_boundary = fs_clustered.solution['Battery|SOC_boundary']
+        soc_boundary = fs_clustered.solution['intercluster_storage|SOC_boundary'].sel(intercluster_storage='Battery')
         assert 'cluster_boundary' in soc_boundary.dims
 
         # Number of boundaries = n_original_clusters + 1
@@ -459,9 +459,9 @@ class TestStorageClusterModes:
         fs_clustered.optimize(solver_fixture)
 
         # Intercluster_cyclic mode SHOULD have SOC_boundary
-        assert 'Battery|SOC_boundary' in fs_clustered.solution
+        assert 'intercluster_storage|SOC_boundary' in fs_clustered.solution
 
-        soc_boundary = fs_clustered.solution['Battery|SOC_boundary']
+        soc_boundary = fs_clustered.solution['intercluster_storage|SOC_boundary'].sel(intercluster_storage='Battery')
         assert 'cluster_boundary' in soc_boundary.dims
 
         # First and last SOC_boundary values should be equal (cyclic constraint)
@@ -480,8 +480,8 @@ class TestInterclusterStorageLinking:
         fs_clustered.optimize(solver_fixture)
 
         # Verify SOC_boundary exists in solution
-        assert 'Battery|SOC_boundary' in fs_clustered.solution
-        soc_boundary = fs_clustered.solution['Battery|SOC_boundary']
+        assert 'intercluster_storage|SOC_boundary' in fs_clustered.solution
+        soc_boundary = fs_clustered.solution['intercluster_storage|SOC_boundary'].sel(intercluster_storage='Battery')
         assert 'cluster_boundary' in soc_boundary.dims
 
     def test_expand_combines_soc_boundary_with_charge_state(self, solver_fixture, timesteps_8_days):
@@ -495,7 +495,7 @@ class TestInterclusterStorageLinking:
 
         # After expansion: charge_state should be non-negative (absolute SOC)
         fs_expanded = fs_clustered.transform.expand()
-        cs_after = fs_expanded.solution['Battery|charge_state']
+        cs_after = fs_expanded.solution['intercluster_storage|charge_state'].sel(intercluster_storage='Battery')
 
         # All values should be >= 0 (with small tolerance for numerical issues)
         assert (cs_after >= -0.01).all(), f'Negative charge_state found: min={float(cs_after.min())}'
@@ -513,7 +513,7 @@ class TestInterclusterStorageLinking:
 
         # Expand solution
         fs_expanded = fs_clustered.transform.expand()
-        cs_expanded = fs_expanded.solution['Battery|charge_state']
+        cs_expanded = fs_expanded.solution['intercluster_storage|charge_state'].sel(intercluster_storage='Battery')
 
         # With self-discharge, SOC should decay over time within each period
         # The expanded solution should still be non-negative
@@ -531,14 +531,14 @@ class TestInterclusterStorageLinking:
         fs_clustered.optimize(solver_fixture)
 
         # Get values needed for manual calculation
-        soc_boundary = fs_clustered.solution['Battery|SOC_boundary']
-        cs_clustered = fs_clustered.solution['Battery|charge_state']
+        soc_boundary = fs_clustered.solution['intercluster_storage|SOC_boundary'].sel(intercluster_storage='Battery')
+        cs_clustered = fs_clustered.solution['intercluster_storage|charge_state'].sel(intercluster_storage='Battery')
         clustering = fs_clustered.clustering
         cluster_assignments = clustering.cluster_assignments.values
         timesteps_per_cluster = clustering.timesteps_per_cluster
 
         fs_expanded = fs_clustered.transform.expand()
-        cs_expanded = fs_expanded.solution['Battery|charge_state']
+        cs_expanded = fs_expanded.solution['intercluster_storage|charge_state'].sel(intercluster_storage='Battery')
 
         # Manual verification for first few timesteps of first period
         p = 0  # First period
@@ -669,9 +669,9 @@ class TestMultiPeriodClustering:
 
         # Should have solution with period dimension
         assert fs_clustered.solution is not None
-        flow_var = 'Boiler(Q_th)|flow_rate'
-        assert flow_var in fs_clustered.solution
-        assert 'period' in fs_clustered.solution[flow_var].dims
+        assert 'flow|rate' in fs_clustered.solution
+        flow_rate = fs_clustered.solution['flow|rate'].sel(flow='Boiler(Q_th)')
+        assert 'period' in flow_rate.dims
 
     def test_expand_with_periods(self, solver_fixture, timesteps_8_days, periods_2):
         """Verify expansion handles period dimension correctly."""
@@ -688,9 +688,9 @@ class TestMultiPeriodClustering:
         assert len(fs_expanded.periods) == 2
 
         # Solution should have period dimension
-        flow_var = 'Boiler(Q_th)|flow_rate'
-        assert 'period' in fs_expanded.solution[flow_var].dims
-        assert len(fs_expanded.solution[flow_var].coords['time']) == 193  # 192 + 1 extra timestep
+        flow_rate = fs_expanded.solution['flow|rate'].sel(flow='Boiler(Q_th)')
+        assert 'period' in flow_rate.dims
+        assert len(flow_rate.coords['time']) == 193  # 192 + 1 extra timestep
 
     def test_cluster_with_periods_and_scenarios(self, solver_fixture, timesteps_8_days, periods_2, scenarios_2):
         """Clustering should work with both periods and scenarios."""
@@ -707,16 +707,17 @@ class TestMultiPeriodClustering:
         fs_clustered.optimize(solver_fixture)
 
         # Verify dimensions
-        flow_var = 'Boiler(Q_th)|flow_rate'
-        assert 'period' in fs_clustered.solution[flow_var].dims
-        assert 'scenario' in fs_clustered.solution[flow_var].dims
-        assert 'cluster' in fs_clustered.solution[flow_var].dims
+        flow_rate = fs_clustered.solution['flow|rate'].sel(flow='Boiler(Q_th)')
+        assert 'period' in flow_rate.dims
+        assert 'scenario' in flow_rate.dims
+        assert 'cluster' in flow_rate.dims
 
         # Expand and verify
         fs_expanded = fs_clustered.transform.expand()
-        assert 'period' in fs_expanded.solution[flow_var].dims
-        assert 'scenario' in fs_expanded.solution[flow_var].dims
-        assert len(fs_expanded.solution[flow_var].coords['time']) == 193  # 192 + 1 extra timestep
+        flow_rate_exp = fs_expanded.solution['flow|rate'].sel(flow='Boiler(Q_th)')
+        assert 'period' in flow_rate_exp.dims
+        assert 'scenario' in flow_rate_exp.dims
+        assert len(flow_rate_exp.coords['time']) == 193  # 192 + 1 extra timestep
 
 
 # ==================== Peak Selection Tests ====================
@@ -816,7 +817,7 @@ class TestPeakSelection:
 
         # The peak day (day 7 with demand=50) should be captured
         # Check that the clustered solution can handle the peak demand
-        flow_rates = fs_with_peaks.solution['Boiler(Q_th)|flow_rate']
+        flow_rates = fs_with_peaks.solution['flow|rate'].sel(flow='Boiler(Q_th)')
 
         # At least one cluster should have flow rate >= 50 (the peak)
         max_flow = float(flow_rates.max())
@@ -1043,7 +1044,7 @@ class TestDataVarsParameter:
         # Should optimize successfully
         fs_reduced.optimize(solver_fixture)
         assert fs_reduced.solution is not None
-        assert 'Boiler(Q_th)|flow_rate' in fs_reduced.solution
+        assert 'flow|rate' in fs_reduced.solution
 
     def test_data_vars_with_multiple_variables(self, timesteps_8_days):
         """Test clustering with multiple selected variables."""
@@ -1152,10 +1153,10 @@ class TestSegmentation:
         assert 'objective' in fs_segmented.solution
 
         # Flow rates should have (cluster, time) structure with 6 time points
-        flow_var = 'Boiler(Q_th)|flow_rate'
-        assert flow_var in fs_segmented.solution
+        assert 'flow|rate' in fs_segmented.solution
+        flow_rate = fs_segmented.solution['flow|rate'].sel(flow='Boiler(Q_th)')
         # time dimension has n_segments + 1 (for previous_flow_rate pattern)
-        assert fs_segmented.solution[flow_var].sizes['time'] == 7  # 6 + 1
+        assert flow_rate.sizes['time'] == 7  # 6 + 1
 
     def test_segmented_expand_restores_original_timesteps(self, solver_fixture, timesteps_8_days):
         """Test that expand() restores the original timestep count for segmented systems."""
@@ -1218,8 +1219,7 @@ class TestSegmentation:
         fs_expanded = fs_segmented.transform.expand()
 
         # Check flow rates dimension
-        flow_var = 'Boiler(Q_th)|flow_rate'
-        flow_rates = fs_expanded.solution[flow_var]
+        flow_rates = fs_expanded.solution['flow|rate'].sel(flow='Boiler(Q_th)')
 
         # Should have original time dimension
         assert flow_rates.sizes['time'] == 193  # 192 + 1 (previous_flow_rate)
@@ -1309,8 +1309,8 @@ class TestSegmentation:
         fs_expanded = fs_clustered.transform.expand()
 
         # Validate: total_effects must match solution objective
-        computed = fs_expanded.statistics.total_effects['Cost'].sum('contributor')
-        expected = fs_expanded.solution['Cost']
+        computed = fs_expanded.statistics.total_effects.sel(effect='Cost', drop=True).sum('contributor')
+        expected = fs_expanded.solution['effect|total'].sel(effect='Cost')
         assert np.allclose(computed.values, expected.values, rtol=1e-5), (
             f'total_effects mismatch: computed={float(computed):.2f}, expected={float(expected):.2f}'
         )
@@ -1335,7 +1335,7 @@ class TestSegmentationWithStorage:
 
         # Should have solution with charge_state
         assert fs_segmented.solution is not None
-        assert 'Battery|charge_state' in fs_segmented.solution
+        assert 'storage|charge' in fs_segmented.solution
 
     def test_segmented_storage_expand(self, solver_fixture, timesteps_8_days):
         """Test that segmented storage systems can be expanded."""
@@ -1353,7 +1353,7 @@ class TestSegmentationWithStorage:
         fs_expanded = fs_segmented.transform.expand()
 
         # Charge state should be expanded to original timesteps
-        charge_state = fs_expanded.solution['Battery|charge_state']
+        charge_state = fs_expanded.solution['storage|charge'].sel(storage='Battery')
         # charge_state has time dimension = n_original_timesteps + 1
         assert charge_state.sizes['time'] == 193
 
@@ -1403,8 +1403,8 @@ class TestSegmentationWithPeriods:
         assert len(fs_expanded.periods) == 2
 
         # Solution should have period dimension
-        flow_var = 'Boiler(Q_th)|flow_rate'
-        assert 'period' in fs_expanded.solution[flow_var].dims
+        flow_rate = fs_expanded.solution['flow|rate'].sel(flow='Boiler(Q_th)')
+        assert 'period' in flow_rate.dims
 
     def test_segmented_different_clustering_per_period(self, solver_fixture, timesteps_8_days, periods_2):
         """Test that different periods can have different cluster assignments."""
@@ -1430,9 +1430,9 @@ class TestSegmentationWithPeriods:
         fs_expanded = fs_segmented.transform.expand()
 
         # Expanded solution should preserve period dimension
-        flow_var = 'Boiler(Q_th)|flow_rate'
-        assert 'period' in fs_expanded.solution[flow_var].dims
-        assert fs_expanded.solution[flow_var].sizes['period'] == 2
+        flow_rate = fs_expanded.solution['flow|rate'].sel(flow='Boiler(Q_th)')
+        assert 'period' in flow_rate.dims
+        assert flow_rate.sizes['period'] == 2
 
     def test_segmented_expand_maps_correctly_per_period(self, solver_fixture, timesteps_8_days, periods_2):
         """Test that expand maps values correctly for each period independently."""
@@ -1457,8 +1457,7 @@ class TestSegmentationWithPeriods:
 
         # Expand and verify each period has correct number of timesteps
         fs_expanded = fs_segmented.transform.expand()
-        flow_var = 'Boiler(Q_th)|flow_rate'
-        flow_rates = fs_expanded.solution[flow_var]
+        flow_rates = fs_expanded.solution['flow|rate'].sel(flow='Boiler(Q_th)')
 
         # Each period should have the original time dimension
         # time = 193 (192 + 1 for previous_flow_rate pattern)

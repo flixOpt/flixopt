@@ -52,9 +52,56 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
-## [6.0.3] - Upcoming
+## [7.0.0] - Unreleased
 
-**Summary**: Bugfix release fixing `cluster_weight` loss during NetCDF roundtrip for manually constructed clustered FlowSystems.
+**Summary**: Performance release with **up to 67x faster model building** for large systems through batched/vectorized operations.
+
+### 🚀 Performance
+
+#### Batched Model Building (#588)
+
+Complete rewrite of the model building pipeline using batched operations instead of per-element loops:
+
+| System Size | Build Speedup | Write LP Speedup |
+|-------------|---------------|------------------|
+| XL (2000h, 300 converters) | **67x** (113s → 1.7s) | **5x** (45s → 9s) |
+| Complex (72h, piecewise) | **2.6x** (1s → 383ms) | **4x** (417ms → 100ms) |
+
+**Architecture Changes**:
+
+- **Type-level batched models**: New `FlowsModel`, `StoragesModel`, `BusesModel` classes process all elements of a type in single vectorized operations
+- **Pre-computed element data**: All `*Data` classes (`FlowsData`, `StoragesData`, `EffectsData`, `BusesData`, `ComponentsData`, `ConvertersData`, `TransmissionsData`) cache element parameters as xarray DataArrays with element dimensions
+- **Mask-based variables**: Use linopy's `mask=` parameter for heterogeneous elements (e.g., only some flows have status variables)
+- **Fast NumPy helpers**: `fast_notnull()` / `fast_isnull()` are ~55x faster than xarray equivalents
+
+**Model Size Reduction** (fewer, larger variables/constraints):
+
+| System | Variables (old → new) | Constraints (old → new) |
+|--------|----------------------|------------------------|
+| XL (2000h, 300 conv) | 4,917 → 21 | 5,715 → 30 |
+| Medium (720h) | 370 → 21 | 428 → 30 |
+
+### 🐛 Fixed
+
+- **Status duration constraints**: Fixed `min_downtime` and `min_uptime` constraints not being enforced in batched mode due to mask broadcasting issues
+- **Investment effects**: Fixed investment-related effects (`effects_of_investment`, `effects_of_retirement`, `effects_per_size`) not being registered when using batched operations
+
+---
+
+## [6.1.0] - Upcoming
+
+**Summary**: Adds solver log capture through the Python logging system, exposes `progress` and `log_fn` parameters on solve/optimize, and fixes `cluster_weight` loss during NetCDF roundtrip.
+
+### ✨ Added
+
+- **Solver log capture**: New `CONFIG.Solving.capture_solver_log` option routes solver output (HiGHS, Gurobi, etc.) through the `flixopt.solver` Python logger at INFO level. This allows capturing solver output in any Python log handler (console, file, or both) and filtering it independently from flixopt application logs. Enabled automatically by `CONFIG.debug()`, `CONFIG.exploring()`, `CONFIG.production()`, and `CONFIG.notebook()` presets. ([#606](https://github.com/flixOpt/flixopt/pull/606))
+- **`progress` parameter**: `solve()`, `optimize()`, and `rolling_horizon()` now accept a `progress` parameter (default `True`) to control the tqdm progress bar independently of CONFIG settings.
+- **`log_fn` parameter**: `solve()` now accepts a `log_fn` parameter to persist the solver log to a file.
+
+### ♻️ Changed
+
+- **Presets**: `CONFIG.debug()` and `CONFIG.exploring()` now set `log_to_console=False` (solver output is routed through the Python logger instead of native console output).
+- **`CONFIG.Solving.log_to_console`** now exclusively controls the solver's native console output. It no longer affects the tqdm progress bar (use the `progress` parameter instead).
 
 ### 🐛 Fixed
 

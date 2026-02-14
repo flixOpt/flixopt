@@ -142,19 +142,17 @@ class TestReset:
         simple_flow_system.reset()
         assert simple_flow_system.model is None
 
-    def test_reset_clears_element_submodels(self, simple_flow_system, highs_solver):
-        """Reset should clear element submodels."""
+    def test_reset_clears_element_variable_names(self, simple_flow_system, highs_solver):
+        """Reset should clear element variable names."""
         simple_flow_system.optimize(highs_solver)
 
-        # Check that elements have submodels after optimization
+        # Check that elements have variable names after optimization
         boiler = simple_flow_system.components['Boiler']
-        assert boiler.submodel is not None
         assert len(boiler._variable_names) > 0
 
         simple_flow_system.reset()
 
-        # Check that submodels are cleared
-        assert boiler.submodel is None
+        # Check that variable names are cleared
         assert len(boiler._variable_names) == 0
 
     def test_reset_returns_self(self, simple_flow_system, highs_solver):
@@ -166,14 +164,14 @@ class TestReset:
     def test_reset_allows_reoptimization(self, simple_flow_system, highs_solver):
         """After reset, FlowSystem can be optimized again."""
         simple_flow_system.optimize(highs_solver)
-        original_cost = simple_flow_system.solution['costs'].item()
+        original_cost = simple_flow_system.solution['effect|total'].sel(effect='costs').item()
 
         simple_flow_system.reset()
         simple_flow_system.optimize(highs_solver)
 
         assert simple_flow_system.solution is not None
         # Cost should be the same since system structure didn't change
-        assert simple_flow_system.solution['costs'].item() == pytest.approx(original_cost)
+        assert simple_flow_system.solution['effect|total'].sel(effect='costs').item() == pytest.approx(original_cost)
 
 
 class TestCopy:
@@ -229,7 +227,7 @@ class TestCopy:
 
     def test_copy_can_be_optimized_independently(self, optimized_flow_system):
         """Copy can be optimized independently of original."""
-        original_cost = optimized_flow_system.solution['costs'].item()
+        original_cost = optimized_flow_system.solution['effect|total'].sel(effect='costs').item()
 
         copy_fs = optimized_flow_system.copy()
         solver = fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=300)
@@ -240,7 +238,7 @@ class TestCopy:
         assert copy_fs.solution is not None
 
         # Costs should be equal (same system)
-        assert copy_fs.solution['costs'].item() == pytest.approx(original_cost)
+        assert copy_fs.solution['effect|total'].sel(effect='costs').item() == pytest.approx(original_cost)
 
     def test_python_copy_uses_copy_method(self, optimized_flow_system):
         """copy.copy() should use the custom copy method."""
@@ -329,7 +327,7 @@ class TestInvalidate:
         """Test the workflow: optimize -> reset -> modify -> invalidate -> re-optimize."""
         # First optimization
         simple_flow_system.optimize(highs_solver)
-        original_cost = simple_flow_system.solution['costs'].item()
+        original_cost = simple_flow_system.solution['effect|total'].sel(effect='costs').item()
 
         # Reset to unlock
         simple_flow_system.reset()
@@ -345,7 +343,7 @@ class TestInvalidate:
 
         # Re-optimize
         simple_flow_system.optimize(highs_solver)
-        new_cost = simple_flow_system.solution['costs'].item()
+        new_cost = simple_flow_system.solution['effect|total'].sel(effect='costs').item()
 
         # Cost should have increased due to higher gas price
         assert new_cost > original_cost
@@ -366,7 +364,7 @@ class TestInvalidate:
 
         # Now optimize - the doubled values should take effect
         simple_flow_system.optimize(highs_solver)
-        cost_with_doubled = simple_flow_system.solution['costs'].item()
+        cost_with_doubled = simple_flow_system.solution['effect|total'].sel(effect='costs').item()
 
         # Reset and use original values
         simple_flow_system.reset()
@@ -374,7 +372,7 @@ class TestInvalidate:
             effect: value / 2 for effect, value in gas_tariff.outputs[0].effects_per_flow_hour.items()
         }
         simple_flow_system.optimize(highs_solver)
-        cost_with_original = simple_flow_system.solution['costs'].item()
+        cost_with_original = simple_flow_system.solution['effect|total'].sel(effect='costs').item()
 
         # The doubled costs should result in higher total cost
         assert cost_with_doubled > cost_with_original
@@ -383,7 +381,7 @@ class TestInvalidate:
         """Reset already invalidates, so modifications after reset take effect."""
         # First optimization
         simple_flow_system.optimize(highs_solver)
-        original_cost = simple_flow_system.solution['costs'].item()
+        original_cost = simple_flow_system.solution['effect|total'].sel(effect='costs').item()
 
         # Reset - this already calls _invalidate_model()
         simple_flow_system.reset()
@@ -396,7 +394,7 @@ class TestInvalidate:
 
         # Re-optimize - changes take effect because reset already invalidated
         simple_flow_system.optimize(highs_solver)
-        new_cost = simple_flow_system.solution['costs'].item()
+        new_cost = simple_flow_system.solution['effect|total'].sel(effect='costs').item()
 
         # Cost should have increased
         assert new_cost > original_cost

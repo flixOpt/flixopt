@@ -6,14 +6,8 @@ import flixopt.elements
 
 from ...conftest import (
     assert_almost_equal_numeric,
-    assert_conequal,
-    assert_dims_compatible,
-    assert_sets_equal,
-    assert_var_equal,
     create_linopy_model,
 )
-
-pytestmark = pytest.mark.skip(reason='Superseded: model-building tests implicitly covered by tests/test_math/')
 
 
 class TestComponentModel:
@@ -43,36 +37,20 @@ class TestComponentModel:
         ]
         comp = flixopt.elements.Component('TestComponent', inputs=inputs, outputs=outputs)
         flow_system.add_elements(comp)
-        _ = create_linopy_model(flow_system)
+        model = create_linopy_model(flow_system)
 
-        assert_sets_equal(
-            set(comp.submodel.variables),
-            {
-                'TestComponent(In1)|flow_rate',
-                'TestComponent(In1)|total_flow_hours',
-                'TestComponent(In2)|flow_rate',
-                'TestComponent(In2)|total_flow_hours',
-                'TestComponent(Out1)|flow_rate',
-                'TestComponent(Out1)|total_flow_hours',
-                'TestComponent(Out2)|flow_rate',
-                'TestComponent(Out2)|total_flow_hours',
-            },
-            msg='Incorrect variables',
-        )
+        # Check that flow rate variables exist with new naming
+        flow_rate = model.variables['flow|rate']
+        assert 'TestComponent(In1)' in flow_rate.coords['flow'].values
+        assert 'TestComponent(In2)' in flow_rate.coords['flow'].values
+        assert 'TestComponent(Out1)' in flow_rate.coords['flow'].values
+        assert 'TestComponent(Out2)' in flow_rate.coords['flow'].values
 
-        assert_sets_equal(
-            set(comp.submodel.constraints),
-            {
-                'TestComponent(In1)|total_flow_hours',
-                'TestComponent(In2)|total_flow_hours',
-                'TestComponent(Out1)|total_flow_hours',
-                'TestComponent(Out2)|total_flow_hours',
-            },
-            msg='Incorrect constraints',
-        )
+        # Check bus balance constraints exist
+        assert 'bus|balance' in model.constraints
 
     def test_on_with_multiple_flows(self, basic_flow_system_linopy_coords, coords_config):
-        """Test that flow model constraints are correctly generated."""
+        """Test that component with status and multiple flows is correctly generated."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         ub_out2 = np.linspace(1, 1.5, 10).round(2)
@@ -89,96 +67,39 @@ class TestComponentModel:
         flow_system.add_elements(comp)
         model = create_linopy_model(flow_system)
 
-        assert_sets_equal(
-            set(comp.submodel.variables),
-            {
-                'TestComponent(In1)|flow_rate',
-                'TestComponent(In1)|total_flow_hours',
-                'TestComponent(In1)|status',
-                'TestComponent(In1)|active_hours',
-                'TestComponent(Out1)|flow_rate',
-                'TestComponent(Out1)|total_flow_hours',
-                'TestComponent(Out1)|status',
-                'TestComponent(Out1)|active_hours',
-                'TestComponent(Out2)|flow_rate',
-                'TestComponent(Out2)|total_flow_hours',
-                'TestComponent(Out2)|status',
-                'TestComponent(Out2)|active_hours',
-                'TestComponent|status',
-                'TestComponent|active_hours',
-            },
-            msg='Incorrect variables',
-        )
+        # Check that flow rate variables exist
+        flow_rate = model.variables['flow|rate']
+        assert 'TestComponent(In1)' in flow_rate.coords['flow'].values
+        assert 'TestComponent(Out1)' in flow_rate.coords['flow'].values
+        assert 'TestComponent(Out2)' in flow_rate.coords['flow'].values
 
-        assert_sets_equal(
-            set(comp.submodel.constraints),
-            {
-                'TestComponent(In1)|total_flow_hours',
-                'TestComponent(In1)|flow_rate|lb',
-                'TestComponent(In1)|flow_rate|ub',
-                'TestComponent(In1)|active_hours',
-                'TestComponent(Out1)|total_flow_hours',
-                'TestComponent(Out1)|flow_rate|lb',
-                'TestComponent(Out1)|flow_rate|ub',
-                'TestComponent(Out1)|active_hours',
-                'TestComponent(Out2)|total_flow_hours',
-                'TestComponent(Out2)|flow_rate|lb',
-                'TestComponent(Out2)|flow_rate|ub',
-                'TestComponent(Out2)|active_hours',
-                'TestComponent|status|lb',
-                'TestComponent|status|ub',
-                'TestComponent|active_hours',
-            },
-            msg='Incorrect constraints',
-        )
+        # Check component status variables exist
+        assert 'component|status' in model.variables
+        component_status = model.variables['component|status']
+        assert 'TestComponent' in component_status.coords['component'].values
 
-        upper_bound_flow_rate = outputs[1].relative_maximum
+        # Check flow status variables exist
+        assert 'flow|status' in model.variables
+        flow_status = model.variables['flow|status']
+        assert 'TestComponent(In1)' in flow_status.coords['flow'].values
+        assert 'TestComponent(Out1)' in flow_status.coords['flow'].values
+        assert 'TestComponent(Out2)' in flow_status.coords['flow'].values
 
-        assert_dims_compatible(upper_bound_flow_rate, tuple(model.get_coords()))
+        # Check active_hours variables exist
+        assert 'component|active_hours' in model.variables
+        active_hours = model.variables['component|active_hours']
+        assert 'TestComponent' in active_hours.coords['component'].values
 
-        assert_var_equal(
-            model['TestComponent(Out2)|flow_rate'],
-            model.add_variables(lower=0, upper=300 * upper_bound_flow_rate, coords=model.get_coords()),
-        )
-        assert_var_equal(model['TestComponent|status'], model.add_variables(binary=True, coords=model.get_coords()))
-        assert_var_equal(
-            model['TestComponent(Out2)|status'], model.add_variables(binary=True, coords=model.get_coords())
-        )
+        # Check constraints for component status
+        assert 'component|status|lb' in model.constraints
+        assert 'component|status|ub' in model.constraints
 
-        assert_conequal(
-            model.constraints['TestComponent(Out2)|flow_rate|lb'],
-            model.variables['TestComponent(Out2)|flow_rate']
-            >= model.variables['TestComponent(Out2)|status'] * 0.3 * 300,
-        )
-        assert_conequal(
-            model.constraints['TestComponent(Out2)|flow_rate|ub'],
-            model.variables['TestComponent(Out2)|flow_rate']
-            <= model.variables['TestComponent(Out2)|status'] * 300 * upper_bound_flow_rate,
-        )
-
-        assert_conequal(
-            model.constraints['TestComponent|status|lb'],
-            model.variables['TestComponent|status']
-            >= (
-                model.variables['TestComponent(In1)|status']
-                + model.variables['TestComponent(Out1)|status']
-                + model.variables['TestComponent(Out2)|status']
-            )
-            / (3 + 1e-5),
-        )
-        assert_conequal(
-            model.constraints['TestComponent|status|ub'],
-            model.variables['TestComponent|status']
-            <= (
-                model.variables['TestComponent(In1)|status']
-                + model.variables['TestComponent(Out1)|status']
-                + model.variables['TestComponent(Out2)|status']
-            )
-            + 1e-5,
-        )
+        # Check flow rate bounds
+        out2_rate = flow_rate.sel(flow='TestComponent(Out2)')
+        assert (out2_rate.lower.values >= 0).all()
 
     def test_on_with_single_flow(self, basic_flow_system_linopy_coords, coords_config):
-        """Test that flow model constraints are correctly generated."""
+        """Test that component with status and single flow is correctly generated."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         inputs = [
             fx.Flow('In1', 'Fernwärme', relative_minimum=np.ones(10) * 0.1, size=100),
@@ -190,56 +111,27 @@ class TestComponentModel:
         flow_system.add_elements(comp)
         model = create_linopy_model(flow_system)
 
-        assert_sets_equal(
-            set(comp.submodel.variables),
-            {
-                'TestComponent(In1)|flow_rate',
-                'TestComponent(In1)|total_flow_hours',
-                'TestComponent(In1)|status',
-                'TestComponent(In1)|active_hours',
-                'TestComponent|status',
-                'TestComponent|active_hours',
-            },
-            msg='Incorrect variables',
-        )
+        # Check that flow rate variables exist
+        flow_rate = model.variables['flow|rate']
+        assert 'TestComponent(In1)' in flow_rate.coords['flow'].values
 
-        assert_sets_equal(
-            set(comp.submodel.constraints),
-            {
-                'TestComponent(In1)|total_flow_hours',
-                'TestComponent(In1)|flow_rate|lb',
-                'TestComponent(In1)|flow_rate|ub',
-                'TestComponent(In1)|active_hours',
-                'TestComponent|status',
-                'TestComponent|active_hours',
-            },
-            msg='Incorrect constraints',
-        )
+        # Check status variables exist (component and flow)
+        assert 'component|status' in model.variables
+        assert 'flow|status' in model.variables
 
-        assert_var_equal(
-            model['TestComponent(In1)|flow_rate'], model.add_variables(lower=0, upper=100, coords=model.get_coords())
-        )
-        assert_var_equal(model['TestComponent|status'], model.add_variables(binary=True, coords=model.get_coords()))
-        assert_var_equal(
-            model['TestComponent(In1)|status'], model.add_variables(binary=True, coords=model.get_coords())
-        )
+        # Check active_hours variables exist
+        assert 'component|active_hours' in model.variables
 
-        assert_conequal(
-            model.constraints['TestComponent(In1)|flow_rate|lb'],
-            model.variables['TestComponent(In1)|flow_rate'] >= model.variables['TestComponent(In1)|status'] * 0.1 * 100,
-        )
-        assert_conequal(
-            model.constraints['TestComponent(In1)|flow_rate|ub'],
-            model.variables['TestComponent(In1)|flow_rate'] <= model.variables['TestComponent(In1)|status'] * 100,
-        )
+        # Check component status constraint - for single flow should be equality
+        assert 'component|status|eq' in model.constraints
 
-        assert_conequal(
-            model.constraints['TestComponent|status'],
-            model.variables['TestComponent|status'] == model.variables['TestComponent(In1)|status'],
-        )
+        # Check flow rate bounds
+        in1_rate = flow_rate.sel(flow='TestComponent(In1)')
+        assert (in1_rate.lower.values >= 0).all()
+        assert (in1_rate.upper.values <= 100).all()
 
     def test_previous_states_with_multiple_flows(self, basic_flow_system_linopy_coords, coords_config):
-        """Test that flow model constraints are correctly generated."""
+        """Test that component with previous states is correctly generated."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         ub_out2 = np.linspace(1, 1.5, 10).round(2)
@@ -269,93 +161,19 @@ class TestComponentModel:
         flow_system.add_elements(comp)
         model = create_linopy_model(flow_system)
 
-        assert_sets_equal(
-            set(comp.submodel.variables),
-            {
-                'TestComponent(In1)|flow_rate',
-                'TestComponent(In1)|total_flow_hours',
-                'TestComponent(In1)|status',
-                'TestComponent(In1)|active_hours',
-                'TestComponent(Out1)|flow_rate',
-                'TestComponent(Out1)|total_flow_hours',
-                'TestComponent(Out1)|status',
-                'TestComponent(Out1)|active_hours',
-                'TestComponent(Out2)|flow_rate',
-                'TestComponent(Out2)|total_flow_hours',
-                'TestComponent(Out2)|status',
-                'TestComponent(Out2)|active_hours',
-                'TestComponent|status',
-                'TestComponent|active_hours',
-            },
-            msg='Incorrect variables',
-        )
+        # Check that flow rate variables exist
+        flow_rate = model.variables['flow|rate']
+        assert 'TestComponent(In1)' in flow_rate.coords['flow'].values
+        assert 'TestComponent(Out1)' in flow_rate.coords['flow'].values
+        assert 'TestComponent(Out2)' in flow_rate.coords['flow'].values
 
-        assert_sets_equal(
-            set(comp.submodel.constraints),
-            {
-                'TestComponent(In1)|total_flow_hours',
-                'TestComponent(In1)|flow_rate|lb',
-                'TestComponent(In1)|flow_rate|ub',
-                'TestComponent(In1)|active_hours',
-                'TestComponent(Out1)|total_flow_hours',
-                'TestComponent(Out1)|flow_rate|lb',
-                'TestComponent(Out1)|flow_rate|ub',
-                'TestComponent(Out1)|active_hours',
-                'TestComponent(Out2)|total_flow_hours',
-                'TestComponent(Out2)|flow_rate|lb',
-                'TestComponent(Out2)|flow_rate|ub',
-                'TestComponent(Out2)|active_hours',
-                'TestComponent|status|lb',
-                'TestComponent|status|ub',
-                'TestComponent|active_hours',
-            },
-            msg='Incorrect constraints',
-        )
+        # Check status variables exist
+        assert 'component|status' in model.variables
+        assert 'flow|status' in model.variables
 
-        upper_bound_flow_rate = outputs[1].relative_maximum
-
-        assert_dims_compatible(upper_bound_flow_rate, tuple(model.get_coords()))
-
-        assert_var_equal(
-            model['TestComponent(Out2)|flow_rate'],
-            model.add_variables(lower=0, upper=300 * upper_bound_flow_rate, coords=model.get_coords()),
-        )
-        assert_var_equal(model['TestComponent|status'], model.add_variables(binary=True, coords=model.get_coords()))
-        assert_var_equal(
-            model['TestComponent(Out2)|status'], model.add_variables(binary=True, coords=model.get_coords())
-        )
-
-        assert_conequal(
-            model.constraints['TestComponent(Out2)|flow_rate|lb'],
-            model.variables['TestComponent(Out2)|flow_rate']
-            >= model.variables['TestComponent(Out2)|status'] * 0.3 * 300,
-        )
-        assert_conequal(
-            model.constraints['TestComponent(Out2)|flow_rate|ub'],
-            model.variables['TestComponent(Out2)|flow_rate']
-            <= model.variables['TestComponent(Out2)|status'] * 300 * upper_bound_flow_rate,
-        )
-
-        assert_conequal(
-            model.constraints['TestComponent|status|lb'],
-            model.variables['TestComponent|status']
-            >= (
-                model.variables['TestComponent(In1)|status']
-                + model.variables['TestComponent(Out1)|status']
-                + model.variables['TestComponent(Out2)|status']
-            )
-            / (3 + 1e-5),
-        )
-        assert_conequal(
-            model.constraints['TestComponent|status|ub'],
-            model.variables['TestComponent|status']
-            <= (
-                model.variables['TestComponent(In1)|status']
-                + model.variables['TestComponent(Out1)|status']
-                + model.variables['TestComponent(Out2)|status']
-            )
-            + 1e-5,
-        )
+        # Check component status constraints
+        assert 'component|status|lb' in model.constraints
+        assert 'component|status|ub' in model.constraints
 
     @pytest.mark.parametrize(
         'in1_previous_flow_rate, out1_previous_flow_rate, out2_previous_flow_rate, previous_on_hours',
@@ -376,7 +194,7 @@ class TestComponentModel:
         out2_previous_flow_rate,
         previous_on_hours,
     ):
-        """Test that flow model constraints are correctly generated with different previous flow rates and constraint factors."""
+        """Test that component with different previous states configurations is correctly generated."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         ub_out2 = np.linspace(1, 1.5, 10).round(2)
@@ -410,20 +228,27 @@ class TestComponentModel:
             status_parameters=fx.StatusParameters(min_uptime=3),
         )
         flow_system.add_elements(comp)
-        create_linopy_model(flow_system)
+        model = create_linopy_model(flow_system)
+
+        # Check that flow rate variables exist
+        flow_rate = model.variables['flow|rate']
+        assert 'TestComponent(In1)' in flow_rate.coords['flow'].values
+        assert 'TestComponent(Out1)' in flow_rate.coords['flow'].values
+        assert 'TestComponent(Out2)' in flow_rate.coords['flow'].values
+
+        # Check status variables exist
+        assert 'component|status' in model.variables
+        assert 'flow|status' in model.variables
+
+        # Check uptime variables exist when min_uptime is set
+        assert 'component|uptime' in model.variables
 
         # Initial constraint only exists when at least one flow has previous_flow_rate set
         has_previous = any(
             x is not None for x in [in1_previous_flow_rate, out1_previous_flow_rate, out2_previous_flow_rate]
         )
         if has_previous:
-            assert_conequal(
-                comp.submodel.constraints['TestComponent|uptime|initial'],
-                comp.submodel.variables['TestComponent|uptime'].isel(time=0)
-                == comp.submodel.variables['TestComponent|status'].isel(time=0) * (previous_on_hours + 1),
-            )
-        else:
-            assert 'TestComponent|uptime|initial' not in comp.submodel.constraints
+            assert 'component|uptime|initial' in model.constraints
 
 
 class TestTransmissionModel:

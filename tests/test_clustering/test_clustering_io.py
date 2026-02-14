@@ -452,22 +452,22 @@ class TestInterclusterStorageIO:
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
         fs_clustered.optimize(solver_fixture)
 
-        # Solution should have SOC_boundary variable
-        assert 'storage|SOC_boundary' in fs_clustered.solution
+        # Solution should have SOC_boundary variable (batched under intercluster_storage type)
+        assert 'intercluster_storage|SOC_boundary' in fs_clustered.solution
 
         # Roundtrip
         ds = fs_clustered.to_dataset(include_solution=True)
         fs_restored = fx.FlowSystem.from_dataset(ds)
 
         # SOC_boundary should be preserved
-        assert 'storage|SOC_boundary' in fs_restored.solution
+        assert 'intercluster_storage|SOC_boundary' in fs_restored.solution
 
         # expand should work
         fs_expanded = fs_restored.transform.expand()
 
         # After expansion, SOC_boundary is combined into charge_state
-        assert 'storage|SOC_boundary' not in fs_expanded.solution
-        assert 'storage|charge_state' in fs_expanded.solution
+        assert 'intercluster_storage|SOC_boundary' not in fs_expanded.solution
+        assert 'intercluster_storage|charge_state' in fs_expanded.solution
 
     def test_intercluster_storage_netcdf_roundtrip(self, system_with_intercluster_storage, tmp_path, solver_fixture):
         """Intercluster storage solution should roundtrip through NetCDF."""
@@ -484,7 +484,7 @@ class TestInterclusterStorageIO:
 
         # expand should produce valid charge_state
         fs_expanded = fs_restored.transform.expand()
-        charge_state = fs_expanded.solution['storage|charge_state']
+        charge_state = fs_expanded.solution['intercluster_storage|charge_state']
 
         # Charge state should be non-negative (after combining with SOC_boundary)
         assert (charge_state >= -1e-6).all()
@@ -717,4 +717,4 @@ class TestMultiDimensionalClusteringIO:
 
         # Solution should be expanded
         assert fs_expanded.solution is not None
-        assert 'source(out)|flow_rate' in fs_expanded.solution
+        assert 'source(out)' in fs_expanded.solution['flow|rate'].coords['flow'].values

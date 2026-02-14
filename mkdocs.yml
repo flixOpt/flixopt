@@ -87,6 +87,10 @@ nav:
 
   - API Reference: api-reference/
 
+  - Developer Guide:
+      - Architecture: architecture/batched_modeling.md
+      - Variable Names: variable_names.md
+
   - Contributing: contribute.md
 
 theme:

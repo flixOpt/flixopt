@@ -370,6 +370,81 @@ print(f"Variables: {len(flow_system.model.variables)}")
 print(f"Constraints: {len(flow_system.model.constraints)}")
 ```
 
+## Under the Hood
+
+This section explains how flixOpt translates your Python objects into a mathematical optimization model. Understanding this is useful for accessing variables directly, debugging, or adding custom constraints.
+
+### The Three-Layer Pipeline
+
+When you call `flow_system.optimize()`, your model passes through three layers:
+
+```mermaid
+graph LR
+    A["<b>User Layer</b><br/>Flow, Bus, Storage, ..."] -->|batch parameters| B["<b>Data Layer</b><br/>FlowsData, StoragesData, ..."]
+    B -->|create variables &<br/>constraints| C["<b>Model Layer</b><br/>FlowsModel, StoragesModel, ..."]
+```
+
+1. **User Layer** — The Python objects you create (`Flow`, `Bus`, `LinearConverter`, etc.) with their parameters.
+2. **Data Layer** — `*Data` classes (`FlowsData`, `StoragesData`, etc.) batch parameters from all elements of the same type into `xr.DataArray` arrays and validate them.
+3. **Model Layer** — `*Model` classes (`FlowsModel`, `StoragesModel`, etc.) create linopy variables and constraints from the batched data.
+
+For the full architecture reference, see the [Architecture Guide](../../architecture/batched_modeling.md).
+
+### How Variables Are Organized
+
+All variables follow a `type|variable` naming convention using a pipe delimiter:
+
+| Variable Name | Description | Dimensions |
+|--------------|-------------|------------|
+| `flow\|rate` | Flow rates for all flows | `(flow, time, ...)` |
+| `flow\|status` | On/off status (binary) | `(flow, time, ...)` |
+| `flow\|size` | Invested capacity | `(flow, period, scenario)` |
+| `storage\|charge` | Storage charge state | `(storage, time, ...)` |
+| `storage\|netto` | Net discharge rate | `(storage, time, ...)` |
+| `component\|status` | Component on/off status | `(component, time, ...)` |
+| `effect\|total` | Total effect values | `(effect, period, scenario)` |
+
+You can access these variables after building the model:
+
+```python
+flow_system.build_model()
+
+# Access the underlying linopy model
+model = flow_system.model
+
+# List all variables
+print(model.variables)
+
+# Access a specific variable by name
+rate = model.variables['flow|rate']
+```
+
+For the complete list of variable names, see the [Variable Names Reference](../../variable_names.md).
+
+### Adding Custom Constraints
+
+You can build the model without solving and add your own constraints using the [linopy](https://github.com/PyPSA/linopy) API:
+
+```python
+# Step 1: Build the model (without solving)
+flow_system.build_model()
+
+# Step 2: Access variables by their type|variable name
+model = flow_system.model
+flow_rate = model.variables['flow|rate']
+
+# Step 3: Add a custom constraint
+# Example: Force a specific flow to be at least 50 at every timestep
+boiler_rate = flow_rate.sel(flow='Boiler(Heat)')
+model.add_constraints(boiler_rate >= 50, name='custom_min_boiler')
+
+# Step 4: Solve
+flow_system.solve(fx.solvers.HighsSolver())
+```
+
+!!! tip "Finding the right variable name"
+    Use `model.variables` to list all available variables after building. Variable names always start with the element type (`flow|`, `storage|`, `component|`, `effect|`, `bus|`).
+
 ## Next Steps
 
 - **[Choosing Components](choosing-components.md)** — Decision tree for component selection

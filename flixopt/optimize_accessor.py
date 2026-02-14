@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING
 import xarray as xr
 from tqdm import tqdm
 
-from .config import CONFIG
 from .io import suppress_output
 
 if TYPE_CHECKING:
@@ -59,6 +58,7 @@ class OptimizeAccessor:
         self,
         solver: _Solver,
         before_solve: Callable[[FlowSystem], None] | None = None,
+        progress: bool = True,
         normalize_weights: bool | None = None,
     ) -> FlowSystem:
         """
@@ -73,6 +73,7 @@ class OptimizeAccessor:
             before_solve: Optional callback function that receives the FlowSystem
                 after building the model and before solving. Use this to add custom
                 constraints via `flow_system.model.add_constraints()`.
+            progress: Whether to show a tqdm progress bar during solving.
             normalize_weights: Deprecated. Scenario weights are now always normalized in FlowSystem.
 
         Returns:
@@ -122,7 +123,7 @@ class OptimizeAccessor:
         self._fs.build_model()
         if before_solve is not None:
             before_solve(self._fs)
-        self._fs.solve(solver)
+        self._fs.solve(solver, progress=progress)
         return self._fs
 
     def rolling_horizon(
@@ -132,6 +133,7 @@ class OptimizeAccessor:
         overlap: int = 0,
         nr_of_previous_values: int = 1,
         before_solve: Callable[[FlowSystem], None] | None = None,
+        progress: bool = True,
     ) -> list[FlowSystem]:
         """
         Solve the optimization using a rolling horizon approach.
@@ -159,6 +161,7 @@ class OptimizeAccessor:
             before_solve: Optional callback function that receives each segment's FlowSystem
                 after building the model and before solving. Use this to add custom
                 constraints to each segment.
+            progress: Whether to show a tqdm progress bar for segment solving.
 
         Returns:
             List of segment FlowSystems, each with their individual solution.
@@ -233,51 +236,42 @@ class OptimizeAccessor:
             desc='Solving segments',
             unit='segment',
             file=sys.stdout,
-            disable=not CONFIG.Solving.log_to_console,
+            disable=not progress,
         )
 
         try:
             for i, (start_idx, end_idx) in progress_bar:
                 progress_bar.set_description(f'Segment {i + 1}/{n_segments} (timesteps {start_idx}-{end_idx})')
 
-                # Suppress output when progress bar is shown (including logger and solver)
-                if CONFIG.Solving.log_to_console:
-                    # Temporarily raise logger level to suppress INFO messages
+                # Suppress per-segment output when progress bar is shown
+                if progress:
                     original_level = logger.level
                     logger.setLevel(logging.WARNING)
                     try:
                         with suppress_output():
-                            segment_fs = self._fs.transform.isel(time=slice(start_idx, end_idx))
-                            if i > 0 and nr_of_previous_values > 0:
-                                self._transfer_state(
-                                    source_fs=segment_flow_systems[i - 1],
-                                    target_fs=segment_fs,
-                                    horizon=horizon,
-                                    nr_of_previous_values=nr_of_previous_values,
-                                )
-                            segment_fs.build_model()
-                            if i == 0:
-                                self._check_no_investments(segment_fs)
-                            if before_solve is not None:
-                                before_solve(segment_fs)
-                            segment_fs.solve(solver)
+                            segment_fs = self._solve_segment(
+                                solver,
+                                start_idx,
+                                end_idx,
+                                i,
+                                segment_flow_systems,
+                                horizon,
+                                nr_of_previous_values,
+                                before_solve,
+                            )
                     finally:
                         logger.setLevel(original_level)
                 else:
-                    segment_fs = self._fs.transform.isel(time=slice(start_idx, end_idx))
-                    if i > 0 and nr_of_previous_values > 0:
-                        self._transfer_state(
-                            source_fs=segment_flow_systems[i - 1],
-                            target_fs=segment_fs,
-                            horizon=horizon,
-                            nr_of_previous_values=nr_of_previous_values,
-                        )
-                    segment_fs.build_model()
-                    if i == 0:
-                        self._check_no_investments(segment_fs)
-                    if before_solve is not None:
-                        before_solve(segment_fs)
-                    segment_fs.solve(solver)
+                    segment_fs = self._solve_segment(
+                        solver,
+                        start_idx,
+                        end_idx,
+                        i,
+                        segment_flow_systems,
+                        horizon,
+                        nr_of_previous_values,
+                        before_solve,
+                    )
 
                 segment_flow_systems.append(segment_fs)
 
@@ -291,6 +285,34 @@ class OptimizeAccessor:
         logger.info(f'Rolling horizon optimization completed: {n_segments} segments solved.')
 
         return segment_flow_systems
+
+    def _solve_segment(
+        self,
+        solver: _Solver,
+        start_idx: int,
+        end_idx: int,
+        i: int,
+        previous_segments: list[FlowSystem],
+        horizon: int,
+        nr_of_previous_values: int,
+        before_solve: Callable[[FlowSystem], None] | None,
+    ) -> FlowSystem:
+        """Build and solve a single rolling-horizon segment."""
+        segment_fs = self._fs.transform.isel(time=slice(start_idx, end_idx))
+        if i > 0 and nr_of_previous_values > 0:
+            self._transfer_state(
+                source_fs=previous_segments[i - 1],
+                target_fs=segment_fs,
+                horizon=horizon,
+                nr_of_previous_values=nr_of_previous_values,
+            )
+        segment_fs.build_model()
+        if i == 0:
+            self._check_no_investments(segment_fs)
+        if before_solve is not None:
+            before_solve(segment_fs)
+        segment_fs.solve(solver, progress=False)
+        return segment_fs
 
     def _calculate_segment_indices(self, total_timesteps: int, horizon: int, overlap: int) -> list[tuple[int, int]]:
         """Calculate start and end indices for each segment."""
@@ -338,18 +360,25 @@ class OptimizeAccessor:
 
     def _check_no_investments(self, segment_fs: FlowSystem) -> None:
         """Check that no InvestParameters are used (not supported in rolling horizon)."""
-        from .features import InvestmentModel
+        from .interface import InvestParameters
 
         invest_elements = []
-        for component in segment_fs.components.values():
-            for model in component.submodel.all_submodels:
-                if isinstance(model, InvestmentModel):
-                    invest_elements.append(model.label_full)
+        # Check flows for InvestParameters
+        for flow in segment_fs.flows.values():
+            if isinstance(flow.size, InvestParameters):
+                invest_elements.append(flow.label_full)
+
+        # Check storages for InvestParameters
+        from .components import Storage
+
+        for comp in segment_fs.components.values():
+            if isinstance(comp, Storage) and isinstance(comp.capacity, InvestParameters):
+                invest_elements.append(comp.label_full)
 
         if invest_elements:
             raise ValueError(
                 f'InvestParameters are not supported in rolling horizon optimization. '
-                f'Found InvestmentModels: {invest_elements}. '
+                f'Found investments: {invest_elements}. '
                 f'Use standard optimize() for problems with investments.'
             )
 
@@ -379,7 +408,6 @@ class OptimizeAccessor:
         if not segment_flow_systems:
             raise ValueError('No segments to combine.')
 
-        effect_labels = set(self._fs.effects.keys())
         combined_vars: dict[str, xr.DataArray] = {}
         first_solution = segment_flow_systems[0].solution
         first_variables = first_solution.variables
@@ -398,11 +426,10 @@ class OptimizeAccessor:
                 combined_vars[var_name] = xr.DataArray(float('nan'))
 
         # Step 2: Recompute effect totals from per-timestep values
-        for effect in effect_labels:
-            per_ts = f'{effect}(temporal)|per_timestep'
-            if per_ts in combined_vars:
-                temporal_sum = combined_vars[per_ts].sum(dim='time', skipna=True)
-                combined_vars[f'{effect}(temporal)'] = temporal_sum
-                combined_vars[effect] = temporal_sum  # Total = temporal (periodic is NaN/unsupported)
+        if 'effect|per_timestep' in combined_vars:
+            per_ts = combined_vars['effect|per_timestep']
+            temporal_sum = per_ts.sum(dim='time', skipna=True)
+            combined_vars['effect|temporal'] = temporal_sum
+            combined_vars['effect|total'] = temporal_sum  # Total = temporal (periodic is NaN/unsupported)
 
         return xr.Dataset(combined_vars)

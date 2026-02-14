@@ -20,7 +20,7 @@ Example:
 from __future__ import annotations
 
 import logging
-import re
+from functools import cached_property
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -32,7 +32,7 @@ from xarray_plotly.figures import add_secondary_y, update_traces
 from .color_processing import ColorType, hex_to_rgba, process_colors
 from .config import CONFIG
 from .plot_result import PlotResult
-from .structure import VariableCategory
+from .structure import EffectVarName, FlowVarName, StorageVarName
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
@@ -58,14 +58,14 @@ EffectsSankeySelect = dict[Literal['effect', 'component', 'contributor', 'period
 # Default slot assignments for plotting methods
 # Use None for slots that should be blocked (prevent auto-assignment)
 _SLOT_DEFAULTS: dict[str, dict[str, str | None]] = {
-    'balance': {'x': 'time', 'color': 'variable', 'pattern_shape': None},
-    'carrier_balance': {'x': 'time', 'color': 'variable', 'pattern_shape': None},
-    'flows': {'x': 'time', 'color': 'variable', 'symbol': None},
-    'charge_states': {'x': 'time', 'color': 'variable', 'symbol': None},
-    'storage': {'x': 'time', 'color': 'variable', 'pattern_shape': None},
+    'balance': {'x': 'time', 'color': 'flow', 'pattern_shape': None},
+    'carrier_balance': {'x': 'time', 'color': 'component', 'pattern_shape': None},
+    'flows': {'x': 'time', 'color': 'flow', 'symbol': None},
+    'charge_states': {'x': 'time', 'color': 'storage', 'symbol': None},
+    'storage': {'x': 'time', 'color': 'flow', 'pattern_shape': None},
     'storage_line': {'x': 'time', 'color': None, 'line_dash': None, 'symbol': None},
-    'sizes': {'x': 'variable', 'color': 'variable'},
-    'duration_curve': {'symbol': None},  # x is computed dynamically
+    'sizes': {'x': 'element', 'color': 'element'},
+    'duration_curve': {'color': 'variable', 'symbol': None},  # x is computed dynamically
     'effects': {},  # x is computed dynamically
     'heatmap': {},
 }
@@ -257,27 +257,37 @@ def _filter_by_labels(
     return result
 
 
-def _apply_selection(ds: xr.Dataset, select: SelectType | None, drop: bool = True) -> xr.Dataset:
-    """Apply xarray-style selection to dataset.
+def _apply_selection(
+    data: xr.Dataset | xr.DataArray, select: SelectType | None, drop: bool = True
+) -> xr.Dataset | xr.DataArray:
+    """Apply xarray-style selection to dataset or dataarray.
 
     Args:
-        ds: Dataset to select from.
+        data: Dataset or DataArray to select from.
         select: xarray-style selection dict.
         drop: If True (default), drop dimensions that become scalar after selection.
             This prevents auto-faceting when selecting a single value.
     """
     if select is None:
-        return ds
-    valid_select = {k: v for k, v in select.items() if k in ds.dims or k in ds.coords}
+        return data
+    valid_select = {k: v for k, v in select.items() if k in data.dims or k in data.coords}
     if valid_select:
-        ds = ds.sel(valid_select, drop=drop)
-    return ds
+        data = data.sel(valid_select, drop=drop)
+    return data
 
 
 def _sort_dataset(ds: xr.Dataset) -> xr.Dataset:
     """Sort dataset variables alphabetically for consistent plotting order."""
     sorted_vars = sorted(ds.data_vars)
     return ds[sorted_vars]
+
+
+def _sort_dataarray(da: xr.DataArray, dim: str) -> xr.DataArray:
+    """Sort DataArray along a dimension alphabetically for consistent plotting order."""
+    if dim not in da.dims:
+        return da
+    sorted_idx = sorted(da.coords[dim].values)
+    return da.sel({dim: sorted_idx})
 
 
 def _filter_small_variables(ds: xr.Dataset, threshold: float | None) -> xr.Dataset:
@@ -297,6 +307,28 @@ def _filter_small_variables(ds: xr.Dataset, threshold: float | None) -> xr.Datas
     max_vals = abs(ds).max()  # Single computation for all variables
     keep = [v for v in ds.data_vars if float(max_vals.variables[v].values) >= threshold]
     return ds[keep] if keep else ds
+
+
+def _filter_small_dataarray(da: xr.DataArray, dim: str, threshold: float | None) -> xr.DataArray:
+    """Remove entries along a dimension where max absolute value is below threshold.
+
+    Args:
+        da: DataArray to filter.
+        dim: Dimension to filter along.
+        threshold: Minimum max absolute value to keep. If None, no filtering.
+
+    Returns:
+        Filtered DataArray.
+    """
+    if threshold is None or dim not in da.dims:
+        return da
+    other_dims = [d for d in da.dims if d != dim]
+    if other_dims:
+        max_vals = abs(da).max(other_dims)
+    else:
+        max_vals = abs(da)
+    keep = max_vals >= threshold
+    return da.sel({dim: keep})
 
 
 def _filter_by_carrier(ds: xr.Dataset, carrier: str | list[str] | None) -> xr.Dataset:
@@ -402,20 +434,20 @@ class StatisticsAccessor:
     Use ``.plot`` for visualization methods.
 
     Data Properties:
-        ``flow_rates`` : xr.Dataset
-            Flow rates for all flows.
-        ``flow_hours`` : xr.Dataset
-            Flow hours (energy) for all flows.
-        ``sizes`` : xr.Dataset
-            Sizes for all flows.
-        ``charge_states`` : xr.Dataset
-            Charge states for all storage components.
-        ``temporal_effects`` : xr.Dataset
-            Temporal effects per contributor per timestep.
-        ``periodic_effects`` : xr.Dataset
-            Periodic (investment) effects per contributor.
-        ``total_effects`` : xr.Dataset
-            Total effects (temporal + periodic) per contributor.
+        ``flow_rates`` : xr.DataArray
+            Flow rates for all flows (dims: flow, time).
+        ``flow_hours`` : xr.DataArray
+            Flow hours (energy) for all flows (dims: flow, time).
+        ``sizes`` : xr.DataArray
+            Sizes for all flows and storages (dim: element).
+        ``charge_states`` : xr.DataArray
+            Charge states for all storage components (dims: storage, time).
+        ``temporal_effects`` : xr.DataArray
+            Temporal effects per contributor per timestep (dims: effect, contributor, time).
+        ``periodic_effects`` : xr.DataArray
+            Periodic (investment) effects per contributor (dims: effect, contributor).
+        ``total_effects`` : xr.DataArray
+            Total effects (temporal + periodic) per contributor (dims: effect, contributor).
         ``effect_share_factors`` : dict
             Conversion factors between effects.
 
@@ -427,17 +459,6 @@ class StatisticsAccessor:
 
     def __init__(self, flow_system: FlowSystem) -> None:
         self._fs = flow_system
-        # Cached data
-        self._flow_rates: xr.Dataset | None = None
-        self._flow_hours: xr.Dataset | None = None
-        self._flow_sizes: xr.Dataset | None = None
-        self._storage_sizes: xr.Dataset | None = None
-        self._sizes: xr.Dataset | None = None
-        self._charge_states: xr.Dataset | None = None
-        self._effect_share_factors: dict[str, dict] | None = None
-        self._temporal_effects: xr.Dataset | None = None
-        self._periodic_effects: xr.Dataset | None = None
-        self._total_effects: xr.Dataset | None = None
         # Plotting accessor (lazy)
         self._plot: StatisticsPlotAccessor | None = None
 
@@ -528,90 +549,44 @@ class StatisticsAccessor:
             self._plot = StatisticsPlotAccessor(self)
         return self._plot
 
-    @property
-    def flow_rates(self) -> xr.Dataset:
-        """All flow rates as a Dataset with flow labels as variable names.
-
-        Each variable has attributes:
-            - 'carrier': carrier type (e.g., 'heat', 'electricity', 'gas')
-            - 'unit': carrier unit (e.g., 'kW')
-        """
+    @cached_property
+    def flow_rates(self) -> xr.DataArray:
+        """All flow rates as a DataArray with 'flow' dimension."""
         self._require_solution()
-        if self._flow_rates is None:
-            flow_rate_vars = self._fs.get_variables_by_category(VariableCategory.FLOW_RATE)
-            flow_carriers = self._fs.flow_carriers  # Cached lookup
-            carrier_units = self.carrier_units  # Cached lookup
-            data_vars = {}
-            for v in flow_rate_vars:
-                flow_label = v.rsplit('|', 1)[0]  # Extract label from 'label|flow_rate'
-                da = self._fs.solution[v].copy()
-                # Add carrier and unit as attributes
-                carrier = flow_carriers.get(flow_label)
-                da.attrs['carrier'] = carrier
-                da.attrs['unit'] = carrier_units.get(carrier, '') if carrier else ''
-                data_vars[flow_label] = da
-            self._flow_rates = xr.Dataset(data_vars)
-        return self._flow_rates
+        return self._fs.solution[FlowVarName.RATE]
 
-    @property
-    def flow_hours(self) -> xr.Dataset:
-        """All flow hours (energy) as a Dataset with flow labels as variable names.
+    @cached_property
+    def flow_hours(self) -> xr.DataArray:
+        """All flow hours (energy) as a DataArray with 'flow' dimension."""
+        return self.flow_rates * self._fs.timestep_duration
 
-        Each variable has attributes:
-            - 'carrier': carrier type (e.g., 'heat', 'electricity', 'gas')
-            - 'unit': energy unit (e.g., 'kWh', 'm3/s*h')
-        """
+    @cached_property
+    def flow_sizes(self) -> xr.DataArray:
+        """Flow sizes as a DataArray with 'flow' dimension."""
         self._require_solution()
-        if self._flow_hours is None:
-            hours = self._fs.timestep_duration
-            flow_rates = self.flow_rates
-            # Multiply and preserve/transform attributes
-            data_vars = {}
-            for var in flow_rates.data_vars:
-                da = flow_rates[var] * hours
-                da.attrs['carrier'] = flow_rates[var].attrs.get('carrier')
-                # Convert power unit to energy unit (e.g., 'kW' -> 'kWh', 'm3/s' -> 'm3/s*h')
-                power_unit = flow_rates[var].attrs.get('unit', '')
-                da.attrs['unit'] = f'{power_unit}*h' if power_unit else ''
-                data_vars[var] = da
-            self._flow_hours = xr.Dataset(data_vars)
-        return self._flow_hours
+        return self._fs.solution[FlowVarName.SIZE].dropna('flow', how='all')
 
-    @property
-    def flow_sizes(self) -> xr.Dataset:
-        """Flow sizes as a Dataset with flow labels as variable names."""
+    @cached_property
+    def storage_sizes(self) -> xr.DataArray:
+        """Storage capacity sizes as a DataArray with 'storage' dimension."""
         self._require_solution()
-        if self._flow_sizes is None:
-            flow_size_vars = self._fs.get_variables_by_category(VariableCategory.FLOW_SIZE)
-            self._flow_sizes = xr.Dataset({v.rsplit('|', 1)[0]: self._fs.solution[v] for v in flow_size_vars})
-        return self._flow_sizes
+        return self._fs.solution[StorageVarName.SIZE].dropna('storage', how='all')
 
-    @property
-    def storage_sizes(self) -> xr.Dataset:
-        """Storage capacity sizes as a Dataset with storage labels as variable names."""
+    @cached_property
+    def sizes(self) -> xr.DataArray:
+        """All investment sizes (flows and storage capacities) as a DataArray with 'element' dim."""
+        return xr.concat(
+            [self.flow_sizes.rename(flow='element'), self.storage_sizes.rename(storage='element')],
+            dim='element',
+        )
+
+    @cached_property
+    def charge_states(self) -> xr.DataArray:
+        """All storage charge states as a DataArray with 'storage' dimension."""
         self._require_solution()
-        if self._storage_sizes is None:
-            storage_size_vars = self._fs.get_variables_by_category(VariableCategory.STORAGE_SIZE)
-            self._storage_sizes = xr.Dataset({v.rsplit('|', 1)[0]: self._fs.solution[v] for v in storage_size_vars})
-        return self._storage_sizes
+        return self._fs.solution[StorageVarName.CHARGE]
 
-    @property
-    def sizes(self) -> xr.Dataset:
-        """All investment sizes (flows and storage capacities) as a Dataset."""
-        if self._sizes is None:
-            self._sizes = xr.merge([self.flow_sizes, self.storage_sizes])
-        return self._sizes
-
-    @property
-    def charge_states(self) -> xr.Dataset:
-        """All storage charge states as a Dataset with storage labels as variable names."""
-        self._require_solution()
-        if self._charge_states is None:
-            charge_vars = self._fs.get_variables_by_category(VariableCategory.CHARGE_STATE)
-            self._charge_states = xr.Dataset({v.rsplit('|', 1)[0]: self._fs.solution[v] for v in charge_vars})
-        return self._charge_states
-
-    @property
+    @cached_property
     def effect_share_factors(self) -> dict[str, dict]:
         """Effect share factors for temporal and periodic modes.
 
@@ -620,17 +595,15 @@ class StatisticsAccessor:
             conversion factors between effects.
         """
         self._require_solution()
-        if self._effect_share_factors is None:
-            factors = self._fs.effects.calculate_effect_share_factors()
-            self._effect_share_factors = {'temporal': factors[0], 'periodic': factors[1]}
-        return self._effect_share_factors
+        factors = self._fs.effects.calculate_effect_share_factors()
+        return {'temporal': factors[0], 'periodic': factors[1]}
 
-    @property
-    def temporal_effects(self) -> xr.Dataset:
+    @cached_property
+    def temporal_effects(self) -> xr.DataArray:
         """Temporal effects per contributor per timestep.
 
-        Returns a Dataset where each effect is a data variable with dimensions
-        [time, contributor] (plus period/scenario if present).
+        Returns a DataArray with dimensions [effect, time, contributor]
+        (plus period/scenario if present).
 
         Coordinates:
             - contributor: Individual contributor labels
@@ -639,28 +612,26 @@ class StatisticsAccessor:
 
         Examples:
             >>> # Get costs per contributor per timestep
-            >>> statistics.temporal_effects['costs']
+            >>> statistics.temporal_effects.sel(effect='costs')
             >>> # Sum over all contributors to get total costs per timestep
-            >>> statistics.temporal_effects['costs'].sum('contributor')
+            >>> statistics.temporal_effects.sel(effect='costs').sum('contributor')
             >>> # Group by component
-            >>> statistics.temporal_effects['costs'].groupby('component').sum()
+            >>> statistics.temporal_effects.sel(effect='costs').groupby('component').sum()
 
         Returns:
-            xr.Dataset with effects as variables and contributor dimension.
+            xr.DataArray with effect, contributor, and time dimensions.
         """
         self._require_solution()
-        if self._temporal_effects is None:
-            ds = self._create_effects_dataset('temporal')
-            dim_order = ['time', 'period', 'scenario', 'contributor']
-            self._temporal_effects = ds.transpose(*dim_order, missing_dims='ignore')
-        return self._temporal_effects
+        da = self._create_effects_array('temporal')
+        dim_order = ['effect', 'time', 'period', 'scenario', 'contributor']
+        return da.transpose(*dim_order, missing_dims='ignore')
 
-    @property
-    def periodic_effects(self) -> xr.Dataset:
+    @cached_property
+    def periodic_effects(self) -> xr.DataArray:
         """Periodic (investment) effects per contributor.
 
-        Returns a Dataset where each effect is a data variable with dimensions
-        [contributor] (plus period/scenario if present).
+        Returns a DataArray with dimensions [effect, contributor]
+        (plus period/scenario if present).
 
         Coordinates:
             - contributor: Individual contributor labels
@@ -669,28 +640,26 @@ class StatisticsAccessor:
 
         Examples:
             >>> # Get investment costs per contributor
-            >>> statistics.periodic_effects['costs']
+            >>> statistics.periodic_effects.sel(effect='costs')
             >>> # Sum over all contributors to get total investment costs
-            >>> statistics.periodic_effects['costs'].sum('contributor')
+            >>> statistics.periodic_effects.sel(effect='costs').sum('contributor')
             >>> # Group by component
-            >>> statistics.periodic_effects['costs'].groupby('component').sum()
+            >>> statistics.periodic_effects.sel(effect='costs').groupby('component').sum()
 
         Returns:
-            xr.Dataset with effects as variables and contributor dimension.
+            xr.DataArray with effect and contributor dimensions.
         """
         self._require_solution()
-        if self._periodic_effects is None:
-            ds = self._create_effects_dataset('periodic')
-            dim_order = ['period', 'scenario', 'contributor']
-            self._periodic_effects = ds.transpose(*dim_order, missing_dims='ignore')
-        return self._periodic_effects
+        da = self._create_effects_array('periodic')
+        dim_order = ['effect', 'period', 'scenario', 'contributor']
+        return da.transpose(*dim_order, missing_dims='ignore')
 
-    @property
-    def total_effects(self) -> xr.Dataset:
+    @cached_property
+    def total_effects(self) -> xr.DataArray:
         """Total effects (temporal + periodic) per contributor.
 
-        Returns a Dataset where each effect is a data variable with dimensions
-        [contributor] (plus period/scenario if present).
+        Returns a DataArray with dimensions [effect, contributor]
+        (plus period/scenario if present).
 
         Coordinates:
             - contributor: Individual contributor labels
@@ -699,23 +668,21 @@ class StatisticsAccessor:
 
         Examples:
             >>> # Get total costs per contributor
-            >>> statistics.total_effects['costs']
+            >>> statistics.total_effects.sel(effect='costs')
             >>> # Sum over all contributors to get total system costs
-            >>> statistics.total_effects['costs'].sum('contributor')
+            >>> statistics.total_effects.sel(effect='costs').sum('contributor')
             >>> # Group by component
-            >>> statistics.total_effects['costs'].groupby('component').sum()
+            >>> statistics.total_effects.sel(effect='costs').groupby('component').sum()
             >>> # Group by component type
-            >>> statistics.total_effects['costs'].groupby('component_type').sum()
+            >>> statistics.total_effects.sel(effect='costs').groupby('component_type').sum()
 
         Returns:
-            xr.Dataset with effects as variables and contributor dimension.
+            xr.DataArray with effect and contributor dimensions.
         """
         self._require_solution()
-        if self._total_effects is None:
-            ds = self._create_effects_dataset('total')
-            dim_order = ['period', 'scenario', 'contributor']
-            self._total_effects = ds.transpose(*dim_order, missing_dims='ignore')
-        return self._total_effects
+        da = self._create_effects_array('total')
+        dim_order = ['effect', 'period', 'scenario', 'contributor']
+        return da.transpose(*dim_order, missing_dims='ignore')
 
     def get_effect_shares(
         self,
@@ -799,32 +766,38 @@ class StatisticsAccessor:
         else:
             return xr.DataArray(np.nan)
 
-    def _create_effects_dataset(self, mode: Literal['temporal', 'periodic', 'total']) -> xr.Dataset:
-        """Create dataset containing effect totals for all contributors.
+    def _create_effects_array(self, mode: Literal['temporal', 'periodic', 'total']) -> xr.DataArray:
+        """Create DataArray containing effect totals for all contributors.
 
-        Detects contributors (flows, components, etc.) from solution data variables.
+        Returns a DataArray with dimensions (effect, contributor, ...) where ...
+        depends on mode (time for temporal, nothing for periodic/total).
+
+        Uses batched share|temporal and share|periodic DataArrays from the solution.
         Excludes effect-to-effect shares which are intermediate conversions.
         Provides component and component_type coordinates for flexible groupby operations.
         """
         solution = self._fs.solution
         template = self._create_template_for_mode(mode)
-
-        # Detect contributors from solution data variables
-        # Pattern: {contributor}->{effect}(temporal) or {contributor}->{effect}(periodic)
-        contributor_pattern = re.compile(r'^(.+)->(.+)\((temporal|periodic)\)$')
         effect_labels = set(self._fs.effects.keys())
 
+        # Determine modes to process
+        modes_to_process = ['temporal', 'periodic'] if mode == 'total' else [mode]
+        # Detect contributors from combined share variables (share|temporal, share|periodic)
         detected_contributors: set[str] = set()
-        for var in solution.data_vars:
-            match = contributor_pattern.match(str(var))
-            if match:
-                contributor = match.group(1)
-                # Exclude effect-to-effect shares (e.g., costs(temporal) -> Effect1(temporal))
-                base_name = contributor.split('(')[0] if '(' in contributor else contributor
+        for current_mode in modes_to_process:
+            share_name = f'share|{current_mode}'
+            if share_name not in solution:
+                continue
+            share_da = solution[share_name]
+            for c in share_da.coords['contributor'].values:
+                base_name = str(c).split('(')[0] if '(' in str(c) else str(c)
                 if base_name not in effect_labels:
-                    detected_contributors.add(contributor)
+                    detected_contributors.add(str(c))
 
         contributors = sorted(detected_contributors)
+
+        if not contributors:
+            return xr.DataArray()
 
         # Build metadata for each contributor
         def get_parent_component(contributor: str) -> str:
@@ -847,10 +820,7 @@ class StatisticsAccessor:
         parents = [get_parent_component(c) for c in contributors]
         contributor_types = [get_contributor_type(c) for c in contributors]
 
-        # Determine modes to process
-        modes_to_process = ['temporal', 'periodic'] if mode == 'total' else [mode]
-
-        ds = xr.Dataset()
+        effect_arrays = []
 
         for effect in self._fs.effects:
             contributor_arrays = []
@@ -868,19 +838,24 @@ class StatisticsAccessor:
                     conversion_factors[effect] = 1  # Direct contribution
 
                     for source_effect, factor in conversion_factors.items():
-                        label = f'{contributor}->{source_effect}({current_mode})'
-                        if label in solution:
-                            da = solution[label] * factor
-                            # For total mode, sum temporal over time (apply cluster_weight for proper weighting)
-                            # Sum over all temporal dimensions (time, and cluster if present)
-                            if mode == 'total' and current_mode == 'temporal' and 'time' in da.dims:
-                                weighted = da * self._fs.weights.get('cluster', 1.0)
-                                temporal_dims = [d for d in weighted.dims if d not in ('period', 'scenario')]
-                                da = weighted.sum(temporal_dims)
-                            if share_total is None:
-                                share_total = da
-                            else:
-                                share_total = share_total + da
+                        share_name = f'share|{current_mode}'
+                        if share_name not in solution:
+                            continue
+                        share_da = solution[share_name]
+                        if source_effect not in share_da.coords['effect'].values:
+                            continue
+                        if contributor not in share_da.coords['contributor'].values:
+                            continue
+                        da = share_da.sel(effect=source_effect, contributor=contributor, drop=True).fillna(0) * factor
+                        # For total mode, sum temporal over time (apply cluster_weight for proper weighting)
+                        if mode == 'total' and current_mode == 'temporal' and 'time' in da.dims:
+                            weighted = da * self._fs.weights.get('cluster', 1.0)
+                            temporal_dims = [d for d in weighted.dims if d not in ('period', 'scenario')]
+                            da = weighted.sum(temporal_dims)
+                        if share_total is None:
+                            share_total = da
+                        else:
+                            share_total = share_total + da
 
                 # If no share found, use NaN template
                 if share_total is None:
@@ -889,30 +864,38 @@ class StatisticsAccessor:
                 contributor_arrays.append(share_total.expand_dims(contributor=[contributor]))
 
             # Concatenate all contributors for this effect
-            da = xr.concat(contributor_arrays, dim='contributor', coords='minimal', join='outer').rename(effect)
-            # Add unit attribute from effect definition
-            da.attrs['unit'] = self.effect_units.get(effect, '')
-            ds[effect] = da
+            effect_da = xr.concat(contributor_arrays, dim='contributor', coords='minimal', join='outer')
+            effect_arrays.append(effect_da.expand_dims(effect=[effect]))
 
-        # Add groupby coordinates for contributor dimension
-        ds = ds.assign_coords(
+        # Concatenate all effects
+        result = xr.concat(effect_arrays, dim='effect', coords='minimal', join='outer')
+
+        # Add unit coordinate for effect dimension
+        effect_units = [self.effect_units.get(e, '') for e in self._fs.effects]
+        result = result.assign_coords(
+            effect_unit=('effect', effect_units),
             component=('contributor', parents),
             component_type=('contributor', contributor_types),
         )
 
         # Validation: check totals match solution
-        suffix_map = {'temporal': '(temporal)|per_timestep', 'periodic': '(periodic)', 'total': ''}
-        for effect in self._fs.effects:
-            label = f'{effect}{suffix_map[mode]}'
-            if label in solution:
-                computed = ds[effect].sum('contributor')
-                found = solution[label]
-                if not np.allclose(computed.fillna(0).values, found.fillna(0).values, equal_nan=True):
-                    logger.critical(
-                        f'Results for {effect}({mode}) in effects_dataset doesnt match {label}\n{computed=}\n, {found=}'
-                    )
+        effect_var_map = {
+            'temporal': EffectVarName.PER_TIMESTEP,
+            'periodic': EffectVarName.PERIODIC,
+            'total': EffectVarName.TOTAL,
+        }
+        effect_var_name = effect_var_map[mode]
+        if effect_var_name in solution:
+            for effect in self._fs.effects:
+                if effect in solution[effect_var_name].coords.get('effect', xr.DataArray([])).values:
+                    computed = result.sel(effect=effect).sum('contributor')
+                    found = solution[effect_var_name].sel(effect=effect)
+                    if not np.allclose(computed.fillna(0).values, found.fillna(0).values, equal_nan=True):
+                        logger.critical(
+                            f'Results for {effect}({mode}) in effects_array doesnt match {effect_var_name}\n{computed=}\n, {found=}'
+                        )
 
-        return ds
+        return result
 
 
 # --- Sankey Plot Accessor ---
@@ -980,28 +963,28 @@ class SankeyPlotAccessor:
         if carrier_filter is not None:
             carrier_filter = [c.lower() for c in carrier_filter]
 
-        # Use flow_rates to get carrier names from xarray attributes (already computed)
-        flow_rates = self._stats.flow_rates
+        # Extract all topology metadata as plain dicts for fast lookup
+        topo = self._fs.topology.flows
+        flow_labels = topo.coords['flow'].values
+        topo_bus = dict(zip(flow_labels, topo.coords['bus'].values, strict=False))
+        topo_comp = dict(zip(flow_labels, topo.coords['component'].values, strict=False))
+        topo_carrier = dict(zip(flow_labels, topo.coords['carrier'].values, strict=False))
+        topo_is_input = dict(zip(flow_labels, topo.coords['is_input'].values, strict=False))
 
-        for flow in self._fs.flows.values():
-            label = flow.label_full
+        for label in flow_labels:
             if label not in ds:
                 continue
 
             # Apply filters
             if flow_filter is not None and label not in flow_filter:
                 continue
-            bus_label = flow.bus
-            comp_label = flow.component
+            bus_label = str(topo_bus[label])
+            comp_label = str(topo_comp[label])
+            carrier_name = str(topo_carrier[label])
             if bus_filter is not None and bus_label not in bus_filter:
                 continue
-
-            # Get carrier name from flow_rates xarray attribute (efficient lookup)
-            carrier_name = flow_rates[label].attrs.get('carrier') if label in flow_rates else None
-
-            if carrier_filter is not None:
-                if carrier_name is None or carrier_name.lower() not in carrier_filter:
-                    continue
+            if carrier_filter is not None and carrier_name.lower() not in carrier_filter:
+                continue
             if component_filter is not None and comp_label not in component_filter:
                 continue
 
@@ -1009,7 +992,7 @@ class SankeyPlotAccessor:
             if abs(value) < min_value:
                 continue
 
-            if flow.is_input_in_component:
+            if topo_is_input[label]:
                 source, target = bus_label, comp_label
             else:
                 source, target = comp_label, bus_label
@@ -1112,14 +1095,14 @@ class SankeyPlotAccessor:
         if 'carrier' in links:
             coords['carrier'] = ('link', links['carrier'])
 
-        sankey_ds = xr.Dataset({'value': ('link', links['value'])}, coords=coords)
+        sankey_da = xr.DataArray(links['value'], dims=['link'], coords=coords)
 
         if show is None:
             show = CONFIG.Plotting.default_show
         if show:
             fig.show()
 
-        return PlotResult(data=sankey_ds, figure=fig)
+        return PlotResult(data=sankey_da, figure=fig)
 
     def flows(
         self,
@@ -1150,24 +1133,26 @@ class SankeyPlotAccessor:
         self._stats._require_solution()
         xr_select, flow_filter, bus_filter, component_filter, carrier_filter = self._extract_flow_filters(select)
 
-        ds = self._stats.flow_hours.copy()
+        da = self._stats.flow_hours.copy()
 
         # Apply period/scenario weights
-        if 'period' in ds.dims and self._fs.period_weights is not None:
-            ds = ds * self._fs.period_weights
-        if 'scenario' in ds.dims and self._fs.scenario_weights is not None:
+        if 'period' in da.dims and self._fs.period_weights is not None:
+            da = da * self._fs.period_weights
+        if 'scenario' in da.dims and self._fs.scenario_weights is not None:
             weights = self._fs.scenario_weights / self._fs.scenario_weights.sum()
-            ds = ds * weights
+            da = da * weights
 
-        ds = _apply_selection(ds, xr_select)
+        da = _apply_selection(da, xr_select)
 
         # Aggregate remaining dimensions
-        if 'time' in ds.dims:
-            ds = getattr(ds, aggregate)(dim='time')
+        if 'time' in da.dims:
+            da = getattr(da, aggregate)(dim='time')
         for dim in ['period', 'scenario']:
-            if dim in ds.dims:
-                ds = ds.sum(dim=dim)
+            if dim in da.dims:
+                da = da.sum(dim=dim)
 
+        # Convert to Dataset for _build_flow_links
+        ds = da.to_dataset('flow')
         nodes, links = self._build_flow_links(ds, flow_filter, bus_filter, component_filter, carrier_filter)
         fig = self._create_figure(nodes, links, colors, 'Energy Flow', **plotly_kwargs)
         return self._finalize(fig, links, show)
@@ -1200,13 +1185,17 @@ class SankeyPlotAccessor:
         self._stats._require_solution()
         xr_select, flow_filter, bus_filter, component_filter, carrier_filter = self._extract_flow_filters(select)
 
-        ds = self._stats.sizes.copy()
-        ds = _apply_selection(ds, xr_select)
+        # Use flow_sizes (DataArray with 'flow' dim) for Sankey - storage sizes not applicable
+        da = self._stats.flow_sizes.copy()
+        da = _apply_selection(da, xr_select)
 
         # Collapse remaining dimensions
         for dim in ['period', 'scenario']:
-            if dim in ds.dims:
-                ds = ds.max(dim=dim)
+            if dim in da.dims:
+                da = da.max(dim=dim)
+
+        # Convert to Dataset for _build_flow_links
+        ds = da.to_dataset('flow')
 
         # Apply max_size filter
         if max_size is not None and ds.data_vars:
@@ -1243,14 +1232,16 @@ class SankeyPlotAccessor:
         self._stats._require_solution()
         xr_select, flow_filter, bus_filter, component_filter, carrier_filter = self._extract_flow_filters(select)
 
-        ds = self._stats.flow_rates.copy()
-        ds = _apply_selection(ds, xr_select)
+        da = self._stats.flow_rates.copy()
+        da = _apply_selection(da, xr_select)
 
         # Take max over all dimensions
         for dim in ['time', 'period', 'scenario']:
-            if dim in ds.dims:
-                ds = ds.max(dim=dim)
+            if dim in da.dims:
+                da = da.max(dim=dim)
 
+        # Convert to Dataset for _build_flow_links
+        ds = da.to_dataset('flow')
         nodes, links = self._build_flow_links(ds, flow_filter, bus_filter, component_filter, carrier_filter)
         fig = self._create_figure(nodes, links, colors, 'Peak Flow Rates', **plotly_kwargs)
         return self._finalize(fig, links, show)
@@ -1305,7 +1296,7 @@ class SankeyPlotAccessor:
                 contributor_filter = [contributor_filter]
 
         # Determine which effects to include
-        effect_names = list(total_effects.data_vars)
+        effect_names = list(str(e) for e in total_effects.coords['effect'].values)
         if effect_filter is not None:
             effect_names = [e for e in effect_names if e in effect_filter]
 
@@ -1314,7 +1305,7 @@ class SankeyPlotAccessor:
         links: dict[str, list] = {'source': [], 'target': [], 'value': [], 'label': []}
 
         for effect_name in effect_names:
-            effect_data = total_effects[effect_name]
+            effect_data = total_effects.sel(effect=effect_name, drop=True)
             effect_data = _apply_selection(effect_data, xr_select)
 
             # Sum over remaining dimensions
@@ -1363,6 +1354,13 @@ class StatisticsPlotAccessor:
         self._fs = statistics._fs
         self._sankey: SankeyPlotAccessor | None = None
 
+    def _get_unit_label(self, flow_label: str) -> str:
+        """Get the unit label for a flow from topology."""
+        topo_flows = self._fs.topology.flows
+        if flow_label in topo_flows.coords['flow'].values:
+            return str(topo_flows.sel(flow=flow_label).coords['unit'].values)
+        return ''
+
     @property
     def sankey(self) -> SankeyPlotAccessor:
         """Access sankey diagram methods with typed select options.
@@ -1394,7 +1392,11 @@ class StatisticsPlotAccessor:
         """
         component_colors = self._stats.component_colors
         carrier_colors = self._stats.carrier_colors
-        flow_rates = self._stats.flow_rates
+
+        # Extract topology metadata as dicts for fast lookup
+        topo = self._fs.topology.flows
+        topo_carriers = dict(zip(topo.coords['flow'].values, topo.coords['carrier'].values, strict=False))
+        topo_components = dict(zip(topo.coords['flow'].values, topo.coords['component'].values, strict=False))
 
         color_map = {}
         uncolored = []
@@ -1403,17 +1405,14 @@ class StatisticsPlotAccessor:
             color = None
 
             if color_by == 'carrier':
-                # Get carrier from flow attributes
-                carrier_name = flow_rates[label].attrs.get('carrier') if label in flow_rates else None
-                color = carrier_colors.get(carrier_name) if carrier_name else None
+                carrier_name = topo_carriers.get(label)
+                color = carrier_colors.get(str(carrier_name)) if carrier_name is not None else None
             else:  # color_by == 'component'
-                # Try to get component from flow first
-                flow = self._fs.flows.get(label)
-                if flow:
-                    color = component_colors.get(flow.component)
+                comp_name = topo_components.get(label)
+                if comp_name is not None:
+                    color = component_colors.get(str(comp_name))
                 else:
-                    # Extract component name from label
-                    # Patterns: 'Component(flow)' → 'Component', 'Component (production)' → 'Component'
+                    # Extract component name from label (non-flow labels like effect contributors)
                     comp_name = label.split('(')[0].strip() if '(' in label else label
                     color = component_colors.get(comp_name)
 
@@ -1537,47 +1536,47 @@ class StatisticsPlotAccessor:
         filtered_labels = _filter_by_labels(all_labels, include, exclude)
         if not filtered_labels:
             logger.warning(f'No flows remaining after filtering for node {node}')
-            return PlotResult(data=xr.Dataset(), figure=go.Figure())
+            return PlotResult(data=xr.DataArray(), figure=go.Figure())
 
-        # Get data from statistics
-        if unit == 'flow_rate':
-            ds = self._stats.flow_rates[[lbl for lbl in filtered_labels if lbl in self._stats.flow_rates]]
-        else:
-            ds = self._stats.flow_hours[[lbl for lbl in filtered_labels if lbl in self._stats.flow_hours]]
+        # Get data from statistics (DataArray with 'flow' dimension)
+        source_da = self._stats.flow_rates if unit == 'flow_rate' else self._stats.flow_hours
+        available = [lbl for lbl in filtered_labels if lbl in source_da.coords['flow'].values]
+        da = source_da.sel(flow=available)
 
-        # Negate inputs
-        for label in input_labels:
-            if label in ds:
-                ds[label] = -ds[label]
+        # Negate inputs: create sign array
+        signs = xr.DataArray(
+            [(-1 if lbl in input_labels else 1) for lbl in available],
+            dims=['flow'],
+            coords={'flow': available},
+        )
+        da = da * signs
 
-        ds = _apply_selection(ds, select)
+        da = _apply_selection(da, select)
 
         # Round to avoid numerical noise (tiny negative values from solver precision)
         if round_decimals is not None:
-            ds = ds.round(round_decimals)
+            da = da.round(round_decimals)
 
-        # Filter out variables below threshold
-        ds = _filter_small_variables(ds, threshold)
+        # Filter out flows below threshold
+        da = _filter_small_dataarray(da, 'flow', threshold)
 
         # Build color kwargs: bus balance → component colors, component balance → carrier colors
+        labels = list(str(f) for f in da.coords['flow'].values)
         color_by: Literal['component', 'carrier'] = 'component' if is_bus else 'carrier'
-        color_kwargs = self._build_color_kwargs(colors, list(ds.data_vars), color_by)
+        color_kwargs = self._build_color_kwargs(colors, labels, color_by)
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
-            return PlotResult(data=ds, figure=go.Figure())
+            return PlotResult(data=da, figure=go.Figure())
 
         # Sort for consistent plotting order
-        ds = _sort_dataset(ds)
+        da = _sort_dataarray(da, 'flow')
 
-        # Get unit label from first data variable's attributes
-        unit_label = ''
-        if ds.data_vars:
-            first_var = next(iter(ds.data_vars))
-            unit_label = ds[first_var].attrs.get('unit', '')
+        # Get unit label from topology
+        unit_label = self._get_unit_label(available[0]) if available else ''
 
         _apply_slot_defaults(plotly_kwargs, 'balance')
-        fig = ds.plotly.fast_bar(
+        fig = da.plotly.fast_bar(
             title=f'{node} [{unit_label}]' if unit_label else node,
             **color_kwargs,
             **plotly_kwargs,
@@ -1589,7 +1588,7 @@ class StatisticsPlotAccessor:
         if show:
             fig.show()
 
-        return PlotResult(data=ds, figure=fig)
+        return PlotResult(data=da, figure=fig)
 
     def carrier_balance(
         self,
@@ -1667,72 +1666,69 @@ class StatisticsPlotAccessor:
         filtered_labels = _filter_by_labels(all_labels, include, exclude)
         if not filtered_labels:
             logger.warning(f'No flows remaining after filtering for carrier {carrier}')
-            return PlotResult(data=xr.Dataset(), figure=go.Figure())
+            return PlotResult(data=xr.DataArray(), figure=go.Figure())
 
-        # Get source data
-        if unit == 'flow_rate':
-            source_ds = self._stats.flow_rates
-        else:
-            source_ds = self._stats.flow_hours
+        # Get source data (DataArray with 'flow' dimension)
+        source_da = self._stats.flow_rates if unit == 'flow_rate' else self._stats.flow_hours
+        available_flows = set(str(f) for f in source_da.coords['flow'].values)
 
         # Find components with same carrier on both sides (supply and demand)
         same_carrier_components = set(component_inputs.keys()) & set(component_outputs.keys())
         filtered_set = set(filtered_labels)
 
         # Aggregate by component with separate supply/demand entries
-        data_vars: dict[str, xr.DataArray] = {}
+        parts: list[xr.DataArray] = []
+        part_names: list[str] = []
 
         for comp_name, labels in component_inputs.items():
-            # Filter to only included labels
-            labels = [lbl for lbl in labels if lbl in filtered_set and lbl in source_ds]
+            labels = [lbl for lbl in labels if lbl in filtered_set and lbl in available_flows]
             if not labels:
                 continue
-            # Sum all supply flows for this component
-            supply = sum(source_ds[lbl] for lbl in labels)
-            # Use suffix only if component also has demand
+            supply = source_da.sel(flow=labels).sum('flow')
             var_name = f'{comp_name} (supply)' if comp_name in same_carrier_components else comp_name
-            data_vars[var_name] = supply
+            parts.append(supply)
+            part_names.append(var_name)
 
         for comp_name, labels in component_outputs.items():
-            # Filter to only included labels
-            labels = [lbl for lbl in labels if lbl in filtered_set and lbl in source_ds]
+            labels = [lbl for lbl in labels if lbl in filtered_set and lbl in available_flows]
             if not labels:
                 continue
-            # Sum all demand flows for this component (negative)
-            demand = -sum(source_ds[lbl] for lbl in labels)
-            # Use suffix only if component also has supply
+            demand = -source_da.sel(flow=labels).sum('flow')
             var_name = f'{comp_name} (demand)' if comp_name in same_carrier_components else comp_name
-            data_vars[var_name] = demand
+            parts.append(demand)
+            part_names.append(var_name)
 
-        ds = xr.Dataset(data_vars)
+        if not parts:
+            logger.warning(f'No data after aggregation for carrier {carrier}')
+            return PlotResult(data=xr.DataArray(), figure=go.Figure())
 
-        ds = _apply_selection(ds, select)
+        da = xr.concat(parts, dim=pd.Index(part_names, name='component'))
+
+        da = _apply_selection(da, select)
 
         # Round to avoid numerical noise (tiny negative values from solver precision)
         if round_decimals is not None:
-            ds = ds.round(round_decimals)
+            da = da.round(round_decimals)
 
-        # Filter out variables below threshold
-        ds = _filter_small_variables(ds, threshold)
+        # Filter out components below threshold
+        da = _filter_small_dataarray(da, 'component', threshold)
 
-        # Build color kwargs with component colors (flows colored by their parent component)
-        color_kwargs = self._build_color_kwargs(colors, list(ds.data_vars), color_by='component')
+        # Build color kwargs with component colors
+        labels = list(str(c) for c in da.coords['component'].values)
+        color_kwargs = self._build_color_kwargs(colors, labels, color_by='component')
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
-            return PlotResult(data=ds, figure=go.Figure())
+            return PlotResult(data=da, figure=go.Figure())
 
         # Sort for consistent plotting order
-        ds = _sort_dataset(ds)
+        da = _sort_dataarray(da, 'component')
 
-        # Get unit label from carrier or first data variable
-        unit_label = ''
-        if ds.data_vars:
-            first_var = next(iter(ds.data_vars))
-            unit_label = ds[first_var].attrs.get('unit', '')
+        # Get unit label from carrier
+        unit_label = self._stats.carrier_units.get(carrier, '')
 
         _apply_slot_defaults(plotly_kwargs, 'carrier_balance')
-        fig = ds.plotly.fast_bar(
+        fig = da.plotly.fast_bar(
             title=f'{carrier.capitalize()} Balance [{unit_label}]' if unit_label else f'{carrier.capitalize()} Balance',
             **color_kwargs,
             **plotly_kwargs,
@@ -1744,7 +1740,7 @@ class StatisticsPlotAccessor:
         if show:
             fig.show()
 
-        return PlotResult(data=ds, figure=fig)
+        return PlotResult(data=da, figure=fig)
 
     def heatmap(
         self,
@@ -1786,23 +1782,37 @@ class StatisticsPlotAccessor:
         Returns:
             PlotResult with processed data and figure.
         """
-        solution = self._stats._require_solution()
+        self._stats._require_solution()
         if isinstance(variables, str):
             variables = [variables]
 
-        # Resolve, select, and stack into single DataArray
-        resolved = self._resolve_variable_names(variables, solution)
-        ds = _apply_selection(solution[resolved], select)
-        ds = _filter_small_variables(ds, threshold)
-        ds = _sort_dataset(ds)  # Sort for consistent plotting order
-        da = xr.concat([ds[v] for v in ds.data_vars], dim=pd.Index(list(ds.data_vars), name='variable'))
+        # Resolve variables: try flow_rates first, fall back to solution
+        flow_rates = self._stats.flow_rates
+        flow_labels = list(str(f) for f in flow_rates.coords['flow'].values)
+        arrays = []
+        for var in variables:
+            if var in flow_labels:
+                arrays.append(flow_rates.sel(flow=var).rename(var))
+            elif var in self._fs.solution:
+                arrays.append(self._fs.solution[var].rename(var))
+            elif '|' not in var and f'{var}|flow_rate' in self._fs.solution:
+                arrays.append(self._fs.solution[f'{var}|flow_rate'].rename(var))
+            else:
+                raise KeyError(f"Variable '{var}' not found in flow_rates or solution")
+
+        da = xr.concat(arrays, dim=pd.Index([a.name for a in arrays], name='variable'))
+        da = _apply_selection(da, select)
+
+        # Filter small variables
+        da = _filter_small_dataarray(da, 'variable', threshold)
+        da = _sort_dataarray(da, 'variable')
 
         # Prepare for heatmap (reshape, transpose, squeeze)
         da = _prepare_for_heatmap(da, reshape)
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
-            return PlotResult(data=da.to_dataset(name='value'), figure=go.Figure())
+            return PlotResult(data=da, figure=go.Figure())
 
         # Only pass colors if not already in plotly_kwargs (avoid duplicate arg error)
         if 'color_continuous_scale' not in plotly_kwargs:
@@ -1814,7 +1824,7 @@ class StatisticsPlotAccessor:
         if show:
             fig.show()
 
-        return PlotResult(data=da.to_dataset(name='value'), figure=fig)
+        return PlotResult(data=da, figure=fig)
 
     def flows(
         self,
@@ -1851,7 +1861,8 @@ class StatisticsPlotAccessor:
         """
         self._stats._require_solution()
 
-        ds = self._stats.flow_rates if unit == 'flow_rate' else self._stats.flow_hours
+        source_da = self._stats.flow_rates if unit == 'flow_rate' else self._stats.flow_hours
+        available_flows = set(str(f) for f in source_da.coords['flow'].values)
 
         # Filter by connection
         if start is not None or end is not None or component is not None:
@@ -1861,19 +1872,15 @@ class StatisticsPlotAccessor:
             components = [component] if isinstance(component, str) else (component or [])
 
             for flow in self._fs.flows.values():
-                # Get bus label (could be string or Bus object)
                 bus_label = flow.bus
                 comp_label = flow.component
 
-                # start/end filtering based on flow direction
                 if flow.is_input_in_component:
-                    # Flow goes: bus -> component, so start=bus, end=component
                     if starts and bus_label not in starts:
                         continue
                     if ends and comp_label not in ends:
                         continue
                 else:
-                    # Flow goes: component -> bus, so start=component, end=bus
                     if starts and comp_label not in starts:
                         continue
                     if ends and bus_label not in ends:
@@ -1883,31 +1890,34 @@ class StatisticsPlotAccessor:
                     continue
                 matching_labels.append(flow.label_full)
 
-            ds = ds[[lbl for lbl in matching_labels if lbl in ds]]
+            selected_flows = [lbl for lbl in matching_labels if lbl in available_flows]
+            da = source_da.sel(flow=selected_flows)
+        else:
+            da = source_da
 
-        ds = _apply_selection(ds, select)
+        da = _apply_selection(da, select)
 
-        # Filter out variables below threshold
-        ds = _filter_small_variables(ds, threshold)
+        # Filter out flows below threshold
+        da = _filter_small_dataarray(da, 'flow', threshold)
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
-            return PlotResult(data=ds, figure=go.Figure())
+            return PlotResult(data=da, figure=go.Figure())
 
         # Sort for consistent plotting order
-        ds = _sort_dataset(ds)
+        da = _sort_dataarray(da, 'flow')
 
-        # Get unit label from first data variable's attributes
+        # Get unit label from topology
         unit_label = ''
-        if ds.data_vars:
-            first_var = next(iter(ds.data_vars))
-            unit_label = ds[first_var].attrs.get('unit', '')
+        if da.sizes.get('flow', 0) > 0:
+            unit_label = self._get_unit_label(str(da.coords['flow'].values[0]))
 
         # Build color kwargs with smart defaults from component colors
-        color_kwargs = self._build_color_kwargs(colors, list(ds.data_vars))
+        labels = list(str(f) for f in da.coords['flow'].values)
+        color_kwargs = self._build_color_kwargs(colors, labels)
 
         _apply_slot_defaults(plotly_kwargs, 'flows')
-        fig = ds.plotly.line(
+        fig = da.plotly.line(
             title=f'Flows [{unit_label}]' if unit_label else 'Flows',
             **color_kwargs,
             **plotly_kwargs,
@@ -1918,7 +1928,7 @@ class StatisticsPlotAccessor:
         if show:
             fig.show()
 
-        return PlotResult(data=ds, figure=fig)
+        return PlotResult(data=da, figure=fig)
 
     def sizes(
         self,
@@ -1948,30 +1958,31 @@ class StatisticsPlotAccessor:
             PlotResult with size data.
         """
         self._stats._require_solution()
-        ds = self._stats.sizes
+        da = self._stats.sizes
 
-        ds = _apply_selection(ds, select)
+        da = _apply_selection(da, select)
 
-        if max_size is not None and ds.data_vars:
-            valid_labels = [lbl for lbl in ds.data_vars if float(ds[lbl].max()) < max_size]
-            ds = ds[valid_labels]
+        if max_size is not None and 'element' in da.dims:
+            keep = abs(da).max([d for d in da.dims if d != 'element']) < max_size
+            da = da.sel(element=keep)
 
-        # Filter out variables below threshold
-        ds = _filter_small_variables(ds, threshold)
+        # Filter out entries below threshold
+        da = _filter_small_dataarray(da, 'element', threshold)
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
-            return PlotResult(data=ds, figure=go.Figure())
+            return PlotResult(data=da, figure=go.Figure())
 
-        if not ds.data_vars:
+        if da.sizes.get('element', 0) == 0:
             fig = go.Figure()
         else:
             # Sort for consistent plotting order
-            ds = _sort_dataset(ds)
+            da = _sort_dataarray(da, 'element')
             # Build color kwargs with smart defaults from component colors
-            color_kwargs = self._build_color_kwargs(colors, list(ds.data_vars))
+            labels = list(str(e) for e in da.coords['element'].values)
+            color_kwargs = self._build_color_kwargs(colors, labels)
             _apply_slot_defaults(plotly_kwargs, 'sizes')
-            fig = ds.plotly.bar(
+            fig = da.plotly.bar(
                 title='Investment Sizes',
                 labels={'value': 'Size'},
                 **color_kwargs,
@@ -1983,7 +1994,7 @@ class StatisticsPlotAccessor:
         if show:
             fig.show()
 
-        return PlotResult(data=ds, figure=fig)
+        return PlotResult(data=da, figure=fig)
 
     def duration_curve(
         self,
@@ -2024,55 +2035,73 @@ class StatisticsPlotAccessor:
 
         # Normalize variable names: strip |flow_rate suffix for flow_rates lookup
         flow_rates = self._stats.flow_rates
+        flow_labels = set(str(f) for f in flow_rates.coords['flow'].values)
         normalized_vars = []
         for var in variables:
-            # Strip |flow_rate suffix if present
             if var.endswith('|flow_rate'):
                 var = var[: -len('|flow_rate')]
             normalized_vars.append(var)
 
-        # Try to get from flow_rates first, fall back to solution for non-flow variables
-        ds_parts = []
+        # Collect arrays, build a DataArray with 'variable' dim
+        arrays = []
         for var in normalized_vars:
-            if var in flow_rates:
-                ds_parts.append(flow_rates[[var]])
+            if var in flow_labels:
+                arrays.append(flow_rates.sel(flow=var, drop=True).rename(var))
             elif var in solution:
-                ds_parts.append(solution[[var]])
+                arrays.append(solution[var].rename(var))
             else:
-                # Try with |flow_rate suffix as last resort
                 flow_rate_var = f'{var}|flow_rate'
                 if flow_rate_var in solution:
-                    ds_parts.append(solution[[flow_rate_var]].rename({flow_rate_var: var}))
+                    arrays.append(solution[flow_rate_var].rename(var))
                 else:
                     raise KeyError(f"Variable '{var}' not found in flow_rates or solution")
 
-        ds = xr.merge(ds_parts)
-        ds = _apply_selection(ds, select)
+        da = xr.concat(arrays, dim=pd.Index([a.name for a in arrays], name='variable'))
+        da = _apply_selection(da, select)
 
-        result_ds = ds.fxstats.to_duration_curve(normalize=normalize)
+        # Sort each variable's values independently (duration curve)
+        sorted_arrays = []
+        for var in da.coords['variable'].values:
+            arr = da.sel(variable=var, drop=True)
+            # Sort descending along time
+            if 'time' in arr.dims:
+                sorted_vals = np.flip(np.sort(arr.values, axis=arr.dims.index('time')), axis=arr.dims.index('time'))
+                duration_dim = np.arange(len(arr.coords['time']))
+                if normalize:
+                    duration_dim = duration_dim / len(duration_dim) * 100
+                arr = xr.DataArray(
+                    sorted_vals,
+                    dims=['duration'],
+                    coords={'duration': duration_dim},
+                )
+            sorted_arrays.append(arr)
+
+        result_da = xr.concat(
+            sorted_arrays, dim=pd.Index(list(str(v) for v in da.coords['variable'].values), name='variable')
+        )
 
         # Filter out variables below threshold
-        result_ds = _filter_small_variables(result_ds, threshold)
+        result_da = _filter_small_dataarray(result_da, 'variable', threshold)
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
-            return PlotResult(data=result_ds, figure=go.Figure())
+            return PlotResult(data=result_da, figure=go.Figure())
 
         # Sort for consistent plotting order
-        result_ds = _sort_dataset(result_ds)
+        result_da = _sort_dataarray(result_da, 'variable')
 
-        # Get unit label from first data variable's attributes
+        # Get unit label from first variable's carrier
         unit_label = ''
-        if ds.data_vars:
-            first_var = next(iter(ds.data_vars))
-            unit_label = ds[first_var].attrs.get('unit', '')
+        if normalized_vars and normalized_vars[0] in flow_labels:
+            unit_label = self._get_unit_label(normalized_vars[0])
 
         # Build color kwargs with smart defaults from component colors
-        color_kwargs = self._build_color_kwargs(colors, list(result_ds.data_vars))
+        labels = list(str(v) for v in result_da.coords['variable'].values)
+        color_kwargs = self._build_color_kwargs(colors, labels)
 
-        plotly_kwargs.setdefault('x', 'duration_pct' if normalize else 'duration')
+        plotly_kwargs.setdefault('x', 'duration')
         _apply_slot_defaults(plotly_kwargs, 'duration_curve')
-        fig = result_ds.plotly.line(
+        fig = result_da.plotly.line(
             title=f'Duration Curve [{unit_label}]' if unit_label else 'Duration Curve',
             **color_kwargs,
             **plotly_kwargs,
@@ -2086,7 +2115,7 @@ class StatisticsPlotAccessor:
         if show:
             fig.show()
 
-        return PlotResult(data=result_ds, figure=fig)
+        return PlotResult(data=result_da, figure=fig)
 
     def effects(
         self,
@@ -2130,65 +2159,72 @@ class StatisticsPlotAccessor:
         """
         self._stats._require_solution()
 
-        # Get the appropriate effects dataset based on aspect
-        effects_ds = {
+        # Get the appropriate effects DataArray based on aspect
+        effects_da: xr.DataArray | None = {
             'total': self._stats.total_effects,
             'temporal': self._stats.temporal_effects,
             'periodic': self._stats.periodic_effects,
         }.get(aspect)
-        if effects_ds is None:
+        if effects_da is None:
             raise ValueError(f"Aspect '{aspect}' not valid. Choose from 'total', 'temporal', 'periodic'.")
 
-        # Filter to specific effect(s) and apply selection
+        # Filter to specific effect(s)
         if effect is not None:
-            if effect not in effects_ds:
-                raise ValueError(f"Effect '{effect}' not found. Available: {list(effects_ds.data_vars)}")
-            ds = effects_ds[[effect]]
+            effect_names = list(str(e) for e in effects_da.coords['effect'].values)
+            if effect not in effect_names:
+                raise ValueError(f"Effect '{effect}' not found. Available: {effect_names}")
+            da = effects_da.sel(effect=effect, drop=True)
         else:
-            ds = effects_ds
+            da = effects_da
 
         # Group by component (default) unless by='contributor'
-        if by != 'contributor' and 'contributor' in ds.dims:
-            ds = ds.groupby('component').sum()
+        if by != 'contributor' and 'contributor' in da.dims:
+            da = da.groupby('component').sum()
 
-        ds = _apply_selection(ds, select)
+        da = _apply_selection(da, select)
+
+        has_effect_dim = 'effect' in da.dims
 
         # Sum over dimensions based on 'by' parameter
         if by is None:
             for dim in ['time', 'component', 'contributor']:
-                if dim in ds.dims:
-                    ds = ds.sum(dim=dim)
-            x_col, color_col = 'variable', 'variable'
+                if dim in da.dims:
+                    da = da.sum(dim=dim)
+            x_col = 'effect' if has_effect_dim else None
+            color_col = 'effect' if has_effect_dim else None
         elif by == 'component':
-            if 'time' in ds.dims:
-                ds = ds.sum(dim='time')
+            if 'time' in da.dims:
+                da = da.sum(dim='time')
             x_col = 'component'
-            color_col = 'variable' if len(ds.data_vars) > 1 else 'component'
+            color_col = 'effect' if has_effect_dim else 'component'
         elif by == 'contributor':
-            if 'time' in ds.dims:
-                ds = ds.sum(dim='time')
+            if 'time' in da.dims:
+                da = da.sum(dim='time')
             x_col = 'contributor'
-            color_col = 'variable' if len(ds.data_vars) > 1 else 'contributor'
+            color_col = 'effect' if has_effect_dim else 'contributor'
         elif by == 'time':
-            if 'time' not in ds.dims:
+            if 'time' not in da.dims:
                 raise ValueError(f"Cannot plot by 'time' for aspect '{aspect}' - no time dimension.")
             for dim in ['component', 'contributor']:
-                if dim in ds.dims:
-                    ds = ds.sum(dim=dim)
+                if dim in da.dims:
+                    da = da.sum(dim=dim)
             x_col = 'time'
-            color_col = 'variable' if len(ds.data_vars) > 1 else None
+            color_col = 'effect' if has_effect_dim else None
         else:
             raise ValueError(f"'by' must be one of 'component', 'contributor', 'time', or None, got {by!r}")
 
-        # Filter out variables below threshold
-        ds = _filter_small_variables(ds, threshold)
+        # Filter along the color/grouping dimension
+        filter_dim = color_col or x_col
+        if filter_dim and filter_dim in da.dims:
+            da = _filter_small_dataarray(da, filter_dim, threshold)
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
-            return PlotResult(data=ds, figure=go.Figure())
+            return PlotResult(data=da, figure=go.Figure())
 
         # Sort for consistent plotting order
-        ds = _sort_dataset(ds)
+        if filter_dim and filter_dim in da.dims:
+            da = _sort_dataarray(da, filter_dim)
 
         # Build title
         effect_label = effect or 'Effects'
@@ -2197,19 +2233,18 @@ class StatisticsPlotAccessor:
         # Allow user override of color via plotly_kwargs
         color = plotly_kwargs.pop('color', color_col)
 
-        # Build color kwargs with smart defaults from component colors
-        color_dim = color or color_col or 'variable'
-        if color_dim in ds.coords:
-            labels = list(ds.coords[color_dim].values)
-        elif color_dim == 'variable':
-            labels = list(ds.data_vars)
+        # Build color kwargs
+        if color and color in da.dims:
+            labels = list(str(v) for v in da.coords[color].values)
+        elif color and color in da.coords:
+            labels = list(str(v) for v in da.coords[color].values)
         else:
             labels = []
         color_kwargs = self._build_color_kwargs(colors, labels) if labels else {}
 
         plotly_kwargs.setdefault('x', x_col)
         _apply_slot_defaults(plotly_kwargs, 'effects')
-        fig = ds.plotly.bar(
+        fig = da.plotly.bar(
             color=color,
             title=title,
             **color_kwargs,
@@ -2223,7 +2258,7 @@ class StatisticsPlotAccessor:
         if show:
             fig.show()
 
-        return PlotResult(data=ds, figure=fig)
+        return PlotResult(data=da, figure=fig)
 
     def charge_states(
         self,
@@ -2253,30 +2288,32 @@ class StatisticsPlotAccessor:
             PlotResult with charge state data.
         """
         self._stats._require_solution()
-        ds = self._stats.charge_states
+        da = self._stats.charge_states
 
         if storages is not None:
             if isinstance(storages, str):
                 storages = [storages]
-            ds = ds[[s for s in storages if s in ds]]
+            available = [s for s in storages if s in da.coords['storage'].values]
+            da = da.sel(storage=available)
 
-        ds = _apply_selection(ds, select)
+        da = _apply_selection(da, select)
 
-        # Filter out variables below threshold
-        ds = _filter_small_variables(ds, threshold)
+        # Filter out storages below threshold
+        da = _filter_small_dataarray(da, 'storage', threshold)
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
-            return PlotResult(data=ds, figure=go.Figure())
+            return PlotResult(data=da, figure=go.Figure())
 
         # Sort for consistent plotting order
-        ds = _sort_dataset(ds)
+        da = _sort_dataarray(da, 'storage')
 
         # Build color kwargs with smart defaults from component colors
-        color_kwargs = self._build_color_kwargs(colors, list(ds.data_vars))
+        labels = list(str(s) for s in da.coords['storage'].values)
+        color_kwargs = self._build_color_kwargs(colors, labels)
 
         _apply_slot_defaults(plotly_kwargs, 'charge_states')
-        fig = ds.plotly.line(
+        fig = da.plotly.line(
             title='Storage Charge States',
             **color_kwargs,
             **plotly_kwargs,
@@ -2288,7 +2325,7 @@ class StatisticsPlotAccessor:
         if show:
             fig.show()
 
-        return PlotResult(data=ds, figure=fig)
+        return PlotResult(data=da, figure=fig)
 
     def storage(
         self,
@@ -2350,56 +2387,50 @@ class StatisticsPlotAccessor:
         output_labels = [f.label_full for f in component.outputs.values()]
         all_labels = input_labels + output_labels
 
-        if unit == 'flow_rate':
-            ds = self._stats.flow_rates[[lbl for lbl in all_labels if lbl in self._stats.flow_rates]]
-        else:
-            ds = self._stats.flow_hours[[lbl for lbl in all_labels if lbl in self._stats.flow_hours]]
+        source_da = self._stats.flow_rates if unit == 'flow_rate' else self._stats.flow_hours
+        available_flows = set(str(f) for f in source_da.coords['flow'].values)
+        available = [lbl for lbl in all_labels if lbl in available_flows]
+        flow_da = source_da.sel(flow=available)
 
         # Negate outputs for balance view (discharging shown as negative)
-        for label in output_labels:
-            if label in ds:
-                ds[label] = -ds[label]
+        signs = xr.DataArray(
+            [(-1 if lbl in output_labels else 1) for lbl in available],
+            dims=['flow'],
+            coords={'flow': available},
+        )
+        flow_da = flow_da * signs
 
-        # Get charge state and add to dataset
-        charge_state = self._fs.solution[charge_state_var].rename(storage)
-        ds['charge_state'] = charge_state
+        # Get charge state
+        charge_da = self._fs.solution[charge_state_var]
 
         # Apply selection
-        ds = _apply_selection(ds, select)
-
-        # Separate flow data from charge_state
-        flow_labels = [lbl for lbl in ds.data_vars if lbl != 'charge_state']
-        flow_ds = ds[flow_labels]
-        charge_da = ds['charge_state']
+        flow_da = _apply_selection(flow_da, select)
+        charge_da = _apply_selection(charge_da, select)
 
         # Round to avoid numerical noise (tiny negative values from solver precision)
         if round_decimals is not None:
-            flow_ds = flow_ds.round(round_decimals)
+            flow_da = flow_da.round(round_decimals)
 
         # Filter out flow variables below threshold
-        flow_ds = _filter_small_variables(flow_ds, threshold)
+        flow_da = _filter_small_dataarray(flow_da, 'flow', threshold)
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
-            result_ds = flow_ds.copy()
-            result_ds['charge_state'] = charge_da
-            return PlotResult(data=result_ds, figure=go.Figure())
+            return PlotResult(data=flow_da, figure=go.Figure())
 
         # Sort for consistent plotting order
-        flow_ds = _sort_dataset(flow_ds)
+        flow_da = _sort_dataarray(flow_da, 'flow')
 
         # Build color kwargs with carrier colors (storage is a component, flows colored by carrier)
-        color_kwargs = self._build_color_kwargs(colors, list(flow_ds.data_vars), color_by='carrier')
+        labels = list(str(f) for f in flow_da.coords['flow'].values)
+        color_kwargs = self._build_color_kwargs(colors, labels, color_by='carrier')
 
-        # Get unit label from flow data
-        unit_label = ''
-        if flow_ds.data_vars:
-            first_var = next(iter(flow_ds.data_vars))
-            unit_label = flow_ds[first_var].attrs.get('unit', '')
+        # Get unit label from topology
+        unit_label = self._get_unit_label(available[0]) if available else ''
 
         # Create stacked area chart for flows (styled as bar)
         _apply_slot_defaults(plotly_kwargs, 'storage')
-        fig = flow_ds.plotly.fast_bar(
+        fig = flow_da.plotly.fast_bar(
             title=f'{storage} Operation [{unit_label}]' if unit_label else f'{storage} Operation',
             **color_kwargs,
             **plotly_kwargs,
@@ -2407,11 +2438,9 @@ class StatisticsPlotAccessor:
         _apply_unified_hover(fig, unit=unit_label)
 
         # Add charge state as line on secondary y-axis
-        # Filter out bar-only kwargs, then apply line-specific defaults
         line_kwargs = {k: v for k, v in plotly_kwargs.items() if k not in ('pattern_shape', 'color')}
         _apply_slot_defaults(line_kwargs, 'storage_line')
         line_fig = charge_da.plotly.line(**line_kwargs)
-        # Style all traces including animation frames
         update_traces(
             line_fig,
             line=dict(color=charge_state_color, width=2),
@@ -2421,7 +2450,6 @@ class StatisticsPlotAccessor:
         )
         if line_fig.data:
             line_fig.data[0].showlegend = True
-        # Combine using xarray_plotly's add_secondary_y which handles facets correctly
         fig = add_secondary_y(fig, line_fig, secondary_y_title='Charge State')
 
         if show is None:
@@ -2429,4 +2457,4 @@ class StatisticsPlotAccessor:
         if show:
             fig.show()
 
-        return PlotResult(data=ds, figure=fig)
+        return PlotResult(data=flow_da, figure=fig)
