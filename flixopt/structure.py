@@ -9,7 +9,6 @@ import dataclasses
 import inspect
 import json
 import logging
-import pathlib
 import re
 import warnings
 from abc import ABC, abstractmethod
@@ -955,6 +954,20 @@ def _resolve_dataarray_reference(reference: str, arrays_dict: dict[str, xr.DataA
     return array
 
 
+def replace_references_with_stats(structure, arrays_dict: dict[str, xr.DataArray]):
+    """Replace ``:::path`` DataArray references with statistical summaries."""
+    if isinstance(structure, str) and structure.startswith(':::'):
+        array_name = structure[3:]
+        if array_name in arrays_dict:
+            return get_dataarray_stats(arrays_dict[array_name])
+        return structure
+    elif isinstance(structure, dict):
+        return {k: replace_references_with_stats(v, arrays_dict) for k, v in structure.items()}
+    elif isinstance(structure, list):
+        return [replace_references_with_stats(item, arrays_dict) for item in structure]
+    return structure
+
+
 def obj_to_dataset(obj, path_prefix: str = '') -> xr.Dataset:
     """Convert an object to an xr.Dataset using path-based DataArray keys.
 
@@ -1488,29 +1501,34 @@ class FlowSystemModel(linopy.Model):
         return f'{title}\n{"=" * len(title)}\n\n{all_sections}'
 
 
-class Element:
-    """Base class for all elements in flixopt. Provides IO, solution access, and id validation.
+def valid_id(id: str) -> str:
+    """Check if the id is valid and return it (possibly stripped).
 
-    This is a plain class (not a dataclass). Subclasses (Effect, Bus, Flow, Component)
-    are @dataclass classes that declare their own fields including ``id``, ``meta_data``, etc.
+    Raises:
+        ValueError: If the id contains forbidden characters.
+    """
+    not_allowed = ['(', ')', '|', '->', '\\', '-slash-']  # \\ is needed to check for \
+    if any([sign in id for sign in not_allowed]):
+        raise ValueError(
+            f'Id "{id}" is not valid. Ids cannot contain the following characters: {not_allowed}. '
+            f'Use any other symbol instead'
+        )
+    if id.endswith(' '):
+        logger.error(f'Id "{id}" ends with a space. This will be removed.')
+        return id.rstrip()
+    return id
+
+
+class Element:
+    """Mixin for all elements in flixopt. Provides IO, solution access, and deprecated label.
+
+    Subclasses (Effect, Bus, Flow, Component) are @dataclass classes that declare
+    their own ``id`` field. Element does NOT define ``id`` — each subclass owns it.
     """
 
     # Attributes that are serialized but set after construction (not passed to child __init__)
     # These are internal state populated during modeling, not user-facing parameters
     _deferred_init_attrs: ClassVar[set[str]] = {'_variable_names', '_constraint_names'}
-
-    @property
-    def id(self) -> str:
-        """The unique identifier of this element.
-
-        For most elements this is the name passed to the constructor.
-        For flows this returns the qualified form: ``component(short_id)``.
-        """
-        return self._short_id
-
-    @id.setter
-    def id(self, value: str) -> None:
-        self._short_id = value
 
     @property
     def label(self) -> str:
@@ -1520,7 +1538,7 @@ class Element:
             DeprecationWarning,
             stacklevel=2,
         )
-        return self._short_id
+        return self.id
 
     @label.setter
     def label(self, value: str) -> None:
@@ -1529,7 +1547,7 @@ class Element:
             DeprecationWarning,
             stacklevel=2,
         )
-        self._short_id = value
+        self.id = value
 
     @property
     def label_full(self) -> str:
@@ -1599,180 +1617,6 @@ class Element:
                 f'Ensure the parent element is registered via flow_system.add_elements() first.'
             )
         return self._flow_system
-
-    def to_dataset(self) -> xr.Dataset:
-        """Convert the object to an xarray Dataset representation.
-
-        All DataArrays become dataset variables, everything else goes to attrs.
-
-        Returns:
-            xr.Dataset: Dataset containing all DataArrays with basic objects only in attributes
-
-        Raises:
-            ValueError: If serialization fails due to naming conflicts or invalid data
-        """
-        try:
-            reference_structure, extracted_arrays = create_reference_structure(self)
-            return xr.Dataset(extracted_arrays, attrs=reference_structure)
-        except Exception as e:
-            raise ValueError(f'Failed to convert {self.__class__.__name__} to dataset. Original Error: {e}') from e
-
-    def to_netcdf(self, path: str | pathlib.Path, compression: int = 5, overwrite: bool = False):
-        """Save the object to a NetCDF file.
-
-        Args:
-            path: Path to save the NetCDF file. Parent directories are created if they don't exist.
-            compression: Compression level (0-9)
-            overwrite: If True, overwrite existing file. If False, raise error if file exists.
-        """
-        path = pathlib.Path(path)
-        if not overwrite and path.exists():
-            raise FileExistsError(f'File already exists: {path}. Use overwrite=True to overwrite existing file.')
-        path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            ds = self.to_dataset()
-            fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
-        except Exception as e:
-            raise OSError(f'Failed to save {self.__class__.__name__} to NetCDF file {path}: {e}') from e
-
-    @classmethod
-    def from_dataset(cls, ds: xr.Dataset) -> Element:
-        """Create an instance from an xarray Dataset.
-
-        Args:
-            ds: Dataset containing the object data
-
-        Returns:
-            Element instance
-        """
-        try:
-            class_name = ds.attrs.get('__class__')
-            if class_name and class_name != cls.__name__:
-                logger.warning(f"Dataset class '{class_name}' doesn't match target class '{cls.__name__}'")
-            reference_structure = dict(ds.attrs)
-            reference_structure.pop('__class__', None)
-            variables = ds.variables
-            coord_cache = {k: ds.coords[k] for k in ds.coords}
-            arrays_dict = {
-                name: xr.DataArray(
-                    variables[name],
-                    coords={k: coord_cache[k] for k in variables[name].dims if k in coord_cache},
-                    name=name,
-                )
-                for name in ds.data_vars
-            }
-            resolved_params = resolve_reference_structure(reference_structure, arrays_dict)
-            return cls(**resolved_params)
-        except Exception as e:
-            raise ValueError(f'Failed to create {cls.__name__} from dataset: {e}') from e
-
-    @classmethod
-    def from_netcdf(cls, path: str | pathlib.Path) -> Element:
-        """Load an instance from a NetCDF file.
-
-        Args:
-            path: Path to the NetCDF file
-
-        Returns:
-            Element instance
-        """
-        try:
-            ds = fx_io.load_dataset_from_netcdf(path)
-            return cls.from_dataset(ds)
-        except Exception as e:
-            raise OSError(f'Failed to load {cls.__name__} from NetCDF file {path}: {e}') from e
-
-    def get_structure(self, clean: bool = False, stats: bool = False) -> dict:
-        """Get object structure as a dictionary.
-
-        Args:
-            clean: If True, remove None and empty dicts and lists.
-            stats: If True, replace DataArray references with statistics
-
-        Returns:
-            Dictionary representation of the object structure
-        """
-        reference_structure, extracted_arrays = create_reference_structure(self)
-        if stats:
-            reference_structure = self._replace_references_with_stats(reference_structure, extracted_arrays)
-        if clean:
-            return fx_io.remove_none_and_empty(reference_structure)
-        return reference_structure
-
-    @staticmethod
-    def _replace_references_with_stats(structure, arrays_dict: dict[str, xr.DataArray]):
-        """Replace DataArray references with statistical summaries."""
-        if isinstance(structure, str) and structure.startswith(':::'):
-            array_name = structure[3:]
-            if array_name in arrays_dict:
-                return get_dataarray_stats(arrays_dict[array_name])
-            return structure
-        elif isinstance(structure, dict):
-            return {k: Element._replace_references_with_stats(v, arrays_dict) for k, v in structure.items()}
-        elif isinstance(structure, list):
-            return [Element._replace_references_with_stats(item, arrays_dict) for item in structure]
-        return structure
-
-    def to_json(self, path: str | pathlib.Path):
-        """Save the object to a JSON file (for documentation, not reloading).
-
-        Args:
-            path: The path to the JSON file.
-        """
-        try:
-            data = self.get_structure(clean=True, stats=True)
-            fx_io.save_json(data, path)
-        except Exception as e:
-            raise OSError(f'Failed to save {self.__class__.__name__} to JSON file {path}: {e}') from e
-
-    def copy(self) -> Element:
-        """Create a copy of the Element.
-
-        Uses serialization infrastructure to ensure proper copying
-        of all DataArrays and nested objects.
-        """
-        dataset = self.to_dataset().copy(deep=True)
-        return self.__class__.from_dataset(dataset)
-
-    def __copy__(self):
-        """Support for copy.copy()."""
-        return self.copy()
-
-    def __deepcopy__(self, memo):
-        """Support for copy.deepcopy()."""
-        return self.copy()
-
-    def __repr__(self) -> str:
-        """Return string representation."""
-        return fx_io.build_repr_from_init(self, excluded_params={'self', 'id', 'kwargs'}, skip_default_size=True)
-
-    @staticmethod
-    def _valid_id(id: str) -> str:
-        """Checks if the id is valid.
-
-        Raises:
-            ValueError: If the id is not valid.
-        """
-        not_allowed = ['(', ')', '|', '->', '\\', '-slash-']  # \\ is needed to check for \
-        if any([sign in id for sign in not_allowed]):
-            raise ValueError(
-                f'Id "{id}" is not valid. Ids cannot contain the following characters: {not_allowed}. '
-                f'Use any other symbol instead'
-            )
-        if id.endswith(' '):
-            logger.error(f'Id "{id}" ends with a space. This will be removed.')
-            return id.rstrip()
-        return id
-
-    @staticmethod
-    def _valid_label(label: str) -> str:
-        """Deprecated: Use ``_valid_id`` instead."""
-        warnings.warn(
-            f'_valid_label is deprecated. Use _valid_id instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return Element._valid_id(label)
 
 
 # Precompiled regex pattern for natural sorting

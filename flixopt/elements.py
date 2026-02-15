@@ -36,6 +36,7 @@ from .structure import (
     TransmissionVarName,
     TypeModel,
     register_class_for_io,
+    valid_id,
 )
 
 if TYPE_CHECKING:
@@ -154,8 +155,7 @@ class Component(Element):
     _constraint_names: list[str] = field(default_factory=list, init=False, repr=False)
 
     def __post_init__(self):
-        self.id = Element._valid_id(self.id)
-        self._short_id = self.id
+        self.id = valid_id(self.id)
 
         # Handle dict inputs from IO deserialization
         if isinstance(self.inputs, dict):
@@ -342,8 +342,7 @@ class Bus(Element):
     _constraint_names: list[str] = field(default_factory=list, init=False, repr=False)
 
     def __post_init__(self):
-        self.id = Element._valid_id(self.id)
-        self._short_id = self.id
+        self.id = valid_id(self.id)
         # Handle deprecated excess_penalty_per_flow_hour
         if self.excess_penalty_per_flow_hour is not None:
             from .config import DEPRECATION_REMOVAL_VERSION
@@ -619,8 +618,7 @@ class Flow(Element):
         # Default flow_id to bus name
         if self.flow_id is None:
             self.flow_id = self.bus if isinstance(self.bus, str) else str(self.bus)
-        self.flow_id = Element._valid_id(self.flow_id)
-        self._short_id = self.flow_id
+        self.flow_id = valid_id(self.flow_id)
 
         if isinstance(self.bus, Bus):
             raise TypeError(
@@ -638,10 +636,28 @@ class Flow(Element):
         """The qualified identifier: ``component(flow_id)``."""
         return f'{self.component}({self.flow_id})'
 
-    @id.setter
-    def id(self, value: str) -> None:
+    @property
+    def label(self) -> str:
+        """Deprecated: Use ``flow_id`` instead."""
+        from .config import DEPRECATION_REMOVAL_VERSION
+
+        warnings.warn(
+            f'Accessing ".label" is deprecated. Use ".flow_id" instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.flow_id
+
+    @label.setter
+    def label(self, value: str) -> None:
+        from .config import DEPRECATION_REMOVAL_VERSION
+
+        warnings.warn(
+            f'Setting ".label" is deprecated. Use ".flow_id" instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.flow_id = value
-        self._short_id = value
 
     def __repr__(self) -> str:
         return fx_io.build_repr_from_init(self, excluded_params={'self', 'id'}, skip_default_size=True)

@@ -35,6 +35,7 @@ from .structure import (
     Element,
     FlowSystemModel,
     create_reference_structure,
+    replace_references_with_stats,
 )
 from .topology_accessor import TopologyAccessor
 from .transform_accessor import TransformAccessor
@@ -769,7 +770,7 @@ class FlowSystem(CompositeContainerMixin[Element]):
         reference_structure, extracted_arrays = self._create_reference_structure()
 
         if stats:
-            reference_structure = Element._replace_references_with_stats(reference_structure, extracted_arrays)
+            reference_structure = replace_references_with_stats(reference_structure, extracted_arrays)
 
         if clean:
             return fx_io.remove_none_and_empty(reference_structure)

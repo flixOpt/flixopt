@@ -22,6 +22,7 @@ from .structure import (
     Element,
     FlowSystemModel,
     register_class_for_io,
+    valid_id,
 )
 
 if TYPE_CHECKING:
@@ -217,8 +218,7 @@ class Effect(Element):
     _constraint_names: list[str] = field(default_factory=list, init=False, repr=False)
 
     def __post_init__(self):
-        self.id = Element._valid_id(self.id)
-        self._short_id = self.id
+        self.id = valid_id(self.id)
         # Validate that Penalty cannot be set as objective
         if self.is_objective and self.id == PENALTY_EFFECT_ID:
             raise ValueError(
