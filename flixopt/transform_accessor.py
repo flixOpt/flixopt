@@ -1381,7 +1381,7 @@ class TransformAccessor:
 
             # Check flows
             for flow in new_fs.flows.values():
-                if flow.label_full == base_name and isinstance(flow.size, InvestParameters):
+                if flow.id == base_name and isinstance(flow.size, InvestParameters):
                     flow.size.fixed_size = fixed_value
                     flow.size.mandatory = True
                     found = True
@@ -1392,9 +1392,7 @@ class TransformAccessor:
             if not found:
                 for component in new_fs.components.values():
                     if hasattr(component, 'capacity_in_flow_hours'):
-                        if component.label == base_name and isinstance(
-                            component.capacity_in_flow_hours, InvestParameters
-                        ):
+                        if component.id == base_name and isinstance(component.capacity_in_flow_hours, InvestParameters):
                             component.capacity_in_flow_hours.fixed_size = fixed_value
                             component.capacity_in_flow_hours.mandatory = True
                             found = True

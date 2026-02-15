@@ -112,10 +112,10 @@ class OptimizeAccessor:
         if normalize_weights is not None:
             import warnings
 
-            from .config import DEPRECATION_REMOVAL_VERSION
+            from .config import DEPRECATION_REMOVAL_V7
 
             warnings.warn(
-                f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+                f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_V7}. '
                 'Scenario weights are now always normalized when set on FlowSystem.\n',
                 DeprecationWarning,
                 stacklevel=2,
@@ -366,14 +366,14 @@ class OptimizeAccessor:
         # Check flows for InvestParameters
         for flow in segment_fs.flows.values():
             if isinstance(flow.size, InvestParameters):
-                invest_elements.append(flow.label_full)
+                invest_elements.append(flow.id)
 
         # Check storages for InvestParameters
         from .components import Storage
 
         for comp in segment_fs.components.values():
             if isinstance(comp, Storage) and isinstance(comp.capacity, InvestParameters):
-                invest_elements.append(comp.label_full)
+                invest_elements.append(comp.id)
 
         if invest_elements:
             raise ValueError(

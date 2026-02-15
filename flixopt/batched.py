@@ -21,9 +21,9 @@ import xarray as xr
 
 from .core import PlausibilityError
 from .features import fast_isnull, fast_notnull, stack_along_dim
+from .id_list import IdList, element_id_list
 from .interface import InvestParameters, StatusParameters
 from .modeling import _scalar_safe_isel_drop
-from .structure import ElementContainer
 
 if TYPE_CHECKING:
     from .components import LinearConverter, Transmission
@@ -541,12 +541,12 @@ class StoragesData:
         self._dim_name = dim_name
         self._effect_ids = effect_ids
         self._timesteps_extra = timesteps_extra
-        self._by_label = {s.label_full: s for s in storages}
+        self._by_id = {s.id: s for s in storages}
 
     @cached_property
     def ids(self) -> list[str]:
-        """All storage IDs (label_full)."""
-        return [s.label_full for s in self._storages]
+        """All storage IDs."""
+        return [s.id for s in self._storages]
 
     @property
     def element_ids(self) -> list[str]:
@@ -559,13 +559,13 @@ class StoragesData:
         return self._dim_name
 
     @cached_property
-    def elements(self) -> ElementContainer:
-        """ElementContainer of storages."""
-        return ElementContainer(self._storages)
+    def elements(self) -> IdList:
+        """IdList of storages."""
+        return element_id_list(self._storages)
 
     def __getitem__(self, label: str):
-        """Get a storage by its label_full."""
-        return self._by_label[label]
+        """Get a storage by its id."""
+        return self._by_id[label]
 
     def __len__(self) -> int:
         return len(self._storages)
@@ -575,29 +575,29 @@ class StoragesData:
     @cached_property
     def with_investment(self) -> list[str]:
         """IDs of storages with investment parameters."""
-        return [s.label_full for s in self._storages if isinstance(s.capacity_in_flow_hours, InvestParameters)]
+        return [s.id for s in self._storages if isinstance(s.capacity_in_flow_hours, InvestParameters)]
 
     @cached_property
     def with_optional_investment(self) -> list[str]:
         """IDs of storages with optional (non-mandatory) investment."""
-        return [sid for sid in self.with_investment if not self._by_label[sid].capacity_in_flow_hours.mandatory]
+        return [sid for sid in self.with_investment if not self._by_id[sid].capacity_in_flow_hours.mandatory]
 
     @cached_property
     def with_mandatory_investment(self) -> list[str]:
         """IDs of storages with mandatory investment."""
-        return [sid for sid in self.with_investment if self._by_label[sid].capacity_in_flow_hours.mandatory]
+        return [sid for sid in self.with_investment if self._by_id[sid].capacity_in_flow_hours.mandatory]
 
     @cached_property
     def with_balanced(self) -> list[str]:
         """IDs of storages with balanced charging/discharging flow sizes."""
-        return [s.label_full for s in self._storages if s.balanced]
+        return [s.id for s in self._storages if s.balanced]
 
     # === Investment Data ===
 
     @cached_property
     def invest_params(self) -> dict[str, InvestParameters]:
-        """Investment parameters for storages with investment, keyed by label_full."""
-        return {sid: self._by_label[sid].capacity_in_flow_hours for sid in self.with_investment}
+        """Investment parameters for storages with investment, keyed by id."""
+        return {sid: self._by_id[sid].capacity_in_flow_hours for sid in self.with_investment}
 
     @cached_property
     def investment_data(self) -> InvestmentData | None:
@@ -640,12 +640,12 @@ class StoragesData:
     @cached_property
     def charging_flow_ids(self) -> list[str]:
         """Flow IDs for charging flows, aligned with self.ids."""
-        return [s.charging.label_full for s in self._storages]
+        return [s.charging.id for s in self._storages]
 
     @cached_property
     def discharging_flow_ids(self) -> list[str]:
         """Flow IDs for discharging flows, aligned with self.ids."""
-        return [s.discharging.label_full for s in self._storages]
+        return [s.discharging.id for s in self._storages]
 
     # === Capacity and Charge State Bounds ===
 
@@ -775,7 +775,7 @@ class StoragesData:
 
         for storage in self._storages:
             storage.validate_config()
-            sid = storage.label_full
+            sid = storage.id
 
             # Capacity required for non-default relative bounds (DataArray checks)
             if storage.capacity_in_flow_hours is None:
@@ -841,7 +841,7 @@ class FlowsData:
     """Batched data container for all flows with indexed access.
 
     Provides:
-    - Element lookup by label: `flows['Boiler(gas_in)']` or `flows.get('label')`
+    - Element lookup by id: `flows['Boiler(gas_in)']` or `flows.get('id')`
     - Categorizations as list[str]: `flows.with_status`, `flows.with_investment`
     - Batched parameters as xr.DataArray with flow dimension
 
@@ -855,15 +855,15 @@ class FlowsData:
             flows: List of all Flow elements.
             flow_system: Parent FlowSystem for model coordinates.
         """
-        self.elements: ElementContainer[Flow] = ElementContainer(flows)
+        self.elements: IdList = element_id_list(flows)
         self._fs = flow_system
 
     def __getitem__(self, label: str) -> Flow:
-        """Get a flow by its label_full."""
+        """Get a flow by its id."""
         return self.elements[label]
 
     def get(self, label: str, default: Flow | None = None) -> Flow | None:
-        """Get a flow by label, returning default if not found."""
+        """Get a flow by id, returning default if not found."""
         return self.elements.get(label, default)
 
     def __len__(self) -> int:
@@ -875,7 +875,7 @@ class FlowsData:
 
     @property
     def ids(self) -> list[str]:
-        """List of all flow IDs (label_full)."""
+        """List of all flow IDs."""
         return list(self.elements.keys())
 
     @property
@@ -890,7 +890,7 @@ class FlowsData:
 
     def _categorize(self, condition) -> list[str]:
         """Return IDs of flows matching condition(flow) -> bool."""
-        return [f.label_full for f in self.elements.values() if condition(f)]
+        return [f.id for f in self.elements.values() if condition(f)]
 
     def _mask(self, condition) -> xr.DataArray:
         """Return boolean DataArray mask for condition(flow) -> bool."""
@@ -901,7 +901,7 @@ class FlowsData:
         )
 
     # === Flow Categorizations ===
-    # All return list[str] of label_full IDs.
+    # All return list[str] of element IDs.
 
     @cached_property
     def with_status(self) -> list[str]:
@@ -1101,12 +1101,12 @@ class FlowsData:
 
     @cached_property
     def invest_params(self) -> dict[str, InvestParameters]:
-        """Investment parameters for flows with investment, keyed by label_full."""
+        """Investment parameters for flows with investment, keyed by id."""
         return {fid: self[fid].size for fid in self.with_investment}
 
     @cached_property
     def status_params(self) -> dict[str, StatusParameters]:
-        """Status parameters for flows with status, keyed by label_full."""
+        """Status parameters for flows with status, keyed by id."""
         return {fid: self[fid].status_parameters for fid in self.with_status}
 
     @cached_property
@@ -1415,7 +1415,7 @@ class FlowsData:
 
     @cached_property
     def previous_states(self) -> dict[str, xr.DataArray]:
-        """Previous status for flows with previous_flow_rate, keyed by label_full.
+        """Previous status for flows with previous_flow_rate, keyed by id.
 
         Returns:
             Dict mapping flow_id -> binary DataArray (time dimension).
@@ -1653,7 +1653,7 @@ class EffectsData:
 
     @cached_property
     def effect_ids(self) -> list[str]:
-        return [e.label for e in self._effects]
+        return [e.id for e in self._effects]
 
     @property
     def element_ids(self) -> list[str]:
@@ -1671,11 +1671,11 @@ class EffectsData:
 
     @property
     def objective_effect_id(self) -> str:
-        return self._collection.objective_effect.label
+        return self._collection.objective_effect.id
 
     @property
     def penalty_effect_id(self) -> str:
-        return self._collection.penalty_effect.label
+        return self._collection.penalty_effect.id
 
     def _effect_values(self, attr_name: str, default: float) -> list:
         """Extract per-effect attribute values, substituting default for None."""
@@ -1731,17 +1731,17 @@ class EffectsData:
 
     @property
     def period_weights(self) -> dict[str, xr.DataArray]:
-        """Get period weights for each effect, keyed by effect label."""
+        """Get period weights for each effect, keyed by effect id."""
         result = {}
         for effect in self._effects:
             effect_weights = effect.period_weights
             default_weights = effect._flow_system.period_weights
             if effect_weights is not None:
-                result[effect.label] = effect_weights
+                result[effect.id] = effect_weights
             elif default_weights is not None:
-                result[effect.label] = default_weights
+                result[effect.id] = default_weights
             else:
-                result[effect.label] = effect._fit_coords(name='period_weights', data=1, dims=['period'])
+                result[effect.id] = effect._fit_coords(name='period_weights', data=1, dims=['period'])
         return result
 
     def effects(self) -> list[Effect]:
@@ -1749,7 +1749,7 @@ class EffectsData:
         return self._effects
 
     def __getitem__(self, label: str) -> Effect:
-        """Look up an effect by label (delegates to the collection)."""
+        """Look up an effect by id (delegates to the collection)."""
         return self._collection[label]
 
     def values(self):
@@ -1801,7 +1801,7 @@ class BusesData:
 
     def __init__(self, buses: list[Bus]):
         self._buses = buses
-        self.elements: ElementContainer = ElementContainer(buses)
+        self.elements: IdList = element_id_list(buses)
 
     @property
     def element_ids(self) -> list[str]:
@@ -1814,7 +1814,7 @@ class BusesData:
     @cached_property
     def with_imbalance(self) -> list[str]:
         """IDs of buses allowing imbalance."""
-        return [b.label_full for b in self._buses if b.allows_imbalance]
+        return [b.id for b in self._buses if b.allows_imbalance]
 
     @cached_property
     def imbalance_elements(self) -> list[Bus]:
@@ -1827,9 +1827,9 @@ class BusesData:
         coefficients = {}
         for bus in self._buses:
             for f in bus.inputs.values():
-                coefficients[(bus.label_full, f.label_full)] = 1.0
+                coefficients[(bus.id, f.id)] = 1.0
             for f in bus.outputs.values():
-                coefficients[(bus.label_full, f.label_full)] = -1.0
+                coefficients[(bus.id, f.id)] = -1.0
         return coefficients
 
     def validate(self) -> None:
@@ -1846,7 +1846,7 @@ class BusesData:
                 zero_penalty = np.all(np.equal(bus.imbalance_penalty_per_flow_hour, 0))
                 if zero_penalty:
                     logger.warning(
-                        f'In Bus {bus.label_full}, the imbalance_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
+                        f'In Bus {bus.id}, the imbalance_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
                     )
 
 
@@ -1866,7 +1866,7 @@ class ComponentsData:
         self._flows_data = flows_data
         self._effect_ids = effect_ids
         self._timestep_duration = timestep_duration
-        self.elements: ElementContainer = ElementContainer(components_with_status)
+        self.elements: IdList = element_id_list(components_with_status)
 
     @property
     def element_ids(self) -> list[str]:
@@ -1898,7 +1898,7 @@ class ComponentsData:
     @cached_property
     def status_params(self) -> dict[str, StatusParameters]:
         """Dict of component_id -> StatusParameters."""
-        return {c.label: c.status_parameters for c in self._components_with_status}
+        return {c.id: c.status_parameters for c in self._components_with_status}
 
     @cached_property
     def previous_status_dict(self) -> dict[str, xr.DataArray]:
@@ -1907,7 +1907,7 @@ class ComponentsData:
         for c in self._components_with_status:
             prev = self._get_previous_status_for_component(c)
             if prev is not None:
-                result[c.label] = prev
+                result[c.id] = prev
         return result
 
     def _get_previous_status_for_component(self, component) -> xr.DataArray | None:
@@ -2004,7 +2004,7 @@ class ConvertersData:
         self._converters = converters
         self._flow_ids = flow_ids
         self._timesteps = timesteps
-        self.elements: ElementContainer = ElementContainer(converters)
+        self.elements: IdList = element_id_list(converters)
 
     @property
     def element_ids(self) -> list[str]:
@@ -2029,7 +2029,7 @@ class ConvertersData:
     @cached_property
     def factor_element_ids(self) -> list[str]:
         """Element IDs for converters with linear conversion factors."""
-        return [c.label for c in self.with_factors]
+        return [c.id for c in self.with_factors]
 
     @cached_property
     def max_equations(self) -> int:
@@ -2073,17 +2073,17 @@ class ConvertersData:
         intermediate: dict[tuple[str, str], list[tuple[int, float | xr.DataArray]]] = defaultdict(list)
 
         for conv in self.with_factors:
-            flow_map = {fl.label: fl.label_full for fl in conv.flows.values()}
+            flow_map = {fl.flow_id: fl.id for fl in conv.flows.values()}
             # +1 for inputs, -1 for outputs
-            flow_signs = {f.label_full: 1.0 for f in conv.inputs.values() if f.label_full in all_flow_ids_set}
-            flow_signs.update({f.label_full: -1.0 for f in conv.outputs.values() if f.label_full in all_flow_ids_set})
+            flow_signs = {f.id: 1.0 for f in conv.inputs.values() if f.id in all_flow_ids_set}
+            flow_signs.update({f.id: -1.0 for f in conv.outputs.values() if f.id in all_flow_ids_set})
 
             for eq_idx, conv_factors in enumerate(conv.conversion_factors):
                 for flow_label, coeff in conv_factors.items():
                     flow_id = flow_map.get(flow_label)
                     sign = flow_signs.get(flow_id, 0.0) if flow_id else 0.0
                     if sign != 0.0:
-                        intermediate[(conv.label, flow_id)].append((eq_idx, coeff * sign))
+                        intermediate[(conv.id, flow_id)].append((eq_idx, coeff * sign))
 
         # Stack each (converter, flow) pair's per-equation values into a DataArray
         result: dict[tuple[str, str], float | xr.DataArray] = {}
@@ -2112,12 +2112,12 @@ class ConvertersData:
     @cached_property
     def piecewise_element_ids(self) -> list[str]:
         """Element IDs for converters with piecewise conversion."""
-        return [c.label for c in self.with_piecewise]
+        return [c.id for c in self.with_piecewise]
 
     @cached_property
     def piecewise_segment_counts_dict(self) -> dict[str, int]:
         """Dict mapping converter_id -> number of segments."""
-        return {c.label: len(list(c.piecewise_conversion.piecewises.values())[0]) for c in self.with_piecewise}
+        return {c.id: len(list(c.piecewise_conversion.piecewises.values())[0]) for c in self.with_piecewise}
 
     @cached_property
     def piecewise_max_segments(self) -> int:
@@ -2145,7 +2145,7 @@ class ConvertersData:
         all_flow_ids: set[str] = set()
         for conv in self.with_piecewise:
             for flow_label in conv.piecewise_conversion.piecewises:
-                flow_id = conv.flows[flow_label].label_full
+                flow_id = conv.flows[flow_label].id
                 all_flow_ids.add(flow_id)
 
         result = {}
@@ -2155,15 +2155,15 @@ class ConvertersData:
                 # Check if this converter has this flow
                 found = False
                 for flow_label, piecewise in conv.piecewise_conversion.piecewises.items():
-                    if conv.flows[flow_label].label_full == flow_id:
+                    if conv.flows[flow_label].id == flow_id:
                         starts = [p.start for p in piecewise]
                         ends = [p.end for p in piecewise]
-                        breakpoints[conv.label] = (starts, ends)
+                        breakpoints[conv.id] = (starts, ends)
                         found = True
                         break
                 if not found:
                     # This converter doesn't have this flow - use NaN
-                    breakpoints[conv.label] = (
+                    breakpoints[conv.id] = (
                         [np.nan] * self.piecewise_max_segments,
                         [np.nan] * self.piecewise_max_segments,
                     )
@@ -2238,7 +2238,7 @@ class TransmissionsData:
     def __init__(self, transmissions: list[Transmission], flow_ids: list[str]):
         self._transmissions = transmissions
         self._flow_ids = flow_ids
-        self.elements: ElementContainer = ElementContainer(transmissions)
+        self.elements: IdList = element_id_list(transmissions)
 
     @property
     def element_ids(self) -> list[str]:
@@ -2261,12 +2261,12 @@ class TransmissionsData:
     @cached_property
     def bidirectional_ids(self) -> list[str]:
         """Element IDs for bidirectional transmissions."""
-        return [t.label for t in self.bidirectional]
+        return [t.id for t in self.bidirectional]
 
     @cached_property
     def balanced_ids(self) -> list[str]:
         """Element IDs for balanced transmissions."""
-        return [t.label for t in self.balanced]
+        return [t.id for t in self.balanced]
 
     # === Flow Masks for Batched Selection ===
 
@@ -2274,14 +2274,14 @@ class TransmissionsData:
         """Build (transmission, flow) mask: 1 if flow belongs to transmission.
 
         Args:
-            transmission_ids: List of transmission labels to include.
-            flow_getter: Function that takes a transmission and returns its flow label_full.
+            transmission_ids: List of transmission ids to include.
+            flow_getter: Function that takes a transmission and returns its flow id.
         """
         all_flow_ids = self._flow_ids
         mask_data = np.zeros((len(transmission_ids), len(all_flow_ids)))
 
         for t_idx, t_id in enumerate(transmission_ids):
-            t = next(t for t in self._transmissions if t.label == t_id)
+            t = next(t for t in self._transmissions if t.id == t_id)
             flow_id = flow_getter(t)
             if flow_id in all_flow_ids:
                 f_idx = all_flow_ids.index(flow_id)
@@ -2296,32 +2296,32 @@ class TransmissionsData:
     @cached_property
     def in1_mask(self) -> xr.DataArray:
         """(transmission, flow) mask: 1 if flow is in1 for transmission."""
-        return self._build_flow_mask(self.element_ids, lambda t: t.in1.label_full)
+        return self._build_flow_mask(self.element_ids, lambda t: t.in1.id)
 
     @cached_property
     def out1_mask(self) -> xr.DataArray:
         """(transmission, flow) mask: 1 if flow is out1 for transmission."""
-        return self._build_flow_mask(self.element_ids, lambda t: t.out1.label_full)
+        return self._build_flow_mask(self.element_ids, lambda t: t.out1.id)
 
     @cached_property
     def in2_mask(self) -> xr.DataArray:
         """(transmission, flow) mask for bidirectional: 1 if flow is in2."""
-        return self._build_flow_mask(self.bidirectional_ids, lambda t: t.in2.label_full)
+        return self._build_flow_mask(self.bidirectional_ids, lambda t: t.in2.id)
 
     @cached_property
     def out2_mask(self) -> xr.DataArray:
         """(transmission, flow) mask for bidirectional: 1 if flow is out2."""
-        return self._build_flow_mask(self.bidirectional_ids, lambda t: t.out2.label_full)
+        return self._build_flow_mask(self.bidirectional_ids, lambda t: t.out2.id)
 
     @cached_property
     def balanced_in1_mask(self) -> xr.DataArray:
         """(transmission, flow) mask for balanced: 1 if flow is in1."""
-        return self._build_flow_mask(self.balanced_ids, lambda t: t.in1.label_full)
+        return self._build_flow_mask(self.balanced_ids, lambda t: t.in1.id)
 
     @cached_property
     def balanced_in2_mask(self) -> xr.DataArray:
         """(transmission, flow) mask for balanced: 1 if flow is in2."""
-        return self._build_flow_mask(self.balanced_ids, lambda t: t.in2.label_full)
+        return self._build_flow_mask(self.balanced_ids, lambda t: t.in2.id)
 
     # === Loss Properties ===
 
@@ -2362,9 +2362,7 @@ class TransmissionsData:
     @cached_property
     def transmissions_with_abs_losses(self) -> list[str]:
         """Element IDs for transmissions with absolute losses."""
-        return [
-            t.label for t in self._transmissions if t.absolute_losses is not None and np.any(t.absolute_losses != 0)
-        ]
+        return [t.id for t in self._transmissions if t.absolute_losses is not None and np.any(t.absolute_losses != 0)]
 
     def validate(self) -> None:
         """Validate all transmissions (config + DataArray checks).
@@ -2382,7 +2380,7 @@ class TransmissionsData:
         errors: list[str] = []
 
         for transmission in self._transmissions:
-            tid = transmission.label_full
+            tid = transmission.id
 
             # Balanced size compatibility (DataArray check)
             if transmission.balanced:

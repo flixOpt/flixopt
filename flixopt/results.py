@@ -16,10 +16,11 @@ import xarray as xr
 from . import io as fx_io
 from . import plotting
 from .color_processing import process_colors
-from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
+from .config import CONFIG, DEPRECATION_REMOVAL_V7, DEPRECATION_REMOVAL_V8, SUCCESS_LEVEL
 from .flow_system import FlowSystem
+from .id_list import IdList
 from .model_coordinates import ModelCoordinates
-from .structure import CompositeContainerMixin, ResultsContainer
+from .structure import CompositeContainerMixin
 
 if TYPE_CHECKING:
     import matplotlib.pyplot as plt
@@ -96,9 +97,9 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         name: Unique identifier for this optimization
         model: Original linopy optimization model (if available)
         folder: Directory path for result storage and loading
-        components: Dictionary mapping component labels to ComponentResults objects
-        buses: Dictionary mapping bus labels to BusResults objects
-        effects: Dictionary mapping effect names to EffectResults objects
+        components: IdList mapping component ids to ComponentResults objects (supports short-key fallback)
+        buses: IdList mapping bus ids to BusResults objects (supports short-key fallback)
+        effects: IdList mapping effect ids to EffectResults objects (supports short-key fallback)
         timesteps_extra: Extended time index including boundary conditions
         timestep_duration: Duration of each timestep in hours for proper energy calculations
 
@@ -155,7 +156,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
     Design Patterns:
         **Factory Methods**: Use `from_file()` and `from_optimization()` for creation or access directly from `Optimization.results`
-        **Dictionary Access**: Use `results[element_label]` for element-specific results
+        **IdList Access**: Use `results[element_id]` for element-specific results (with short-key fallback)
         **Lazy Loading**: Results objects created on-demand for memory efficiency
         **Unified Interface**: Consistent API across different result types
 
@@ -237,7 +238,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             model: Linopy optimization model.
         """
         warnings.warn(
-            f'Results is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            f'Results is deprecated and will be removed in v{DEPRECATION_REMOVAL_V7}. '
             'Access results directly via FlowSystem.solution after optimization, or use the '
             '.plot accessor on FlowSystem and its components (e.g., flow_system.plot.heatmap(...)). '
             'To load old result files, use FlowSystem.from_old_results(folder, name).',
@@ -252,24 +253,28 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         self.model = model
         self.folder = pathlib.Path(folder) if folder is not None else pathlib.Path.cwd() / 'results'
 
-        # Create ResultsContainers for better access patterns
+        # Create IdLists for better access patterns
         components_dict = {
             label: ComponentResults(self, **infos)
             for label, infos in _get_solution_attr(self.solution, 'Components').items()
         }
-        self.components = ResultsContainer(
-            elements=components_dict, element_type_name='component results', truncate_repr=10
+        self.components = IdList(
+            list(components_dict.values()), key_fn=lambda r: r.id, display_name='component results', truncate_repr=10
         )
 
         buses_dict = {
             label: BusResults(self, **infos) for label, infos in _get_solution_attr(self.solution, 'Buses').items()
         }
-        self.buses = ResultsContainer(elements=buses_dict, element_type_name='bus results', truncate_repr=10)
+        self.buses = IdList(
+            list(buses_dict.values()), key_fn=lambda r: r.id, display_name='bus results', truncate_repr=10
+        )
 
         effects_dict = {
             label: EffectResults(self, **infos) for label, infos in _get_solution_attr(self.solution, 'Effects').items()
         }
-        self.effects = ResultsContainer(elements=effects_dict, element_type_name='effect results', truncate_repr=10)
+        self.effects = IdList(
+            list(effects_dict.values()), key_fn=lambda r: r.id, display_name='effect results', truncate_repr=10
+        )
 
         flows_attr = _get_solution_attr(self.solution, 'Flows')
         if not flows_attr:
@@ -283,7 +288,9 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         else:
             flows_dict = {label: FlowResults(self, **infos) for label, infos in flows_attr.items()}
             self._has_flow_data = True
-        self.flows = ResultsContainer(elements=flows_dict, element_type_name='flow results', truncate_repr=10)
+        self.flows = IdList(
+            list(flows_dict.values()), key_fn=lambda r: r.id, display_name='flow results', truncate_repr=10
+        )
 
         self.timesteps_extra = self.solution.indexes['time']
         self.timestep_duration = ModelCoordinates.calculate_timestep_duration(self.timesteps_extra)
@@ -310,7 +317,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
         self.colors: dict[str, str] = {}
 
-    def _get_container_groups(self) -> dict[str, ResultsContainer]:
+    def _get_container_groups(self) -> dict[str, IdList]:
         """Return ordered container groups for CompositeContainerMixin."""
         return {
             'Components': self.components,
@@ -584,31 +591,31 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
             **Note**: The new API differs from this method:
 
-            - Returns ``xr.Dataset`` (not ``DataArray``) with flow labels as variable names
+            - Returns ``xr.Dataset`` (not ``DataArray``) with flow ids as variable names
             - No ``'flow'`` dimension - each flow is a separate variable
             - No filtering parameters - filter using these alternatives::
 
-                # Select specific flows by label
+                # Select specific flows by id
                 ds = results.plot.all_flow_rates
                 ds[['Boiler(Q_th)', 'CHP(Q_th)']]
 
-                # Filter by substring in label
+                # Filter by substring in id
                 ds[[v for v in ds.data_vars if 'Boiler' in v]]
 
                 # Filter by bus (start/end) - get flows connected to a bus
-                results['Fernwärme'].inputs  # list of input flow labels
-                results['Fernwärme'].outputs  # list of output flow labels
+                results['Fernwärme'].inputs  # list of input flow ids
+                results['Fernwärme'].outputs  # list of output flow ids
                 ds[results['Fernwärme'].inputs]  # Dataset with only inputs to bus
 
                 # Filter by component - get flows of a component
-                results['Boiler'].inputs  # list of input flow labels
-                results['Boiler'].outputs  # list of output flow labels
+                results['Boiler'].inputs  # list of input flow ids
+                results['Boiler'].outputs  # list of output flow ids
         """
         warnings.warn(
             'results.flow_rates() is deprecated. '
             'Use results.plot.all_flow_rates instead (returns Dataset, not DataArray). '
-            'Note: The new API has no filtering parameters and uses flow labels as variable names. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            'Note: The new API has no filtering parameters and uses flow ids as variable names. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_V7}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -617,7 +624,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         if self._flow_rates is None:
             self._flow_rates = self._assign_flow_coords(
                 xr.concat(
-                    [flow.flow_rate.rename(flow.label) for flow in self.flows.values()],
+                    [flow.flow_rate.rename(flow.id) for flow in self.flows.values()],
                     dim=pd.Index(self.flows.keys(), name='flow'),
                 )
             ).rename('flow_rates')
@@ -638,25 +645,25 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
             **Note**: The new API differs from this method:
 
-            - Returns ``xr.Dataset`` (not ``DataArray``) with flow labels as variable names
+            - Returns ``xr.Dataset`` (not ``DataArray``) with flow ids as variable names
             - No ``'flow'`` dimension - each flow is a separate variable
             - No filtering parameters - filter using these alternatives::
 
-                # Select specific flows by label
+                # Select specific flows by id
                 ds = results.plot.all_flow_hours
                 ds[['Boiler(Q_th)', 'CHP(Q_th)']]
 
-                # Filter by substring in label
+                # Filter by substring in id
                 ds[[v for v in ds.data_vars if 'Boiler' in v]]
 
                 # Filter by bus (start/end) - get flows connected to a bus
-                results['Fernwärme'].inputs  # list of input flow labels
-                results['Fernwärme'].outputs  # list of output flow labels
+                results['Fernwärme'].inputs  # list of input flow ids
+                results['Fernwärme'].outputs  # list of output flow ids
                 ds[results['Fernwärme'].inputs]  # Dataset with only inputs to bus
 
                 # Filter by component - get flows of a component
-                results['Boiler'].inputs  # list of input flow labels
-                results['Boiler'].outputs  # list of output flow labels
+                results['Boiler'].inputs  # list of input flow ids
+                results['Boiler'].outputs  # list of output flow ids
 
         Flow hours represent the total energy/material transferred over time,
         calculated by multiplying flow rates by the duration of each timestep.
@@ -680,8 +687,8 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         warnings.warn(
             'results.flow_hours() is deprecated. '
             'Use results.plot.all_flow_hours instead (returns Dataset, not DataArray). '
-            'Note: The new API has no filtering parameters and uses flow labels as variable names. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            'Note: The new API has no filtering parameters and uses flow ids as variable names. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_V7}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -704,31 +711,31 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
             **Note**: The new API differs from this method:
 
-            - Returns ``xr.Dataset`` (not ``DataArray``) with flow labels as variable names
+            - Returns ``xr.Dataset`` (not ``DataArray``) with flow ids as variable names
             - No ``'flow'`` dimension - each flow is a separate variable
             - No filtering parameters - filter using these alternatives::
 
-                # Select specific flows by label
+                # Select specific flows by id
                 ds = results.plot.all_sizes
                 ds[['Boiler(Q_th)', 'CHP(Q_th)']]
 
-                # Filter by substring in label
+                # Filter by substring in id
                 ds[[v for v in ds.data_vars if 'Boiler' in v]]
 
                 # Filter by bus (start/end) - get flows connected to a bus
-                results['Fernwärme'].inputs  # list of input flow labels
-                results['Fernwärme'].outputs  # list of output flow labels
+                results['Fernwärme'].inputs  # list of input flow ids
+                results['Fernwärme'].outputs  # list of output flow ids
                 ds[results['Fernwärme'].inputs]  # Dataset with only inputs to bus
 
                 # Filter by component - get flows of a component
-                results['Boiler'].inputs  # list of input flow labels
-                results['Boiler'].outputs  # list of output flow labels
+                results['Boiler'].inputs  # list of input flow ids
+                results['Boiler'].outputs  # list of output flow ids
         """
         warnings.warn(
             'results.sizes() is deprecated. '
             'Use results.plot.all_sizes instead (returns Dataset, not DataArray). '
-            'Note: The new API has no filtering parameters and uses flow labels as variable names. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            'Note: The new API has no filtering parameters and uses flow ids as variable names. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_V7}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -737,7 +744,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         if self._sizes is None:
             self._sizes = self._assign_flow_coords(
                 xr.concat(
-                    [flow.size.rename(flow.label) for flow in self.flows.values()],
+                    [flow.size.rename(flow.id) for flow in self.flows.values()],
                     dim=pd.Index(self.flows.keys(), name='flow'),
                 )
             ).rename('flow_sizes')
@@ -1282,11 +1289,21 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 class _ElementResults:
     def __init__(self, results: Results, label: str, variables: list[str], constraints: list[str]):
         self._results = results
-        self.label = label
+        self.id = label
         self.variable_names = variables
         self._constraint_names = constraints
 
         self.solution = self._results.solution[self.variable_names]
+
+    @property
+    def label(self) -> str:
+        """Deprecated. Use `.id` instead."""
+        warnings.warn(
+            f'`label` is deprecated and will be removed in v{DEPRECATION_REMOVAL_V8}. Use `.id` instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.id
 
     @property
     def variables(self) -> linopy.Variables:
@@ -1313,7 +1330,7 @@ class _ElementResults:
     def __repr__(self) -> str:
         """Return string representation with element info and dataset preview."""
         class_name = self.__class__.__name__
-        header = f'{class_name}: "{self.label}"'
+        header = f'{class_name}: "{self.id}"'
         sol = self.solution.copy(deep=False)
         sol.attrs = {}
         return f'{header}\n{"-" * len(header)}\n{repr(sol)}'
@@ -1510,9 +1527,7 @@ class _NodeResults(_ElementResults):
                 )
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
-        title = (
-            f'{self.label} (flow rates){suffix}' if unit_type == 'flow_rate' else f'{self.label} (flow hours){suffix}'
-        )
+        title = f'{self.id} (flow rates){suffix}' if unit_type == 'flow_rate' else f'{self.id} (flow hours){suffix}'
 
         if engine == 'plotly':
             figure_like = plotting.with_plotly(
@@ -1662,7 +1677,7 @@ class _NodeResults(_ElementResults):
             suffix_parts.extend(auto_suffix_parts)
 
         suffix = '--' + '-'.join(sorted(set(suffix_parts))) if suffix_parts else ''
-        title = f'{self.label} (total flow hours){suffix}'
+        title = f'{self.id} (total flow hours){suffix}'
 
         if engine == 'plotly':
             figure_like = plotting.dual_pie_with_plotly(
@@ -1766,13 +1781,13 @@ class ComponentResults(_NodeResults):
 
     @property
     def _charge_state(self) -> str:
-        return f'{self.label}|charge_state'
+        return f'{self.id}|charge_state'
 
     @property
     def charge_state(self) -> xr.DataArray:
         """Get storage charge state solution."""
         if not self.is_storage:
-            raise ValueError(f'Cant get charge_state. "{self.label}" is not a storage')
+            raise ValueError(f'Cant get charge_state. "{self.id}" is not a storage')
         return self.solution[self._charge_state]
 
     def plot_charge_state(
@@ -1861,7 +1876,7 @@ class ComponentResults(_NodeResults):
         overlay_color = plot_kwargs.pop('charge_state_line_color', 'black')
 
         if not self.is_storage:
-            raise ValueError(f'Cant plot charge_state. "{self.label}" is not a storage')
+            raise ValueError(f'Cant plot charge_state. "{self.id}" is not a storage')
 
         # Get node balance and charge state
         ds = self.node_balance(with_last_timestep=True).fillna(0)
@@ -1872,7 +1887,7 @@ class ComponentResults(_NodeResults):
         charge_state_da, _ = _apply_selection_to_data(charge_state_da, select=select, drop=True)
         suffix = '--' + '-'.join(suffix_parts) if suffix_parts else ''
 
-        title = f'Operation Balance of {self.label}{suffix}'
+        title = f'Operation Balance of {self.id}{suffix}'
 
         if engine == 'plotly':
             # Plot flows (node balance) with the specified mode
@@ -1993,7 +2008,7 @@ class ComponentResults(_NodeResults):
             ValueError: If component is not a storage.
         """
         if not self.is_storage:
-            raise ValueError(f'Cant get charge_state. "{self.label}" is not a storage')
+            raise ValueError(f'Cant get charge_state. "{self.id}" is not a storage')
         variable_names = self.inputs + self.outputs + [self._charge_state]
         return sanitize_dataset(
             ds=self.solution[variable_names],
@@ -2018,7 +2033,7 @@ class EffectResults(_ElementResults):
         """Get effect shares from specific element.
 
         Args:
-            element: Element label to get shares from.
+            element: Element id to get shares from.
 
         Returns:
             xr.Dataset: Element shares to this effect.
@@ -2044,21 +2059,21 @@ class FlowResults(_ElementResults):
 
     @property
     def flow_rate(self) -> xr.DataArray:
-        return self.solution[f'{self.label}|flow_rate']
+        return self.solution[f'{self.id}|flow_rate']
 
     @property
     def flow_hours(self) -> xr.DataArray:
-        return (self.flow_rate * self._results.timestep_duration).rename(f'{self.label}|flow_hours')
+        return (self.flow_rate * self._results.timestep_duration).rename(f'{self.id}|flow_hours')
 
     @property
     def size(self) -> xr.DataArray:
-        name = f'{self.label}|size'
+        name = f'{self.id}|size'
         if name in self.solution:
             return self.solution[name]
         try:
-            return self._results.flow_system.flows[self.label].size.rename(name)
+            return self._results.flow_system.flows[self.id].size.rename(name)
         except _FlowSystemRestorationError:
-            logger.critical(f'Size of flow {self.label}.size not availlable. Returning NaN')
+            logger.critical(f'Size of flow {self.id}.size not availlable. Returning NaN')
             return xr.DataArray(np.nan).rename(name)
 
 
@@ -2222,7 +2237,7 @@ class SegmentedResults:
         folder: pathlib.Path | None = None,
     ):
         warnings.warn(
-            f'SegmentedResults is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            f'SegmentedResults is deprecated and will be removed in v{DEPRECATION_REMOVAL_V7}. '
             'A replacement API for segmented optimization will be provided in a future release.',
             DeprecationWarning,
             stacklevel=2,

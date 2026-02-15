@@ -1529,8 +1529,8 @@ class StatisticsPlotAccessor:
         else:
             raise KeyError(f"'{node}' not found in buses or components")
 
-        input_labels = [f.label_full for f in element.inputs.values()]
-        output_labels = [f.label_full for f in element.outputs.values()]
+        input_labels = [f.id for f in element.inputs.values()]
+        output_labels = [f.id for f in element.outputs.values()]
         all_labels = input_labels + output_labels
 
         filtered_labels = _filter_by_labels(all_labels, include, exclude)
@@ -1656,11 +1656,11 @@ class StatisticsPlotAccessor:
 
         for bus in carrier_buses:
             for flow in bus.inputs.values():
-                input_labels.append(flow.label_full)
-                component_inputs.setdefault(flow.component, []).append(flow.label_full)
+                input_labels.append(flow.id)
+                component_inputs.setdefault(flow.component, []).append(flow.id)
             for flow in bus.outputs.values():
-                output_labels.append(flow.label_full)
-                component_outputs.setdefault(flow.component, []).append(flow.label_full)
+                output_labels.append(flow.id)
+                component_outputs.setdefault(flow.component, []).append(flow.id)
 
         all_labels = input_labels + output_labels
         filtered_labels = _filter_by_labels(all_labels, include, exclude)
@@ -1888,7 +1888,7 @@ class StatisticsPlotAccessor:
 
                 if components and comp_label not in components:
                     continue
-                matching_labels.append(flow.label_full)
+                matching_labels.append(flow.id)
 
             selected_flows = [lbl for lbl in matching_labels if lbl in available_flows]
             da = source_da.sel(flow=selected_flows)
@@ -2383,8 +2383,8 @@ class StatisticsPlotAccessor:
             raise ValueError(f"'{storage}' is not a storage (no charge_state variable found)")
 
         # Get flow data
-        input_labels = [f.label_full for f in component.inputs.values()]
-        output_labels = [f.label_full for f in component.outputs.values()]
+        input_labels = [f.id for f in component.inputs.values()]
+        output_labels = [f.id for f in component.outputs.values()]
         all_labels = input_labels + output_labels
 
         source_da = self._stats.flow_rates if unit == 'flow_rate' else self._stats.flow_hours

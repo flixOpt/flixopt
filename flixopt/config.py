@@ -20,7 +20,7 @@ except ImportError:
     COLORLOG_AVAILABLE = False
     escape_codes = None
 
-__all__ = ['CONFIG', 'MultilineFormatter', 'SUCCESS_LEVEL', 'DEPRECATION_REMOVAL_VERSION']
+__all__ = ['CONFIG', 'MultilineFormatter', 'SUCCESS_LEVEL', 'DEPRECATION_REMOVAL_V7', 'DEPRECATION_REMOVAL_V8']
 
 if COLORLOG_AVAILABLE:
     __all__.append('ColoredMultilineFormatter')
@@ -29,8 +29,9 @@ if COLORLOG_AVAILABLE:
 SUCCESS_LEVEL = 25
 logging.addLevelName(SUCCESS_LEVEL, 'SUCCESS')
 
-# Deprecation removal version - update this when planning the next major version
-DEPRECATION_REMOVAL_VERSION = '7.0.0'
+# Deprecation removal versions — split by the release that introduced them
+DEPRECATION_REMOVAL_V7 = '7.0.0'  # v6.x deprecations (statistics→stats, Optimization class, topology renames, …)
+DEPRECATION_REMOVAL_V8 = '8.0.0'  # v7.x deprecations (label→id, Flow constructor, .label/.label_full, …)
 
 
 class MultilineFormatter(logging.Formatter):
