@@ -188,9 +188,6 @@ class LinearConverter(Component):
         """Propagate flow_system reference to parent Component."""
         super().link_to_flow_system(flow_system, prefix)
 
-    def transform_data(self) -> None:
-        super().transform_data()  # Component._propagate_status_parameters
-
     @property
     def degrees_of_freedom(self):
         return len(self.inputs + self.outputs) - len(self.conversion_factors)
@@ -404,9 +401,6 @@ class Storage(Component):
         """Propagate flow_system reference to parent Component."""
         super().link_to_flow_system(flow_system, prefix)
 
-    def transform_data(self) -> None:
-        super().transform_data()  # Component._propagate_status_parameters
-
     def __repr__(self) -> str:
         """Return string representation."""
         # Use build_repr_from_init directly to exclude charging and discharging
@@ -587,9 +581,6 @@ class Transmission(Component):
                 )
                 if needs_update:
                     flow.relative_minimum = CONFIG.Modeling.epsilon
-
-    def transform_data(self) -> None:
-        super().transform_data()  # Component._propagate_status_parameters
 
 
 class StoragesModel(TypeModel):

@@ -225,7 +225,7 @@ class Effect(Element):
         self.is_objective = is_objective
         self.period_weights = period_weights
         # Share parameters accept Effect_* | Numeric_* unions (dict or single value).
-        # Store as-is here; transform_data() will normalize via fit_effects_to_model_coords().
+        # Stored as raw user input; alignment happens lazily in EffectsData.
         # Default to {} when None (no shares defined).
         self.share_from_temporal = share_from_temporal if share_from_temporal is not None else {}
         self.share_from_periodic = share_from_periodic if share_from_periodic is not None else {}
@@ -248,10 +248,6 @@ class Effect(Element):
         Elements use their id as prefix by default, ignoring the passed prefix.
         """
         super().link_to_flow_system(flow_system, self.id)
-
-    def transform_data(self) -> None:
-        # No-op: alignment now handled by EffectsData
-        pass
 
 
 class EffectsModel:

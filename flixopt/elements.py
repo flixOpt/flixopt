@@ -192,9 +192,6 @@ class Component(Element):
         for flow in self.flows.values():
             flow.link_to_flow_system(flow_system)
 
-    def transform_data(self) -> None:
-        self._propagate_status_parameters()
-
     def _propagate_status_parameters(self) -> None:
         """Propagate status parameters from this component to flows that need them.
 
@@ -392,10 +389,6 @@ class Bus(Element):
         super().link_to_flow_system(flow_system, self.id)
         for flow in self.flows.values():
             flow.link_to_flow_system(flow_system)
-
-    def transform_data(self) -> None:
-        # No-op: alignment now handled by BusesData
-        pass
 
     @property
     def allows_imbalance(self) -> bool:

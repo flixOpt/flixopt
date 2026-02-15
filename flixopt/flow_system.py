@@ -8,7 +8,6 @@ import json
 import logging
 import pathlib
 import warnings
-from itertools import chain
 from typing import TYPE_CHECKING, Any, Literal
 
 import pandas as pd
@@ -877,13 +876,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self._register_missing_carriers()
         self._assign_element_colors()
 
-        # Prepare effects BEFORE transform_data,
-        # so the penalty Effect gets transformed too.
-        # Note: status parameter propagation happens inside Component.transform_data()
+        # Create penalty effect if needed (must happen before validation)
         self._prepare_effects()
 
-        for element in chain(self.components.values(), self.effects.values(), self.buses.values()):
-            element.transform_data()
+        # Propagate status parameters from components to flows
+        self._propagate_all_status_parameters()
 
         # Validate cross-element references after transformation
         self._validate_system_integrity()
@@ -1677,10 +1674,19 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
                 f'flow_system.add_elements(element.copy())'
             )
 
+    def _propagate_all_status_parameters(self) -> None:
+        """Propagate status parameters from components to their flows.
+
+        Components with status_parameters or prevent_simultaneous_flows require
+        certain flows to have StatusParameters. Transmissions with absolute_losses
+        additionally need status variables on input flows.
+        """
+        for component in self.components.values():
+            component._propagate_status_parameters()
+
     def _prepare_effects(self) -> None:
         """Create the penalty effect if needed.
 
-        Called before transform_data() so the penalty effect gets transformed.
         Validation is done after transformation via _run_validation().
         """
         if self.effects._penalty_effect is None:
@@ -1695,7 +1701,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         - Config validation (simple checks)
         - DataArray validation (post-transformation checks)
 
-        Called after transform_data(). The cached *Data instances are
+        Called during connect_and_transform(). The cached *Data instances are
         reused during model building.
         """
         batched = self.batched

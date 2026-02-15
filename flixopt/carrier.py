@@ -94,16 +94,6 @@ class Carrier(Interface):
         self.unit = unit
         self.description = description
 
-    def transform_data(self, name_prefix: str = '') -> None:
-        """Transform data to match FlowSystem dimensions.
-
-        Carriers don't have time-series data, so this is a no-op.
-
-        Args:
-            name_prefix: Ignored for Carrier.
-        """
-        pass  # Carriers have no data to transform
-
     @property
     def label(self) -> str:
         """Label for container keying (alias for name)."""
