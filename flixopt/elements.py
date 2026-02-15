@@ -183,12 +183,9 @@ class Component(Element):
         """All flows (inputs and outputs) as an IdList."""
         return self.inputs + self.outputs
 
-    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
-        """Propagate flow_system reference to nested Interface objects and flows.
-
-        Elements use their id_full as prefix by default, ignoring the passed prefix.
-        """
-        super().link_to_flow_system(flow_system, self.id)
+    def link_to_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to nested Interface objects and flows."""
+        super().link_to_flow_system(flow_system)
         for flow in self.flows.values():
             flow.link_to_flow_system(flow_system)
 
@@ -358,12 +355,9 @@ class Bus(Element):
         """All flows (inputs and outputs) as an IdList."""
         return self.inputs + self.outputs
 
-    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
-        """Propagate flow_system reference to nested flows.
-
-        Elements use their id_full as prefix by default, ignoring the passed prefix.
-        """
-        super().link_to_flow_system(flow_system, self.id)
+    def link_to_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to nested flows."""
+        super().link_to_flow_system(flow_system)
         for flow in self.flows.values():
             flow.link_to_flow_system(flow_system)
 
@@ -642,12 +636,9 @@ class Flow(Element):
             )
         self.bus = bus
 
-    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
-        """Propagate flow_system reference to nested Interface objects.
-
-        Elements use their id_full as prefix by default, ignoring the passed prefix.
-        """
-        super().link_to_flow_system(flow_system, self.id)
+    def link_to_flow_system(self, flow_system) -> None:
+        """Propagate flow_system reference to nested Interface objects."""
+        super().link_to_flow_system(flow_system)
 
     @property
     def flow_id(self) -> str:

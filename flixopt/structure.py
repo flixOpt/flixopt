@@ -1591,58 +1591,36 @@ class Interface:
         - Recursive handling of complex nested structures
     """
 
-    # Class-level defaults for attributes set by link_to_flow_system()
-    # These provide type hints and default values without requiring __init__ in subclasses
+    # Class-level default for attribute set by link_to_flow_system()
+    # Provides type hint and default value without requiring __init__ in subclasses
     _flow_system: FlowSystem | None = None
-    _prefix: str = ''
 
-    @property
-    def prefix(self) -> str:
-        """The prefix used for naming transformed data (e.g., 'Boiler(Q_th)|status_parameters')."""
-        return self._prefix
-
-    def _sub_prefix(self, name: str) -> str:
-        """Build a prefix for a nested interface by appending name to current prefix."""
-        return f'{self._prefix}|{name}' if self._prefix else name
-
-    def link_to_flow_system(self, flow_system: FlowSystem, prefix: str = '') -> None:
+    def link_to_flow_system(self, flow_system: FlowSystem) -> None:
         """Link this interface and all nested interfaces to a FlowSystem.
 
         This method is called automatically during element registration to enable
         elements to access FlowSystem properties without passing the reference
-        through every method call. It also sets the prefix used for naming
-        transformed data.
+        through every method call.
 
         Subclasses with nested Interface objects should override this method
         to propagate the link to their nested interfaces by calling
-        `super().link_to_flow_system(flow_system, prefix)` first, then linking
-        nested objects with appropriate prefixes.
+        `super().link_to_flow_system(flow_system)` first, then linking
+        nested objects.
 
         Args:
             flow_system: The FlowSystem to link to
-            prefix: The prefix for naming transformed data (e.g., 'Boiler(Q_th)')
 
         Examples:
             Override in a subclass with nested interfaces:
 
             ```python
-            def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
-                super().link_to_flow_system(flow_system, prefix)
+            def link_to_flow_system(self, flow_system) -> None:
+                super().link_to_flow_system(flow_system)
                 if self.nested_interface is not None:
-                    self.nested_interface.link_to_flow_system(flow_system, f'{prefix}|nested' if prefix else 'nested')
-            ```
-
-            Creating an Interface dynamically during modeling:
-
-            ```python
-            # In a Model class
-            if flow.status_parameters is None:
-                flow.status_parameters = StatusParameters()
-                flow.status_parameters.link_to_flow_system(self._model.flow_system, f'{flow.id}')
+                    self.nested_interface.link_to_flow_system(flow_system)
             ```
         """
         self._flow_system = flow_system
-        self._prefix = prefix
 
     @property
     def flow_system(self) -> FlowSystem:

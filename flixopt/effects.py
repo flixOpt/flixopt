@@ -242,12 +242,9 @@ class Effect(Element):
         self.minimum_over_periods = minimum_over_periods
         self.maximum_over_periods = maximum_over_periods
 
-    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
-        """Link this effect to a FlowSystem.
-
-        Elements use their id as prefix by default, ignoring the passed prefix.
-        """
-        super().link_to_flow_system(flow_system, self.id)
+    def link_to_flow_system(self, flow_system) -> None:
+        """Link this effect to a FlowSystem."""
+        super().link_to_flow_system(flow_system)
 
 
 class EffectsModel:
