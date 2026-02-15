@@ -1732,9 +1732,11 @@ class EffectsData:
     modeling (EffectsModel).
     """
 
-    def __init__(self, effect_collection: EffectCollection):
+    def __init__(self, effect_collection: EffectCollection, coords: dict[str, pd.Index], default_period_weights):
         self._collection = effect_collection
         self._effects: list[Effect] = list(effect_collection.values())
+        self._coords = coords
+        self._default_period_weights = default_period_weights
 
     @cached_property
     def effect_ids(self) -> list[str]:
@@ -1770,45 +1772,97 @@ class EffectsData:
             values.append(default if val is None else val)
         return values
 
+    def _align(self, effect_id: str, attr: str, dims: list[str] | None = None) -> xr.DataArray | None:
+        """Align a single effect attribute value to model coords."""
+        raw = getattr(self._collection[effect_id], attr)
+        return align_to_coords(raw, self._coords, name=f'{effect_id}|{attr}', dims=dims)
+
+    def _aligned_values(self, attr_name: str, default: float, dims: list[str] | None = None) -> list:
+        """Extract per-effect attribute values, aligned to model coords."""
+        values = []
+        for effect in self._effects:
+            aligned = self._align(effect.id, attr_name, dims=dims)
+            values.append(default if aligned is None else aligned)
+        return values
+
+    def aligned_share_from_temporal(self, effect: Effect) -> dict[str, xr.DataArray]:
+        """Get aligned share_from_temporal for a specific effect."""
+        return (
+            align_effects_to_coords(
+                effect.share_from_temporal,
+                self._coords,
+                suffix=f'(temporal)->{effect.id}(temporal)',
+            )
+            or {}
+        )
+
+    def aligned_share_from_periodic(self, effect: Effect) -> dict[str, xr.DataArray]:
+        """Get aligned share_from_periodic for a specific effect."""
+        return (
+            align_effects_to_coords(
+                effect.share_from_periodic,
+                self._coords,
+                suffix=f'(periodic)->{effect.id}(periodic)',
+                dims=['period', 'scenario'],
+            )
+            or {}
+        )
+
     @cached_property
     def minimum_periodic(self) -> xr.DataArray:
-        return stack_along_dim(self._effect_values('minimum_periodic', -np.inf), 'effect', self.effect_ids)
+        return stack_along_dim(
+            self._aligned_values('minimum_periodic', -np.inf, dims=['period', 'scenario']), 'effect', self.effect_ids
+        )
 
     @cached_property
     def maximum_periodic(self) -> xr.DataArray:
-        return stack_along_dim(self._effect_values('maximum_periodic', np.inf), 'effect', self.effect_ids)
+        return stack_along_dim(
+            self._aligned_values('maximum_periodic', np.inf, dims=['period', 'scenario']), 'effect', self.effect_ids
+        )
 
     @cached_property
     def minimum_temporal(self) -> xr.DataArray:
-        return stack_along_dim(self._effect_values('minimum_temporal', -np.inf), 'effect', self.effect_ids)
+        return stack_along_dim(
+            self._aligned_values('minimum_temporal', -np.inf, dims=['period', 'scenario']), 'effect', self.effect_ids
+        )
 
     @cached_property
     def maximum_temporal(self) -> xr.DataArray:
-        return stack_along_dim(self._effect_values('maximum_temporal', np.inf), 'effect', self.effect_ids)
+        return stack_along_dim(
+            self._aligned_values('maximum_temporal', np.inf, dims=['period', 'scenario']), 'effect', self.effect_ids
+        )
 
     @cached_property
     def minimum_per_hour(self) -> xr.DataArray:
-        return stack_along_dim(self._effect_values('minimum_per_hour', -np.inf), 'effect', self.effect_ids)
+        return stack_along_dim(self._aligned_values('minimum_per_hour', -np.inf), 'effect', self.effect_ids)
 
     @cached_property
     def maximum_per_hour(self) -> xr.DataArray:
-        return stack_along_dim(self._effect_values('maximum_per_hour', np.inf), 'effect', self.effect_ids)
+        return stack_along_dim(self._aligned_values('maximum_per_hour', np.inf), 'effect', self.effect_ids)
 
     @cached_property
     def minimum_total(self) -> xr.DataArray:
-        return stack_along_dim(self._effect_values('minimum_total', -np.inf), 'effect', self.effect_ids)
+        return stack_along_dim(
+            self._aligned_values('minimum_total', -np.inf, dims=['period', 'scenario']), 'effect', self.effect_ids
+        )
 
     @cached_property
     def maximum_total(self) -> xr.DataArray:
-        return stack_along_dim(self._effect_values('maximum_total', np.inf), 'effect', self.effect_ids)
+        return stack_along_dim(
+            self._aligned_values('maximum_total', np.inf, dims=['period', 'scenario']), 'effect', self.effect_ids
+        )
 
     @cached_property
     def minimum_over_periods(self) -> xr.DataArray:
-        return stack_along_dim(self._effect_values('minimum_over_periods', -np.inf), 'effect', self.effect_ids)
+        return stack_along_dim(
+            self._aligned_values('minimum_over_periods', -np.inf, dims=['scenario']), 'effect', self.effect_ids
+        )
 
     @cached_property
     def maximum_over_periods(self) -> xr.DataArray:
-        return stack_along_dim(self._effect_values('maximum_over_periods', np.inf), 'effect', self.effect_ids)
+        return stack_along_dim(
+            self._aligned_values('maximum_over_periods', np.inf, dims=['scenario']), 'effect', self.effect_ids
+        )
 
     @cached_property
     def effects_with_over_periods(self) -> list[Effect]:
@@ -1819,14 +1873,13 @@ class EffectsData:
         """Get period weights for each effect, keyed by effect id."""
         result = {}
         for effect in self._effects:
-            effect_weights = effect.period_weights
-            default_weights = effect._flow_system.period_weights
-            if effect_weights is not None:
-                result[effect.id] = effect_weights
-            elif default_weights is not None:
-                result[effect.id] = default_weights
+            aligned = self._align(effect.id, 'period_weights', dims=['period', 'scenario'])
+            if aligned is not None:
+                result[effect.id] = aligned
+            elif self._default_period_weights is not None:
+                result[effect.id] = self._default_period_weights
             else:
-                result[effect.id] = effect._fit_coords(name='period_weights', data=1, dims=['period'])
+                result[effect.id] = align_to_coords(1, self._coords, name='period_weights', dims=['period'])
         return result
 
     def effects(self) -> list[Effect]:
@@ -1848,8 +1901,16 @@ class EffectsData:
         - Individual effect config validation
         - Collection-level validation (circular loops in share mappings, unknown effect refs)
         """
+        has_periods = 'period' in self._coords
+
         for effect in self._effects:
-            effect.validate_config()
+            # Check that minimum_over_periods and maximum_over_periods require a period dimension
+            if (effect.minimum_over_periods is not None or effect.maximum_over_periods is not None) and not has_periods:
+                raise PlausibilityError(
+                    f"Effect '{effect.id}': minimum_over_periods and maximum_over_periods require "
+                    f"the FlowSystem to have a 'period' dimension. Please define periods when creating "
+                    f'the FlowSystem, or remove these constraints.'
+                )
 
         # Collection-level validation (share structure)
         self._validate_share_structure()
@@ -2582,7 +2643,9 @@ class BatchedAccessor:
     def effects(self) -> EffectsData:
         """Get or create EffectsData for all effects."""
         if self._effects is None:
-            self._effects = EffectsData(self._fs.effects)
+            self._effects = EffectsData(
+                self._fs.effects, coords=self._fs.indexes, default_period_weights=self._fs.period_weights
+            )
         return self._effects
 
     @property

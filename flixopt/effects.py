@@ -15,7 +15,6 @@ import linopy
 import numpy as np
 import xarray as xr
 
-from .core import PlausibilityError
 from .id_list import IdList
 from .structure import (
     Element,
@@ -251,68 +250,8 @@ class Effect(Element):
         super().link_to_flow_system(flow_system, self.id)
 
     def transform_data(self) -> None:
-        self.minimum_per_hour = self._fit_coords(f'{self.prefix}|minimum_per_hour', self.minimum_per_hour)
-        self.maximum_per_hour = self._fit_coords(f'{self.prefix}|maximum_per_hour', self.maximum_per_hour)
-
-        self.share_from_temporal = self._fit_effect_coords(
-            prefix=None,
-            effect_values=self.share_from_temporal,
-            suffix=f'(temporal)->{self.prefix}(temporal)',
-        )
-        self.share_from_periodic = self._fit_effect_coords(
-            prefix=None,
-            effect_values=self.share_from_periodic,
-            suffix=f'(periodic)->{self.prefix}(periodic)',
-            dims=['period', 'scenario'],
-        )
-
-        self.minimum_temporal = self._fit_coords(
-            f'{self.prefix}|minimum_temporal', self.minimum_temporal, dims=['period', 'scenario']
-        )
-        self.maximum_temporal = self._fit_coords(
-            f'{self.prefix}|maximum_temporal', self.maximum_temporal, dims=['period', 'scenario']
-        )
-        self.minimum_periodic = self._fit_coords(
-            f'{self.prefix}|minimum_periodic', self.minimum_periodic, dims=['period', 'scenario']
-        )
-        self.maximum_periodic = self._fit_coords(
-            f'{self.prefix}|maximum_periodic', self.maximum_periodic, dims=['period', 'scenario']
-        )
-        self.minimum_total = self._fit_coords(
-            f'{self.prefix}|minimum_total', self.minimum_total, dims=['period', 'scenario']
-        )
-        self.maximum_total = self._fit_coords(
-            f'{self.prefix}|maximum_total', self.maximum_total, dims=['period', 'scenario']
-        )
-        self.minimum_over_periods = self._fit_coords(
-            f'{self.prefix}|minimum_over_periods', self.minimum_over_periods, dims=['scenario']
-        )
-        self.maximum_over_periods = self._fit_coords(
-            f'{self.prefix}|maximum_over_periods', self.maximum_over_periods, dims=['scenario']
-        )
-        self.period_weights = self._fit_coords(
-            f'{self.prefix}|period_weights', self.period_weights, dims=['period', 'scenario']
-        )
-
-    def validate_config(self) -> None:
-        """Validate configuration consistency.
-
-        Called BEFORE transformation via FlowSystem._run_config_validation().
-        These are simple checks that don't require DataArray operations.
-        """
-        # Check that minimum_over_periods and maximum_over_periods require a period dimension
-        if (
-            self.minimum_over_periods is not None or self.maximum_over_periods is not None
-        ) and self.flow_system.periods is None:
-            raise PlausibilityError(
-                f"Effect '{self.id}': minimum_over_periods and maximum_over_periods require "
-                f"the FlowSystem to have a 'period' dimension. Please define periods when creating "
-                f'the FlowSystem, or remove these constraints.'
-            )
-
-    def _plausibility_checks(self) -> None:
-        """Legacy validation method - delegates to validate_config()."""
-        self.validate_config()
+        # No-op: alignment now handled by EffectsData
+        pass
 
 
 class EffectsModel:
@@ -723,13 +662,13 @@ class EffectsModel:
         for target_effect in self.data.values():
             target_id = target_effect.id
             # 1. temporal: <- receiving temporal shares from other effects
-            for source_effect, time_series in target_effect.share_from_temporal.items():
+            for source_effect, time_series in self.data.aligned_share_from_temporal(target_effect).items():
                 source_id = self.data[source_effect].id
                 source_per_timestep = self.get_per_timestep(source_id)
                 expr = (source_per_timestep * time_series).expand_dims(effect=[target_id], contributor=[source_id])
                 self.add_temporal_contribution(expr)
             # 2. periodic: <- receiving periodic shares from other effects
-            for source_effect, factor in target_effect.share_from_periodic.items():
+            for source_effect, factor in self.data.aligned_share_from_periodic(target_effect).items():
                 source_id = self.data[source_effect].id
                 source_periodic = self.get_periodic(source_id)
                 expr = (source_periodic * factor).expand_dims(effect=[target_id], contributor=[source_id])
