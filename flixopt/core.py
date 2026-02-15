@@ -588,6 +588,104 @@ class DataConverter:
         return validated_coords, tuple(dimension_names)
 
 
+def align_to_coords(
+    data: NumericOrBool | None,
+    coords: dict[str, pd.Index],
+    name: str = '',
+    dims: list[str] | None = None,
+) -> xr.DataArray | None:
+    """Convert any raw input to a DataArray aligned with model coordinates.
+
+    Standalone replacement for the ``FlowSystem.fit_to_model_coords`` →
+    ``DataConverter.to_dataarray`` chain.  Handles every type users may pass:
+
+    * **scalar** (int / float / bool / np.number) → 0-d DataArray
+    * **1-D array** (np.ndarray / list) → matched to a dim by length
+    * **pd.Series** → matched by index
+    * **TimeSeriesData** → aligned via its own ``fit_to_coords``
+    * **xr.DataArray** (e.g. from IO roundtrip) → validated, returned as-is
+    * **None** → returns None (pass-through)
+
+    Args:
+        data: Raw input value.  ``None`` is a legal no-op.
+        coords: Model coordinate mapping, e.g.
+            ``{'time': DatetimeIndex, 'period': Index, 'scenario': Index}``.
+        name: Optional name assigned to the resulting DataArray.
+        dims: If given, only these coordinate keys are considered for
+            alignment (subset of *coords*).
+
+    Returns:
+        DataArray aligned to *coords*, or ``None`` when *data* is ``None``.
+
+    Raises:
+        ConversionError: If the input cannot be mapped to the target
+            coordinates (length mismatch, incompatible dims, …).
+    """
+    if data is None:
+        return None
+
+    # Restrict coords to requested dims
+    if dims is not None:
+        coords = {k: v for k, v in coords.items() if k in dims}
+
+    # TimeSeriesData carries clustering metadata — delegate to its own method
+    if isinstance(data, TimeSeriesData):
+        try:
+            return data.fit_to_coords(coords, name=name or None)
+        except ConversionError as e:
+            raise ConversionError(
+                f'Could not align TimeSeriesData "{name}" to model coords:\n{data}\nOriginal error: {e}'
+            ) from e
+
+    # Everything else goes through DataConverter
+    try:
+        da = DataConverter.to_dataarray(data, coords=coords)
+    except ConversionError as e:
+        raise ConversionError(f'Could not align data "{name}" to model coords:\n{data}\nOriginal error: {e}') from e
+
+    if name:
+        da = da.rename(name)
+    return da
+
+
+def align_effects_to_coords(
+    effect_values: dict | None,
+    coords: dict[str, pd.Index],
+    prefix: str = '',
+    suffix: str = '',
+    dims: list[str] | None = None,
+    delimiter: str = '|',
+) -> dict[str, xr.DataArray] | None:
+    """Align a dict of effect values to model coordinates.
+
+    Convenience wrapper around :func:`align_to_coords` for
+    ``effects_per_flow_hour`` and similar effect dicts.
+
+    Args:
+        effect_values: ``{effect_id: numeric_value}`` mapping, or ``None``.
+        coords: Model coordinate mapping.
+        prefix: Label prefix for DataArray names.
+        suffix: Label suffix for DataArray names.
+        dims: Passed through to :func:`align_to_coords`.
+        delimiter: Separator between prefix, effect id, and suffix.
+
+    Returns:
+        ``{effect_id: DataArray}`` or ``None``.
+    """
+    if effect_values is None:
+        return None
+
+    return {
+        effect_id: align_to_coords(
+            value,
+            coords,
+            name=delimiter.join(filter(None, [prefix, effect_id, suffix])),
+            dims=dims,
+        )
+        for effect_id, value in effect_values.items()
+    }
+
+
 def get_dataarray_stats(arr: xr.DataArray) -> dict:
     """Generate statistical summary of a DataArray."""
     stats = {}

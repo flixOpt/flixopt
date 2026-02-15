@@ -6,6 +6,7 @@ These are tightly connected to features.py
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -26,6 +27,7 @@ logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io
+@dataclass(eq=False)
 class Piece(Interface):
     """Define a single linear segment with specified domain boundaries.
 
@@ -71,10 +73,9 @@ class Piece(Interface):
 
     """
 
-    def __init__(self, start: Numeric_TPS, end: Numeric_TPS):
-        self.start = start
-        self.end = end
-        self.has_time_dim = False
+    start: Numeric_TPS
+    end: Numeric_TPS
+    has_time_dim: bool = field(default=False, init=False, repr=False)
 
     def transform_data(self) -> None:
         dims = None if self.has_time_dim else ['period', 'scenario']
@@ -83,6 +84,7 @@ class Piece(Interface):
 
 
 @register_class_for_io
+@dataclass(eq=False)
 class Piecewise(Interface):
     """Define piecewise linear approximations for modeling non-linear relationships.
 
@@ -199,8 +201,9 @@ class Piecewise(Interface):
 
     """
 
-    def __init__(self, pieces: list[Piece]):
-        self.pieces = pieces
+    pieces: list[Piece]
+
+    def __post_init__(self):
         self._has_time_dim = False
 
     @property
@@ -240,6 +243,7 @@ class Piecewise(Interface):
 
 
 @register_class_for_io
+@dataclass(eq=False)
 class PiecewiseConversion(Interface):
     """Define coordinated piecewise linear relationships between multiple flows.
 
@@ -436,8 +440,9 @@ class PiecewiseConversion(Interface):
 
     """
 
-    def __init__(self, piecewises: dict[str, Piecewise]):
-        self.piecewises = piecewises
+    piecewises: dict[str, Piecewise]
+
+    def __post_init__(self):
         self._has_time_dim = True
         self.has_time_dim = True  # Initial propagation
 
@@ -608,6 +613,7 @@ class PiecewiseConversion(Interface):
 
 
 @register_class_for_io
+@dataclass(eq=False)
 class PiecewiseEffects(Interface):
     """Define how a single decision variable contributes to system effects with piecewise rates.
 
@@ -797,9 +803,10 @@ class PiecewiseEffects(Interface):
 
     """
 
-    def __init__(self, piecewise_origin: Piecewise, piecewise_shares: dict[str, Piecewise]):
-        self.piecewise_origin = piecewise_origin
-        self.piecewise_shares = piecewise_shares
+    piecewise_origin: Piecewise
+    piecewise_shares: dict[str, Piecewise]
+
+    def __post_init__(self):
         self._has_time_dim = False
         self.has_time_dim = False  # Initial propagation
 
@@ -953,6 +960,7 @@ class PiecewiseEffects(Interface):
 
 
 @register_class_for_io
+@dataclass(eq=False)
 class InvestParameters(Interface):
     """Define investment decision parameters with flexible sizing and effect modeling.
 
@@ -1143,29 +1151,25 @@ class InvestParameters(Interface):
 
     """
 
-    def __init__(
-        self,
-        fixed_size: Numeric_PS | None = None,
-        minimum_size: Numeric_PS | None = None,
-        maximum_size: Numeric_PS | None = None,
-        mandatory: bool = False,
-        effects_of_investment: Effect_PS | Numeric_PS | None = None,
-        effects_of_investment_per_size: Effect_PS | Numeric_PS | None = None,
-        effects_of_retirement: Effect_PS | Numeric_PS | None = None,
-        piecewise_effects_of_investment: PiecewiseEffects | None = None,
-        linked_periods: Numeric_PS | tuple[int, int] | None = None,
-    ):
-        self.effects_of_investment = effects_of_investment if effects_of_investment is not None else {}
-        self.effects_of_retirement = effects_of_retirement if effects_of_retirement is not None else {}
-        self.fixed_size = fixed_size
-        self.mandatory = mandatory
-        self.effects_of_investment_per_size = (
-            effects_of_investment_per_size if effects_of_investment_per_size is not None else {}
-        )
-        self.piecewise_effects_of_investment = piecewise_effects_of_investment
-        self.minimum_size = minimum_size if minimum_size is not None else CONFIG.Modeling.epsilon
-        self.maximum_size = maximum_size
-        self.linked_periods = linked_periods
+    fixed_size: Numeric_PS | None = None
+    minimum_size: Numeric_PS | None = None
+    maximum_size: Numeric_PS | None = None
+    mandatory: bool = False
+    effects_of_investment: Effect_PS | Numeric_PS | None = None
+    effects_of_investment_per_size: Effect_PS | Numeric_PS | None = None
+    effects_of_retirement: Effect_PS | Numeric_PS | None = None
+    piecewise_effects_of_investment: PiecewiseEffects | None = None
+    linked_periods: Numeric_PS | tuple[int, int] | None = None
+
+    def __post_init__(self):
+        if self.effects_of_investment is None:
+            self.effects_of_investment = {}
+        if self.effects_of_retirement is None:
+            self.effects_of_retirement = {}
+        if self.effects_of_investment_per_size is None:
+            self.effects_of_investment_per_size = {}
+        if self.minimum_size is None:
+            self.minimum_size = CONFIG.Modeling.epsilon
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Propagate flow_system reference to nested PiecewiseEffects object if present."""
@@ -1280,6 +1284,7 @@ class InvestParameters(Interface):
 
 
 @register_class_for_io
+@dataclass(eq=False)
 class StatusParameters(Interface):
     """Define operational constraints and effects for binary status equipment behavior.
 
@@ -1468,31 +1473,23 @@ class StatusParameters(Interface):
 
     """
 
-    def __init__(
-        self,
-        effects_per_startup: Effect_TPS | Numeric_TPS | None = None,
-        effects_per_active_hour: Effect_TPS | Numeric_TPS | None = None,
-        active_hours_min: Numeric_PS | None = None,
-        active_hours_max: Numeric_PS | None = None,
-        min_uptime: Numeric_TPS | None = None,
-        max_uptime: Numeric_TPS | None = None,
-        min_downtime: Numeric_TPS | None = None,
-        max_downtime: Numeric_TPS | None = None,
-        startup_limit: Numeric_PS | None = None,
-        force_startup_tracking: bool = False,
-        cluster_mode: Literal['relaxed', 'cyclic'] = 'relaxed',
-    ):
-        self.effects_per_startup = effects_per_startup if effects_per_startup is not None else {}
-        self.effects_per_active_hour = effects_per_active_hour if effects_per_active_hour is not None else {}
-        self.active_hours_min = active_hours_min
-        self.active_hours_max = active_hours_max
-        self.min_uptime = min_uptime
-        self.max_uptime = max_uptime
-        self.min_downtime = min_downtime
-        self.max_downtime = max_downtime
-        self.startup_limit = startup_limit
-        self.force_startup_tracking: bool = force_startup_tracking
-        self.cluster_mode = cluster_mode
+    effects_per_startup: Effect_TPS | Numeric_TPS | None = None
+    effects_per_active_hour: Effect_TPS | Numeric_TPS | None = None
+    active_hours_min: Numeric_PS | None = None
+    active_hours_max: Numeric_PS | None = None
+    min_uptime: Numeric_TPS | None = None
+    max_uptime: Numeric_TPS | None = None
+    min_downtime: Numeric_TPS | None = None
+    max_downtime: Numeric_TPS | None = None
+    startup_limit: Numeric_PS | None = None
+    force_startup_tracking: bool = False
+    cluster_mode: Literal['relaxed', 'cyclic'] = 'relaxed'
+
+    def __post_init__(self):
+        if self.effects_per_startup is None:
+            self.effects_per_startup = {}
+        if self.effects_per_active_hour is None:
+            self.effects_per_active_hour = {}
 
     def transform_data(self) -> None:
         self.effects_per_startup = self._fit_effect_coords(
