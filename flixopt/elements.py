@@ -5,8 +5,10 @@ This module contains the basic elements of the flixopt framework.
 from __future__ import annotations
 
 import logging
+import warnings
+from dataclasses import dataclass, field
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
 import pandas as pd
@@ -33,7 +35,6 @@ from .structure import (
     FlowVarName,
     TransmissionVarName,
     TypeModel,
-    handle_deprecated_kwarg,
     register_class_for_io,
 )
 
@@ -41,6 +42,7 @@ if TYPE_CHECKING:
     import linopy
 
     from .batched import BusesData, ComponentsData, ConvertersData, FlowsData, TransmissionsData
+    from .flow_system import FlowSystem
     from .types import (
         Effect_TPS,
         Numeric_PS,
@@ -93,6 +95,7 @@ def _add_prevent_simultaneous_constraints(
 
 
 @register_class_for_io
+@dataclass(eq=False, repr=False)
 class Component(Element):
     """
     Base class for all system components that transform, convert, or process flows.
@@ -139,31 +142,32 @@ class Component(Element):
 
     """
 
-    def __init__(
-        self,
-        id: str | None = None,
-        inputs: list[Flow] | dict[str, Flow] | None = None,
-        outputs: list[Flow] | dict[str, Flow] | None = None,
-        status_parameters: StatusParameters | None = None,
-        prevent_simultaneous_flows: list[Flow] | None = None,
-        meta_data: dict | None = None,
-        color: str | None = None,
-        **kwargs,
-    ):
-        super().__init__(id, meta_data=meta_data, color=color, **kwargs)
-        self.status_parameters = status_parameters
-        if isinstance(prevent_simultaneous_flows, dict):
-            prevent_simultaneous_flows = list(prevent_simultaneous_flows.values())
-        self.prevent_simultaneous_flows: list[Flow] = prevent_simultaneous_flows or []
+    id: str = ''
+    inputs: list[Flow] | dict[str, Flow] = field(default_factory=list)
+    outputs: list[Flow] | dict[str, Flow] = field(default_factory=list)
+    status_parameters: StatusParameters | None = None
+    prevent_simultaneous_flows: list[Flow] = field(default_factory=list)
+    meta_data: dict = field(default_factory=dict)
+    color: str | None = None
+    _flow_system: FlowSystem | None = field(default=None, init=False, repr=False)
+    _variable_names: list[str] = field(default_factory=list, init=False, repr=False)
+    _constraint_names: list[str] = field(default_factory=list, init=False, repr=False)
 
-        # IdLists serialize as dicts, but constructor expects lists
-        if isinstance(inputs, dict):
-            inputs = list(inputs.values())
-        if isinstance(outputs, dict):
-            outputs = list(outputs.values())
+    def __post_init__(self):
+        self.id = Element._valid_id(self.id)
+        self._short_id = self.id
 
-        _inputs = inputs or []
-        _outputs = outputs or []
+        # Handle dict inputs from IO deserialization
+        if isinstance(self.inputs, dict):
+            self.inputs = list(self.inputs.values())
+        if isinstance(self.outputs, dict):
+            self.outputs = list(self.outputs.values())
+        if isinstance(self.prevent_simultaneous_flows, dict):
+            self.prevent_simultaneous_flows = list(self.prevent_simultaneous_flows.values())
+        self.prevent_simultaneous_flows = self.prevent_simultaneous_flows or []
+
+        _inputs = self.inputs or []
+        _outputs = self.outputs or []
 
         # Check uniqueness on raw lists (before connecting)
         all_flow_ids = [flow.flow_id for flow in _inputs + _outputs]
@@ -258,6 +262,7 @@ class Component(Element):
 
 
 @register_class_for_io
+@dataclass(eq=False, repr=False)
 class Bus(Element):
     """
     Buses represent nodal balances between flow rates, serving as connection points.
@@ -271,7 +276,7 @@ class Bus(Element):
         See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/Bus/>
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem.
+        id: The id of the Element. Used to identify it in the FlowSystem.
         carrier: Name of the energy/material carrier type (e.g., 'electricity', 'heat', 'gas').
             Carriers are registered via ``flow_system.add_carrier()`` or available as
             predefined defaults in CONFIG.Carriers. Used for automatic color assignment in plots.
@@ -285,8 +290,8 @@ class Bus(Element):
         Using predefined carrier names:
 
         ```python
-        electricity_bus = Bus(label='main_grid', carrier='electricity')
-        heat_bus = Bus(label='district_heating', carrier='heat')
+        electricity_bus = Bus(id='main_grid', carrier='electricity')
+        heat_bus = Bus(id='district_heating', carrier='heat')
         ```
 
         Registering custom carriers on FlowSystem:
@@ -296,14 +301,14 @@ class Bus(Element):
 
         fs = fx.FlowSystem(timesteps)
         fs.add_carrier(fx.Carrier('biogas', '#228B22', 'kW'))
-        biogas_bus = fx.Bus(label='biogas_network', carrier='biogas')
+        biogas_bus = fx.Bus(id='biogas_network', carrier='biogas')
         ```
 
         Heat network with penalty for imbalances:
 
         ```python
         heat_bus = Bus(
-            label='district_heating',
+            id='district_heating',
             carrier='heat',
             imbalance_penalty_per_flow_hour=1000,
         )
@@ -321,28 +326,43 @@ class Bus(Element):
         by the FlowSystem during system setup.
     """
 
-    def __init__(
-        self,
-        id: str | None = None,
-        carrier: str | None = None,
-        imbalance_penalty_per_flow_hour: Numeric_TPS | None = None,
-        meta_data: dict | None = None,
-        **kwargs,
-    ):
-        # Handle Bus-specific deprecated kwarg before passing kwargs to super
-        old_penalty = kwargs.pop('excess_penalty_per_flow_hour', None)
-        super().__init__(id, meta_data=meta_data, **kwargs)
-        if old_penalty is not None:
-            imbalance_penalty_per_flow_hour = handle_deprecated_kwarg(
-                {'excess_penalty_per_flow_hour': old_penalty},
-                'excess_penalty_per_flow_hour',
-                'imbalance_penalty_per_flow_hour',
-                imbalance_penalty_per_flow_hour,
+    _io_exclude: ClassVar[set[str]] = {'excess_penalty_per_flow_hour'}
+
+    id: str
+    carrier: str | None = None
+    imbalance_penalty_per_flow_hour: Numeric_TPS | None = None
+    excess_penalty_per_flow_hour: Numeric_TPS | None = field(default=None, repr=False)
+    meta_data: dict = field(default_factory=dict)
+    color: str | None = None
+    # Internal state (populated by FlowSystem._connect_network)
+    inputs: IdList = field(default_factory=lambda: flow_id_list(display_name='inputs'), init=False, repr=False)
+    outputs: IdList = field(default_factory=lambda: flow_id_list(display_name='outputs'), init=False, repr=False)
+    _flow_system: FlowSystem | None = field(default=None, init=False, repr=False)
+    _variable_names: list[str] = field(default_factory=list, init=False, repr=False)
+    _constraint_names: list[str] = field(default_factory=list, init=False, repr=False)
+
+    def __post_init__(self):
+        self.id = Element._valid_id(self.id)
+        self._short_id = self.id
+        # Handle deprecated excess_penalty_per_flow_hour
+        if self.excess_penalty_per_flow_hour is not None:
+            from .config import DEPRECATION_REMOVAL_VERSION
+
+            warnings.warn(
+                f'The use of the "excess_penalty_per_flow_hour" argument is deprecated. '
+                f'Use the "imbalance_penalty_per_flow_hour" argument instead. '
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+                DeprecationWarning,
+                stacklevel=2,
             )
-        self.carrier = carrier.lower() if carrier else None  # Store as lowercase string
-        self.imbalance_penalty_per_flow_hour = imbalance_penalty_per_flow_hour
-        self.inputs: IdList = flow_id_list(display_name='inputs')
-        self.outputs: IdList = flow_id_list(display_name='outputs')
+            if self.imbalance_penalty_per_flow_hour is not None:
+                raise ValueError(
+                    'Either excess_penalty_per_flow_hour or imbalance_penalty_per_flow_hour can be specified, but not both.'
+                )
+            self.imbalance_penalty_per_flow_hour = self.excess_penalty_per_flow_hour
+            self.excess_penalty_per_flow_hour = None
+        if self.carrier:
+            self.carrier = self.carrier.lower()
 
     @property
     def flows(self) -> IdList:
@@ -355,7 +375,9 @@ class Bus(Element):
 
     def __repr__(self) -> str:
         """Return string representation."""
-        return super().__repr__() + fx_io.format_flow_details(self)
+        return fx_io.build_repr_from_init(
+            self, excluded_params={'self', 'id', 'kwargs'}, skip_default_size=True
+        ) + fx_io.format_flow_details(self)
 
 
 @register_class_for_io
@@ -372,6 +394,7 @@ class Connection:
 
 
 @register_class_for_io
+@dataclass(eq=False, repr=False, init=False)
 class Flow(Element):
     """Define a directed flow of energy or material between bus and component.
 
@@ -506,6 +529,31 @@ class Flow(Element):
         Passing Bus objects to `bus` parameter. Use bus label strings instead.
 
     """
+
+    # Dataclass fields for introspection (values set by custom __init__)
+    bus: str | None = None
+    size: Numeric_PS | InvestParameters | None = None
+    relative_minimum: Numeric_TPS = 0
+    relative_maximum: Numeric_TPS = 1
+    fixed_relative_profile: Numeric_TPS | None = None
+    effects_per_flow_hour: dict = field(default_factory=dict)
+    status_parameters: StatusParameters | None = None
+    flow_hours_max: Numeric_PS | None = None
+    flow_hours_min: Numeric_PS | None = None
+    flow_hours_max_over_periods: Numeric_S | None = None
+    flow_hours_min_over_periods: Numeric_S | None = None
+    load_factor_min: Numeric_PS | None = None
+    load_factor_max: Numeric_PS | None = None
+    previous_flow_rate: Scalar | list[Scalar] | None = None
+    meta_data: dict = field(default_factory=dict)
+    color: str | None = None
+    # Internal state (not user-facing)
+    component: str = 'UnknownComponent'
+    is_input_in_component: bool | None = None
+    _flows_model: FlowsModel | None = None
+    _flow_system: FlowSystem | None = None
+    _variable_names: list[str] = field(default_factory=list)
+    _constraint_names: list[str] = field(default_factory=list)
 
     def __init__(
         self,
@@ -645,11 +693,14 @@ class Flow(Element):
     def id(self, value: str) -> None:
         self._short_id = value
 
+    def __repr__(self) -> str:
+        return fx_io.build_repr_from_init(
+            self, excluded_params={'self', 'label', 'id', 'args', 'kwargs'}, skip_default_size=True
+        )
+
     # =========================================================================
     # Type-Level Model Access (for FlowsModel integration)
     # =========================================================================
-
-    _flows_model: FlowsModel | None = None  # Set by FlowsModel during creation
 
     def set_flows_model(self, flows_model: FlowsModel) -> None:
         """Set reference to the type-level FlowsModel.

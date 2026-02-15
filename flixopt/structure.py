@@ -795,6 +795,10 @@ def _get_serializable_params(obj) -> dict[str, Any]:
     params: dict[str, Any] = {}
     _skip = {'self', 'label', 'label_as_positional', 'args', 'kwargs'}
 
+    # Class-level exclusion set for IO serialization
+    io_exclude = getattr(obj.__class__, '_io_exclude', set())
+    _skip |= io_exclude
+
     sig = inspect.signature(obj.__init__)
     # On Flow, 'id' is deprecated in favor of 'flow_id'
     if 'flow_id' in sig.parameters:
@@ -1576,250 +1580,7 @@ def validate_kwargs(obj: Any, kwargs: dict, class_name: str | None = None) -> No
         raise TypeError(f'{class_name}.__init__() got unexpected keyword argument(s): {unexpected_params}')
 
 
-class Interface:
-    """
-    Base class for all Elements and Models in flixopt that provides serialization capabilities.
-
-    This class enables automatic serialization/deserialization of objects containing xarray DataArrays
-    and nested Interface objects to/from xarray Datasets and NetCDF files. It uses introspection
-    of constructor parameters to automatically handle most serialization scenarios.
-
-    Key Features:
-        - Automatic extraction and restoration of xarray DataArrays
-        - Support for nested Interface objects
-        - NetCDF and JSON export/import
-        - Recursive handling of complex nested structures
-    """
-
-    # Class-level default for _flow_system, set directly during element registration.
-    # Provides type hint and default value without requiring __init__ in subclasses.
-    _flow_system: FlowSystem | None = None
-
-    @property
-    def flow_system(self) -> FlowSystem:
-        """Access the FlowSystem this interface is linked to.
-
-        Returns:
-            The FlowSystem instance this interface belongs to.
-
-        Raises:
-            RuntimeError: If interface has not been linked to a FlowSystem yet.
-
-        Note:
-            For Elements, this is set during add_elements().
-            For parameter classes, this is set recursively when the parent Element is registered.
-        """
-        if self._flow_system is None:
-            raise RuntimeError(
-                f'{self.__class__.__name__} is not linked to a FlowSystem. '
-                f'Ensure the parent element is registered via flow_system.add_elements() first.'
-            )
-        return self._flow_system
-
-    def to_dataset(self) -> xr.Dataset:
-        """
-        Convert the object to an xarray Dataset representation.
-        All DataArrays become dataset variables, everything else goes to attrs.
-
-        Its recommended to only call this method on Interfaces with all numeric data stored as xr.DataArrays.
-        Interfaces inside a FlowSystem are automatically converted this form after connecting and transforming the FlowSystem.
-
-        Returns:
-            xr.Dataset: Dataset containing all DataArrays with basic objects only in attributes
-
-        Raises:
-            ValueError: If serialization fails due to naming conflicts or invalid data
-        """
-        try:
-            reference_structure, extracted_arrays = create_reference_structure(self)
-            # Create the dataset with extracted arrays as variables and structure as attrs
-            return xr.Dataset(extracted_arrays, attrs=reference_structure)
-        except Exception as e:
-            raise ValueError(
-                f'Failed to convert {self.__class__.__name__} to dataset. Its recommended to only call this method on '
-                f'a fully connected and transformed FlowSystem, or Interfaces inside such a FlowSystem.'
-                f'Original Error: {e}'
-            ) from e
-
-    def to_netcdf(self, path: str | pathlib.Path, compression: int = 5, overwrite: bool = False):
-        """
-        Save the object to a NetCDF file.
-
-        Args:
-            path: Path to save the NetCDF file. Parent directories are created if they don't exist.
-            compression: Compression level (0-9)
-            overwrite: If True, overwrite existing file. If False, raise error if file exists.
-
-        Raises:
-            FileExistsError: If overwrite=False and file already exists.
-            ValueError: If serialization fails
-            IOError: If file cannot be written
-        """
-        path = pathlib.Path(path)
-
-        # Check if file exists (unless overwrite is True)
-        if not overwrite and path.exists():
-            raise FileExistsError(f'File already exists: {path}. Use overwrite=True to overwrite existing file.')
-
-        # Create parent directories if they don't exist
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        try:
-            ds = self.to_dataset()
-            fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
-        except Exception as e:
-            raise OSError(f'Failed to save {self.__class__.__name__} to NetCDF file {path}: {e}') from e
-
-    @classmethod
-    def from_dataset(cls, ds: xr.Dataset) -> Interface:
-        """
-        Create an instance from an xarray Dataset.
-
-        Args:
-            ds: Dataset containing the object data
-
-        Returns:
-            Interface instance
-
-        Raises:
-            ValueError: If dataset format is invalid or class mismatch
-        """
-        try:
-            # Get class name and verify it matches
-            class_name = ds.attrs.get('__class__')
-            if class_name and class_name != cls.__name__:
-                logger.warning(f"Dataset class '{class_name}' doesn't match target class '{cls.__name__}'")
-
-            # Get the reference structure from attrs
-            reference_structure = dict(ds.attrs)
-
-            # Remove the class name since it's not a constructor parameter
-            reference_structure.pop('__class__', None)
-
-            # Create arrays dictionary from dataset variables
-            # Use ds.variables with coord_cache for faster DataArray construction
-            variables = ds.variables
-            coord_cache = {k: ds.coords[k] for k in ds.coords}
-            arrays_dict = {
-                name: xr.DataArray(
-                    variables[name],
-                    coords={k: coord_cache[k] for k in variables[name].dims if k in coord_cache},
-                    name=name,
-                )
-                for name in ds.data_vars
-            }
-
-            # Resolve all references using the standalone function
-            resolved_params = resolve_reference_structure(reference_structure, arrays_dict)
-
-            return cls(**resolved_params)
-        except Exception as e:
-            raise ValueError(f'Failed to create {cls.__name__} from dataset: {e}') from e
-
-    @classmethod
-    def from_netcdf(cls, path: str | pathlib.Path) -> Interface:
-        """
-        Load an instance from a NetCDF file.
-
-        Args:
-            path: Path to the NetCDF file
-
-        Returns:
-            Interface instance
-
-        Raises:
-            IOError: If file cannot be read
-            ValueError: If file format is invalid
-        """
-        try:
-            ds = fx_io.load_dataset_from_netcdf(path)
-            return cls.from_dataset(ds)
-        except Exception as e:
-            raise OSError(f'Failed to load {cls.__name__} from NetCDF file {path}: {e}') from e
-
-    def get_structure(self, clean: bool = False, stats: bool = False) -> dict:
-        """
-        Get object structure as a dictionary.
-
-        Args:
-            clean: If True, remove None and empty dicts and lists.
-            stats: If True, replace DataArray references with statistics
-
-        Returns:
-            Dictionary representation of the object structure
-        """
-        reference_structure, extracted_arrays = create_reference_structure(self)
-
-        if stats:
-            # Replace references with statistics
-            reference_structure = self._replace_references_with_stats(reference_structure, extracted_arrays)
-
-        if clean:
-            return fx_io.remove_none_and_empty(reference_structure)
-        return reference_structure
-
-    def _replace_references_with_stats(self, structure, arrays_dict: dict[str, xr.DataArray]):
-        """Replace DataArray references with statistical summaries."""
-        if isinstance(structure, str) and structure.startswith(':::'):
-            array_name = structure[3:]
-            if array_name in arrays_dict:
-                return get_dataarray_stats(arrays_dict[array_name])
-            return structure
-
-        elif isinstance(structure, dict):
-            return {k: self._replace_references_with_stats(v, arrays_dict) for k, v in structure.items()}
-
-        elif isinstance(structure, list):
-            return [self._replace_references_with_stats(item, arrays_dict) for item in structure]
-
-        return structure
-
-    def to_json(self, path: str | pathlib.Path):
-        """
-        Save the object to a JSON file.
-        This is meant for documentation and comparison, not for reloading.
-
-        Args:
-            path: The path to the JSON file.
-
-        Raises:
-            IOError: If file cannot be written
-        """
-        try:
-            # Use the stats mode for JSON export (cleaner output)
-            data = self.get_structure(clean=True, stats=True)
-            fx_io.save_json(data, path)
-        except Exception as e:
-            raise OSError(f'Failed to save {self.__class__.__name__} to JSON file {path}: {e}') from e
-
-    def __repr__(self):
-        """Return a detailed string representation for debugging."""
-        return fx_io.build_repr_from_init(self, excluded_params={'self', 'id', 'label', 'kwargs'})
-
-    def copy(self) -> Interface:
-        """
-        Create a copy of the Interface object.
-
-        Uses the existing serialization infrastructure to ensure proper copying
-        of all DataArrays and nested objects.
-
-        Returns:
-            A new instance of the same class with copied data.
-        """
-        # Convert to dataset, copy it, and convert back
-        dataset = self.to_dataset().copy(deep=True)
-        return self.__class__.from_dataset(dataset)
-
-    def __copy__(self):
-        """Support for copy.copy()."""
-        return self.copy()
-
-    def __deepcopy__(self, memo):
-        """Support for copy.deepcopy()."""
-        return self.copy()
-
-
-class Element(Interface):
+class Element:
     """This class is the basic Element of flixopt. Every Element has an id."""
 
     # Attributes that are serialized but set after construction (not passed to child __init__)
@@ -1939,6 +1700,165 @@ class Element(Interface):
             data_vars[var_name] = var
         return xr.Dataset(data_vars)
 
+    @property
+    def flow_system(self) -> FlowSystem:
+        """Access the FlowSystem this element is linked to.
+
+        Returns:
+            The FlowSystem instance this element belongs to.
+
+        Raises:
+            RuntimeError: If element has not been linked to a FlowSystem yet.
+        """
+        if self._flow_system is None:
+            raise RuntimeError(
+                f'{self.__class__.__name__} is not linked to a FlowSystem. '
+                f'Ensure the parent element is registered via flow_system.add_elements() first.'
+            )
+        return self._flow_system
+
+    def to_dataset(self) -> xr.Dataset:
+        """Convert the object to an xarray Dataset representation.
+
+        All DataArrays become dataset variables, everything else goes to attrs.
+
+        Returns:
+            xr.Dataset: Dataset containing all DataArrays with basic objects only in attributes
+
+        Raises:
+            ValueError: If serialization fails due to naming conflicts or invalid data
+        """
+        try:
+            reference_structure, extracted_arrays = create_reference_structure(self)
+            return xr.Dataset(extracted_arrays, attrs=reference_structure)
+        except Exception as e:
+            raise ValueError(f'Failed to convert {self.__class__.__name__} to dataset. Original Error: {e}') from e
+
+    def to_netcdf(self, path: str | pathlib.Path, compression: int = 5, overwrite: bool = False):
+        """Save the object to a NetCDF file.
+
+        Args:
+            path: Path to save the NetCDF file. Parent directories are created if they don't exist.
+            compression: Compression level (0-9)
+            overwrite: If True, overwrite existing file. If False, raise error if file exists.
+        """
+        path = pathlib.Path(path)
+        if not overwrite and path.exists():
+            raise FileExistsError(f'File already exists: {path}. Use overwrite=True to overwrite existing file.')
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            ds = self.to_dataset()
+            fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
+        except Exception as e:
+            raise OSError(f'Failed to save {self.__class__.__name__} to NetCDF file {path}: {e}') from e
+
+    @classmethod
+    def from_dataset(cls, ds: xr.Dataset) -> Element:
+        """Create an instance from an xarray Dataset.
+
+        Args:
+            ds: Dataset containing the object data
+
+        Returns:
+            Element instance
+        """
+        try:
+            class_name = ds.attrs.get('__class__')
+            if class_name and class_name != cls.__name__:
+                logger.warning(f"Dataset class '{class_name}' doesn't match target class '{cls.__name__}'")
+            reference_structure = dict(ds.attrs)
+            reference_structure.pop('__class__', None)
+            variables = ds.variables
+            coord_cache = {k: ds.coords[k] for k in ds.coords}
+            arrays_dict = {
+                name: xr.DataArray(
+                    variables[name],
+                    coords={k: coord_cache[k] for k in variables[name].dims if k in coord_cache},
+                    name=name,
+                )
+                for name in ds.data_vars
+            }
+            resolved_params = resolve_reference_structure(reference_structure, arrays_dict)
+            return cls(**resolved_params)
+        except Exception as e:
+            raise ValueError(f'Failed to create {cls.__name__} from dataset: {e}') from e
+
+    @classmethod
+    def from_netcdf(cls, path: str | pathlib.Path) -> Element:
+        """Load an instance from a NetCDF file.
+
+        Args:
+            path: Path to the NetCDF file
+
+        Returns:
+            Element instance
+        """
+        try:
+            ds = fx_io.load_dataset_from_netcdf(path)
+            return cls.from_dataset(ds)
+        except Exception as e:
+            raise OSError(f'Failed to load {cls.__name__} from NetCDF file {path}: {e}') from e
+
+    def get_structure(self, clean: bool = False, stats: bool = False) -> dict:
+        """Get object structure as a dictionary.
+
+        Args:
+            clean: If True, remove None and empty dicts and lists.
+            stats: If True, replace DataArray references with statistics
+
+        Returns:
+            Dictionary representation of the object structure
+        """
+        reference_structure, extracted_arrays = create_reference_structure(self)
+        if stats:
+            reference_structure = self._replace_references_with_stats(reference_structure, extracted_arrays)
+        if clean:
+            return fx_io.remove_none_and_empty(reference_structure)
+        return reference_structure
+
+    @staticmethod
+    def _replace_references_with_stats(structure, arrays_dict: dict[str, xr.DataArray]):
+        """Replace DataArray references with statistical summaries."""
+        if isinstance(structure, str) and structure.startswith(':::'):
+            array_name = structure[3:]
+            if array_name in arrays_dict:
+                return get_dataarray_stats(arrays_dict[array_name])
+            return structure
+        elif isinstance(structure, dict):
+            return {k: Element._replace_references_with_stats(v, arrays_dict) for k, v in structure.items()}
+        elif isinstance(structure, list):
+            return [Element._replace_references_with_stats(item, arrays_dict) for item in structure]
+        return structure
+
+    def to_json(self, path: str | pathlib.Path):
+        """Save the object to a JSON file (for documentation, not reloading).
+
+        Args:
+            path: The path to the JSON file.
+        """
+        try:
+            data = self.get_structure(clean=True, stats=True)
+            fx_io.save_json(data, path)
+        except Exception as e:
+            raise OSError(f'Failed to save {self.__class__.__name__} to JSON file {path}: {e}') from e
+
+    def copy(self) -> Element:
+        """Create a copy of the Element.
+
+        Uses serialization infrastructure to ensure proper copying
+        of all DataArrays and nested objects.
+        """
+        dataset = self.to_dataset().copy(deep=True)
+        return self.__class__.from_dataset(dataset)
+
+    def __copy__(self):
+        """Support for copy.copy()."""
+        return self.copy()
+
+    def __deepcopy__(self, memo):
+        """Support for copy.deepcopy()."""
+        return self.copy()
+
     def __repr__(self) -> str:
         """Return string representation."""
         return fx_io.build_repr_from_init(self, excluded_params={'self', 'id', 'kwargs'}, skip_default_size=True)
@@ -1979,257 +1899,6 @@ _NATURAL_SPLIT = re.compile(r'(\d+)')
 def _natural_sort_key(text):
     """Sort key for natural ordering (e.g., bus1, bus2, bus10 instead of bus1, bus10, bus2)."""
     return [int(c) if c.isdigit() else c.lower() for c in _NATURAL_SPLIT.split(text)]
-
-
-# Type variable for containers
-T = TypeVar('T')
-
-
-class ContainerMixin(dict[str, T]):
-    """
-    Mixin providing shared container functionality with nice repr and error messages.
-
-    Subclasses must implement _get_label() to extract the label from elements.
-    """
-
-    def __init__(
-        self,
-        elements: list[T] | dict[str, T] | None = None,
-        element_type_name: str = 'elements',
-        truncate_repr: int | None = None,
-        item_name: str | None = None,
-    ):
-        """
-        Args:
-            elements: Initial elements to add (list or dict)
-            element_type_name: Name for display (e.g., 'components', 'buses')
-            truncate_repr: Maximum number of items to show in repr. If None, show all items. Default: None
-            item_name: Singular name for error messages (e.g., 'Component', 'Carrier').
-                If None, inferred from first added item's class name.
-        """
-        super().__init__()
-        self._element_type_name = element_type_name
-        self._truncate_repr = truncate_repr
-        self._item_name = item_name
-
-        if elements is not None:
-            if isinstance(elements, dict):
-                for element in elements.values():
-                    self.add(element)
-            else:
-                for element in elements:
-                    self.add(element)
-
-    def _get_label(self, element: T) -> str:
-        """
-        Extract label from element. Must be implemented by subclasses.
-
-        Args:
-            element: Element to get label from
-
-        Returns:
-            Label string
-        """
-        raise NotImplementedError('Subclasses must implement _get_label()')
-
-    def _get_item_name(self) -> str:
-        """Get the singular item name for error messages.
-
-        Returns the explicitly set item_name, or infers from the first item's class name.
-        Falls back to 'Item' if container is empty and no name was set.
-        """
-        if self._item_name is not None:
-            return self._item_name
-        # Infer from first item's class name
-        if self:
-            first_item = next(iter(self.values()))
-            return first_item.__class__.__name__
-        return 'Item'
-
-    def add(self, element: T) -> None:
-        """Add an element to the container."""
-        label = self._get_label(element)
-        if label in self:
-            item_name = element.__class__.__name__
-            raise ValueError(
-                f'{item_name} with label "{label}" already exists in {self._element_type_name}. '
-                f'Each {item_name.lower()} must have a unique label.'
-            )
-        self[label] = element
-
-    def __setitem__(self, label: str, element: T) -> None:
-        """Set element with validation."""
-        element_label = self._get_label(element)
-        if label != element_label:
-            raise ValueError(
-                f'Key "{label}" does not match element label "{element_label}". '
-                f'Use the correct label as key or use .add() method.'
-            )
-        super().__setitem__(label, element)
-
-    def __getitem__(self, label: str) -> T:
-        """
-        Get element by label with helpful error messages.
-
-        Args:
-            label: Label of the element to retrieve
-
-        Returns:
-            The element with the given label
-
-        Raises:
-            KeyError: If element is not found, with suggestions for similar labels
-        """
-        try:
-            return super().__getitem__(label)
-        except KeyError:
-            # Provide helpful error with close matches suggestions
-            item_name = self._get_item_name()
-            suggestions = get_close_matches(label, self.keys(), n=3, cutoff=0.6)
-            error_msg = f'{item_name} "{label}" not found in {self._element_type_name}.'
-            if suggestions:
-                error_msg += f' Did you mean: {", ".join(suggestions)}?'
-            else:
-                available = list(self.keys())
-                if len(available) <= 5:
-                    error_msg += f' Available: {", ".join(available)}'
-                else:
-                    error_msg += f' Available: {", ".join(available[:5])} ... (+{len(available) - 5} more)'
-            raise KeyError(error_msg) from None
-
-    def _get_repr(self, max_items: int | None = None) -> str:
-        """
-        Get string representation with optional truncation.
-
-        Args:
-            max_items: Maximum number of items to show. If None, uses instance default (self._truncate_repr).
-                      If still None, shows all items.
-
-        Returns:
-            Formatted string representation
-        """
-        # Use provided max_items, or fall back to instance default
-        limit = max_items if max_items is not None else self._truncate_repr
-
-        count = len(self)
-        title = f'{self._element_type_name.capitalize()} ({count} item{"s" if count != 1 else ""})'
-
-        if not self:
-            r = fx_io.format_title_with_underline(title)
-            r += '<empty>\n'
-        else:
-            r = fx_io.format_title_with_underline(title)
-            sorted_names = sorted(self.keys(), key=_natural_sort_key)
-
-            if limit is not None and limit > 0 and len(sorted_names) > limit:
-                # Show truncated list
-                for name in sorted_names[:limit]:
-                    r += f' * {name}\n'
-                r += f' ... (+{len(sorted_names) - limit} more)\n'
-            else:
-                # Show all items
-                for name in sorted_names:
-                    r += f' * {name}\n'
-
-        return r
-
-    def __add__(self, other: ContainerMixin[T]) -> ContainerMixin[T]:
-        """Concatenate two containers."""
-        result = self.__class__(element_type_name=self._element_type_name)
-        for element in self.values():
-            result.add(element)
-        for element in other.values():
-            result.add(element)
-        return result
-
-    def __repr__(self) -> str:
-        """Return a string representation using the instance's truncate_repr setting."""
-        return self._get_repr()
-
-
-class FlowContainer(ContainerMixin[T]):
-    """Container for Flow objects with dual access: by index or by id.
-
-    Supports:
-        - container['Boiler(Q_th)']  # id-based access
-        - container['Q_th']          # short-id access (when all flows share same component)
-        - container[0]               # index-based access
-        - container.add(flow)
-        - for flow in container.values()
-        - container1 + container2    # concatenation
-
-    Examples:
-        >>> boiler = Boiler(id='Boiler', inputs=[Flow('heat_bus')])
-        >>> boiler.inputs[0]  # Index access
-        >>> boiler.inputs['Boiler(heat_bus)']  # Full id access
-        >>> boiler.inputs['heat_bus']  # Short id access (same component)
-        >>> for flow in boiler.inputs.values():
-        ...     print(flow.id)
-    """
-
-    def _get_label(self, flow: T) -> str:
-        """Extract id from Flow."""
-        return flow.id
-
-    def __getitem__(self, key: str | int) -> T:
-        """Get flow by id, short id, or index."""
-        if isinstance(key, int):
-            try:
-                return list(self.values())[key]
-            except IndexError:
-                raise IndexError(f'Flow index {key} out of range (container has {len(self)} flows)') from None
-
-        if dict.__contains__(self, key):
-            return super().__getitem__(key)
-
-        # Try short-id match if all flows share the same component
-        if len(self) > 0:
-            components = {flow.component for flow in self.values()}
-            if len(components) == 1:
-                component = next(iter(components))
-                full_key = f'{component}({key})'
-                if dict.__contains__(self, full_key):
-                    return super().__getitem__(full_key)
-
-        raise KeyError(f"'{key}' not found in {self._element_type_name}")
-
-    def __contains__(self, key: object) -> bool:
-        """Check if key exists (supports id or short id)."""
-        if not isinstance(key, str):
-            return False
-        if dict.__contains__(self, key):
-            return True
-        if len(self) > 0:
-            components = {flow.component for flow in self.values()}
-            if len(components) == 1:
-                component = next(iter(components))
-                full_key = f'{component}({key})'
-                return dict.__contains__(self, full_key)
-        return False
-
-
-class ElementContainer(ContainerMixin[T]):
-    """
-    Container for Element objects (Component, Bus, Flow, Effect).
-
-    Uses element.id for keying.
-    """
-
-    def _get_label(self, element: T) -> str:
-        """Extract id from Element."""
-        return element.id
-
-
-class ResultsContainer(ContainerMixin[T]):
-    """
-    Container for Results objects (ComponentResults, BusResults, etc).
-
-    Uses element.id for keying.
-    """
-
-    def _get_label(self, element: T) -> str:
-        """Extract id from Results object."""
-        return element.id
 
 
 T_element = TypeVar('T_element')

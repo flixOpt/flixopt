@@ -34,7 +34,6 @@ from .structure import (
     CompositeContainerMixin,
     Element,
     FlowSystemModel,
-    Interface,
     create_reference_structure,
 )
 from .topology_accessor import TopologyAccessor
@@ -204,7 +203,7 @@ class LegacySolutionWrapper:
         return key in object.__getattribute__(self, '_dataset')
 
 
-class FlowSystem(Interface, CompositeContainerMixin[Element]):
+class FlowSystem(CompositeContainerMixin[Element]):
     """
     A FlowSystem organizes the high level Elements (Components, Buses, Effects & Flows).
 
@@ -563,7 +562,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             FlowSystem instance with name set from filename
         """
         path = pathlib.Path(path)
-        flow_system = super().from_netcdf(path)
+        try:
+            ds = fx_io.load_dataset_from_netcdf(path)
+            flow_system = cls.from_dataset(ds)
+        except Exception as e:
+            raise OSError(f'Failed to load FlowSystem from NetCDF file {path}: {e}') from e
         # Derive name from filename (without extension)
         flow_system.name = path.stem
         return flow_system
@@ -766,7 +769,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         reference_structure, extracted_arrays = self._create_reference_structure()
 
         if stats:
-            reference_structure = self._replace_references_with_stats(reference_structure, extracted_arrays)
+            reference_structure = Element._replace_references_with_stats(reference_structure, extracted_arrays)
 
         if clean:
             return fx_io.remove_none_and_empty(reference_structure)
@@ -786,7 +789,11 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             )
             self.connect_and_transform()
 
-        super().to_json(path)
+        try:
+            data = self.get_structure(clean=True, stats=True)
+            fx_io.save_json(data, path)
+        except Exception as e:
+            raise OSError(f'Failed to save FlowSystem to JSON file {path}: {e}') from e
 
     def fit_to_model_coords(
         self,

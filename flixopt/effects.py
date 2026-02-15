@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import logging
 from collections import deque
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import linopy
 import numpy as np
 import xarray as xr
 
+from . import io as fx_io
 from .id_list import IdList
 from .structure import (
     Element,
@@ -25,6 +27,7 @@ from .structure import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from .flow_system import FlowSystem
     from .types import Effect_PS, Effect_TPS, Numeric_PS, Numeric_S, Numeric_TPS, Scalar
 
 logger = logging.getLogger('flixopt')
@@ -37,6 +40,7 @@ PENALTY_EFFECT_LABEL = PENALTY_EFFECT_ID
 
 
 @register_class_for_io
+@dataclass(eq=False, repr=False)
 class Effect(Element):
     """Represents system-wide impacts like costs, emissions, or resource consumption.
 
@@ -187,60 +191,48 @@ class Effect(Element):
 
     """
 
-    def __init__(
-        self,
-        id: str | None = None,
-        unit: str = '',
-        description: str = '',
-        meta_data: dict | None = None,
-        is_standard: bool = False,
-        is_objective: bool = False,
-        period_weights: Numeric_PS | None = None,
-        share_from_temporal: Effect_TPS | Numeric_TPS | None = None,
-        share_from_periodic: Effect_PS | Numeric_PS | None = None,
-        minimum_temporal: Numeric_PS | None = None,
-        maximum_temporal: Numeric_PS | None = None,
-        minimum_periodic: Numeric_PS | None = None,
-        maximum_periodic: Numeric_PS | None = None,
-        minimum_per_hour: Numeric_TPS | None = None,
-        maximum_per_hour: Numeric_TPS | None = None,
-        minimum_total: Numeric_PS | None = None,
-        maximum_total: Numeric_PS | None = None,
-        minimum_over_periods: Numeric_S | None = None,
-        maximum_over_periods: Numeric_S | None = None,
-        **kwargs,
-    ):
-        super().__init__(id, meta_data=meta_data, **kwargs)
-        self.unit = unit
-        self.description = description
-        self.is_standard = is_standard
+    id: str
+    unit: str = ''
+    description: str = ''
+    is_standard: bool = False
+    is_objective: bool = False
+    period_weights: Numeric_PS | None = None
+    share_from_temporal: Effect_TPS | Numeric_TPS | None = None
+    share_from_periodic: Effect_PS | Numeric_PS | None = None
+    minimum_temporal: Numeric_PS | None = None
+    maximum_temporal: Numeric_PS | None = None
+    minimum_periodic: Numeric_PS | None = None
+    maximum_periodic: Numeric_PS | None = None
+    minimum_per_hour: Numeric_TPS | None = None
+    maximum_per_hour: Numeric_TPS | None = None
+    minimum_total: Numeric_PS | None = None
+    maximum_total: Numeric_PS | None = None
+    minimum_over_periods: Numeric_S | None = None
+    maximum_over_periods: Numeric_S | None = None
+    meta_data: dict = field(default_factory=dict)
+    color: str | None = None
+    # Internal state (not init params)
+    _flow_system: FlowSystem | None = field(default=None, init=False, repr=False)
+    _variable_names: list[str] = field(default_factory=list, init=False, repr=False)
+    _constraint_names: list[str] = field(default_factory=list, init=False, repr=False)
 
+    def __post_init__(self):
+        self.id = Element._valid_id(self.id)
+        self._short_id = self.id
         # Validate that Penalty cannot be set as objective
-        if is_objective and id == PENALTY_EFFECT_ID:
+        if self.is_objective and self.id == PENALTY_EFFECT_ID:
             raise ValueError(
                 f'The Penalty effect ("{PENALTY_EFFECT_ID}") cannot be set as the objective effect. '
                 f'Please use a different effect as the optimization objective.'
             )
+        # Default to {} when None (no shares defined)
+        if self.share_from_temporal is None:
+            self.share_from_temporal = {}
+        if self.share_from_periodic is None:
+            self.share_from_periodic = {}
 
-        self.is_objective = is_objective
-        self.period_weights = period_weights
-        # Share parameters accept Effect_* | Numeric_* unions (dict or single value).
-        # Stored as raw user input; alignment happens lazily in EffectsData.
-        # Default to {} when None (no shares defined).
-        self.share_from_temporal = share_from_temporal if share_from_temporal is not None else {}
-        self.share_from_periodic = share_from_periodic if share_from_periodic is not None else {}
-
-        # Set attributes directly
-        self.minimum_temporal = minimum_temporal
-        self.maximum_temporal = maximum_temporal
-        self.minimum_periodic = minimum_periodic
-        self.maximum_periodic = maximum_periodic
-        self.minimum_per_hour = minimum_per_hour
-        self.maximum_per_hour = maximum_per_hour
-        self.minimum_total = minimum_total
-        self.maximum_total = maximum_total
-        self.minimum_over_periods = minimum_over_periods
-        self.maximum_over_periods = maximum_over_periods
+    def __repr__(self) -> str:
+        return fx_io.build_repr_from_init(self, excluded_params={'self', 'id', 'kwargs'}, skip_default_size=True)
 
 
 class EffectsModel:

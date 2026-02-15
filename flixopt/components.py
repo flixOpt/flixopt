@@ -7,7 +7,8 @@ from __future__ import annotations
 import functools
 import logging
 import warnings
-from typing import TYPE_CHECKING, Literal
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, ClassVar, Literal
 
 import numpy as np
 import xarray as xr
@@ -15,7 +16,7 @@ import xarray as xr
 from . import io as fx_io
 from .elements import Component, Flow
 from .features import MaskHelpers, stack_along_dim
-from .interface import InvestParameters, PiecewiseConversion, StatusParameters
+from .interface import InvestParameters, PiecewiseConversion
 from .modeling import _scalar_safe_reduce
 from .structure import (
     FlowSystemModel,
@@ -36,6 +37,7 @@ logger = logging.getLogger('flixopt')
 
 
 @register_class_for_io
+@dataclass(eq=False, repr=False)
 class LinearConverter(Component):
     """
     Converts input-Flows into output-Flows via linear conversion factors.
@@ -168,21 +170,10 @@ class LinearConverter(Component):
 
     """
 
-    def __init__(
-        self,
-        id: str | None = None,
-        inputs: list[Flow] | None = None,
-        outputs: list[Flow] | None = None,
-        status_parameters: StatusParameters | None = None,
-        conversion_factors: list[dict[str, Numeric_TPS]] | None = None,
-        piecewise_conversion: PiecewiseConversion | None = None,
-        meta_data: dict | None = None,
-        color: str | None = None,
-        **kwargs,
-    ):
-        super().__init__(id, inputs, outputs, status_parameters, meta_data=meta_data, color=color, **kwargs)
-        self.conversion_factors = conversion_factors or []
-        self.piecewise_conversion = piecewise_conversion
+    _io_exclude: ClassVar[set[str]] = {'prevent_simultaneous_flows'}
+
+    conversion_factors: list[dict[str, Numeric_TPS]] = field(default_factory=list)
+    piecewise_conversion: PiecewiseConversion | None = None
 
     @property
     def degrees_of_freedom(self):
@@ -190,6 +181,7 @@ class LinearConverter(Component):
 
 
 @register_class_for_io
+@dataclass(eq=False, repr=False)
 class Storage(Component):
     """
     A Storage models the temporary storage and release of energy or material.
@@ -339,59 +331,32 @@ class Storage(Component):
         With flow rates in m3/h, the charge state is therefore in m3.
     """
 
-    def __init__(
-        self,
-        id: str | None = None,
-        charging: Flow | None = None,
-        discharging: Flow | None = None,
-        capacity_in_flow_hours: Numeric_PS | InvestParameters | None = None,
-        relative_minimum_charge_state: Numeric_TPS = 0,
-        relative_maximum_charge_state: Numeric_TPS = 1,
-        initial_charge_state: Numeric_PS | Literal['equals_final'] | None = 0,
-        minimal_final_charge_state: Numeric_PS | None = None,
-        maximal_final_charge_state: Numeric_PS | None = None,
-        relative_minimum_final_charge_state: Numeric_PS | None = None,
-        relative_maximum_final_charge_state: Numeric_PS | None = None,
-        eta_charge: Numeric_TPS = 1,
-        eta_discharge: Numeric_TPS = 1,
-        relative_loss_per_hour: Numeric_TPS = 0,
-        prevent_simultaneous_charge_and_discharge: bool = True,
-        balanced: bool = False,
-        cluster_mode: Literal['independent', 'cyclic', 'intercluster', 'intercluster_cyclic'] = 'intercluster_cyclic',
-        meta_data: dict | None = None,
-        color: str | None = None,
-        **kwargs,
-    ):
-        # TODO: fixed_relative_chargeState implementieren
-        super().__init__(
-            id,
-            inputs=[charging],
-            outputs=[discharging],
-            prevent_simultaneous_flows=[charging, discharging] if prevent_simultaneous_charge_and_discharge else None,
-            meta_data=meta_data,
-            color=color,
-            **kwargs,
-        )
+    _io_exclude: ClassVar[set[str]] = {'inputs', 'outputs', 'prevent_simultaneous_flows'}
 
-        self.charging = charging
-        self.discharging = discharging
-        self.capacity_in_flow_hours = capacity_in_flow_hours
-        self.relative_minimum_charge_state: Numeric_TPS = relative_minimum_charge_state
-        self.relative_maximum_charge_state: Numeric_TPS = relative_maximum_charge_state
+    charging: Flow | None = None
+    discharging: Flow | None = None
+    capacity_in_flow_hours: Numeric_PS | InvestParameters | None = None
+    relative_minimum_charge_state: Numeric_TPS = 0
+    relative_maximum_charge_state: Numeric_TPS = 1
+    initial_charge_state: Numeric_PS | Literal['equals_final'] | None = 0
+    minimal_final_charge_state: Numeric_PS | None = None
+    maximal_final_charge_state: Numeric_PS | None = None
+    relative_minimum_final_charge_state: Numeric_PS | None = None
+    relative_maximum_final_charge_state: Numeric_PS | None = None
+    eta_charge: Numeric_TPS = 1
+    eta_discharge: Numeric_TPS = 1
+    relative_loss_per_hour: Numeric_TPS = 0
+    prevent_simultaneous_charge_and_discharge: bool = True
+    balanced: bool = False
+    cluster_mode: Literal['independent', 'cyclic', 'intercluster', 'intercluster_cyclic'] = 'intercluster_cyclic'
 
-        self.relative_minimum_final_charge_state = relative_minimum_final_charge_state
-        self.relative_maximum_final_charge_state = relative_maximum_final_charge_state
-
-        self.initial_charge_state = initial_charge_state
-        self.minimal_final_charge_state = minimal_final_charge_state
-        self.maximal_final_charge_state = maximal_final_charge_state
-
-        self.eta_charge: Numeric_TPS = eta_charge
-        self.eta_discharge: Numeric_TPS = eta_discharge
-        self.relative_loss_per_hour: Numeric_TPS = relative_loss_per_hour
-        self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
-        self.balanced = balanced
-        self.cluster_mode = cluster_mode
+    def __post_init__(self):
+        # Set Component fields from Storage-specific fields
+        self.inputs = [self.charging]
+        self.outputs = [self.discharging]
+        if self.prevent_simultaneous_charge_and_discharge:
+            self.prevent_simultaneous_flows = [self.charging, self.discharging]
+        super().__post_init__()
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -404,6 +369,7 @@ class Storage(Component):
 
 
 @register_class_for_io
+@dataclass(eq=False, repr=False)
 class Transmission(Component):
     """
     Models transmission infrastructure that transports flows between two locations with losses.
@@ -514,42 +480,23 @@ class Transmission(Component):
 
     """
 
-    def __init__(
-        self,
-        id: str | None = None,
-        in1: Flow | None = None,
-        out1: Flow | None = None,
-        in2: Flow | None = None,
-        out2: Flow | None = None,
-        relative_losses: Numeric_TPS | None = None,
-        absolute_losses: Numeric_TPS | None = None,
-        status_parameters: StatusParameters | None = None,
-        prevent_simultaneous_flows_in_both_directions: bool = True,
-        balanced: bool = False,
-        meta_data: dict | None = None,
-        color: str | None = None,
-        **kwargs,
-    ):
-        super().__init__(
-            id,
-            inputs=[flow for flow in (in1, in2) if flow is not None],
-            outputs=[flow for flow in (out1, out2) if flow is not None],
-            status_parameters=status_parameters,
-            prevent_simultaneous_flows=None
-            if in2 is None or prevent_simultaneous_flows_in_both_directions is False
-            else [in1, in2],
-            meta_data=meta_data,
-            color=color,
-            **kwargs,
-        )
-        self.in1 = in1
-        self.out1 = out1
-        self.in2 = in2
-        self.out2 = out2
+    _io_exclude: ClassVar[set[str]] = {'inputs', 'outputs', 'prevent_simultaneous_flows'}
 
-        self.relative_losses = relative_losses
-        self.absolute_losses = absolute_losses
-        self.balanced = balanced
+    in1: Flow | None = None
+    out1: Flow | None = None
+    in2: Flow | None = None
+    out2: Flow | None = None
+    relative_losses: Numeric_TPS | None = None
+    absolute_losses: Numeric_TPS | None = None
+    prevent_simultaneous_flows_in_both_directions: bool = True
+    balanced: bool = False
+
+    def __post_init__(self):
+        self.inputs = [f for f in (self.in1, self.in2) if f is not None]
+        self.outputs = [f for f in (self.out1, self.out2) if f is not None]
+        if self.in2 is not None and self.prevent_simultaneous_flows_in_both_directions:
+            self.prevent_simultaneous_flows = [self.in1, self.in2]
+        super().__post_init__()
 
     def _propagate_status_parameters(self) -> None:
         super()._propagate_status_parameters()
@@ -1757,6 +1704,7 @@ class InterclusterStoragesModel(TypeModel):
 
 
 @register_class_for_io
+@dataclass(eq=False, repr=False)
 class SourceAndSink(Component):
     """
     A SourceAndSink combines both supply and demand capabilities in a single component.
@@ -1842,32 +1790,20 @@ class SourceAndSink(Component):
         The deprecated `sink` and `source` kwargs are accepted for compatibility but will be removed in future releases.
     """
 
-    def __init__(
-        self,
-        id: str | None = None,
-        inputs: list[Flow] | None = None,
-        outputs: list[Flow] | None = None,
-        prevent_simultaneous_flow_rates: bool = True,
-        meta_data: dict | None = None,
-        color: str | None = None,
-        **kwargs,
-    ):
-        # Convert dict to list for deserialization compatibility (IdLists serialize as dicts)
-        _inputs_list = list(inputs.values()) if isinstance(inputs, dict) else (inputs or [])
-        _outputs_list = list(outputs.values()) if isinstance(outputs, dict) else (outputs or [])
-        super().__init__(
-            id,
-            inputs=_inputs_list,
-            outputs=_outputs_list,
-            prevent_simultaneous_flows=_inputs_list + _outputs_list if prevent_simultaneous_flow_rates else None,
-            meta_data=meta_data,
-            color=color,
-            **kwargs,
-        )
-        self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
+    _io_exclude: ClassVar[set[str]] = {'prevent_simultaneous_flows'}
+
+    prevent_simultaneous_flow_rates: bool = True
+
+    def __post_init__(self):
+        if self.prevent_simultaneous_flow_rates:
+            _inputs = list(self.inputs.values()) if isinstance(self.inputs, dict) else (self.inputs or [])
+            _outputs = list(self.outputs.values()) if isinstance(self.outputs, dict) else (self.outputs or [])
+            self.prevent_simultaneous_flows = _inputs + _outputs
+        super().__post_init__()
 
 
 @register_class_for_io
+@dataclass(eq=False, repr=False)
 class Source(Component):
     """
     A Source generates or provides energy or material flows into the system.
@@ -1943,27 +1879,19 @@ class Source(Component):
         The deprecated `source` kwarg is accepted for compatibility but will be removed in future releases.
     """
 
-    def __init__(
-        self,
-        id: str | None = None,
-        outputs: list[Flow] | None = None,
-        meta_data: dict | None = None,
-        prevent_simultaneous_flow_rates: bool = False,
-        color: str | None = None,
-        **kwargs,
-    ):
-        self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
-        super().__init__(
-            id,
-            outputs=outputs,
-            meta_data=meta_data,
-            prevent_simultaneous_flows=outputs if prevent_simultaneous_flow_rates else None,
-            color=color,
-            **kwargs,
-        )
+    _io_exclude: ClassVar[set[str]] = {'inputs', 'prevent_simultaneous_flows'}
+
+    prevent_simultaneous_flow_rates: bool = False
+
+    def __post_init__(self):
+        if self.prevent_simultaneous_flow_rates:
+            outputs = list(self.outputs.values()) if isinstance(self.outputs, dict) else (self.outputs or [])
+            self.prevent_simultaneous_flows = outputs
+        super().__post_init__()
 
 
 @register_class_for_io
+@dataclass(eq=False, repr=False)
 class Sink(Component):
     """
     A Sink consumes energy or material flows from the system.
@@ -2040,32 +1968,12 @@ class Sink(Component):
         The deprecated `sink` kwarg is accepted for compatibility but will be removed in future releases.
     """
 
-    def __init__(
-        self,
-        id: str | None = None,
-        inputs: list[Flow] | None = None,
-        meta_data: dict | None = None,
-        prevent_simultaneous_flow_rates: bool = False,
-        color: str | None = None,
-        **kwargs,
-    ):
-        """Initialize a Sink (consumes flow from the system).
+    _io_exclude: ClassVar[set[str]] = {'outputs', 'prevent_simultaneous_flows'}
 
-        Args:
-            id: Unique element id.
-            inputs: Input flows for the sink.
-            meta_data: Arbitrary metadata attached to the element.
-            prevent_simultaneous_flow_rates: If True, prevents simultaneous nonzero flow rates
-                across the element's inputs by wiring that restriction into the base Component setup.
-            color: Optional color for visualizations.
-        """
+    prevent_simultaneous_flow_rates: bool = False
 
-        self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
-        super().__init__(
-            id,
-            inputs=inputs,
-            meta_data=meta_data,
-            prevent_simultaneous_flows=inputs if prevent_simultaneous_flow_rates else None,
-            color=color,
-            **kwargs,
-        )
+    def __post_init__(self):
+        if self.prevent_simultaneous_flow_rates:
+            inputs = list(self.inputs.values()) if isinstance(self.inputs, dict) else (self.inputs or [])
+            self.prevent_simultaneous_flows = inputs
+        super().__post_init__()
