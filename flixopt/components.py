@@ -565,39 +565,6 @@ class Transmission(Component):
         self.absolute_losses = absolute_losses
         self.balanced = balanced
 
-    def validate_config(self) -> None:
-        """Validate configuration consistency.
-
-        Called BEFORE transformation via FlowSystem._run_config_validation().
-        These are simple checks that don't require DataArray operations.
-        """
-        super().validate_config()
-        # Check buses consistency
-        if self.in2 is not None:
-            if self.in2.bus != self.out1.bus:
-                raise ValueError(
-                    f'Output 1 and Input 2 do not start/end at the same Bus: {self.out1.bus=}, {self.in2.bus=}'
-                )
-        if self.out2 is not None:
-            if self.out2.bus != self.in1.bus:
-                raise ValueError(
-                    f'Input 1 and Output 2 do not start/end at the same Bus: {self.in1.bus=}, {self.out2.bus=}'
-                )
-
-        # Balanced requires InvestParameters on both in-Flows
-        if self.balanced:
-            if self.in2 is None:
-                raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
-            if not isinstance(self.in1.size, InvestParameters) or not isinstance(self.in2.size, InvestParameters):
-                raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
-
-    def _plausibility_checks(self) -> None:
-        """Legacy validation method - delegates to validate_config().
-
-        DataArray-based checks moved to TransmissionsData.validate().
-        """
-        self.validate_config()
-
     def _propagate_status_parameters(self) -> None:
         super()._propagate_status_parameters()
         # Transmissions with absolute_losses need status variables on input flows
@@ -622,9 +589,7 @@ class Transmission(Component):
                     flow.relative_minimum = CONFIG.Modeling.epsilon
 
     def transform_data(self) -> None:
-        super().transform_data()
-        self.relative_losses = self._fit_coords(f'{self.prefix}|relative_losses', self.relative_losses)
-        self.absolute_losses = self._fit_coords(f'{self.prefix}|absolute_losses', self.absolute_losses)
+        super().transform_data()  # Component._propagate_status_parameters
 
 
 class StoragesModel(TypeModel):

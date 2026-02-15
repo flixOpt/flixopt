@@ -2515,9 +2515,10 @@ class ConvertersData:
 class TransmissionsData:
     """Batched data container for transmissions."""
 
-    def __init__(self, transmissions: list[Transmission], flow_ids: list[str]):
+    def __init__(self, transmissions: list[Transmission], flow_ids: list[str], coords: dict[str, pd.Index]):
         self._transmissions = transmissions
         self._flow_ids = flow_ids
+        self._coords = coords
         self.elements: IdList = element_id_list(transmissions)
 
     @property
@@ -2605,6 +2606,11 @@ class TransmissionsData:
 
     # === Loss Properties ===
 
+    def _align(self, transmission_id: str, attr: str) -> xr.DataArray | None:
+        """Align a single transmission attribute value to model coords."""
+        raw = getattr(self.elements[transmission_id], attr)
+        return align_to_coords(raw, self._coords, name=f'{transmission_id}|{attr}')
+
     @cached_property
     def relative_losses(self) -> xr.DataArray:
         """(transmission, [time, ...]) relative losses. 0 if None."""
@@ -2612,8 +2618,8 @@ class TransmissionsData:
             return xr.DataArray()
         values = []
         for t in self._transmissions:
-            loss = t.relative_losses if t.relative_losses is not None else 0
-            values.append(loss)
+            aligned = self._align(t.id, 'relative_losses')
+            values.append(aligned if aligned is not None else 0)
         return stack_along_dim(values, self.dim_name, self.element_ids)
 
     @cached_property
@@ -2623,8 +2629,8 @@ class TransmissionsData:
             return xr.DataArray()
         values = []
         for t in self._transmissions:
-            loss = t.absolute_losses if t.absolute_losses is not None else 0
-            values.append(loss)
+            aligned = self._align(t.id, 'absolute_losses')
+            values.append(aligned if aligned is not None else 0)
         return stack_along_dim(values, self.dim_name, self.element_ids)
 
     @cached_property
@@ -2647,19 +2653,45 @@ class TransmissionsData:
     def validate(self) -> None:
         """Validate all transmissions (config + DataArray checks).
 
-        Performs both:
-        - Config validation via Transmission.validate_config()
-        - DataArray validation (post-transformation checks)
-
         Raises:
             PlausibilityError: If any validation check fails.
         """
-        for transmission in self._transmissions:
-            transmission.validate_config()
-
         errors: list[str] = []
 
         for transmission in self._transmissions:
+            # Config checks (moved from Transmission.validate_config / Component.validate_config)
+            transmission._check_unique_flow_ids()
+            if transmission.status_parameters:
+                for flow in transmission.flows.values():
+                    if flow.size is None:
+                        raise PlausibilityError(
+                            f'"{transmission.id}": Flow "{flow.flow_id}" must have a defined size '
+                            f'because {transmission.id} has status_parameters. '
+                            f'A size is required for big-M constraints.'
+                        )
+
+            # Bus consistency checks
+            if transmission.in2 is not None:
+                if transmission.in2.bus != transmission.out1.bus:
+                    raise ValueError(
+                        f'Output 1 and Input 2 do not start/end at the same Bus: '
+                        f'{transmission.out1.bus=}, {transmission.in2.bus=}'
+                    )
+            if transmission.out2 is not None:
+                if transmission.out2.bus != transmission.in1.bus:
+                    raise ValueError(
+                        f'Input 1 and Output 2 do not start/end at the same Bus: '
+                        f'{transmission.in1.bus=}, {transmission.out2.bus=}'
+                    )
+
+            # Balanced requires InvestParameters on both in-Flows
+            if transmission.balanced:
+                if transmission.in2 is None:
+                    raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
+                if not isinstance(transmission.in1.size, InvestParameters) or not isinstance(
+                    transmission.in2.size, InvestParameters
+                ):
+                    raise ValueError('Balanced Transmission needs InvestParameters in both in-Flows')
             tid = transmission.id
 
             # Balanced size compatibility (DataArray check)
@@ -2815,7 +2847,11 @@ class BatchedAccessor:
             from .components import Transmission
 
             transmissions = [c for c in self._fs.components.values() if isinstance(c, Transmission)]
-            self._transmissions = TransmissionsData(transmissions, flow_ids=self.flows.element_ids)
+            self._transmissions = TransmissionsData(
+                transmissions,
+                flow_ids=self.flows.element_ids,
+                coords=self._fs.indexes,
+            )
         return self._transmissions
 
     def _reset(self) -> None:
