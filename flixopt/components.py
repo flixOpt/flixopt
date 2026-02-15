@@ -186,10 +186,8 @@ class LinearConverter(Component):
         self.piecewise_conversion = piecewise_conversion
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
-        """Propagate flow_system reference to parent Component and piecewise_conversion."""
+        """Propagate flow_system reference to parent Component."""
         super().link_to_flow_system(flow_system, prefix)
-        if self.piecewise_conversion is not None:
-            self.piecewise_conversion.link_to_flow_system(flow_system, self._sub_prefix('PiecewiseConversion'))
 
     def validate_config(self) -> None:
         """Validate configuration consistency.
@@ -234,9 +232,6 @@ class LinearConverter(Component):
         super().transform_data()
         if self.conversion_factors:
             self.conversion_factors = self._transform_conversion_factors()
-        if self.piecewise_conversion:
-            self.piecewise_conversion.has_time_dim = True
-            self.piecewise_conversion.transform_data()
 
     def _transform_conversion_factors(self) -> list[dict[str, xr.DataArray]]:
         """Converts all conversion factors to internal datatypes"""
@@ -462,10 +457,8 @@ class Storage(Component):
         self.cluster_mode = cluster_mode
 
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
-        """Propagate flow_system reference to parent Component and capacity_in_flow_hours if it's InvestParameters."""
+        """Propagate flow_system reference to parent Component."""
         super().link_to_flow_system(flow_system, prefix)
-        if isinstance(self.capacity_in_flow_hours, InvestParameters):
-            self.capacity_in_flow_hours.link_to_flow_system(flow_system, self._sub_prefix('InvestParameters'))
 
     def transform_data(self) -> None:
         super().transform_data()
@@ -500,9 +493,7 @@ class Storage(Component):
             self.relative_maximum_final_charge_state,
             dims=['period', 'scenario'],
         )
-        if isinstance(self.capacity_in_flow_hours, InvestParameters):
-            self.capacity_in_flow_hours.transform_data()
-        else:
+        if not isinstance(self.capacity_in_flow_hours, InvestParameters):
             self.capacity_in_flow_hours = self._fit_coords(
                 f'{self.prefix}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['period', 'scenario']
             )
@@ -754,7 +745,6 @@ class Transmission(Component):
             for flow in input_flows:
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
-                    flow.status_parameters.link_to_flow_system(self._flow_system, f'{flow.id}|status_parameters')
                 rel_min = flow.relative_minimum
                 needs_update = (
                     rel_min is None

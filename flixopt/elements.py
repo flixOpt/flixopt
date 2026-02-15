@@ -189,16 +189,11 @@ class Component(Element):
         Elements use their id_full as prefix by default, ignoring the passed prefix.
         """
         super().link_to_flow_system(flow_system, self.id)
-        if self.status_parameters is not None:
-            self.status_parameters.link_to_flow_system(flow_system, self._sub_prefix('status_parameters'))
         for flow in self.flows.values():
             flow.link_to_flow_system(flow_system)
 
     def transform_data(self) -> None:
         self._propagate_status_parameters()
-
-        if self.status_parameters is not None:
-            self.status_parameters.transform_data()
 
         for flow in self.flows.values():
             flow.transform_data()
@@ -216,12 +211,10 @@ class Component(Element):
             for flow in self.flows.values():
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
-                    flow.status_parameters.link_to_flow_system(self._flow_system, f'{flow.id}|status_parameters')
         if self.prevent_simultaneous_flows:
             for flow in self.prevent_simultaneous_flows:
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
-                    flow.status_parameters.link_to_flow_system(self._flow_system, f'{flow.id}|status_parameters')
 
     def _check_unique_flow_ids(self, inputs: list = None, outputs: list = None):
         if inputs is None:
@@ -705,10 +698,6 @@ class Flow(Element):
         Elements use their id_full as prefix by default, ignoring the passed prefix.
         """
         super().link_to_flow_system(flow_system, self.id)
-        if self.status_parameters is not None:
-            self.status_parameters.link_to_flow_system(flow_system, self._sub_prefix('status_parameters'))
-        if isinstance(self.size, InvestParameters):
-            self.size.link_to_flow_system(flow_system, self._sub_prefix('InvestParameters'))
 
     def transform_data(self) -> None:
         self.relative_minimum = self._fit_coords(f'{self.prefix}|relative_minimum', self.relative_minimum)
@@ -736,11 +725,7 @@ class Flow(Element):
             f'{self.prefix}|load_factor_min', self.load_factor_min, dims=['period', 'scenario']
         )
 
-        if self.status_parameters is not None:
-            self.status_parameters.transform_data()
-        if isinstance(self.size, InvestParameters):
-            self.size.transform_data()
-        elif self.size is not None:
+        if not isinstance(self.size, InvestParameters) and self.size is not None:
             self.size = self._fit_coords(f'{self.prefix}|size', self.size, dims=['period', 'scenario'])
 
     def validate_config(self) -> None:

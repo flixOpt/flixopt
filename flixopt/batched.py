@@ -13,13 +13,13 @@ from __future__ import annotations
 
 import logging
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .core import PlausibilityError
+from .core import PlausibilityError, align_effects_to_coords
 from .features import fast_isnull, fast_notnull, stack_along_dim
 from .id_list import IdList, element_id_list
 from .interface import InvestParameters, StatusParameters
@@ -107,6 +107,8 @@ class StatusData:
         effect_ids: list[str] | None = None,
         timestep_duration: xr.DataArray | float | None = None,
         previous_states: dict[str, xr.DataArray] | None = None,
+        coords: dict[str, pd.Index] | None = None,
+        normalize_effects: Any = None,
     ):
         self._params = params
         self._dim = dim_name
@@ -114,6 +116,8 @@ class StatusData:
         self._effect_ids = effect_ids or []
         self._timestep_duration = timestep_duration
         self._previous_states = previous_states or {}
+        self._coords = coords
+        self._normalize_effects = normalize_effects
 
     @property
     def ids(self) -> list[str]:
@@ -264,7 +268,23 @@ class StatusData:
     def _build_effects(self, attr: str) -> xr.DataArray | None:
         """Build effect factors array for a status effect attribute."""
         ids = self._categorize(lambda p: getattr(p, attr))
-        dicts = {eid: getattr(self._params[eid], attr) for eid in ids}
+        if not ids:
+            return None
+        norm = self._normalize_effects or (lambda x: x)
+        dicts = {}
+        for eid in ids:
+            raw = getattr(self._params[eid], attr)
+            normalized = norm(raw) or {}
+            if self._coords is not None:
+                aligned = align_effects_to_coords(
+                    normalized,
+                    self._coords,
+                    prefix=eid,
+                    suffix=attr,
+                )
+                dicts[eid] = aligned or {}
+            else:
+                dicts[eid] = normalized
         return build_effects_array(dicts, self._effect_ids, self._dim)
 
     @cached_property
@@ -295,11 +315,25 @@ class InvestmentData:
         params: dict[str, InvestParameters],
         dim_name: str,
         effect_ids: list[str] | None = None,
+        coords: dict[str, pd.Index] | None = None,
+        normalize_effects: Any = None,
     ):
         self._params = params
         self._dim = dim_name
         self._ids = list(params.keys())
         self._effect_ids = effect_ids or []
+        self._coords = coords
+        self._normalize_effects = normalize_effects
+        self._validate()
+
+    def _validate(self) -> None:
+        """Validate investment parameters."""
+        for eid, p in self._params.items():
+            if p.fixed_size is None and p.maximum_size is None:
+                raise PlausibilityError(
+                    f'InvestParameters for "{eid}" requires either fixed_size or maximum_size to be set. '
+                    f'An upper bound is needed to properly scale the optimization model.'
+                )
 
     @property
     def ids(self) -> list[str]:
@@ -398,7 +432,22 @@ class InvestmentData:
         """Build effect factors array for an investment effect attribute."""
         if ids is None:
             ids = self._categorize(lambda p: getattr(p, attr))
-        dicts = {eid: getattr(self._params[eid], attr) for eid in ids}
+        norm = self._normalize_effects or (lambda x: x)
+        dicts = {}
+        for eid in ids:
+            raw = getattr(self._params[eid], attr)
+            normalized = norm(raw) or {}
+            if self._coords is not None:
+                aligned = align_effects_to_coords(
+                    normalized,
+                    self._coords,
+                    prefix=eid,
+                    suffix=attr,
+                    dims=['period', 'scenario'],
+                )
+                dicts[eid] = aligned or {}
+            else:
+                dicts[eid] = normalized
         return build_effects_array(dicts, self._effect_ids, self._dim)
 
     @cached_property
@@ -526,7 +575,13 @@ class StoragesData:
     """
 
     def __init__(
-        self, storages: list, dim_name: str, effect_ids: list[str], timesteps_extra: pd.DatetimeIndex | None = None
+        self,
+        storages: list,
+        dim_name: str,
+        effect_ids: list[str],
+        timesteps_extra: pd.DatetimeIndex | None = None,
+        coords: dict[str, pd.Index] | None = None,
+        normalize_effects: Any = None,
     ):
         """Initialize StoragesData.
 
@@ -536,11 +591,15 @@ class StoragesData:
             effect_ids: List of effect IDs for building effect arrays.
             timesteps_extra: Extended timesteps (time + 1 final step) for charge state bounds.
                 Required for StoragesModel, None for InterclusterStoragesModel.
+            coords: Coordinate indexes for alignment (time, period, scenario).
+            normalize_effects: Callable to normalize raw effect values.
         """
         self._storages = storages
         self._dim_name = dim_name
         self._effect_ids = effect_ids
         self._timesteps_extra = timesteps_extra
+        self._coords = coords
+        self._normalize_effects = normalize_effects
         self._by_id = {s.id: s for s in storages}
 
     @cached_property
@@ -608,6 +667,8 @@ class StoragesData:
             params=self.invest_params,
             dim_name=self._dim_name,
             effect_ids=self._effect_ids,
+            coords=self._coords,
+            normalize_effects=self._normalize_effects,
         )
 
     # === Stacked Storage Parameters ===
@@ -826,7 +887,7 @@ class StoragesData:
                 discharging_min = storage.discharging.size.minimum_or_fixed_size
                 discharging_max = storage.discharging.size.maximum_or_fixed_size
 
-                if (charging_min > discharging_max).any() or (charging_max < discharging_min).any():
+                if np.any(charging_min > discharging_max) or np.any(charging_max < discharging_min):
                     errors.append(
                         f'Balancing charging and discharging Flows in {sid} need compatible minimum and maximum sizes. '
                         f'Got: charging.size.minimum={charging_min}, charging.size.maximum={charging_max} and '
@@ -1120,6 +1181,8 @@ class FlowsData:
             effect_ids=list(self._fs.effects.keys()),
             timestep_duration=self._fs.timestep_duration,
             previous_states=self.previous_states,
+            coords=self._fs.indexes,
+            normalize_effects=self._fs.effects.create_effect_values_dict,
         )
 
     @cached_property
@@ -1131,6 +1194,8 @@ class FlowsData:
             params=self.invest_params,
             dim_name='flow',
             effect_ids=list(self._fs.effects.keys()),
+            coords=self._fs.indexes,
+            normalize_effects=self._fs.effects.create_effect_values_dict,
         )
 
     # === Batched Parameters ===
@@ -1860,12 +1925,16 @@ class ComponentsData:
         flows_data: FlowsData,
         effect_ids: list[str],
         timestep_duration: xr.DataArray | float,
+        coords: dict[str, pd.Index] | None = None,
+        normalize_effects: Any = None,
     ):
         self._components_with_status = components_with_status
         self._all_components = all_components
         self._flows_data = flows_data
         self._effect_ids = effect_ids
         self._timestep_duration = timestep_duration
+        self._coords = coords
+        self._normalize_effects = normalize_effects
         self.elements: IdList = element_id_list(components_with_status)
 
     @property
@@ -1955,6 +2024,8 @@ class ComponentsData:
             effect_ids=self._effect_ids,
             timestep_duration=self._timestep_duration,
             previous_states=self.previous_status_dict,
+            coords=self._coords,
+            normalize_effects=self._normalize_effects,
         )
 
     @cached_property
@@ -2389,7 +2460,7 @@ class TransmissionsData:
                 in2_min = transmission.in2.size.minimum_or_fixed_size
                 in2_max = transmission.in2.size.maximum_or_fixed_size
 
-                if (in1_min > in2_max).any() or (in1_max < in2_min).any():
+                if np.any(in1_min > in2_max) or np.any(in1_max < in2_min):
                     errors.append(
                         f'Balanced Transmission {tid} needs compatible minimum and maximum sizes. '
                         f'Got: in1.size.minimum={in1_min}, in1.size.maximum={in1_max} and '
@@ -2447,7 +2518,12 @@ class BatchedAccessor:
             ]
             effect_ids = list(self._fs.effects.keys())
             self._storages = StoragesData(
-                basic_storages, 'storage', effect_ids, timesteps_extra=self._fs.timesteps_extra
+                basic_storages,
+                'storage',
+                effect_ids,
+                timesteps_extra=self._fs.timesteps_extra,
+                coords=self._fs.indexes,
+                normalize_effects=self._fs.effects.create_effect_values_dict,
             )
         return self._storages
 
@@ -2466,7 +2542,13 @@ class BatchedAccessor:
                 and c.cluster_mode in ('intercluster', 'intercluster_cyclic')
             ]
             effect_ids = list(self._fs.effects.keys())
-            self._intercluster_storages = StoragesData(intercluster, 'intercluster_storage', effect_ids)
+            self._intercluster_storages = StoragesData(
+                intercluster,
+                'intercluster_storage',
+                effect_ids,
+                coords=self._fs.indexes,
+                normalize_effects=self._fs.effects.create_effect_values_dict,
+            )
         return self._intercluster_storages
 
     @property
@@ -2495,6 +2577,8 @@ class BatchedAccessor:
                 flows_data=self.flows,
                 effect_ids=list(self._fs.effects.keys()),
                 timestep_duration=self._fs.timestep_duration,
+                coords=self._fs.indexes,
+                normalize_effects=self._fs.effects.create_effect_values_dict,
             )
         return self._components
 
