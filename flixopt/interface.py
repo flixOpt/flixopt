@@ -15,8 +15,9 @@ import plotly.express as px
 import xarray as xr
 
 from .config import CONFIG
+from .io import build_repr_from_init
 from .plot_result import PlotResult
-from .structure import Interface, register_class_for_io
+from .structure import register_class_for_io
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
     from collections.abc import Iterator
@@ -26,9 +27,42 @@ if TYPE_CHECKING:  # for type checking and preventing circular imports
 logger = logging.getLogger('flixopt')
 
 
+def _has_value(param: Any) -> bool:
+    """Check if a parameter has a meaningful value.
+
+    Returns False for None and empty collections, True for everything else.
+    """
+    if param is None:
+        return False
+    if isinstance(param, (dict, list, tuple, set, frozenset)) and len(param) == 0:
+        return False
+    return True
+
+
+def _to_dataarray(value: Any) -> xr.DataArray:
+    """Convert a numeric value to xr.DataArray if not already one."""
+    if isinstance(value, xr.DataArray):
+        return value
+    return xr.DataArray(value)
+
+
+def _to_dataarray_dict(d: dict) -> dict:
+    """Convert dict values to xr.DataArray."""
+    return {k: _to_dataarray(v) for k, v in d.items()}
+
+
+def _convert_effects(value: Any) -> dict | xr.DataArray:
+    """Normalize an effects field: None→{}, dict→convert values, scalar→DataArray."""
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return _to_dataarray_dict(value)
+    return _to_dataarray(value)
+
+
 @register_class_for_io
 @dataclass(eq=False)
-class Piece(Interface):
+class Piece:
     """Define a single linear segment with specified domain boundaries.
 
     This class represents one linear segment that will be combined with other
@@ -76,10 +110,17 @@ class Piece(Interface):
     start: Numeric_TPS
     end: Numeric_TPS
 
+    def __post_init__(self):
+        self.start = _to_dataarray(self.start)
+        self.end = _to_dataarray(self.end)
+
+    def __repr__(self) -> str:
+        return build_repr_from_init(self)
+
 
 @register_class_for_io
 @dataclass(eq=False)
-class Piecewise(Interface):
+class Piecewise:
     """Define piecewise linear approximations for modeling non-linear relationships.
 
     Enables modeling of non-linear relationships through piecewise linear segments
@@ -212,10 +253,13 @@ class Piecewise(Interface):
     def __iter__(self) -> Iterator[Piece]:
         return iter(self.pieces)  # Enables iteration like for piece in piecewise: ...
 
+    def __repr__(self) -> str:
+        return build_repr_from_init(self)
+
 
 @register_class_for_io
 @dataclass(eq=False)
-class PiecewiseConversion(Interface):
+class PiecewiseConversion:
     """Define coordinated piecewise linear relationships between multiple flows.
 
     This class models conversion processes where multiple flows (inputs, outputs,
@@ -436,10 +480,6 @@ class PiecewiseConversion(Interface):
         is shown in a separate subplot (faceted by flow). Pieces are distinguished
         by line dash style. If boundaries vary over time, color shows time progression.
 
-        Note:
-            Requires FlowSystem to be connected and transformed (call
-            flow_system.connect_and_transform() first).
-
         Args:
             x_flow: Flow label to use for X-axis. Defaults to first flow in dict.
             title: Plot title.
@@ -454,15 +494,10 @@ class PiecewiseConversion(Interface):
             PlotResult containing the figure and underlying piecewise data.
 
         Examples:
-            >>> flow_system.connect_and_transform()
             >>> chp.piecewise_conversion.plot(x_flow='Gas', title='CHP Curves')
             >>> # Select specific time range
             >>> chp.piecewise_conversion.plot(select={'time': slice(0, 12)})
         """
-        if not self.flow_system.connected_and_transformed:
-            logger.debug('Connecting flow_system for plotting PiecewiseConversion')
-            self.flow_system.connect_and_transform()
-
         colorscale = colorscale or CONFIG.Plotting.default_sequential_colorscale
 
         flow_labels = list(self.piecewises.keys())
@@ -558,10 +593,13 @@ class PiecewiseConversion(Interface):
 
         return result
 
+    def __repr__(self) -> str:
+        return build_repr_from_init(self)
+
 
 @register_class_for_io
 @dataclass(eq=False)
-class PiecewiseEffects(Interface):
+class PiecewiseEffects:
     """Define how a single decision variable contributes to system effects with piecewise rates.
 
     This class models situations where a decision variable (the origin) generates
@@ -766,10 +804,6 @@ class PiecewiseEffects(Interface):
         and its effect shares. Each effect is shown in a separate subplot (faceted
         by effect). Pieces are distinguished by line dash style.
 
-        Note:
-            Requires FlowSystem to be connected and transformed (call
-            flow_system.connect_and_transform() first).
-
         Args:
             title: Plot title.
             select: xarray-style selection dict to filter data,
@@ -783,13 +817,8 @@ class PiecewiseEffects(Interface):
             PlotResult containing the figure and underlying piecewise data.
 
         Examples:
-            >>> flow_system.connect_and_transform()
             >>> invest_params.piecewise_effects_of_investment.plot(title='Investment Effects')
         """
-        if not self.flow_system.connected_and_transformed:
-            logger.debug('Connecting flow_system for plotting PiecewiseEffects')
-            self.flow_system.connect_and_transform()
-
         colorscale = colorscale or CONFIG.Plotting.default_sequential_colorscale
 
         effect_labels = list(self.piecewise_shares.keys())
@@ -878,10 +907,13 @@ class PiecewiseEffects(Interface):
 
         return result
 
+    def __repr__(self) -> str:
+        return build_repr_from_init(self)
+
 
 @register_class_for_io
 @dataclass(eq=False)
-class InvestParameters(Interface):
+class InvestParameters:
     """Define investment decision parameters with flexible sizing and effect modeling.
 
     This class models investment decisions in optimization problems, supporting
@@ -1131,10 +1163,13 @@ class InvestParameters(Interface):
             coords=(pd.Index(periods, name='period'),),
         ).rename('linked_periods')
 
+    def __repr__(self) -> str:
+        return build_repr_from_init(self)
+
 
 @register_class_for_io
 @dataclass(eq=False)
-class StatusParameters(Interface):
+class StatusParameters:
     """Define operational constraints and effects for binary status equipment behavior.
 
     This class models equipment that operates in discrete states (active/inactive) rather than
@@ -1357,9 +1392,12 @@ class StatusParameters(Interface):
             return True
 
         return any(
-            self._has_value(param)
+            _has_value(param)
             for param in [
                 self.effects_per_startup,
                 self.startup_limit,
             ]
         )
+
+    def __repr__(self) -> str:
+        return build_repr_from_init(self)

@@ -5,6 +5,7 @@ These classes are not directly used by the end user, but are used by other modul
 
 from __future__ import annotations
 
+import dataclasses
 import inspect
 import json
 import logging
@@ -1438,6 +1439,22 @@ class Interface:
                 return interface_structure, extracted_arrays
             except Exception as e:
                 raise ValueError(f'Failed to process nested Interface object in {context_name}: {e}') from e
+
+        # Handle plain dataclasses (not Interface) - serialize via fields
+        elif dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+            structure = {'__class__': obj.__class__.__name__}
+            arrays = {}
+            for field in dataclasses.fields(obj):
+                value = getattr(obj, field.name)
+                if value is None:
+                    continue
+                field_context = f'{context_name}.{field.name}' if context_name else field.name
+                processed, field_arrays = self._extract_dataarrays_recursive(value, field_context)
+                if processed is not None and not self._is_empty_container(processed):
+                    structure[field.name] = processed
+                arrays.update(field_arrays)
+            extracted_arrays.update(arrays)
+            return structure, extracted_arrays
 
         # Handle sequences (lists, tuples)
         elif isinstance(obj, (list, tuple)):
