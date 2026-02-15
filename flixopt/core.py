@@ -474,6 +474,16 @@ class DataConverter:
             # Scalar values - create scalar DataArray
             intermediate = xr.DataArray(data.item() if hasattr(data, 'item') else data)
 
+        elif isinstance(data, list):
+            # Plain Python list (e.g. from IO roundtrip) — convert to ndarray
+            data = np.asarray(data)
+            if data.ndim == 0:
+                intermediate = xr.DataArray(data.item())
+            elif data.ndim == 1:
+                intermediate = cls._match_1d_array_by_length(data, validated_coords, target_dims)
+            else:
+                intermediate = cls._match_multidim_array_by_shape_permutation(data, validated_coords, target_dims)
+
         elif isinstance(data, np.ndarray):
             # NumPy arrays - dispatch based on dimensionality
             if data.ndim == 0:
@@ -522,6 +532,7 @@ class DataConverter:
                 'np.integer',
                 'np.floating',
                 'np.bool_',
+                'list',
                 'np.ndarray',
                 'pd.Series',
                 'pd.DataFrame',

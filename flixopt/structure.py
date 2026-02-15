@@ -1417,10 +1417,8 @@ class Interface:
         # Handle DataArrays directly - use their unique name
         if isinstance(obj, xr.DataArray):
             if not obj.name:
-                raise ValueError(
-                    f'DataArrays must have a unique name for serialization. '
-                    f'Unnamed DataArray found in {context_name}. Please set array.name = "unique_name"'
-                )
+                # Use context name as fallback (e.g. attribute path) if no explicit name
+                obj = obj.rename(context_name)
 
             array_name = str(obj.name)  # Ensure string type
             if array_name in extracted_arrays:

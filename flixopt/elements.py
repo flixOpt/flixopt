@@ -195,9 +195,6 @@ class Component(Element):
     def transform_data(self) -> None:
         self._propagate_status_parameters()
 
-        for flow in self.flows.values():
-            flow.transform_data()
-
     def _propagate_status_parameters(self) -> None:
         """Propagate status parameters from this component to flows that need them.
 
@@ -698,35 +695,6 @@ class Flow(Element):
         Elements use their id_full as prefix by default, ignoring the passed prefix.
         """
         super().link_to_flow_system(flow_system, self.id)
-
-    def transform_data(self) -> None:
-        self.relative_minimum = self._fit_coords(f'{self.prefix}|relative_minimum', self.relative_minimum)
-        self.relative_maximum = self._fit_coords(f'{self.prefix}|relative_maximum', self.relative_maximum)
-        self.fixed_relative_profile = self._fit_coords(
-            f'{self.prefix}|fixed_relative_profile', self.fixed_relative_profile
-        )
-        self.effects_per_flow_hour = self._fit_effect_coords(self.prefix, self.effects_per_flow_hour, 'per_flow_hour')
-        self.flow_hours_max = self._fit_coords(
-            f'{self.prefix}|flow_hours_max', self.flow_hours_max, dims=['period', 'scenario']
-        )
-        self.flow_hours_min = self._fit_coords(
-            f'{self.prefix}|flow_hours_min', self.flow_hours_min, dims=['period', 'scenario']
-        )
-        self.flow_hours_max_over_periods = self._fit_coords(
-            f'{self.prefix}|flow_hours_max_over_periods', self.flow_hours_max_over_periods, dims=['scenario']
-        )
-        self.flow_hours_min_over_periods = self._fit_coords(
-            f'{self.prefix}|flow_hours_min_over_periods', self.flow_hours_min_over_periods, dims=['scenario']
-        )
-        self.load_factor_max = self._fit_coords(
-            f'{self.prefix}|load_factor_max', self.load_factor_max, dims=['period', 'scenario']
-        )
-        self.load_factor_min = self._fit_coords(
-            f'{self.prefix}|load_factor_min', self.load_factor_min, dims=['period', 'scenario']
-        )
-
-        if not isinstance(self.size, InvestParameters) and self.size is not None:
-            self.size = self._fit_coords(f'{self.prefix}|size', self.size, dims=['period', 'scenario'])
 
     def validate_config(self) -> None:
         """Validate configuration consistency.

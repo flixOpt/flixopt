@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .core import PlausibilityError, align_effects_to_coords
+from .core import PlausibilityError, align_effects_to_coords, align_to_coords
 from .features import fast_isnull, fast_notnull, stack_along_dim
 from .id_list import IdList, element_id_list
 from .interface import InvestParameters, StatusParameters
@@ -1151,7 +1151,7 @@ class FlowsData:
     @cached_property
     def with_effects(self) -> list[str]:
         """IDs of flows with effects_per_flow_hour defined."""
-        return self._categorize(lambda f: f.effects_per_flow_hour)
+        return self._categorize(lambda f: f.effects_per_flow_hour is not None)
 
     @cached_property
     def with_previous_flow_rate(self) -> list[str]:
@@ -1238,14 +1238,14 @@ class FlowsData:
     @cached_property
     def relative_minimum(self) -> xr.DataArray:
         """(flow, time, period, scenario) - relative lower bound on flow rate."""
-        values = [f.relative_minimum for f in self.elements.values()]
+        values = [self._align(fid, 'relative_minimum') for fid in self.ids]
         arr = stack_along_dim(values, 'flow', self.ids, self._model_coords(None))
         return self._ensure_canonical_order(arr)
 
     @cached_property
     def relative_maximum(self) -> xr.DataArray:
         """(flow, time, period, scenario) - relative upper bound on flow rate."""
-        values = [f.relative_maximum for f in self.elements.values()]
+        values = [self._align(fid, 'relative_maximum') for fid in self.ids]
         arr = stack_along_dim(values, 'flow', self.ids, self._model_coords(None))
         return self._ensure_canonical_order(arr)
 
@@ -1253,7 +1253,8 @@ class FlowsData:
     def fixed_relative_profile(self) -> xr.DataArray:
         """(flow, time, period, scenario) - fixed profile. NaN = not fixed."""
         values = [
-            f.fixed_relative_profile if f.fixed_relative_profile is not None else np.nan for f in self.elements.values()
+            self._align(fid, 'fixed_relative_profile') if self[fid].fixed_relative_profile is not None else np.nan
+            for fid in self.ids
         ]
         arr = stack_along_dim(values, 'flow', self.ids, self._model_coords(None))
         return self._ensure_canonical_order(arr)
@@ -1278,11 +1279,12 @@ class FlowsData:
     def fixed_size(self) -> xr.DataArray:
         """(flow, period, scenario) - fixed size for non-investment flows. NaN for investment/no-size flows."""
         values = []
-        for f in self.elements.values():
+        for fid in self.ids:
+            f = self[fid]
             if f.size is None or isinstance(f.size, InvestParameters):
                 values.append(np.nan)
             else:
-                values.append(f.size)
+                values.append(self._align(fid, 'size', ['period', 'scenario']))
         arr = stack_along_dim(values, 'flow', self.ids, self._model_coords(['period', 'scenario']))
         return self._ensure_canonical_order(arr)
 
@@ -1295,13 +1297,14 @@ class FlowsData:
         - No size: NaN
         """
         values = []
-        for f in self.elements.values():
+        for fid in self.ids:
+            f = self[fid]
             if f.size is None:
                 values.append(np.nan)
             elif isinstance(f.size, InvestParameters):
                 values.append(f.size.minimum_or_fixed_size)
             else:
-                values.append(f.size)
+                values.append(self._align(fid, 'size', ['period', 'scenario']))
         arr = stack_along_dim(values, 'flow', self.ids, self._model_coords(['period', 'scenario']))
         return self._ensure_canonical_order(arr)
 
@@ -1314,13 +1317,14 @@ class FlowsData:
         - No size: NaN
         """
         values = []
-        for f in self.elements.values():
+        for fid in self.ids:
+            f = self[fid]
             if f.size is None:
                 values.append(np.nan)
             elif isinstance(f.size, InvestParameters):
                 values.append(f.size.maximum_or_fixed_size)
             else:
-                values.append(f.size)
+                values.append(self._align(fid, 'size', ['period', 'scenario']))
         arr = stack_along_dim(values, 'flow', self.ids, self._model_coords(['period', 'scenario']))
         return self._ensure_canonical_order(arr)
 
@@ -1441,7 +1445,18 @@ class FlowsData:
         if not effect_ids:
             return None
 
-        dicts = {fid: self[fid].effects_per_flow_hour for fid in self.with_effects}
+        norm = self._fs.effects.create_effect_values_dict
+        dicts = {}
+        for fid in self.with_effects:
+            raw = self[fid].effects_per_flow_hour
+            normalized = norm(raw) or {}
+            aligned = align_effects_to_coords(
+                normalized,
+                self._fs.indexes,
+                prefix=fid,
+                suffix='per_flow_hour',
+            )
+            dicts[fid] = aligned or {}
         return build_effects_array(dicts, effect_ids, 'flow')
 
     # --- Investment Parameters ---
@@ -1541,6 +1556,11 @@ class FlowsData:
 
     # === Helper Methods ===
 
+    def _align(self, flow_id: str, attr: str, dims: list[str] | None = None) -> xr.DataArray | None:
+        """Align a single flow attribute value to model coords."""
+        raw = getattr(self[flow_id], attr)
+        return align_to_coords(raw, self._fs.indexes, name=f'{flow_id}|{attr}', dims=dims)
+
     def _batched_parameter(
         self,
         ids: list[str],
@@ -1559,7 +1579,7 @@ class FlowsData:
         """
         if not ids:
             return None
-        values = [getattr(self[fid], attr) for fid in ids]
+        values = [self._align(fid, attr, dims) for fid in ids]
         arr = stack_along_dim(values, 'flow', ids, self._model_coords(dims))
         return self._ensure_canonical_order(arr)
 
