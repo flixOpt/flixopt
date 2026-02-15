@@ -6,7 +6,7 @@ These are tightly connected to features.py
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -75,12 +75,6 @@ class Piece(Interface):
 
     start: Numeric_TPS
     end: Numeric_TPS
-    has_time_dim: bool = field(default=False, init=False, repr=False)
-
-    def transform_data(self) -> None:
-        dims = None if self.has_time_dim else ['period', 'scenario']
-        self.start = self._fit_coords(f'{self.prefix}|start', self.start, dims=dims)
-        self.end = self._fit_coords(f'{self.prefix}|end', self.end, dims=dims)
 
 
 @register_class_for_io
@@ -203,19 +197,6 @@ class Piecewise(Interface):
 
     pieces: list[Piece]
 
-    def __post_init__(self):
-        self._has_time_dim = False
-
-    @property
-    def has_time_dim(self):
-        return self._has_time_dim
-
-    @has_time_dim.setter
-    def has_time_dim(self, value):
-        self._has_time_dim = value
-        for piece in self.pieces:
-            piece.has_time_dim = value
-
     def __len__(self):
         """
         Return the number of Piece segments in this Piecewise container.
@@ -230,16 +211,6 @@ class Piecewise(Interface):
 
     def __iter__(self) -> Iterator[Piece]:
         return iter(self.pieces)  # Enables iteration like for piece in piecewise: ...
-
-    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
-        """Propagate flow_system reference to nested Piece objects."""
-        super().link_to_flow_system(flow_system, prefix)
-        for i, piece in enumerate(self.pieces):
-            piece.link_to_flow_system(flow_system, self._sub_prefix(f'Piece{i}'))
-
-    def transform_data(self) -> None:
-        for piece in self.pieces:
-            piece.transform_data()
 
 
 @register_class_for_io
@@ -442,20 +413,6 @@ class PiecewiseConversion(Interface):
 
     piecewises: dict[str, Piecewise]
 
-    def __post_init__(self):
-        self._has_time_dim = True
-        self.has_time_dim = True  # Initial propagation
-
-    @property
-    def has_time_dim(self):
-        return self._has_time_dim
-
-    @has_time_dim.setter
-    def has_time_dim(self, value):
-        self._has_time_dim = value
-        for piecewise in self.piecewises.values():
-            piecewise.has_time_dim = value
-
     def items(self):
         """
         Return an iterator over (flow_label, Piecewise) pairs stored in this PiecewiseConversion.
@@ -464,16 +421,6 @@ class PiecewiseConversion(Interface):
         as dict.items(), where each key is a flow label (str) and each value is a Piecewise.
         """
         return self.piecewises.items()
-
-    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
-        """Propagate flow_system reference to nested Piecewise objects."""
-        super().link_to_flow_system(flow_system, prefix)
-        for name, piecewise in self.piecewises.items():
-            piecewise.link_to_flow_system(flow_system, self._sub_prefix(name))
-
-    def transform_data(self) -> None:
-        for piecewise in self.piecewises.values():
-            piecewise.transform_data()
 
     def plot(
         self,
@@ -805,33 +752,6 @@ class PiecewiseEffects(Interface):
 
     piecewise_origin: Piecewise
     piecewise_shares: dict[str, Piecewise]
-
-    def __post_init__(self):
-        self._has_time_dim = False
-        self.has_time_dim = False  # Initial propagation
-
-    @property
-    def has_time_dim(self):
-        return self._has_time_dim
-
-    @has_time_dim.setter
-    def has_time_dim(self, value):
-        self._has_time_dim = value
-        self.piecewise_origin.has_time_dim = value
-        for piecewise in self.piecewise_shares.values():
-            piecewise.has_time_dim = value
-
-    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
-        """Propagate flow_system reference to nested Piecewise objects."""
-        super().link_to_flow_system(flow_system, prefix)
-        self.piecewise_origin.link_to_flow_system(flow_system, self._sub_prefix('origin'))
-        for effect, piecewise in self.piecewise_shares.items():
-            piecewise.link_to_flow_system(flow_system, self._sub_prefix(effect))
-
-    def transform_data(self) -> None:
-        self.piecewise_origin.transform_data()
-        for piecewise in self.piecewise_shares.values():
-            piecewise.transform_data()
 
     def plot(
         self,
@@ -1171,77 +1091,6 @@ class InvestParameters(Interface):
         if self.minimum_size is None:
             self.minimum_size = CONFIG.Modeling.epsilon
 
-    def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
-        """Propagate flow_system reference to nested PiecewiseEffects object if present."""
-        super().link_to_flow_system(flow_system, prefix)
-        if self.piecewise_effects_of_investment is not None:
-            self.piecewise_effects_of_investment.link_to_flow_system(flow_system, self._sub_prefix('PiecewiseEffects'))
-
-    def transform_data(self) -> None:
-        # Validate that either fixed_size or maximum_size is set
-        if self.fixed_size is None and self.maximum_size is None:
-            raise ValueError(
-                f'InvestParameters in "{self.prefix}" requires either fixed_size or maximum_size to be set. '
-                f'An upper bound is needed to properly scale the optimization model.'
-            )
-        self.effects_of_investment = self._fit_effect_coords(
-            prefix=self.prefix,
-            effect_values=self.effects_of_investment,
-            suffix='effects_of_investment',
-            dims=['period', 'scenario'],
-        )
-        self.effects_of_retirement = self._fit_effect_coords(
-            prefix=self.prefix,
-            effect_values=self.effects_of_retirement,
-            suffix='effects_of_retirement',
-            dims=['period', 'scenario'],
-        )
-        self.effects_of_investment_per_size = self._fit_effect_coords(
-            prefix=self.prefix,
-            effect_values=self.effects_of_investment_per_size,
-            suffix='effects_of_investment_per_size',
-            dims=['period', 'scenario'],
-        )
-
-        if self.piecewise_effects_of_investment is not None:
-            self.piecewise_effects_of_investment.has_time_dim = False
-            self.piecewise_effects_of_investment.transform_data()
-
-        self.minimum_size = self._fit_coords(
-            f'{self.prefix}|minimum_size', self.minimum_size, dims=['period', 'scenario']
-        )
-        self.maximum_size = self._fit_coords(
-            f'{self.prefix}|maximum_size', self.maximum_size, dims=['period', 'scenario']
-        )
-        # Convert tuple (first_period, last_period) to DataArray if needed
-        if isinstance(self.linked_periods, (tuple, list)):
-            if len(self.linked_periods) != 2:
-                raise TypeError(
-                    f'If you provide a tuple to "linked_periods", it needs to be len=2. Got {len(self.linked_periods)=}'
-                )
-            if self.flow_system.periods is None:
-                raise ValueError(
-                    f'Cannot use linked_periods={self.linked_periods} when FlowSystem has no periods defined. '
-                    f'Please define periods in FlowSystem or use linked_periods=None.'
-                )
-            logger.debug(f'Computing linked_periods from {self.linked_periods}')
-            start, end = self.linked_periods
-            if start not in self.flow_system.periods.values:
-                logger.warning(
-                    f'Start of linked periods ({start} not found in periods directly: {self.flow_system.periods.values}'
-                )
-            if end not in self.flow_system.periods.values:
-                logger.warning(
-                    f'End of linked periods ({end} not found in periods directly: {self.flow_system.periods.values}'
-                )
-            self.linked_periods = self.compute_linked_periods(start, end, self.flow_system.periods)
-            logger.debug(f'Computed {self.linked_periods=}')
-
-        self.linked_periods = self._fit_coords(
-            f'{self.prefix}|linked_periods', self.linked_periods, dims=['period', 'scenario']
-        )
-        self.fixed_size = self._fit_coords(f'{self.prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario'])
-
     @property
     def minimum_or_fixed_size(self) -> Numeric_PS:
         return self.fixed_size if self.fixed_size is not None else self.minimum_size
@@ -1490,31 +1339,6 @@ class StatusParameters(Interface):
             self.effects_per_startup = {}
         if self.effects_per_active_hour is None:
             self.effects_per_active_hour = {}
-
-    def transform_data(self) -> None:
-        self.effects_per_startup = self._fit_effect_coords(
-            prefix=self.prefix,
-            effect_values=self.effects_per_startup,
-            suffix='per_startup',
-        )
-        self.effects_per_active_hour = self._fit_effect_coords(
-            prefix=self.prefix,
-            effect_values=self.effects_per_active_hour,
-            suffix='per_active_hour',
-        )
-        self.min_uptime = self._fit_coords(f'{self.prefix}|min_uptime', self.min_uptime)
-        self.max_uptime = self._fit_coords(f'{self.prefix}|max_uptime', self.max_uptime)
-        self.min_downtime = self._fit_coords(f'{self.prefix}|min_downtime', self.min_downtime)
-        self.max_downtime = self._fit_coords(f'{self.prefix}|max_downtime', self.max_downtime)
-        self.active_hours_max = self._fit_coords(
-            f'{self.prefix}|active_hours_max', self.active_hours_max, dims=['period', 'scenario']
-        )
-        self.active_hours_min = self._fit_coords(
-            f'{self.prefix}|active_hours_min', self.active_hours_min, dims=['period', 'scenario']
-        )
-        self.startup_limit = self._fit_coords(
-            f'{self.prefix}|startup_limit', self.startup_limit, dims=['period', 'scenario']
-        )
 
     @property
     def use_uptime_tracking(self) -> bool:
