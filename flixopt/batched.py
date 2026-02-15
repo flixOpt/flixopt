@@ -1945,9 +1945,10 @@ class EffectsData:
 class BusesData:
     """Batched data container for buses."""
 
-    def __init__(self, buses: list[Bus]):
+    def __init__(self, buses: list[Bus], coords: dict[str, pd.Index]):
         self._buses = buses
         self.elements: IdList = element_id_list(buses)
+        self._coords = coords
 
     @property
     def element_ids(self) -> list[str]:
@@ -1967,6 +1968,14 @@ class BusesData:
         """Bus objects that allow imbalance."""
         return [b for b in self._buses if b.allows_imbalance]
 
+    def aligned_imbalance_penalty(self, bus: Bus) -> xr.DataArray | None:
+        """Get aligned imbalance penalty for a specific bus."""
+        return align_to_coords(
+            bus.imbalance_penalty_per_flow_hour,
+            self._coords,
+            name=f'{bus.id}|imbalance_penalty_per_flow_hour',
+        )
+
     @cached_property
     def balance_coefficients(self) -> dict[tuple[str, str], float]:
         """Sparse (bus_id, flow_id) -> +1/-1 coefficients for bus balance."""
@@ -1979,17 +1988,16 @@ class BusesData:
         return coefficients
 
     def validate(self) -> None:
-        """Validate all buses (config + DataArray checks).
-
-        Performs both:
-        - Config validation via Bus.validate_config()
-        - DataArray validation (post-transformation checks)
-        """
+        """Validate all buses (config + DataArray checks)."""
         for bus in self._buses:
-            bus.validate_config()
+            # Config validation (moved from Bus.validate_config)
+            if len(bus.inputs) == 0 and len(bus.outputs) == 0:
+                raise ValueError(f'Bus "{bus.id}" has no Flows connected to it. Please remove it from the FlowSystem')
+
             # Warning: imbalance_penalty == 0 (DataArray check)
             if bus.imbalance_penalty_per_flow_hour is not None:
-                zero_penalty = np.all(np.equal(bus.imbalance_penalty_per_flow_hour, 0))
+                aligned = self.aligned_imbalance_penalty(bus)
+                zero_penalty = np.all(np.equal(aligned, 0))
                 if zero_penalty:
                     logger.warning(
                         f'In Bus {bus.id}, the imbalance_penalty_per_flow_hour is 0. Use "None" or a value > 0.'
@@ -2636,7 +2644,7 @@ class BatchedAccessor:
     def buses(self) -> BusesData:
         """Get or create BusesData for all buses."""
         if self._buses is None:
-            self._buses = BusesData(list(self._fs.buses.values()))
+            self._buses = BusesData(list(self._fs.buses.values()), coords=self._fs.indexes)
         return self._buses
 
     @property

@@ -394,25 +394,8 @@ class Bus(Element):
             flow.link_to_flow_system(flow_system)
 
     def transform_data(self) -> None:
-        self.imbalance_penalty_per_flow_hour = self._fit_coords(
-            f'{self.prefix}|imbalance_penalty_per_flow_hour', self.imbalance_penalty_per_flow_hour
-        )
-
-    def validate_config(self) -> None:
-        """Validate configuration consistency.
-
-        Called BEFORE transformation via FlowSystem._run_config_validation().
-        These are simple checks that don't require DataArray operations.
-        """
-        if len(self.inputs) == 0 and len(self.outputs) == 0:
-            raise ValueError(f'Bus "{self.id}" has no Flows connected to it. Please remove it from the FlowSystem')
-
-    def _plausibility_checks(self) -> None:
-        """Legacy validation method - delegates to validate_config().
-
-        DataArray-based checks (imbalance_penalty warning) moved to BusesData.validate().
-        """
-        self.validate_config()
+        # No-op: alignment now handled by BusesData
+        pass
 
     @property
     def allows_imbalance(self) -> bool:
@@ -1753,7 +1736,7 @@ class BusesModel(TypeModel):
         penalty_specs = []
         for bus in self.buses_with_imbalance:
             bus_label = bus.id
-            imbalance_penalty = bus.imbalance_penalty_per_flow_hour * self.model.timestep_duration
+            imbalance_penalty = self.data.aligned_imbalance_penalty(bus) * self.model.timestep_duration
 
             virtual_supply = self[BusVarName.VIRTUAL_SUPPLY].sel({dim: bus_label})
             virtual_demand = self[BusVarName.VIRTUAL_DEMAND].sel({dim: bus_label})
