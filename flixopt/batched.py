@@ -629,6 +629,11 @@ class StoragesData:
     def __len__(self) -> int:
         return len(self._storages)
 
+    def _align(self, storage_id: str, attr: str, dims: list[str] | None = None) -> xr.DataArray | None:
+        """Align a single storage attribute value to model coords."""
+        raw = getattr(self._by_id[storage_id], attr)
+        return align_to_coords(raw, self._coords, name=f'{storage_id}|{attr}', dims=dims)
+
     # === Categorization ===
 
     @cached_property
@@ -676,27 +681,33 @@ class StoragesData:
     @cached_property
     def eta_charge(self) -> xr.DataArray:
         """(element, [time]) - charging efficiency."""
-        return stack_along_dim([s.eta_charge for s in self._storages], self._dim_name, self.ids)
+        return stack_along_dim([self._align(s.id, 'eta_charge') for s in self._storages], self._dim_name, self.ids)
 
     @cached_property
     def eta_discharge(self) -> xr.DataArray:
         """(element, [time]) - discharging efficiency."""
-        return stack_along_dim([s.eta_discharge for s in self._storages], self._dim_name, self.ids)
+        return stack_along_dim([self._align(s.id, 'eta_discharge') for s in self._storages], self._dim_name, self.ids)
 
     @cached_property
     def relative_loss_per_hour(self) -> xr.DataArray:
         """(element, [time]) - relative loss per hour."""
-        return stack_along_dim([s.relative_loss_per_hour for s in self._storages], self._dim_name, self.ids)
+        return stack_along_dim(
+            [self._align(s.id, 'relative_loss_per_hour') for s in self._storages], self._dim_name, self.ids
+        )
 
     @cached_property
     def relative_minimum_charge_state(self) -> xr.DataArray:
         """(element, [time]) - relative minimum charge state."""
-        return stack_along_dim([s.relative_minimum_charge_state for s in self._storages], self._dim_name, self.ids)
+        return stack_along_dim(
+            [self._align(s.id, 'relative_minimum_charge_state') for s in self._storages], self._dim_name, self.ids
+        )
 
     @cached_property
     def relative_maximum_charge_state(self) -> xr.DataArray:
         """(element, [time]) - relative maximum charge state."""
-        return stack_along_dim([s.relative_maximum_charge_state for s in self._storages], self._dim_name, self.ids)
+        return stack_along_dim(
+            [self._align(s.id, 'relative_maximum_charge_state') for s in self._storages], self._dim_name, self.ids
+        )
 
     @cached_property
     def charging_flow_ids(self) -> list[str]:
@@ -707,6 +718,20 @@ class StoragesData:
     def discharging_flow_ids(self) -> list[str]:
         """Flow IDs for discharging flows, aligned with self.ids."""
         return [s.discharging.id for s in self._storages]
+
+    def aligned_initial_charge_state(self, storage) -> xr.DataArray | None:
+        """Get aligned initial_charge_state for a storage (None if string or None)."""
+        if storage.initial_charge_state is None or isinstance(storage.initial_charge_state, str):
+            return None
+        return self._align(storage.id, 'initial_charge_state', dims=['period', 'scenario'])
+
+    def aligned_minimal_final_charge_state(self, storage) -> xr.DataArray | None:
+        """Get aligned minimal_final_charge_state for a storage."""
+        return self._align(storage.id, 'minimal_final_charge_state', dims=['period', 'scenario'])
+
+    def aligned_maximal_final_charge_state(self, storage) -> xr.DataArray | None:
+        """Get aligned maximal_final_charge_state for a storage."""
+        return self._align(storage.id, 'maximal_final_charge_state', dims=['period', 'scenario'])
 
     # === Capacity and Charge State Bounds ===
 
@@ -720,7 +745,7 @@ class StoragesData:
             elif isinstance(s.capacity_in_flow_hours, InvestParameters):
                 values.append(s.capacity_in_flow_hours.minimum_or_fixed_size)
             else:
-                values.append(s.capacity_in_flow_hours)
+                values.append(self._align(s.id, 'capacity_in_flow_hours', dims=['period', 'scenario']))
         return stack_along_dim(values, self._dim_name, self.ids)
 
     @cached_property
@@ -733,7 +758,7 @@ class StoragesData:
             elif isinstance(s.capacity_in_flow_hours, InvestParameters):
                 values.append(s.capacity_in_flow_hours.maximum_or_fixed_size)
             else:
-                values.append(s.capacity_in_flow_hours)
+                values.append(self._align(s.id, 'capacity_in_flow_hours', dims=['period', 'scenario']))
         return stack_along_dim(values, self._dim_name, self.ids)
 
     def _relative_bounds_extra(self) -> tuple[xr.DataArray, xr.DataArray]:
@@ -746,19 +771,21 @@ class StoragesData:
         rel_mins = []
         rel_maxs = []
         for s in self._storages:
-            rel_min = s.relative_minimum_charge_state
-            rel_max = s.relative_maximum_charge_state
+            rel_min = self._align(s.id, 'relative_minimum_charge_state')
+            rel_max = self._align(s.id, 'relative_maximum_charge_state')
 
             # Get final values
-            if s.relative_minimum_final_charge_state is None:
+            rel_min_final = self._align(s.id, 'relative_minimum_final_charge_state', dims=['period', 'scenario'])
+            rel_max_final = self._align(s.id, 'relative_maximum_final_charge_state', dims=['period', 'scenario'])
+            if rel_min_final is None:
                 min_final_value = _scalar_safe_isel_drop(rel_min, 'time', -1)
             else:
-                min_final_value = s.relative_minimum_final_charge_state
+                min_final_value = rel_min_final
 
-            if s.relative_maximum_final_charge_state is None:
+            if rel_max_final is None:
                 max_final_value = _scalar_safe_isel_drop(rel_max, 'time', -1)
             else:
-                max_final_value = s.relative_maximum_final_charge_state
+                max_final_value = rel_max_final
 
             # Build bounds arrays for timesteps_extra
             if 'time' in rel_min.dims:
@@ -823,10 +850,6 @@ class StoragesData:
     def validate(self) -> None:
         """Validate all storages (config + DataArray checks).
 
-        Performs both:
-        - Config validation via Storage.validate_config()
-        - DataArray validation (post-transformation checks)
-
         Raises:
             PlausibilityError: If any validation check fails.
         """
@@ -835,52 +858,85 @@ class StoragesData:
         errors: list[str] = []
 
         for storage in self._storages:
-            storage.validate_config()
             sid = storage.id
 
-            # Capacity required for non-default relative bounds (DataArray checks)
+            # Config checks (moved from Storage.validate_config / Component.validate_config)
+            storage._check_unique_flow_ids()
+            if storage.status_parameters:
+                for flow in storage.flows.values():
+                    if flow.size is None:
+                        raise PlausibilityError(
+                            f'"{storage.id}": Flow "{flow.flow_id}" must have a defined size '
+                            f'because {storage.id} has status_parameters. '
+                            f'A size is required for big-M constraints.'
+                        )
+
+            if isinstance(storage.initial_charge_state, str):
+                if storage.initial_charge_state != 'equals_final':
+                    raise PlausibilityError(f'initial_charge_state has undefined value: {storage.initial_charge_state}')
+
             if storage.capacity_in_flow_hours is None:
-                if np.any(storage.relative_minimum_charge_state > 0):
+                if storage.relative_minimum_final_charge_state is not None:
+                    raise PlausibilityError(
+                        f'Storage "{sid}" has relative_minimum_final_charge_state but no capacity_in_flow_hours. '
+                        f'A capacity is required for relative final charge state constraints.'
+                    )
+                if storage.relative_maximum_final_charge_state is not None:
+                    raise PlausibilityError(
+                        f'Storage "{sid}" has relative_maximum_final_charge_state but no capacity_in_flow_hours. '
+                        f'A capacity is required for relative final charge state constraints.'
+                    )
+
+            if storage.balanced:
+                if not isinstance(storage.charging.size, InvestParameters) or not isinstance(
+                    storage.discharging.size, InvestParameters
+                ):
+                    raise PlausibilityError(
+                        f'Balancing charging and discharging Flows in {sid} is only possible with Investments.'
+                    )
+
+            # DataArray checks (use aligned values)
+            rel_min = self._align(sid, 'relative_minimum_charge_state')
+            rel_max = self._align(sid, 'relative_maximum_charge_state')
+
+            if storage.capacity_in_flow_hours is None:
+                if np.any(rel_min > 0):
                     errors.append(
                         f'Storage "{sid}" has relative_minimum_charge_state > 0 but no capacity_in_flow_hours. '
                         f'A capacity is required because the lower bound is capacity * relative_minimum_charge_state.'
                     )
-                if np.any(storage.relative_maximum_charge_state < 1):
+                if np.any(rel_max < 1):
                     errors.append(
                         f'Storage "{sid}" has relative_maximum_charge_state < 1 but no capacity_in_flow_hours. '
                         f'A capacity is required because the upper bound is capacity * relative_maximum_charge_state.'
                     )
 
-            # Initial charge state vs capacity bounds (DataArray checks)
             if storage.capacity_in_flow_hours is not None:
                 if isinstance(storage.capacity_in_flow_hours, InvestParameters):
                     minimum_capacity = storage.capacity_in_flow_hours.minimum_or_fixed_size
                     maximum_capacity = storage.capacity_in_flow_hours.maximum_or_fixed_size
                 else:
-                    maximum_capacity = storage.capacity_in_flow_hours
-                    minimum_capacity = storage.capacity_in_flow_hours
+                    aligned_cap = self._align(sid, 'capacity_in_flow_hours', dims=['period', 'scenario'])
+                    maximum_capacity = aligned_cap
+                    minimum_capacity = aligned_cap
 
-                min_initial_at_max_capacity = maximum_capacity * _scalar_safe_isel(
-                    storage.relative_minimum_charge_state, {'time': 0}
-                )
-                max_initial_at_min_capacity = minimum_capacity * _scalar_safe_isel(
-                    storage.relative_maximum_charge_state, {'time': 0}
-                )
+                min_initial_at_max_capacity = maximum_capacity * _scalar_safe_isel(rel_min, {'time': 0})
+                max_initial_at_min_capacity = minimum_capacity * _scalar_safe_isel(rel_max, {'time': 0})
 
                 initial_equals_final = isinstance(storage.initial_charge_state, str)
                 if not initial_equals_final and storage.initial_charge_state is not None:
-                    if (storage.initial_charge_state > max_initial_at_min_capacity).any():
+                    initial = self._align(sid, 'initial_charge_state', dims=['period', 'scenario'])
+                    if (initial > max_initial_at_min_capacity).any():
                         errors.append(
                             f'{sid}: initial_charge_state={storage.initial_charge_state} '
                             f'is constraining the investment decision. Choose a value <= {max_initial_at_min_capacity}.'
                         )
-                    if (storage.initial_charge_state < min_initial_at_max_capacity).any():
+                    if (initial < min_initial_at_max_capacity).any():
                         errors.append(
                             f'{sid}: initial_charge_state={storage.initial_charge_state} '
                             f'is constraining the investment decision. Choose a value >= {min_initial_at_max_capacity}.'
                         )
 
-            # Balanced charging/discharging size compatibility (DataArray checks)
             if storage.balanced:
                 charging_min = storage.charging.size.minimum_or_fixed_size
                 charging_max = storage.charging.size.maximum_or_fixed_size

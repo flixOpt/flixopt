@@ -13,7 +13,6 @@ import numpy as np
 import xarray as xr
 
 from . import io as fx_io
-from .core import PlausibilityError
 from .elements import Component, Flow
 from .features import MaskHelpers, stack_along_dim
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
@@ -406,84 +405,7 @@ class Storage(Component):
         super().link_to_flow_system(flow_system, prefix)
 
     def transform_data(self) -> None:
-        super().transform_data()
-        self.relative_minimum_charge_state = self._fit_coords(
-            f'{self.prefix}|relative_minimum_charge_state', self.relative_minimum_charge_state
-        )
-        self.relative_maximum_charge_state = self._fit_coords(
-            f'{self.prefix}|relative_maximum_charge_state', self.relative_maximum_charge_state
-        )
-        self.eta_charge = self._fit_coords(f'{self.prefix}|eta_charge', self.eta_charge)
-        self.eta_discharge = self._fit_coords(f'{self.prefix}|eta_discharge', self.eta_discharge)
-        self.relative_loss_per_hour = self._fit_coords(
-            f'{self.prefix}|relative_loss_per_hour', self.relative_loss_per_hour
-        )
-        if self.initial_charge_state is not None and not isinstance(self.initial_charge_state, str):
-            self.initial_charge_state = self._fit_coords(
-                f'{self.prefix}|initial_charge_state', self.initial_charge_state, dims=['period', 'scenario']
-            )
-        self.minimal_final_charge_state = self._fit_coords(
-            f'{self.prefix}|minimal_final_charge_state', self.minimal_final_charge_state, dims=['period', 'scenario']
-        )
-        self.maximal_final_charge_state = self._fit_coords(
-            f'{self.prefix}|maximal_final_charge_state', self.maximal_final_charge_state, dims=['period', 'scenario']
-        )
-        self.relative_minimum_final_charge_state = self._fit_coords(
-            f'{self.prefix}|relative_minimum_final_charge_state',
-            self.relative_minimum_final_charge_state,
-            dims=['period', 'scenario'],
-        )
-        self.relative_maximum_final_charge_state = self._fit_coords(
-            f'{self.prefix}|relative_maximum_final_charge_state',
-            self.relative_maximum_final_charge_state,
-            dims=['period', 'scenario'],
-        )
-        if not isinstance(self.capacity_in_flow_hours, InvestParameters):
-            self.capacity_in_flow_hours = self._fit_coords(
-                f'{self.prefix}|capacity_in_flow_hours', self.capacity_in_flow_hours, dims=['period', 'scenario']
-            )
-
-    def validate_config(self) -> None:
-        """Validate configuration consistency.
-
-        Called BEFORE transformation via FlowSystem._run_config_validation().
-        These are simple checks that don't require DataArray operations.
-        """
-        super().validate_config()
-
-        # Validate string values for initial_charge_state
-        if isinstance(self.initial_charge_state, str):
-            if self.initial_charge_state != 'equals_final':
-                raise PlausibilityError(f'initial_charge_state has undefined value: {self.initial_charge_state}')
-
-        # Capacity is required for final charge state constraints (simple None checks)
-        if self.capacity_in_flow_hours is None:
-            if self.relative_minimum_final_charge_state is not None:
-                raise PlausibilityError(
-                    f'Storage "{self.id}" has relative_minimum_final_charge_state but no capacity_in_flow_hours. '
-                    f'A capacity is required for relative final charge state constraints.'
-                )
-            if self.relative_maximum_final_charge_state is not None:
-                raise PlausibilityError(
-                    f'Storage "{self.id}" has relative_maximum_final_charge_state but no capacity_in_flow_hours. '
-                    f'A capacity is required for relative final charge state constraints.'
-                )
-
-        # Balanced requires InvestParameters on charging/discharging flows
-        if self.balanced:
-            if not isinstance(self.charging.size, InvestParameters) or not isinstance(
-                self.discharging.size, InvestParameters
-            ):
-                raise PlausibilityError(
-                    f'Balancing charging and discharging Flows in {self.id} is only possible with Investments.'
-                )
-
-    def _plausibility_checks(self) -> None:
-        """Legacy validation method - delegates to validate_config().
-
-        DataArray-based checks moved to StoragesData.validate().
-        """
-        self.validate_config()
+        super().transform_data()  # Component._propagate_status_parameters
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -1044,13 +966,15 @@ class StoragesModel(TypeModel):
                 if isinstance(storage.initial_charge_state, str):  # 'equals_final'
                     storages_equals_final.append(storage)
                 else:
-                    storages_numeric_initial.append((storage, storage.initial_charge_state))
+                    storages_numeric_initial.append((storage, self.data.aligned_initial_charge_state(storage)))
 
-            if storage.maximal_final_charge_state is not None:
-                storages_max_final.append((storage, storage.maximal_final_charge_state))
+            aligned_max_final = self.data.aligned_maximal_final_charge_state(storage)
+            if aligned_max_final is not None:
+                storages_max_final.append((storage, aligned_max_final))
 
-            if storage.minimal_final_charge_state is not None:
-                storages_min_final.append((storage, storage.minimal_final_charge_state))
+            aligned_min_final = self.data.aligned_minimal_final_charge_state(storage)
+            if aligned_min_final is not None:
+                storages_min_final.append((storage, aligned_min_final))
 
         dim = self.dim_name
 
@@ -1263,14 +1187,16 @@ class StoragesModel(TypeModel):
                         name=f'storage|{storage.id}|initial_charge_state',
                     )
                 else:
+                    aligned_initial = self.data.aligned_initial_charge_state(storage)
                     self.model.add_constraints(
-                        cs.isel(time=0) == storage.initial_charge_state,
+                        cs.isel(time=0) == aligned_initial,
                         name=f'storage|{storage.id}|initial_charge_state',
                     )
 
-                if storage.maximal_final_charge_state is not None:
+                aligned_min_final = self.data.aligned_minimal_final_charge_state(storage)
+                if aligned_min_final is not None:
                     self.model.add_constraints(
-                        cs.isel(time=-1) >= storage.minimal_final_charge_state,
+                        cs.isel(time=-1) >= aligned_min_final,
                         name=f'storage|{storage.id}|final_charge_min',
                     )
 
@@ -1652,7 +1578,7 @@ class InterclusterStoragesModel(TypeModel):
                         cyclic_ids.append(storage.id)
                     else:
                         initial_fixed_ids.append(storage.id)
-                        initial_values.append(initial)
+                        initial_values.append(self.data.aligned_initial_charge_state(storage))
 
         # Add cyclic constraints
         if cyclic_ids:
