@@ -2073,7 +2073,7 @@ class ConvertersData:
         intermediate: dict[tuple[str, str], list[tuple[int, float | xr.DataArray]]] = defaultdict(list)
 
         for conv in self.with_factors:
-            flow_map = {fl._short_id: fl.id for fl in conv.flows.values()}
+            flow_map = {fl.flow_id: fl.id for fl in conv.flows.values()}
             # +1 for inputs, -1 for outputs
             flow_signs = {f.id: 1.0 for f in conv.inputs.values() if f.id in all_flow_ids_set}
             flow_signs.update({f.id: -1.0 for f in conv.outputs.values() if f.id in all_flow_ids_set})

@@ -214,8 +214,8 @@ class IdList(Generic[T]):
 
 
 def flow_id_list(flows: list | None = None, **kw) -> IdList:
-    """Create an IdList keyed by ``flow.id`` with short-key fallback to ``flow._short_id``."""
-    return IdList(flows, key_fn=lambda f: f.id, short_key_fn=lambda f: f._short_id, **kw)
+    """Create an IdList keyed by ``flow.id`` with short-key fallback to ``flow.flow_id``."""
+    return IdList(flows, key_fn=lambda f: f.id, short_key_fn=lambda f: f.flow_id, **kw)
 
 
 def element_id_list(elements: list | None = None, **kw) -> IdList:

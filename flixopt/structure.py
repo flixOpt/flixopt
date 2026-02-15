@@ -1352,14 +1352,17 @@ class Interface:
 
         # Deprecated init params that should not be serialized (they alias other params)
         _deprecated_init_params = {'label', 'label_as_positional'}
+        # On Flow, 'id' is deprecated in favor of 'flow_id'
+        if 'flow_id' in self._cached_init_params:
+            _deprecated_init_params.add('id')
 
         for name in self._cached_init_params:
             if name == 'self' or name in _deprecated_init_params:
                 continue
 
-            # For 'id' param, use _short_id to get the raw constructor value
+            # For 'id' or 'flow_id' param, use _short_id to get the raw constructor value
             # (Flow.id property returns qualified name, but constructor expects short name)
-            if name == 'id' and hasattr(self, '_short_id'):
+            if name in ('id', 'flow_id') and hasattr(self, '_short_id'):
                 value = self._short_id
             else:
                 value = getattr(self, name, None)
@@ -1705,7 +1708,12 @@ class Interface:
 
                     # Handle renamed parameters from old serialized data
                     if 'label' in constructor_data and 'label' not in init_params:
-                        constructor_data['id'] = constructor_data.pop('label')
+                        # label → id for most elements, label → flow_id for Flow
+                        new_key = 'flow_id' if 'flow_id' in init_params else 'id'
+                        constructor_data[new_key] = constructor_data.pop('label')
+                    if 'id' in constructor_data and 'id' not in init_params and 'flow_id' in init_params:
+                        # id → flow_id for Flow (from recently serialized data)
+                        constructor_data['flow_id'] = constructor_data.pop('id')
 
                     # Check for unknown parameters - these could be typos or renamed params
                     unknown_params = set(constructor_data.keys()) - init_params

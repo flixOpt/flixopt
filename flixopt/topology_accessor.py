@@ -468,7 +468,7 @@ class TopologyAccessor:
         for flow in self._fs.flows.values():
             carrier_name = flow_carriers.get(flow.id)
             edges[flow.id] = {
-                'label': flow._short_id,
+                'label': flow.flow_id,
                 'start': flow.bus if flow.is_input_in_component else flow.component,
                 'end': flow.component if flow.is_input_in_component else flow.bus,
                 'infos': flow.__str__(),

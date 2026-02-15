@@ -107,12 +107,12 @@ class Boiler(LinearConverter):
 
     @property
     def thermal_efficiency(self):
-        return self.conversion_factors[0][self.fuel_flow._short_id]
+        return self.conversion_factors[0][self.fuel_flow.flow_id]
 
     @thermal_efficiency.setter
     def thermal_efficiency(self, value):
         check_bounds(value, 'thermal_efficiency', self.id, 0, 1)
-        self.conversion_factors = [{self.fuel_flow._short_id: value, self.thermal_flow._short_id: 1}]
+        self.conversion_factors = [{self.fuel_flow.flow_id: value, self.thermal_flow.flow_id: 1}]
 
 
 @register_class_for_io
@@ -207,12 +207,12 @@ class Power2Heat(LinearConverter):
 
     @property
     def thermal_efficiency(self):
-        return self.conversion_factors[0][self.electrical_flow._short_id]
+        return self.conversion_factors[0][self.electrical_flow.flow_id]
 
     @thermal_efficiency.setter
     def thermal_efficiency(self, value):
         check_bounds(value, 'thermal_efficiency', self.id, 0, 1)
-        self.conversion_factors = [{self.electrical_flow._short_id: value, self.thermal_flow._short_id: 1}]
+        self.conversion_factors = [{self.electrical_flow.flow_id: value, self.thermal_flow.flow_id: 1}]
 
 
 @register_class_for_io
@@ -306,12 +306,12 @@ class HeatPump(LinearConverter):
 
     @property
     def cop(self):
-        return self.conversion_factors[0][self.electrical_flow._short_id]
+        return self.conversion_factors[0][self.electrical_flow.flow_id]
 
     @cop.setter
     def cop(self, value):
         check_bounds(value, 'cop', self.id, 1, 20)
-        self.conversion_factors = [{self.electrical_flow._short_id: value, self.thermal_flow._short_id: 1}]
+        self.conversion_factors = [{self.electrical_flow.flow_id: value, self.thermal_flow.flow_id: 1}]
 
 
 @register_class_for_io
@@ -405,12 +405,12 @@ class CoolingTower(LinearConverter):
 
     @property
     def specific_electricity_demand(self):
-        return self.conversion_factors[0][self.thermal_flow._short_id]
+        return self.conversion_factors[0][self.thermal_flow.flow_id]
 
     @specific_electricity_demand.setter
     def specific_electricity_demand(self, value):
         check_bounds(value, 'specific_electricity_demand', self.id, 0, 1)
-        self.conversion_factors = [{self.electrical_flow._short_id: -1, self.thermal_flow._short_id: value}]
+        self.conversion_factors = [{self.electrical_flow.flow_id: -1, self.thermal_flow.flow_id: value}]
 
 
 @register_class_for_io
@@ -530,21 +530,21 @@ class CHP(LinearConverter):
 
     @property
     def thermal_efficiency(self):
-        return self.conversion_factors[0][self.fuel_flow._short_id]
+        return self.conversion_factors[0][self.fuel_flow.flow_id]
 
     @thermal_efficiency.setter
     def thermal_efficiency(self, value):
         check_bounds(value, 'thermal_efficiency', self.id, 0, 1)
-        self.conversion_factors[0] = {self.fuel_flow._short_id: value, self.thermal_flow._short_id: 1}
+        self.conversion_factors[0] = {self.fuel_flow.flow_id: value, self.thermal_flow.flow_id: 1}
 
     @property
     def electrical_efficiency(self):
-        return self.conversion_factors[1][self.fuel_flow._short_id]
+        return self.conversion_factors[1][self.fuel_flow.flow_id]
 
     @electrical_efficiency.setter
     def electrical_efficiency(self, value):
         check_bounds(value, 'electrical_efficiency', self.id, 0, 1)
-        self.conversion_factors[1] = {self.fuel_flow._short_id: value, self.electrical_flow._short_id: 1}
+        self.conversion_factors[1] = {self.fuel_flow.flow_id: value, self.electrical_flow.flow_id: 1}
 
 
 @register_class_for_io
@@ -651,7 +651,7 @@ class HeatPumpWithSource(LinearConverter):
 
     @property
     def cop(self):
-        return self.conversion_factors[0][self.electrical_flow._short_id]
+        return self.conversion_factors[0][self.electrical_flow.flow_id]
 
     @cop.setter
     def cop(self, value):
@@ -659,8 +659,8 @@ class HeatPumpWithSource(LinearConverter):
         if np.any(np.asarray(value) == 1):
             raise ValueError(f'{self.id}.cop must be strictly !=1 for HeatPumpWithSource.')
         self.conversion_factors = [
-            {self.electrical_flow._short_id: value, self.thermal_flow._short_id: 1},
-            {self.heat_source_flow._short_id: value / (value - 1), self.thermal_flow._short_id: 1},
+            {self.electrical_flow.flow_id: value, self.thermal_flow.flow_id: 1},
+            {self.heat_source_flow.flow_id: value / (value - 1), self.thermal_flow.flow_id: 1},
         ]
 
 

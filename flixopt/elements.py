@@ -166,7 +166,7 @@ class Component(Element):
         _outputs = outputs or []
 
         # Check uniqueness on raw lists (before connecting)
-        all_flow_ids = [flow._short_id for flow in _inputs + _outputs]
+        all_flow_ids = [flow.flow_id for flow in _inputs + _outputs]
         if len(set(all_flow_ids)) != len(all_flow_ids):
             duplicates = {fid for fid in all_flow_ids if all_flow_ids.count(fid) > 1}
             raise ValueError(f'Flow names must be unique! "{self.id}" got 2 or more of: {duplicates}')
@@ -228,7 +228,7 @@ class Component(Element):
             inputs = list(self.inputs.values())
         if outputs is None:
             outputs = list(self.outputs.values())
-        all_flow_ids = [flow._short_id for flow in inputs + outputs]
+        all_flow_ids = [flow.flow_id for flow in inputs + outputs]
 
         if len(set(all_flow_ids)) != len(all_flow_ids):
             duplicates = {fid for fid in all_flow_ids if all_flow_ids.count(fid) > 1}
@@ -245,7 +245,7 @@ class Component(Element):
         # Component with status_parameters requires all flows to have sizes set
         # (status_parameters are propagated to flows in _do_modeling, which need sizes for big-M constraints)
         if self.status_parameters is not None:
-            flows_without_size = [flow._short_id for flow in self.flows.values() if flow.size is None]
+            flows_without_size = [flow.flow_id for flow in self.flows.values() if flow.size is None]
             if flows_without_size:
                 raise PlausibilityError(
                     f'Component "{self.id}" has status_parameters, but the following flows have no size: '
@@ -470,8 +470,8 @@ class Flow(Element):
         See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/Flow/>
 
     Args:
-        label: Unique flow identifier within its component.
-        bus: Bus label this flow connects to.
+        bus: Bus this flow connects to (string id). First positional argument.
+        flow_id: Unique flow identifier within its component. Defaults to the bus name.
         size: Flow capacity. Scalar, InvestParameters, or None (unbounded).
         relative_minimum: Minimum flow rate as fraction of size (0-1). Default: 0.
         relative_maximum: Maximum flow rate as fraction of size. Default: 1.
@@ -496,20 +496,19 @@ class Flow(Element):
 
         ```python
         generator_output = Flow(
-            label='electricity_out',
-            bus='electricity_grid',
+            'electricity_grid',
+            flow_id='electricity_out',
             size=100,  # 100 MW capacity
             relative_minimum=0.4,  # Cannot operate below 40 MW
             effects_per_flow_hour={'fuel_cost': 45, 'co2_emissions': 0.8},
         )
         ```
 
-        Investment decision for battery capacity:
+        Investment decision for battery capacity (flow_id defaults to bus name):
 
         ```python
         battery_flow = Flow(
-            label='electricity_storage',
-            bus='electricity_grid',
+            'electricity_grid',
             size=InvestParameters(
                 minimum_size=10,  # Minimum 10 MWh
                 maximum_size=100,  # Maximum 100 MWh
@@ -522,8 +521,8 @@ class Flow(Element):
 
         ```python
         heat_pump = Flow(
-            label='heat_output',
-            bus='heating_network',
+            'heating_network',
+            flow_id='heat_output',
             size=50,  # 50 kW thermal
             relative_minimum=0.3,  # Minimum 15 kW output when active
             effects_per_flow_hour={'electricity_cost': 25, 'maintenance': 2},
@@ -540,8 +539,8 @@ class Flow(Element):
 
         ```python
         solar_generation = Flow(
-            label='solar_power',
-            bus='electricity_grid',
+            'electricity_grid',
+            flow_id='solar_power',
             size=25,  # 25 MW installed capacity
             fixed_relative_profile=np.array([0, 0.1, 0.4, 0.8, 0.9, 0.7, 0.3, 0.1, 0]),
             effects_per_flow_hour={'maintenance_costs': 5},  # €5/MWh maintenance
@@ -552,8 +551,8 @@ class Flow(Element):
 
         ```python
         production_line = Flow(
-            label='product_output',
-            bus='product_market',
+            'product_market',
+            flow_id='product_output',
             size=1000,  # 1000 units/hour capacity
             load_factor_min=0.6,  # Must achieve 60% annual utilization
             load_factor_max=0.85,  # Cannot exceed 85% for maintenance
@@ -587,7 +586,7 @@ class Flow(Element):
         self,
         *args,
         bus: str | None = None,
-        id: str | None = None,
+        flow_id: str | None = None,
         size: Numeric_PS | InvestParameters | None = None,
         fixed_relative_profile: Numeric_TPS | None = None,
         relative_minimum: Numeric_TPS = 0,
@@ -603,6 +602,7 @@ class Flow(Element):
         previous_flow_rate: Scalar | list[Scalar] | None = None,
         meta_data: dict | None = None,
         label: str | None = None,
+        id: str | None = None,
         **kwargs,
     ):
         # --- Resolve positional args + deprecation bridge ---
@@ -610,16 +610,28 @@ class Flow(Element):
 
         from .config import DEPRECATION_REMOVAL_VERSION
 
+        # Handle deprecated 'id' kwarg (use flow_id instead)
+        if id is not None:
+            warnings.warn(
+                f'Flow(id=...) is deprecated. Use Flow(flow_id=...) instead. '
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if flow_id is not None:
+                raise ValueError('Either id or flow_id can be specified, but not both.')
+            flow_id = id
+
         if len(args) == 2:
             # Old API: Flow(label, bus)
             warnings.warn(
                 f'Flow(label, bus) positional form is deprecated. '
-                f'Use Flow(bus, id=...) instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+                f'Use Flow(bus, flow_id=...) instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
-            if id is None and label is None:
-                id = args[0]
+            if flow_id is None and label is None:
+                flow_id = args[0]
             if bus is None:
                 bus = args[1]
         elif len(args) == 1:
@@ -627,12 +639,12 @@ class Flow(Element):
                 # Old API: Flow(label, bus=...)
                 warnings.warn(
                     f'Flow(label, bus=...) positional form is deprecated. '
-                    f'Use Flow(bus, id=...) instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+                    f'Use Flow(bus, flow_id=...) instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                     DeprecationWarning,
                     stacklevel=2,
                 )
-                if id is None and label is None:
-                    id = args[0]
+                if flow_id is None and label is None:
+                    flow_id = args[0]
             else:
                 # New API: Flow(bus) — bus is the positional arg
                 bus = args[0]
@@ -642,24 +654,25 @@ class Flow(Element):
         # Handle deprecated label kwarg
         if label is not None:
             warnings.warn(
-                f'The "label" argument is deprecated. Use "id" instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+                f'The "label" argument is deprecated. Use "flow_id" instead. '
+                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
-            if id is not None:
-                raise ValueError('Either label or id can be specified, but not both.')
-            id = label
+            if flow_id is not None:
+                raise ValueError('Either label or flow_id can be specified, but not both.')
+            flow_id = label
 
-        # Default id to bus name
-        if id is None:
+        # Default flow_id to bus name
+        if flow_id is None:
             if bus is None:
                 raise TypeError('Flow() requires a bus argument.')
-            id = bus if isinstance(bus, str) else str(bus)
+            flow_id = bus if isinstance(bus, str) else str(bus)
 
         if bus is None:
             raise TypeError('Flow() requires a bus argument.')
 
-        super().__init__(id, meta_data=meta_data, **kwargs)
+        super().__init__(flow_id, meta_data=meta_data, **kwargs)
         self.size = size
         self.relative_minimum = relative_minimum
         self.relative_maximum = relative_maximum
@@ -791,8 +804,20 @@ class Flow(Element):
         self.validate_config()
 
     @property
+    def flow_id(self) -> str:
+        """The short flow identifier (e.g. ``'Heat'``).
+
+        This is the user-facing name. Defaults to the bus name if not set explicitly.
+        """
+        return self._short_id
+
+    @flow_id.setter
+    def flow_id(self, value: str) -> None:
+        self._short_id = value
+
+    @property
     def id(self) -> str:
-        """The qualified identifier: ``component(short_id)``."""
+        """The qualified identifier: ``component(flow_id)``."""
         return f'{self.component}({self._short_id})'
 
     @id.setter

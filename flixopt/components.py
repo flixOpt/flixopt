@@ -1325,18 +1325,18 @@ class StoragesModel(TypeModel):
                 if isinstance(storage.initial_charge_state, str):  # 'equals_final'
                     self.model.add_constraints(
                         cs.isel(time=0) == cs.isel(time=-1),
-                        name=f'storage|{storage._short_id}|initial_charge_state',
+                        name=f'storage|{storage.id}|initial_charge_state',
                     )
                 else:
                     self.model.add_constraints(
                         cs.isel(time=0) == storage.initial_charge_state,
-                        name=f'storage|{storage._short_id}|initial_charge_state',
+                        name=f'storage|{storage.id}|initial_charge_state',
                     )
 
                 if storage.maximal_final_charge_state is not None:
                     self.model.add_constraints(
                         cs.isel(time=-1) >= storage.minimal_final_charge_state,
-                        name=f'storage|{storage._short_id}|final_charge_min',
+                        name=f'storage|{storage.id}|final_charge_min',
                     )
 
         logger.debug(f'StoragesModel created constraints for {len(self.elements)} storages')
