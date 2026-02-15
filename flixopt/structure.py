@@ -685,7 +685,7 @@ def register_class_for_io(cls):
 def create_reference_structure(obj, path_prefix: str = '') -> tuple[dict, dict[str, xr.DataArray]]:
     """Extract DataArrays from any registered object, using path-based keys.
 
-    Replaces the old Interface._create_reference_structure() method. Works with
+    Works with
     any object whose class is in CLASS_REGISTRY, any dataclass, or any object
     with an inspectable ``__init__``.
 
@@ -845,7 +845,7 @@ def _is_empty(obj: Any) -> bool:
 def resolve_reference_structure(structure: Any, arrays_dict: dict[str, xr.DataArray]) -> Any:
     """Resolve a reference structure back to actual objects.
 
-    Standalone replacement for ``Interface._resolve_reference_structure``.
+    Resolves ``:::path`` DataArray references and ``__class__`` markers back to objects.
     Handles ``:::path`` DataArray references, registered classes, lists, and dicts.
 
     Args:
@@ -1490,6 +1490,92 @@ class FlowSystemModel(linopy.Model):
         return f'{title}\n{"=" * len(title)}\n\n{all_sections}'
 
 
+def handle_deprecated_kwarg(
+    kwargs: dict,
+    old_name: str,
+    new_name: str,
+    current_value: Any = None,
+    transform: callable = None,
+    check_conflict: bool = True,
+    additional_warning_message: str = '',
+) -> Any:
+    """Handle a deprecated keyword argument by issuing a warning and returning the appropriate value.
+
+    This centralizes the deprecation pattern used across multiple classes
+    (Source, Sink, InvestParameters, etc.).
+
+    Args:
+        kwargs: Dictionary of keyword arguments to check and modify
+        old_name: Name of the deprecated parameter
+        new_name: Name of the replacement parameter
+        current_value: Current value of the new parameter (if already set)
+        transform: Optional callable to transform the old value before returning
+            (e.g., ``lambda x: [x]`` to wrap in list)
+        check_conflict: Whether to check if both old and new parameters are specified
+            (default: True). For parameters with non-None default values (e.g., bool
+            with default=False), set ``check_conflict=False`` since we cannot distinguish
+            between an explicit value and the default.
+        additional_warning_message: Custom message appended to the default warning.
+
+    Returns:
+        The value to use (either from old parameter or *current_value*)
+
+    Raises:
+        ValueError: If both old and new parameters are specified and *check_conflict* is True
+    """
+    old_value = kwargs.pop(old_name, None)
+    if old_value is not None:
+        base_warning = (
+            f'The use of the "{old_name}" argument is deprecated. '
+            f'Use the "{new_name}" argument instead. '
+            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.'
+        )
+        if additional_warning_message:
+            extra_msg = additional_warning_message.strip()
+            if extra_msg:
+                base_warning += '\n' + extra_msg
+
+        warnings.warn(base_warning, DeprecationWarning, stacklevel=3)
+
+        if check_conflict and current_value is not None:
+            raise ValueError(f'Either {old_name} or {new_name} can be specified, but not both.')
+
+        if transform is not None:
+            return transform(old_value)
+        return old_value
+
+    return current_value
+
+
+def validate_kwargs(obj: Any, kwargs: dict, class_name: str | None = None) -> None:
+    """Validate that no unexpected keyword arguments are present.
+
+    Uses ``inspect`` to get the actual ``__init__`` signature and filters out
+    any parameters that are not defined, while also handling the special case
+    of ``'kwargs'`` itself which can appear during deserialization.
+
+    Args:
+        obj: The object whose ``__init__`` to inspect.
+        kwargs: Dictionary of keyword arguments to validate.
+        class_name: Optional class name for error messages.
+            If *None*, uses ``obj.__class__.__name__``.
+
+    Raises:
+        TypeError: If unexpected keyword arguments are found
+    """
+    if not kwargs:
+        return
+
+    sig = inspect.signature(obj.__init__)
+    known_params = set(sig.parameters.keys()) - {'self', 'kwargs'}
+    extra_kwargs = {k: v for k, v in kwargs.items() if k not in known_params and k != 'kwargs'}
+
+    if extra_kwargs:
+        class_name = class_name or obj.__class__.__name__
+        unexpected_params = ', '.join(f"'{param}'" for param in extra_kwargs.keys())
+        raise TypeError(f'{class_name}.__init__() got unexpected keyword argument(s): {unexpected_params}')
+
+
 class Interface:
     """
     Base class for all Elements and Models in flixopt that provides serialization capabilities.
@@ -1579,164 +1665,6 @@ class Interface:
             )
         return self._flow_system
 
-    def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
-        """Convert all DataArrays to references and extract them.
-
-        Delegates to the standalone :func:`create_reference_structure`.
-
-        Returns:
-            Tuple of (reference_structure, extracted_arrays_dict)
-        """
-        return create_reference_structure(self)
-
-    def _handle_deprecated_kwarg(
-        self,
-        kwargs: dict,
-        old_name: str,
-        new_name: str,
-        current_value: Any = None,
-        transform: callable = None,
-        check_conflict: bool = True,
-        additional_warning_message: str = '',
-    ) -> Any:
-        """
-        Handle a deprecated keyword argument by issuing a warning and returning the appropriate value.
-
-        This centralizes the deprecation pattern used across multiple classes (Source, Sink, InvestParameters, etc.).
-
-        Args:
-            kwargs: Dictionary of keyword arguments to check and modify
-            old_name: Name of the deprecated parameter
-            new_name: Name of the replacement parameter
-            current_value: Current value of the new parameter (if already set)
-            transform: Optional callable to transform the old value before returning (e.g., lambda x: [x] to wrap in list)
-            check_conflict: Whether to check if both old and new parameters are specified (default: True).
-                Note: For parameters with non-None default values (e.g., bool parameters with default=False),
-                set check_conflict=False since we cannot distinguish between an explicit value and the default.
-            additional_warning_message: Add a custom message which gets appended with a line break to the default warning.
-
-        Returns:
-            The value to use (either from old parameter or current_value)
-
-        Raises:
-            ValueError: If both old and new parameters are specified and check_conflict is True
-
-        Example:
-            # For parameters where None is the default (conflict checking works):
-            value = self._handle_deprecated_kwarg(kwargs, 'old_param', 'new_param', current_value)
-
-            # For parameters with non-None defaults (disable conflict checking):
-            mandatory = self._handle_deprecated_kwarg(
-                kwargs, 'optional', 'mandatory', mandatory,
-                transform=lambda x: not x,
-                check_conflict=False  # Cannot detect if mandatory was explicitly passed
-            )
-        """
-        import warnings
-
-        old_value = kwargs.pop(old_name, None)
-        if old_value is not None:
-            # Build base warning message
-            base_warning = f'The use of the "{old_name}" argument is deprecated. Use the "{new_name}" argument instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.'
-
-            # Append additional message on a new line if provided
-            if additional_warning_message:
-                # Normalize whitespace: strip leading/trailing whitespace
-                extra_msg = additional_warning_message.strip()
-                if extra_msg:
-                    base_warning += '\n' + extra_msg
-
-            warnings.warn(
-                base_warning,
-                DeprecationWarning,
-                stacklevel=3,  # Stack: this method -> __init__ -> caller
-            )
-            # Check for conflicts: only raise error if both were explicitly provided
-            if check_conflict and current_value is not None:
-                raise ValueError(f'Either {old_name} or {new_name} can be specified, but not both.')
-
-            # Apply transformation if provided
-            if transform is not None:
-                return transform(old_value)
-            return old_value
-
-        return current_value
-
-    def _validate_kwargs(self, kwargs: dict, class_name: str = None) -> None:
-        """
-        Validate that no unexpected keyword arguments are present in kwargs.
-
-        This method uses inspect to get the actual function signature and filters out
-        any parameters that are not defined in the __init__ method, while also
-        handling the special case of 'kwargs' itself which can appear during deserialization.
-
-        Args:
-            kwargs: Dictionary of keyword arguments to validate
-            class_name: Optional class name for error messages. If None, uses self.__class__.__name__
-
-        Raises:
-            TypeError: If unexpected keyword arguments are found
-        """
-        if not kwargs:
-            return
-
-        import inspect
-
-        sig = inspect.signature(self.__init__)
-        known_params = set(sig.parameters.keys()) - {'self', 'kwargs'}
-        # Also filter out 'kwargs' itself which can appear during deserialization
-        extra_kwargs = {k: v for k, v in kwargs.items() if k not in known_params and k != 'kwargs'}
-
-        if extra_kwargs:
-            class_name = class_name or self.__class__.__name__
-            unexpected_params = ', '.join(f"'{param}'" for param in extra_kwargs.keys())
-            raise TypeError(f'{class_name}.__init__() got unexpected keyword argument(s): {unexpected_params}')
-
-    @staticmethod
-    def _has_value(param: Any) -> bool:
-        """Check if a parameter has a meaningful value.
-
-        Args:
-            param: The parameter to check.
-
-        Returns:
-            False for:
-                - None
-                - Empty collections (dict, list, tuple, set, frozenset)
-
-            True for all other values, including:
-                - Non-empty collections
-                - xarray DataArrays (even if they contain NaN/empty data)
-                - Scalar values (0, False, empty strings, etc.)
-                - NumPy arrays (even if empty - use .size to check those explicitly)
-        """
-        if param is None:
-            return False
-
-        # Check for empty collections (but not strings, arrays, or DataArrays)
-        if isinstance(param, (dict, list, tuple, set, frozenset)) and len(param) == 0:
-            return False
-
-        return True
-
-    @classmethod
-    def _resolve_dataarray_reference(
-        cls, reference: str, arrays_dict: dict[str, xr.DataArray]
-    ) -> xr.DataArray | TimeSeriesData:
-        """Resolve a single ``:::path`` DataArray reference.
-
-        Delegates to standalone :func:`_resolve_dataarray_reference`.
-        """
-        return _resolve_dataarray_reference(reference, arrays_dict)
-
-    @classmethod
-    def _resolve_reference_structure(cls, structure, arrays_dict: dict[str, xr.DataArray]):
-        """Resolve reference structure back to objects.
-
-        Delegates to standalone :func:`resolve_reference_structure`.
-        """
-        return resolve_reference_structure(structure, arrays_dict)
-
     def to_dataset(self) -> xr.Dataset:
         """
         Convert the object to an xarray Dataset representation.
@@ -1752,7 +1680,7 @@ class Interface:
             ValueError: If serialization fails due to naming conflicts or invalid data
         """
         try:
-            reference_structure, extracted_arrays = self._create_reference_structure()
+            reference_structure, extracted_arrays = create_reference_structure(self)
             # Create the dataset with extracted arrays as variables and structure as attrs
             return xr.Dataset(extracted_arrays, attrs=reference_structure)
         except Exception as e:
@@ -1830,8 +1758,8 @@ class Interface:
                 for name in ds.data_vars
             }
 
-            # Resolve all references using the centralized method
-            resolved_params = cls._resolve_reference_structure(reference_structure, arrays_dict)
+            # Resolve all references using the standalone function
+            resolved_params = resolve_reference_structure(reference_structure, arrays_dict)
 
             return cls(**resolved_params)
         except Exception as e:
@@ -1869,7 +1797,7 @@ class Interface:
         Returns:
             Dictionary representation of the object structure
         """
-        reference_structure, extracted_arrays = self._create_reference_structure()
+        reference_structure, extracted_arrays = create_reference_structure(self)
 
         if stats:
             # Replace references with statistics
@@ -1964,10 +1892,10 @@ class Element(Interface):
             _variable_names: Internal. Variable names for this element (populated after modeling).
             _constraint_names: Internal. Constraint names for this element (populated after modeling).
         """
-        id = self._handle_deprecated_kwarg(kwargs, 'label', 'id', id)
+        id = handle_deprecated_kwarg(kwargs, 'label', 'id', id)
         if id is None:
             raise TypeError(f'{self.__class__.__name__}.__init__() requires an "id" argument.')
-        self._validate_kwargs(kwargs)
+        validate_kwargs(self, kwargs)
         self._short_id: str = Element._valid_id(id)
         self.meta_data = meta_data if meta_data is not None else {}
         self.color = color

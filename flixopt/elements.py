@@ -33,6 +33,7 @@ from .structure import (
     FlowVarName,
     TransmissionVarName,
     TypeModel,
+    handle_deprecated_kwarg,
     register_class_for_io,
 )
 
@@ -341,7 +342,7 @@ class Bus(Element):
         old_penalty = kwargs.pop('excess_penalty_per_flow_hour', None)
         super().__init__(id, meta_data=meta_data, **kwargs)
         if old_penalty is not None:
-            imbalance_penalty_per_flow_hour = self._handle_deprecated_kwarg(
+            imbalance_penalty_per_flow_hour = handle_deprecated_kwarg(
                 {'excess_penalty_per_flow_hour': old_penalty},
                 'excess_penalty_per_flow_hour',
                 'imbalance_penalty_per_flow_hour',

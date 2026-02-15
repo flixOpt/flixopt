@@ -470,8 +470,9 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             logger.info('FlowSystem is not connected_and_transformed. Connecting and transforming data now.')
             self.connect_and_transform()
 
-        # Get base dataset from parent class
-        base_ds = super().to_dataset()
+        # Build base dataset from FlowSystem's own _create_reference_structure
+        reference_structure, extracted_arrays = self._create_reference_structure()
+        base_ds = xr.Dataset(extracted_arrays, attrs=reference_structure)
 
         # Add FlowSystem-specific data (solution, clustering, metadata)
         return fx_io.flow_system_to_dataset(self, base_ds, include_solution, include_original_data)
@@ -762,7 +763,14 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             logger.warning('FlowSystem is not connected. Calling connect_and_transform() now.')
             self.connect_and_transform()
 
-        return super().get_structure(clean, stats)
+        reference_structure, extracted_arrays = self._create_reference_structure()
+
+        if stats:
+            reference_structure = self._replace_references_with_stats(reference_structure, extracted_arrays)
+
+        if clean:
+            return fx_io.remove_none_and_empty(reference_structure)
+        return reference_structure
 
     def to_json(self, path: str | pathlib.Path):
         """

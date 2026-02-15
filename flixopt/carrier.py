@@ -8,18 +8,16 @@ and metadata across visualizations.
 from __future__ import annotations
 
 from .id_list import IdList
-from .structure import Interface, register_class_for_io
+from .structure import register_class_for_io
 
 
 @register_class_for_io
-class Carrier(Interface):
+class Carrier:
     """Definition of an energy or material carrier type.
 
     Carriers represent the type of energy or material flowing through a Bus.
     They provide consistent color, unit, and description across all visualizations
     and can be shared between multiple buses of the same type.
-
-    Inherits from Interface to provide serialization capabilities.
 
     Args:
         name: Identifier for the carrier (e.g., 'electricity', 'heat', 'gas').
