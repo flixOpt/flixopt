@@ -1984,11 +1984,6 @@ class Element(Interface):
         self._variable_names: list[str] = _variable_names if _variable_names is not None else []
         self._constraint_names: list[str] = _constraint_names if _constraint_names is not None else []
 
-    def _plausibility_checks(self) -> None:
-        """This function is used to do some basic plausibility checks for each Element during initialization.
-        This is run after all data is transformed to the correct format/type"""
-        raise NotImplementedError('Every Element needs a _plausibility_checks() method')
-
     @property
     def id(self) -> str:
         """The unique identifier of this element.

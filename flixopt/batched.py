@@ -1720,10 +1720,6 @@ class FlowsData:
     def validate(self) -> None:
         """Validate all flows (config + DataArray checks).
 
-        Performs both:
-        - Config validation via Flow.validate_config()
-        - DataArray validation (post-transformation checks)
-
         Raises:
             PlausibilityError: If any validation check fails.
         """
@@ -1731,7 +1727,53 @@ class FlowsData:
             return
 
         for flow in self.elements.values():
-            flow.validate_config()
+            # Size is required when using StatusParameters (for big-M constraints)
+            if flow.status_parameters is not None and flow.size is None:
+                raise PlausibilityError(
+                    f'Flow "{flow.id}" has status_parameters but no size defined. '
+                    f'A size is required when using status_parameters to bound the flow rate.'
+                )
+
+            if flow.size is None and flow.fixed_relative_profile is not None:
+                raise PlausibilityError(
+                    f'Flow "{flow.id}" has a fixed_relative_profile but no size defined. '
+                    f'A size is required because flow_rate = size * fixed_relative_profile.'
+                )
+
+            # Size is required for load factor constraints (total_flow_hours / size)
+            if flow.size is None and flow.load_factor_min is not None:
+                raise PlausibilityError(
+                    f'Flow "{flow.id}" has load_factor_min but no size defined. '
+                    f'A size is required because the constraint is total_flow_hours >= size * load_factor_min * hours.'
+                )
+
+            if flow.size is None and flow.load_factor_max is not None:
+                raise PlausibilityError(
+                    f'Flow "{flow.id}" has load_factor_max but no size defined. '
+                    f'A size is required because the constraint is total_flow_hours <= size * load_factor_max * hours.'
+                )
+
+            # Validate previous_flow_rate type
+            if flow.previous_flow_rate is not None:
+                if not any(
+                    [
+                        isinstance(flow.previous_flow_rate, np.ndarray) and flow.previous_flow_rate.ndim == 1,
+                        isinstance(flow.previous_flow_rate, (int, float, list)),
+                    ]
+                ):
+                    raise TypeError(
+                        f'previous_flow_rate must be None, a scalar, a list of scalars or a 1D-numpy-array. '
+                        f'Got {type(flow.previous_flow_rate)}. '
+                        f'Different values in different periods or scenarios are not yet supported.'
+                    )
+
+            # Warning: fixed_relative_profile + status_parameters is unusual
+            if flow.fixed_relative_profile is not None and flow.status_parameters is not None:
+                logger.warning(
+                    f'Flow {flow.id} has both a fixed_relative_profile and status_parameters. '
+                    f'This will allow the flow to be switched active and inactive, '
+                    f'effectively differing from the fixed_flow_rate.'
+                )
 
         errors: list[str] = []
 
@@ -2209,8 +2251,19 @@ class ComponentsData:
         from .components import LinearConverter, Storage, Transmission
 
         for component in self._all_components:
-            if not isinstance(component, (Storage, LinearConverter, Transmission)):
-                component.validate_config()
+            if isinstance(component, (Storage, LinearConverter, Transmission)):
+                continue
+
+            component._check_unique_flow_ids()
+
+            if component.status_parameters is not None:
+                flows_without_size = [flow.flow_id for flow in component.flows.values() if flow.size is None]
+                if flows_without_size:
+                    raise PlausibilityError(
+                        f'Component "{component.id}" has status_parameters, but the following flows '
+                        f'have no size: {flows_without_size}. All flows need explicit sizes when the '
+                        f'component uses status_parameters (required for big-M constraints).'
+                    )
 
 
 class ConvertersData:

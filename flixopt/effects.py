@@ -767,22 +767,6 @@ class EffectCollection(IdList[Effect]):
             return {get_effect_id(effect): value for effect, value in effect_values_user.items()}
         return {self.standard_effect.id: effect_values_user}
 
-    def validate_config(self) -> None:
-        """Deprecated: Validation is now handled by EffectsData.validate().
-
-        This method is kept for backwards compatibility but does nothing.
-        Collection-level validation (cycles, unknown refs) is now in EffectsData._validate_share_structure().
-        """
-        pass
-
-    def _plausibility_checks(self) -> None:
-        """Deprecated: Legacy validation method.
-
-        Kept for backwards compatibility but does nothing.
-        Validation is now handled by EffectsData.validate().
-        """
-        pass
-
     def __getitem__(self, effect: str | Effect | None) -> Effect:
         """
         Get an effect by id, or return the standard effect if None is passed

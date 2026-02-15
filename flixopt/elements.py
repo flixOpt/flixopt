@@ -14,7 +14,6 @@ import xarray as xr
 
 from . import io as fx_io
 from .config import CONFIG
-from .core import PlausibilityError
 from .features import (
     MaskHelpers,
     StatusBuilder,
@@ -220,29 +219,6 @@ class Component(Element):
         if len(set(all_flow_ids)) != len(all_flow_ids):
             duplicates = {fid for fid in all_flow_ids if all_flow_ids.count(fid) > 1}
             raise ValueError(f'Flow names must be unique! "{self.id}" got 2 or more of: {duplicates}')
-
-    def validate_config(self) -> None:
-        """Validate configuration consistency.
-
-        Called BEFORE transformation via FlowSystem._run_config_validation().
-        These are simple checks that don't require DataArray operations.
-        """
-        self._check_unique_flow_ids()
-
-        # Component with status_parameters requires all flows to have sizes set
-        # (status_parameters are propagated to flows in _do_modeling, which need sizes for big-M constraints)
-        if self.status_parameters is not None:
-            flows_without_size = [flow.flow_id for flow in self.flows.values() if flow.size is None]
-            if flows_without_size:
-                raise PlausibilityError(
-                    f'Component "{self.id}" has status_parameters, but the following flows have no size: '
-                    f'{flows_without_size}. All flows need explicit sizes when the component uses status_parameters '
-                    f'(required for big-M constraints).'
-                )
-
-    def _plausibility_checks(self) -> None:
-        """Legacy validation method - delegates to validate_config()."""
-        self.validate_config()
 
     def _connect_flows(self, inputs=None, outputs=None):
         if inputs is None:
@@ -671,66 +647,6 @@ class Flow(Element):
         Elements use their id_full as prefix by default, ignoring the passed prefix.
         """
         super().link_to_flow_system(flow_system, self.id)
-
-    def validate_config(self) -> None:
-        """Validate configuration consistency.
-
-        Called BEFORE transformation via FlowSystem._run_config_validation().
-        These are simple checks that don't require DataArray operations.
-        """
-        # Size is required when using StatusParameters (for big-M constraints)
-        if self.status_parameters is not None and self.size is None:
-            raise PlausibilityError(
-                f'Flow "{self.id}" has status_parameters but no size defined. '
-                f'A size is required when using status_parameters to bound the flow rate.'
-            )
-
-        if self.size is None and self.fixed_relative_profile is not None:
-            raise PlausibilityError(
-                f'Flow "{self.id}" has a fixed_relative_profile but no size defined. '
-                f'A size is required because flow_rate = size * fixed_relative_profile.'
-            )
-
-        # Size is required for load factor constraints (total_flow_hours / size)
-        if self.size is None and self.load_factor_min is not None:
-            raise PlausibilityError(
-                f'Flow "{self.id}" has load_factor_min but no size defined. '
-                f'A size is required because the constraint is total_flow_hours >= size * load_factor_min * hours.'
-            )
-
-        if self.size is None and self.load_factor_max is not None:
-            raise PlausibilityError(
-                f'Flow "{self.id}" has load_factor_max but no size defined. '
-                f'A size is required because the constraint is total_flow_hours <= size * load_factor_max * hours.'
-            )
-
-        # Validate previous_flow_rate type
-        if self.previous_flow_rate is not None:
-            if not any(
-                [
-                    isinstance(self.previous_flow_rate, np.ndarray) and self.previous_flow_rate.ndim == 1,
-                    isinstance(self.previous_flow_rate, (int, float, list)),
-                ]
-            ):
-                raise TypeError(
-                    f'previous_flow_rate must be None, a scalar, a list of scalars or a 1D-numpy-array. '
-                    f'Got {type(self.previous_flow_rate)}. '
-                    f'Different values in different periods or scenarios are not yet supported.'
-                )
-
-        # Warning: fixed_relative_profile + status_parameters is unusual
-        if self.fixed_relative_profile is not None and self.status_parameters is not None:
-            logger.warning(
-                f'Flow {self.id} has both a fixed_relative_profile and status_parameters. '
-                f'This will allow the flow to be switched active and inactive, effectively differing from the fixed_flow_rate.'
-            )
-
-    def _plausibility_checks(self) -> None:
-        """Legacy validation method - delegates to validate_config().
-
-        DataArray-based validation is now done in FlowsData.validate().
-        """
-        self.validate_config()
 
     @property
     def flow_id(self) -> str:
