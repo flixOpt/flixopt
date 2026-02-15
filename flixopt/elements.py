@@ -530,8 +530,10 @@ class Flow(Element):
 
     """
 
-    # Dataclass fields for introspection (values set by custom __init__)
-    bus: str | None = None
+    _io_exclude: ClassVar[set[str]] = {'_pos'}
+
+    bus: str = ''
+    flow_id: str | None = None
     size: Numeric_PS | InvestParameters | None = None
     relative_minimum: Numeric_TPS = 0
     relative_maximum: Numeric_TPS = 1
@@ -557,13 +559,15 @@ class Flow(Element):
 
     def __init__(
         self,
-        *args,
+        _pos='',
+        /,
+        *,
         bus: str | None = None,
         flow_id: str | None = None,
         size: Numeric_PS | InvestParameters | None = None,
-        fixed_relative_profile: Numeric_TPS | None = None,
         relative_minimum: Numeric_TPS = 0,
         relative_maximum: Numeric_TPS = 1,
+        fixed_relative_profile: Numeric_TPS | None = None,
         effects_per_flow_hour: Effect_TPS | Numeric_TPS | None = None,
         status_parameters: StatusParameters | None = None,
         flow_hours_max: Numeric_PS | None = None,
@@ -574,129 +578,73 @@ class Flow(Element):
         load_factor_max: Numeric_PS | None = None,
         previous_flow_rate: Scalar | list[Scalar] | None = None,
         meta_data: dict | None = None,
-        label: str | None = None,
-        id: str | None = None,
-        **kwargs,
+        color: str | None = None,
     ):
-        # --- Resolve positional args + deprecation bridge ---
-        import warnings
+        # Resolve bus and flow_id from positional/keyword arguments.
+        # Supports both: Flow('bus', flow_id='name') and Flow('name', bus='bus')
+        if bus is not None:
+            self.bus = bus
+            self.flow_id = flow_id if flow_id is not None else (_pos or None)
+        else:
+            self.bus = _pos
+            self.flow_id = flow_id
 
-        from .config import DEPRECATION_REMOVAL_VERSION
-
-        # Handle deprecated 'id' kwarg (use flow_id instead)
-        if id is not None:
-            warnings.warn(
-                f'Flow(id=...) is deprecated. Use Flow(flow_id=...) instead. '
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if flow_id is not None:
-                raise ValueError('Either id or flow_id can be specified, but not both.')
-            flow_id = id
-
-        if len(args) == 2:
-            # Old API: Flow(label, bus)
-            warnings.warn(
-                f'Flow(label, bus) positional form is deprecated. '
-                f'Use Flow(bus, flow_id=...) instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if flow_id is None and label is None:
-                flow_id = args[0]
-            if bus is None:
-                bus = args[1]
-        elif len(args) == 1:
-            if bus is not None:
-                # Old API: Flow(label, bus=...)
-                warnings.warn(
-                    f'Flow(label, bus=...) positional form is deprecated. '
-                    f'Use Flow(bus, flow_id=...) instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-                if flow_id is None and label is None:
-                    flow_id = args[0]
-            else:
-                # New API: Flow(bus) — bus is the positional arg
-                bus = args[0]
-        elif len(args) > 2:
-            raise TypeError(f'Flow() takes at most 2 positional arguments ({len(args)} given)')
-
-        # Handle deprecated label kwarg
-        if label is not None:
-            warnings.warn(
-                f'The "label" argument is deprecated. Use "flow_id" instead. '
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if flow_id is not None:
-                raise ValueError('Either label or flow_id can be specified, but not both.')
-            flow_id = label
-
-        # Default flow_id to bus name
-        if flow_id is None:
-            if bus is None:
-                raise TypeError('Flow() requires a bus argument.')
-            flow_id = bus if isinstance(bus, str) else str(bus)
-
-        if bus is None:
-            raise TypeError('Flow() requires a bus argument.')
-
-        super().__init__(flow_id, meta_data=meta_data, **kwargs)
         self.size = size
         self.relative_minimum = relative_minimum
         self.relative_maximum = relative_maximum
         self.fixed_relative_profile = fixed_relative_profile
-
-        self.load_factor_min = load_factor_min
-        self.load_factor_max = load_factor_max
-
-        self.effects_per_flow_hour = effects_per_flow_hour if effects_per_flow_hour is not None else {}
+        self.effects_per_flow_hour = effects_per_flow_hour
+        self.status_parameters = status_parameters
         self.flow_hours_max = flow_hours_max
         self.flow_hours_min = flow_hours_min
         self.flow_hours_max_over_periods = flow_hours_max_over_periods
         self.flow_hours_min_over_periods = flow_hours_min_over_periods
-        self.status_parameters = status_parameters
-
+        self.load_factor_min = load_factor_min
+        self.load_factor_max = load_factor_max
         self.previous_flow_rate = previous_flow_rate
+        self.meta_data = meta_data
+        self.color = color
 
-        self.component: str = 'UnknownComponent'
-        self.is_input_in_component: bool | None = None
-        if isinstance(bus, Bus):
+        # Internal state defaults
+        self.component = 'UnknownComponent'
+        self.is_input_in_component = None
+        self._flows_model = None
+        self._flow_system = None
+        self._variable_names = []
+        self._constraint_names = []
+
+        self.__post_init__()
+
+    def __post_init__(self):
+        # Default flow_id to bus name
+        if self.flow_id is None:
+            self.flow_id = self.bus if isinstance(self.bus, str) else str(self.bus)
+        self.flow_id = Element._valid_id(self.flow_id)
+        self._short_id = self.flow_id
+
+        if isinstance(self.bus, Bus):
             raise TypeError(
-                f'Bus {bus.id} is passed as a Bus object to Flow {self.id}. '
+                f'Bus {self.bus.id} is passed as a Bus object to Flow {self.flow_id}. '
                 f'This is no longer supported. Add the Bus to the FlowSystem and pass its id (string) to the Flow.'
             )
-        self.bus = bus
 
-    @property
-    def flow_id(self) -> str:
-        """The short flow identifier (e.g. ``'Heat'``).
-
-        This is the user-facing name. Defaults to the bus name if not set explicitly.
-        """
-        return self._short_id
-
-    @flow_id.setter
-    def flow_id(self, value: str) -> None:
-        self._short_id = value
+        if self.effects_per_flow_hour is None:
+            self.effects_per_flow_hour = {}
+        if self.meta_data is None:
+            self.meta_data = {}
 
     @property
     def id(self) -> str:
         """The qualified identifier: ``component(flow_id)``."""
-        return f'{self.component}({self._short_id})'
+        return f'{self.component}({self.flow_id})'
 
     @id.setter
     def id(self, value: str) -> None:
+        self.flow_id = value
         self._short_id = value
 
     def __repr__(self) -> str:
-        return fx_io.build_repr_from_init(
-            self, excluded_params={'self', 'label', 'id', 'args', 'kwargs'}, skip_default_size=True
-        )
+        return fx_io.build_repr_from_init(self, excluded_params={'self', 'id'}, skip_default_size=True)
 
     # =========================================================================
     # Type-Level Model Access (for FlowsModel integration)

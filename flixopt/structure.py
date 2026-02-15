@@ -800,17 +800,11 @@ def _get_serializable_params(obj) -> dict[str, Any]:
     _skip |= io_exclude
 
     sig = inspect.signature(obj.__init__)
-    # On Flow, 'id' is deprecated in favor of 'flow_id'
-    if 'flow_id' in sig.parameters:
-        _skip.add('id')
 
     for name in sig.parameters:
         if name in _skip:
             continue
-        if name in ('id', 'flow_id') and hasattr(obj, '_short_id'):
-            params[name] = obj._short_id
-        else:
-            params[name] = getattr(obj, name, None)
+        params[name] = getattr(obj, name, None)
     return params
 
 
@@ -1494,127 +1488,16 @@ class FlowSystemModel(linopy.Model):
         return f'{title}\n{"=" * len(title)}\n\n{all_sections}'
 
 
-def handle_deprecated_kwarg(
-    kwargs: dict,
-    old_name: str,
-    new_name: str,
-    current_value: Any = None,
-    transform: callable = None,
-    check_conflict: bool = True,
-    additional_warning_message: str = '',
-) -> Any:
-    """Handle a deprecated keyword argument by issuing a warning and returning the appropriate value.
-
-    This centralizes the deprecation pattern used across multiple classes
-    (Source, Sink, InvestParameters, etc.).
-
-    Args:
-        kwargs: Dictionary of keyword arguments to check and modify
-        old_name: Name of the deprecated parameter
-        new_name: Name of the replacement parameter
-        current_value: Current value of the new parameter (if already set)
-        transform: Optional callable to transform the old value before returning
-            (e.g., ``lambda x: [x]`` to wrap in list)
-        check_conflict: Whether to check if both old and new parameters are specified
-            (default: True). For parameters with non-None default values (e.g., bool
-            with default=False), set ``check_conflict=False`` since we cannot distinguish
-            between an explicit value and the default.
-        additional_warning_message: Custom message appended to the default warning.
-
-    Returns:
-        The value to use (either from old parameter or *current_value*)
-
-    Raises:
-        ValueError: If both old and new parameters are specified and *check_conflict* is True
-    """
-    old_value = kwargs.pop(old_name, None)
-    if old_value is not None:
-        base_warning = (
-            f'The use of the "{old_name}" argument is deprecated. '
-            f'Use the "{new_name}" argument instead. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.'
-        )
-        if additional_warning_message:
-            extra_msg = additional_warning_message.strip()
-            if extra_msg:
-                base_warning += '\n' + extra_msg
-
-        warnings.warn(base_warning, DeprecationWarning, stacklevel=3)
-
-        if check_conflict and current_value is not None:
-            raise ValueError(f'Either {old_name} or {new_name} can be specified, but not both.')
-
-        if transform is not None:
-            return transform(old_value)
-        return old_value
-
-    return current_value
-
-
-def validate_kwargs(obj: Any, kwargs: dict, class_name: str | None = None) -> None:
-    """Validate that no unexpected keyword arguments are present.
-
-    Uses ``inspect`` to get the actual ``__init__`` signature and filters out
-    any parameters that are not defined, while also handling the special case
-    of ``'kwargs'`` itself which can appear during deserialization.
-
-    Args:
-        obj: The object whose ``__init__`` to inspect.
-        kwargs: Dictionary of keyword arguments to validate.
-        class_name: Optional class name for error messages.
-            If *None*, uses ``obj.__class__.__name__``.
-
-    Raises:
-        TypeError: If unexpected keyword arguments are found
-    """
-    if not kwargs:
-        return
-
-    sig = inspect.signature(obj.__init__)
-    known_params = set(sig.parameters.keys()) - {'self', 'kwargs'}
-    extra_kwargs = {k: v for k, v in kwargs.items() if k not in known_params and k != 'kwargs'}
-
-    if extra_kwargs:
-        class_name = class_name or obj.__class__.__name__
-        unexpected_params = ', '.join(f"'{param}'" for param in extra_kwargs.keys())
-        raise TypeError(f'{class_name}.__init__() got unexpected keyword argument(s): {unexpected_params}')
-
-
 class Element:
-    """This class is the basic Element of flixopt. Every Element has an id."""
+    """Base class for all elements in flixopt. Provides IO, solution access, and id validation.
+
+    This is a plain class (not a dataclass). Subclasses (Effect, Bus, Flow, Component)
+    are @dataclass classes that declare their own fields including ``id``, ``meta_data``, etc.
+    """
 
     # Attributes that are serialized but set after construction (not passed to child __init__)
     # These are internal state populated during modeling, not user-facing parameters
     _deferred_init_attrs: ClassVar[set[str]] = {'_variable_names', '_constraint_names'}
-
-    def __init__(
-        self,
-        id: str | None = None,
-        meta_data: dict | None = None,
-        color: str | None = None,
-        _variable_names: list[str] | None = None,
-        _constraint_names: list[str] | None = None,
-        **kwargs,
-    ):
-        """
-        Args:
-            id: The id of the element
-            meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
-            color: Optional color for visualizations (e.g., '#FF6B6B'). If not provided, a color will be automatically assigned during FlowSystem.connect_and_transform().
-            _variable_names: Internal. Variable names for this element (populated after modeling).
-            _constraint_names: Internal. Constraint names for this element (populated after modeling).
-        """
-        id = handle_deprecated_kwarg(kwargs, 'label', 'id', id)
-        if id is None:
-            raise TypeError(f'{self.__class__.__name__}.__init__() requires an "id" argument.')
-        validate_kwargs(self, kwargs)
-        self._short_id: str = Element._valid_id(id)
-        self.meta_data = meta_data if meta_data is not None else {}
-        self.color = color
-        self._flow_system: FlowSystem | None = None
-        # Variable/constraint names - populated after modeling, serialized for results
-        self._variable_names: list[str] = _variable_names if _variable_names is not None else []
-        self._constraint_names: list[str] = _constraint_names if _constraint_names is not None else []
 
     @property
     def id(self) -> str:
