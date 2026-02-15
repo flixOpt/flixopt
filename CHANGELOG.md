@@ -62,13 +62,15 @@ Until here -->
 
 ### 💥 Breaking Changes
 
-- **`label` renamed to `id`**: All element constructors now use `id` instead of `label`. The old `label` parameter and `.label` / `.label_full` properties are deprecated and will be removed in v7.0.0. Use `.id` everywhere.
-- **`Flow` constructor redesigned**: `bus` is now the first positional argument; `flow_id` (optional) sets the short name, defaulting to the bus name. Old forms `Flow(label, bus)` and `Flow(label, bus=...)` still work with deprecation warnings.
+- **`label` renamed to `id`**: All element constructors now use `id` instead of `label`. The old `label` parameter and `.label` / `.label_full` properties are deprecated and will be removed in v8.0.0. Use `.id` everywhere.
+- **`Flow` constructor redesigned**: `bus` is now the first positional argument; `flow_id` (optional) sets the short name, defaulting to the bus name. Old forms `Flow(label, bus)` and `Flow(label, bus=...)` remain deprecated until v8.0.0.
 - **`Flow.id` returns qualified name**: `Flow.id` now returns `component(flow_id)` (e.g., `Boiler(Q_fu)`) instead of just the short name. Use `flow.flow_id` for the short name.
 - **`Flow.flow_id`**: New public property for the short flow identifier (e.g., `'Q_fu'`). This replaces the internal `_short_id` for Flow objects.
 - **Container classes replaced**: `FlowContainer`, `ElementContainer`, `ResultsContainer` replaced by `IdList`. `EffectCollection` and `CarrierContainer` now inherit from `IdList`. Access patterns (`[]`, `in`, `keys()`, `values()`, `items()`, `get()`) are preserved.
 
 ### 🗑️ Deprecated
+
+The following items are deprecated and will be removed in **v8.0.0**:
 
 - `Element(label=...)` — use `Element(id=...)` instead
 - `Flow(id=...)` — use `Flow(flow_id=...)` instead

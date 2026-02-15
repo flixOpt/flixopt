@@ -23,7 +23,7 @@ from tqdm import tqdm
 
 from . import io as fx_io
 from .components import Storage
-from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
+from .config import CONFIG, DEPRECATION_REMOVAL_V7, SUCCESS_LEVEL
 from .effects import PENALTY_EFFECT_ID
 from .results import Results, SegmentedResults
 from .structure import BusVarName, FlowVarName, StorageVarName
@@ -109,7 +109,7 @@ def _initialize_optimization_common(
     # normalize_weights is deprecated but kept for backwards compatibility
     if normalize_weights is not None:
         warnings.warn(
-            f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+            f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_V7}. '
             'Scenario weights are now always normalized when set on FlowSystem.\n',
             DeprecationWarning,
             stacklevel=3,
@@ -176,7 +176,7 @@ class Optimization:
         normalize_weights: bool = True,
     ):
         warnings.warn(
-            f'Optimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            f'Optimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_V7}. '
             'Use FlowSystem.optimize(solver) or FlowSystem.build_model() + FlowSystem.solve(solver) instead. '
             'Access results via FlowSystem.solution.',
             DeprecationWarning,
@@ -530,7 +530,7 @@ class SegmentedOptimization:
         folder: pathlib.Path | None = None,
     ):
         warnings.warn(
-            f'SegmentedOptimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            f'SegmentedOptimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_V7}. '
             'A replacement API for segmented optimization will be provided in a future release.',
             DeprecationWarning,
             stacklevel=2,

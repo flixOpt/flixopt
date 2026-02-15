@@ -103,9 +103,16 @@ class IdList(Generic[T]):
 
         # Short-key fallback
         if self._short_key_fn is not None:
-            for elem in self._data.values():
-                if self._short_key_fn(elem) == key:
-                    return elem
+            matches = [elem for elem in self._data.values() if self._short_key_fn(elem) == key]
+            if len(matches) == 1:
+                return matches[0]
+            if len(matches) > 1:
+                full_ids = [self._key_fn(elem) for elem in matches]
+                raise ValueError(
+                    f'Ambiguous short key {key!r} in {self._display_name}: '
+                    f'matches {len(matches)} elements: {full_ids}. '
+                    f'Use the full identifier to resolve the ambiguity.'
+                )
 
         # Error with suggestions
         self._raise_key_error(key)

@@ -19,7 +19,7 @@ import plotly.graph_objects as go
 import xarray as xr
 
 from .color_processing import ColorType, hex_to_rgba, process_colors
-from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
+from .config import CONFIG, DEPRECATION_REMOVAL_V7
 from .flow_system_status import FlowSystemStatus
 from .plot_result import PlotResult
 
@@ -689,7 +689,7 @@ class TopologyAccessor:
             and annotated with node information.
         """
         warnings.warn(
-            f'This method is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            f'This method is deprecated and will be removed in v{DEPRECATION_REMOVAL_V7}. '
             'Use flow_system.topology.plot() instead.',
             DeprecationWarning,
             stacklevel=2,

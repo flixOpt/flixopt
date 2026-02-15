@@ -29,7 +29,7 @@ import pandas as pd
 import xarray as xr
 
 from . import io as fx_io
-from .config import DEPRECATION_REMOVAL_VERSION
+from .config import DEPRECATION_REMOVAL_V8
 from .core import FlowSystemDimensions, TimeSeriesData, get_dataarray_stats
 from .id_list import IdList
 
@@ -1494,6 +1494,7 @@ class Interface:
         transform: callable = None,
         check_conflict: bool = True,
         additional_warning_message: str = '',
+        removal_version: str | None = None,
     ) -> Any:
         """
         Handle a deprecated keyword argument by issuing a warning and returning the appropriate value.
@@ -1510,6 +1511,7 @@ class Interface:
                 Note: For parameters with non-None default values (e.g., bool parameters with default=False),
                 set check_conflict=False since we cannot distinguish between an explicit value and the default.
             additional_warning_message: Add a custom message which gets appended with a line break to the default warning.
+            removal_version: Target removal version string. Defaults to DEPRECATION_REMOVAL_V8.
 
         Returns:
             The value to use (either from old parameter or current_value)
@@ -1530,10 +1532,13 @@ class Interface:
         """
         import warnings
 
+        if removal_version is None:
+            removal_version = DEPRECATION_REMOVAL_V8
+
         old_value = kwargs.pop(old_name, None)
         if old_value is not None:
             # Build base warning message
-            base_warning = f'The use of the "{old_name}" argument is deprecated. Use the "{new_name}" argument instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.'
+            base_warning = f'The use of the "{old_name}" argument is deprecated. Use the "{new_name}" argument instead. Will be removed in v{removal_version}.'
 
             # Append additional message on a new line if provided
             if additional_warning_message:
@@ -2039,13 +2044,13 @@ class Element(Interface):
 
     @id.setter
     def id(self, value: str) -> None:
-        self._short_id = value
+        self._short_id = Element._valid_id(value)
 
     @property
     def label(self) -> str:
         """Deprecated: Use ``id`` instead."""
         warnings.warn(
-            f'Accessing ".label" is deprecated. Use ".id" instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            f'Accessing ".label" is deprecated. Use ".id" instead. Will be removed in v{DEPRECATION_REMOVAL_V8}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -2054,7 +2059,7 @@ class Element(Interface):
     @label.setter
     def label(self, value: str) -> None:
         warnings.warn(
-            f'Setting ".label" is deprecated. Use ".id" instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            f'Setting ".label" is deprecated. Use ".id" instead. Will be removed in v{DEPRECATION_REMOVAL_V8}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -2064,7 +2069,7 @@ class Element(Interface):
     def label_full(self) -> str:
         """Deprecated: Use ``id`` instead."""
         warnings.warn(
-            f'Accessing ".label_full" is deprecated. Use ".id" instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            f'Accessing ".label_full" is deprecated. Use ".id" instead. Will be removed in v{DEPRECATION_REMOVAL_V8}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -2074,7 +2079,7 @@ class Element(Interface):
     def id_full(self) -> str:
         """Deprecated: Use ``id`` instead."""
         warnings.warn(
-            f'Accessing ".id_full" is deprecated. Use ".id" instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            f'Accessing ".id_full" is deprecated. Use ".id" instead. Will be removed in v{DEPRECATION_REMOVAL_V8}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -2155,7 +2160,7 @@ class Element(Interface):
     def _valid_label(label: str) -> str:
         """Deprecated: Use ``_valid_id`` instead."""
         warnings.warn(
-            f'_valid_label is deprecated. Use _valid_id instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            f'_valid_label is deprecated. Use _valid_id instead. Will be removed in v{DEPRECATION_REMOVAL_V8}.',
             DeprecationWarning,
             stacklevel=2,
         )

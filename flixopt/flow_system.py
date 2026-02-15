@@ -17,7 +17,7 @@ import xarray as xr
 from . import io as fx_io
 from .batched import BatchedAccessor
 from .components import Storage
-from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
+from .config import CONFIG, DEPRECATION_REMOVAL_V7
 from .core import (
     ConversionError,
     DataConverter,
@@ -230,13 +230,17 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             how many original timesteps each cluster represents. Multiply with timestep_duration
             for proper time aggregation in clustered models.
         scenario_independent_sizes: Controls whether investment sizes are equalized across scenarios.
-            - True: All sizes are shared/equalized across scenarios
+            Targets investable flows and storages (i.e. elements with ``InvestParameters``).
+            - True: All investable sizes are shared/equalized across scenarios
             - False: All sizes are optimized separately per scenario
-            - list[str]: Only specified components (by id) are equalized across scenarios
+            - list[str]: Only the specified investable flow/storage ids are equalized.
+              Use the qualified flow id format ``"Component(flow_id)"`` (e.g. ``["Boiler(Q_fu)", "Battery"]``).
         scenario_independent_flow_rates: Controls whether flow rates are equalized across scenarios.
+            Targets flow rate variables of individual flows.
             - True: All flow rates are shared/equalized across scenarios
             - False: All flow rates are optimized separately per scenario
-            - list[str]: Only specified flows (by id) are equalized across scenarios
+            - list[str]: Only the specified flow ids are equalized.
+              Use the qualified flow id format ``"Component(flow_id)"`` (e.g. ``["Grid(elec)"]``).
 
     Examples:
         Creating a FlowSystem and accessing elements:
@@ -614,7 +618,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             This method will be removed in v6.
         """
         warnings.warn(
-            f'from_old_results() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            f'from_old_results() is deprecated and will be removed in v{DEPRECATION_REMOVAL_V7}. '
             'This utility is only for migrating results from flixopt versions before v5.',
             DeprecationWarning,
             stacklevel=2,
@@ -682,7 +686,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             This method will be removed in v6.
         """
         warnings.warn(
-            f'from_old_dataset() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            f'from_old_dataset() is deprecated and will be removed in v{DEPRECATION_REMOVAL_V7}. '
             'This utility is only for migrating FlowSystems from flixopt versions before v5.',
             DeprecationWarning,
             stacklevel=2,
@@ -1101,7 +1105,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         if normalize_weights is not None:
             warnings.warn(
-                f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+                f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_V7}. '
                 'Scenario weights are now always normalized when set on FlowSystem.\n',
                 DeprecationWarning,
                 stacklevel=2,
@@ -1137,7 +1141,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         if normalize_weights is not None:
             warnings.warn(
-                f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+                f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_V7}. '
                 'Scenario weights are now always normalized when set on FlowSystem.\n',
                 DeprecationWarning,
                 stacklevel=2,
@@ -1599,7 +1603,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Visualizes the network structure of a FlowSystem using PyVis.
         """
         warnings.warn(
-            f'plot_network() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            f'plot_network() is deprecated and will be removed in v{DEPRECATION_REMOVAL_V7}. '
             'Use flow_system.topology.plot() instead.',
             DeprecationWarning,
             stacklevel=2,
@@ -1613,7 +1617,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Visualizes the network structure using Dash and Cytoscape.
         """
         warnings.warn(
-            f'start_network_app() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            f'start_network_app() is deprecated and will be removed in v{DEPRECATION_REMOVAL_V7}. '
             'Use flow_system.topology.start_app() instead.',
             DeprecationWarning,
             stacklevel=2,
@@ -1627,7 +1631,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Stop the network visualization server.
         """
         warnings.warn(
-            f'stop_network_app() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            f'stop_network_app() is deprecated and will be removed in v{DEPRECATION_REMOVAL_V7}. '
             'Use flow_system.topology.stop_app() instead.',
             DeprecationWarning,
             stacklevel=2,
@@ -1641,7 +1645,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         Get network topology information as dictionaries.
         """
         warnings.warn(
-            f'network_infos() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            f'network_infos() is deprecated and will be removed in v{DEPRECATION_REMOVAL_V7}. '
             'Use flow_system.topology.infos() instead.',
             DeprecationWarning,
             stacklevel=2,
@@ -2007,7 +2011,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             Dict mapping dimension names to coordinate arrays.
         """
         warnings.warn(
-            f'FlowSystem.coords is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            f'FlowSystem.coords is deprecated and will be removed in v{DEPRECATION_REMOVAL_V7}. '
             'Use FlowSystem.indexes instead.',
             DeprecationWarning,
             stacklevel=2,
@@ -2117,21 +2121,23 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     @property
     def scenario_independent_sizes(self) -> bool | list[str]:
-        """
-        Controls whether investment sizes are equalized across scenarios.
+        """Controls whether investment sizes are equalized across scenarios.
+
+        Targets investable flows and storages (i.e. elements with ``InvestParameters``).
 
         Returns:
-            bool or list[str]: Configuration for scenario-independent sizing
+            bool or list[str]: Configuration for scenario-independent sizing.
+                When a list, entries are qualified flow/storage ids, e.g. ``["Boiler(Q_fu)", "Battery"]``.
         """
         return self._scenario_independent_sizes
 
     @scenario_independent_sizes.setter
     def scenario_independent_sizes(self, value: bool | list[str]) -> None:
-        """
-        Set whether investment sizes should be equalized across scenarios.
+        """Set whether investment sizes should be equalized across scenarios.
 
         Args:
-            value: True (all equalized), False (all vary), or list of component id strings to equalize
+            value: True (all equalized), False (all vary), or list of investable
+                flow/storage ids to equalize (e.g. ``["Boiler(Q_fu)", "Battery"]``).
 
         Raises:
             TypeError: If value is not bool or list[str]
@@ -2142,21 +2148,23 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     @property
     def scenario_independent_flow_rates(self) -> bool | list[str]:
-        """
-        Controls whether flow rates are equalized across scenarios.
+        """Controls whether flow rates are equalized across scenarios.
+
+        Targets flow rate variables of individual flows.
 
         Returns:
-            bool or list[str]: Configuration for scenario-independent flow rates
+            bool or list[str]: Configuration for scenario-independent flow rates.
+                When a list, entries are qualified flow ids, e.g. ``["Grid(elec)"]``.
         """
         return self._scenario_independent_flow_rates
 
     @scenario_independent_flow_rates.setter
     def scenario_independent_flow_rates(self, value: bool | list[str]) -> None:
-        """
-        Set whether flow rates should be equalized across scenarios.
+        """Set whether flow rates should be equalized across scenarios.
 
         Args:
-            value: True (all equalized), False (all vary), or list of flow id strings to equalize
+            value: True (all equalized), False (all vary), or list of qualified
+                flow ids to equalize (e.g. ``["Grid(elec)"]``).
 
         Raises:
             TypeError: If value is not bool or list[str]
@@ -2204,7 +2212,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             xr.Dataset: Selected dataset
         """
         warnings.warn(
-            f'\n_dataset_sel() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+            f'\n_dataset_sel() is deprecated and will be removed in {DEPRECATION_REMOVAL_V7}. '
             'Use TransformAccessor._dataset_sel() instead.',
             DeprecationWarning,
             stacklevel=2,
@@ -2241,7 +2249,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             FlowSystem: New FlowSystem with selected data (no solution).
         """
         warnings.warn(
-            f'\nsel() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+            f'\nsel() is deprecated and will be removed in {DEPRECATION_REMOVAL_V7}. '
             'Use flow_system.transform.sel() instead.',
             DeprecationWarning,
             stacklevel=2,
@@ -2276,7 +2284,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             xr.Dataset: Selected dataset
         """
         warnings.warn(
-            f'\n_dataset_isel() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+            f'\n_dataset_isel() is deprecated and will be removed in {DEPRECATION_REMOVAL_V7}. '
             'Use TransformAccessor._dataset_isel() instead.',
             DeprecationWarning,
             stacklevel=2,
@@ -2313,7 +2321,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             FlowSystem: New FlowSystem with selected data (no solution).
         """
         warnings.warn(
-            f'\nisel() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+            f'\nisel() is deprecated and will be removed in {DEPRECATION_REMOVAL_V7}. '
             'Use flow_system.transform.isel() instead.',
             DeprecationWarning,
             stacklevel=2,
@@ -2350,7 +2358,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             xr.Dataset: Resampled dataset
         """
         warnings.warn(
-            f'\n_dataset_resample() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+            f'\n_dataset_resample() is deprecated and will be removed in {DEPRECATION_REMOVAL_V7}. '
             'Use TransformAccessor._dataset_resample() instead.',
             DeprecationWarning,
             stacklevel=2,
@@ -2382,7 +2390,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             Will be removed in v6.0.0.
         """
         warnings.warn(
-            f'\n_resample_by_dimension_groups() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+            f'\n_resample_by_dimension_groups() is deprecated and will be removed in {DEPRECATION_REMOVAL_V7}. '
             'Use TransformAccessor._resample_by_dimension_groups() instead.',
             DeprecationWarning,
             stacklevel=2,
@@ -2416,7 +2424,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             FlowSystem: New resampled FlowSystem (no solution).
         """
         warnings.warn(
-            f'\nresample() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+            f'\nresample() is deprecated and will be removed in {DEPRECATION_REMOVAL_V7}. '
             'Use flow_system.transform.resample() instead.',
             DeprecationWarning,
             stacklevel=2,

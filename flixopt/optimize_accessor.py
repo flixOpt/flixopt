@@ -112,10 +112,10 @@ class OptimizeAccessor:
         if normalize_weights is not None:
             import warnings
 
-            from .config import DEPRECATION_REMOVAL_VERSION
+            from .config import DEPRECATION_REMOVAL_V7
 
             warnings.warn(
-                f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+                f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_V7}. '
                 'Scenario weights are now always normalized when set on FlowSystem.\n',
                 DeprecationWarning,
                 stacklevel=2,

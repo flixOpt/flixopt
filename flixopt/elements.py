@@ -13,7 +13,7 @@ import pandas as pd
 import xarray as xr
 
 from . import io as fx_io
-from .config import CONFIG
+from .config import CONFIG, DEPRECATION_REMOVAL_V7
 from .core import PlausibilityError
 from .features import (
     MaskHelpers,
@@ -383,6 +383,7 @@ class Bus(Element):
                 'excess_penalty_per_flow_hour',
                 'imbalance_penalty_per_flow_hour',
                 imbalance_penalty_per_flow_hour,
+                removal_version=DEPRECATION_REMOVAL_V7,
             )
         self.carrier = carrier.lower() if carrier else None  # Store as lowercase string
         self.imbalance_penalty_per_flow_hour = imbalance_penalty_per_flow_hour
@@ -608,13 +609,13 @@ class Flow(Element):
         # --- Resolve positional args + deprecation bridge ---
         import warnings
 
-        from .config import DEPRECATION_REMOVAL_VERSION
+        from .config import DEPRECATION_REMOVAL_V8
 
         # Handle deprecated 'id' kwarg (use flow_id instead)
         if id is not None:
             warnings.warn(
                 f'Flow(id=...) is deprecated. Use Flow(flow_id=...) instead. '
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+                f'Will be removed in v{DEPRECATION_REMOVAL_V8}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -626,7 +627,7 @@ class Flow(Element):
             # Old API: Flow(label, bus)
             warnings.warn(
                 f'Flow(label, bus) positional form is deprecated. '
-                f'Use Flow(bus, flow_id=...) instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+                f'Use Flow(bus, flow_id=...) instead. Will be removed in v{DEPRECATION_REMOVAL_V8}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -639,7 +640,7 @@ class Flow(Element):
                 # Old API: Flow(label, bus=...)
                 warnings.warn(
                     f'Flow(label, bus=...) positional form is deprecated. '
-                    f'Use Flow(bus, flow_id=...) instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+                    f'Use Flow(bus, flow_id=...) instead. Will be removed in v{DEPRECATION_REMOVAL_V8}.',
                     DeprecationWarning,
                     stacklevel=2,
                 )
@@ -655,7 +656,7 @@ class Flow(Element):
         if label is not None:
             warnings.warn(
                 f'The "label" argument is deprecated. Use "flow_id" instead. '
-                f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+                f'Will be removed in v{DEPRECATION_REMOVAL_V8}.',
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -813,7 +814,7 @@ class Flow(Element):
 
     @flow_id.setter
     def flow_id(self, value: str) -> None:
-        self._short_id = value
+        self._short_id = self._valid_id(value)
 
     @property
     def id(self) -> str:
@@ -822,7 +823,7 @@ class Flow(Element):
 
     @id.setter
     def id(self, value: str) -> None:
-        self._short_id = value
+        self._short_id = self._valid_id(value)
 
     # =========================================================================
     # Type-Level Model Access (for FlowsModel integration)

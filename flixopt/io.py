@@ -1237,8 +1237,9 @@ def build_repr_from_init(
 
     Args:
         obj: The object to create repr for
-        excluded_params: Set of parameter names to exclude (e.g., {'self', 'inputs', 'outputs'})
-                        Default excludes 'self', 'id', and 'kwargs'
+        excluded_params: Set of parameter names to exclude (e.g., {'self', 'inputs', 'outputs'}).
+                        Default excludes 'self', 'id', 'label', and 'kwargs'.
+                        'label' is always excluded as a deprecated alias for 'id'.
         id_as_positional: If True and 'id' param exists, show it as first positional arg
         skip_default_size: Deprecated. Previously skipped size=CONFIG.Modeling.big, now size=None is default.
         label_as_positional: Deprecated alias for id_as_positional.

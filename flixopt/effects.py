@@ -216,8 +216,9 @@ class Effect(Element):
         self.description = description
         self.is_standard = is_standard
 
-        # Validate that Penalty cannot be set as objective
-        if is_objective and id == PENALTY_EFFECT_ID:
+        # Validate that Penalty cannot be set as objective (compare resolved self.id, not the id argument,
+        # so the check is not bypassed when a deprecated label is used with id=None)
+        if is_objective and self.id == PENALTY_EFFECT_ID:
             raise ValueError(
                 f'The Penalty effect ("{PENALTY_EFFECT_ID}") cannot be set as the objective effect. '
                 f'Please use a different effect as the optimization objective.'

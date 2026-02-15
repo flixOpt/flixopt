@@ -16,7 +16,7 @@ import xarray as xr
 from . import io as fx_io
 from . import plotting
 from .color_processing import process_colors
-from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
+from .config import CONFIG, DEPRECATION_REMOVAL_V7, DEPRECATION_REMOVAL_V8, SUCCESS_LEVEL
 from .flow_system import FlowSystem
 from .id_list import IdList
 from .model_coordinates import ModelCoordinates
@@ -97,9 +97,9 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
         name: Unique identifier for this optimization
         model: Original linopy optimization model (if available)
         folder: Directory path for result storage and loading
-        components: Dictionary mapping component ids to ComponentResults objects
-        buses: Dictionary mapping bus ids to BusResults objects
-        effects: Dictionary mapping effect ids to EffectResults objects
+        components: IdList mapping component ids to ComponentResults objects (supports short-key fallback)
+        buses: IdList mapping bus ids to BusResults objects (supports short-key fallback)
+        effects: IdList mapping effect ids to EffectResults objects (supports short-key fallback)
         timesteps_extra: Extended time index including boundary conditions
         timestep_duration: Duration of each timestep in hours for proper energy calculations
 
@@ -156,7 +156,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
 
     Design Patterns:
         **Factory Methods**: Use `from_file()` and `from_optimization()` for creation or access directly from `Optimization.results`
-        **Dictionary Access**: Use `results[element_id]` for element-specific results
+        **IdList Access**: Use `results[element_id]` for element-specific results (with short-key fallback)
         **Lazy Loading**: Results objects created on-demand for memory efficiency
         **Unified Interface**: Consistent API across different result types
 
@@ -238,7 +238,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             model: Linopy optimization model.
         """
         warnings.warn(
-            f'Results is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            f'Results is deprecated and will be removed in v{DEPRECATION_REMOVAL_V7}. '
             'Access results directly via FlowSystem.solution after optimization, or use the '
             '.plot accessor on FlowSystem and its components (e.g., flow_system.plot.heatmap(...)). '
             'To load old result files, use FlowSystem.from_old_results(folder, name).',
@@ -615,7 +615,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             'results.flow_rates() is deprecated. '
             'Use results.plot.all_flow_rates instead (returns Dataset, not DataArray). '
             'Note: The new API has no filtering parameters and uses flow ids as variable names. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            f'Will be removed in v{DEPRECATION_REMOVAL_V7}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -688,7 +688,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             'results.flow_hours() is deprecated. '
             'Use results.plot.all_flow_hours instead (returns Dataset, not DataArray). '
             'Note: The new API has no filtering parameters and uses flow ids as variable names. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            f'Will be removed in v{DEPRECATION_REMOVAL_V7}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -735,7 +735,7 @@ class Results(CompositeContainerMixin['ComponentResults | BusResults | EffectRes
             'results.sizes() is deprecated. '
             'Use results.plot.all_sizes instead (returns Dataset, not DataArray). '
             'Note: The new API has no filtering parameters and uses flow ids as variable names. '
-            f'Will be removed in v{DEPRECATION_REMOVAL_VERSION}.',
+            f'Will be removed in v{DEPRECATION_REMOVAL_V7}.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1299,7 +1299,7 @@ class _ElementResults:
     def label(self) -> str:
         """Deprecated. Use `.id` instead."""
         warnings.warn(
-            f'`label` is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. Use `.id` instead.',
+            f'`label` is deprecated and will be removed in v{DEPRECATION_REMOVAL_V8}. Use `.id` instead.',
             DeprecationWarning,
             stacklevel=2,
         )
@@ -2237,7 +2237,7 @@ class SegmentedResults:
         folder: pathlib.Path | None = None,
     ):
         warnings.warn(
-            f'SegmentedResults is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            f'SegmentedResults is deprecated and will be removed in v{DEPRECATION_REMOVAL_V7}. '
             'A replacement API for segmented optimization will be provided in a future release.',
             DeprecationWarning,
             stacklevel=2,
