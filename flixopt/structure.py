@@ -1591,36 +1591,9 @@ class Interface:
         - Recursive handling of complex nested structures
     """
 
-    # Class-level default for attribute set by link_to_flow_system()
-    # Provides type hint and default value without requiring __init__ in subclasses
+    # Class-level default for _flow_system, set directly during element registration.
+    # Provides type hint and default value without requiring __init__ in subclasses.
     _flow_system: FlowSystem | None = None
-
-    def link_to_flow_system(self, flow_system: FlowSystem) -> None:
-        """Link this interface and all nested interfaces to a FlowSystem.
-
-        This method is called automatically during element registration to enable
-        elements to access FlowSystem properties without passing the reference
-        through every method call.
-
-        Subclasses with nested Interface objects should override this method
-        to propagate the link to their nested interfaces by calling
-        `super().link_to_flow_system(flow_system)` first, then linking
-        nested objects.
-
-        Args:
-            flow_system: The FlowSystem to link to
-
-        Examples:
-            Override in a subclass with nested interfaces:
-
-            ```python
-            def link_to_flow_system(self, flow_system) -> None:
-                super().link_to_flow_system(flow_system)
-                if self.nested_interface is not None:
-                    self.nested_interface.link_to_flow_system(flow_system)
-            ```
-        """
-        self._flow_system = flow_system
 
     @property
     def flow_system(self) -> FlowSystem:

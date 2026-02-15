@@ -184,10 +184,6 @@ class LinearConverter(Component):
         self.conversion_factors = conversion_factors or []
         self.piecewise_conversion = piecewise_conversion
 
-    def link_to_flow_system(self, flow_system) -> None:
-        """Propagate flow_system reference to parent Component."""
-        super().link_to_flow_system(flow_system)
-
     @property
     def degrees_of_freedom(self):
         return len(self.inputs + self.outputs) - len(self.conversion_factors)
@@ -396,10 +392,6 @@ class Storage(Component):
         self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
         self.balanced = balanced
         self.cluster_mode = cluster_mode
-
-    def link_to_flow_system(self, flow_system) -> None:
-        """Propagate flow_system reference to parent Component."""
-        super().link_to_flow_system(flow_system)
 
     def __repr__(self) -> str:
         """Return string representation."""

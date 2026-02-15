@@ -183,12 +183,6 @@ class Component(Element):
         """All flows (inputs and outputs) as an IdList."""
         return self.inputs + self.outputs
 
-    def link_to_flow_system(self, flow_system) -> None:
-        """Propagate flow_system reference to nested Interface objects and flows."""
-        super().link_to_flow_system(flow_system)
-        for flow in self.flows.values():
-            flow.link_to_flow_system(flow_system)
-
     def _propagate_status_parameters(self) -> None:
         """Propagate status parameters from this component to flows that need them.
 
@@ -354,12 +348,6 @@ class Bus(Element):
     def flows(self) -> IdList:
         """All flows (inputs and outputs) as an IdList."""
         return self.inputs + self.outputs
-
-    def link_to_flow_system(self, flow_system) -> None:
-        """Propagate flow_system reference to nested flows."""
-        super().link_to_flow_system(flow_system)
-        for flow in self.flows.values():
-            flow.link_to_flow_system(flow_system)
 
     @property
     def allows_imbalance(self) -> bool:
@@ -635,10 +623,6 @@ class Flow(Element):
                 f'This is no longer supported. Add the Bus to the FlowSystem and pass its id (string) to the Flow.'
             )
         self.bus = bus
-
-    def link_to_flow_system(self, flow_system) -> None:
-        """Propagate flow_system reference to nested Interface objects."""
-        super().link_to_flow_system(flow_system)
 
     @property
     def flow_id(self) -> str:

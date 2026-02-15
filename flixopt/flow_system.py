@@ -1703,7 +1703,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if self.effects._penalty_effect is None:
             penalty = self.effects._create_penalty_effect()
             if penalty._flow_system is None:
-                penalty.link_to_flow_system(self)
+                penalty._flow_system = self
 
     def _run_validation(self) -> None:
         """Run all validation through batched *Data classes.
@@ -1751,12 +1751,12 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     def _add_effects(self, *args: Effect) -> None:
         for effect in args:
-            effect.link_to_flow_system(self)  # Link element to FlowSystem
+            effect._flow_system = self
         self.effects.add_effects(*args)
 
     def _add_components(self, *components: Component) -> None:
         for new_component in list(components):
-            new_component.link_to_flow_system(self)  # Link element to FlowSystem
+            new_component._flow_system = self
             self.components.add(new_component)  # Add to existing components
         # Invalidate cache once after all additions
         if components:
@@ -1765,7 +1765,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
     def _add_buses(self, *buses: Bus):
         for new_bus in list(buses):
-            new_bus.link_to_flow_system(self)  # Link element to FlowSystem
+            new_bus._flow_system = self
             self.buses.add(new_bus)  # Add to existing buses
         # Invalidate cache once after all additions
         if buses:
@@ -1776,6 +1776,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """Connects the network of components and buses. Can be rerun without changes if no elements were added"""
         for component in self.components.values():
             for flow in component.flows.values():
+                flow._flow_system = self
                 flow.component = component.id
                 flow.is_input_in_component = flow.id in component.inputs
 
