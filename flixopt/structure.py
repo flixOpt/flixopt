@@ -677,6 +677,307 @@ def register_class_for_io(cls):
     return cls
 
 
+# =============================================================================
+# Standalone Serialization Functions (path-based DataArray naming)
+# =============================================================================
+
+
+def create_reference_structure(obj, path_prefix: str = '') -> tuple[dict, dict[str, xr.DataArray]]:
+    """Extract DataArrays from any registered object, using path-based keys.
+
+    Replaces the old Interface._create_reference_structure() method. Works with
+    any object whose class is in CLASS_REGISTRY, any dataclass, or any object
+    with an inspectable ``__init__``.
+
+    DataArray keys are deterministic paths built from the object hierarchy:
+    ``element_id.param_name`` for top-level, ``element_id.param.sub_param`` for nested.
+
+    Args:
+        obj: Object to serialize.
+        path_prefix: Path prefix for DataArray keys (e.g., ``'components.Boiler'``).
+
+    Returns:
+        Tuple of (reference_structure dict, extracted_arrays dict).
+    """
+    structure: dict[str, Any] = {'__class__': obj.__class__.__name__}
+    all_arrays: dict[str, xr.DataArray] = {}
+
+    params = _get_serializable_params(obj)
+
+    for name, value in params.items():
+        if value is None:
+            continue
+        if isinstance(value, pd.Index):
+            logger.debug(f'Skipping {name=} because it is an Index')
+            continue
+
+        param_path = f'{path_prefix}.{name}' if path_prefix else name
+        processed, arrays = _extract_recursive(value, param_path)
+        all_arrays.update(arrays)
+        if processed is not None and not _is_empty(processed):
+            structure[name] = processed
+
+    # Handle deferred attrs (e.g., _variable_names on Element)
+    for attr_name in getattr(obj.__class__, '_deferred_init_attrs', set()):
+        value = getattr(obj, attr_name, None)
+        if value:
+            structure[attr_name] = value
+
+    return structure, all_arrays
+
+
+def _extract_recursive(obj: Any, path: str) -> tuple[Any, dict[str, xr.DataArray]]:
+    """Recursively extract DataArrays, using *path* as the array key.
+
+    Handles DataArrays, registered classes, plain dataclasses, dicts, lists,
+    tuples, sets, IdList, and scalar/basic types.
+    """
+    arrays: dict[str, xr.DataArray] = {}
+
+    if isinstance(obj, xr.DataArray):
+        arrays[path] = obj.rename(path)
+        return f':::{path}', arrays
+
+    if obj.__class__.__name__ in CLASS_REGISTRY:
+        # Registered class — recurse with path prefix
+        return create_reference_structure(obj, path_prefix=path)
+
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        structure: dict[str, Any] = {'__class__': obj.__class__.__name__}
+        for field in dataclasses.fields(obj):
+            value = getattr(obj, field.name)
+            if value is None:
+                continue
+            processed, field_arrays = _extract_recursive(value, f'{path}.{field.name}')
+            arrays.update(field_arrays)
+            if processed is not None and not _is_empty(processed):
+                structure[field.name] = processed
+        return structure, arrays
+
+    if isinstance(obj, IdList):
+        processed_dict: dict[str, Any] = {}
+        for key, value in obj.items():
+            p, a = _extract_recursive(value, f'{path}.{key}')
+            arrays.update(a)
+            processed_dict[key] = p
+        return processed_dict, arrays
+
+    if isinstance(obj, dict):
+        processed_dict = {}
+        for key, value in obj.items():
+            p, a = _extract_recursive(value, f'{path}.{key}')
+            arrays.update(a)
+            processed_dict[key] = p
+        return processed_dict, arrays
+
+    if isinstance(obj, (list, tuple)):
+        processed_list: list[Any] = []
+        for i, item in enumerate(obj):
+            p, a = _extract_recursive(item, f'{path}.{i}')
+            arrays.update(a)
+            processed_list.append(p)
+        return processed_list, arrays
+
+    if isinstance(obj, set):
+        processed_list = []
+        for i, item in enumerate(obj):
+            p, a = _extract_recursive(item, f'{path}.{i}')
+            arrays.update(a)
+            processed_list.append(p)
+        return processed_list, arrays
+
+    # Scalar / basic type
+    return _to_basic_type(obj), arrays
+
+
+def _get_serializable_params(obj) -> dict[str, Any]:
+    """Get name->value pairs for serialization from ``__init__`` parameters."""
+    params: dict[str, Any] = {}
+    _skip = {'self', 'label', 'label_as_positional', 'args', 'kwargs'}
+
+    sig = inspect.signature(obj.__init__)
+    # On Flow, 'id' is deprecated in favor of 'flow_id'
+    if 'flow_id' in sig.parameters:
+        _skip.add('id')
+
+    for name in sig.parameters:
+        if name in _skip:
+            continue
+        if name in ('id', 'flow_id') and hasattr(obj, '_short_id'):
+            params[name] = obj._short_id
+        else:
+            params[name] = getattr(obj, name, None)
+    return params
+
+
+def _to_basic_type(obj: Any) -> Any:
+    """Convert a single value to a JSON-compatible basic Python type."""
+    if obj is None or isinstance(obj, (str, int, float, bool)):
+        return obj
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return float(obj)
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, (np.ndarray, pd.Series, pd.DataFrame)):
+        return obj.tolist() if hasattr(obj, 'tolist') else list(obj)
+    if isinstance(obj, dict):
+        return {k: _to_basic_type(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_to_basic_type(item) for item in obj]
+    if isinstance(obj, set):
+        return [_to_basic_type(item) for item in obj]
+    if hasattr(obj, 'isoformat'):
+        return obj.isoformat()
+    if hasattr(obj, '__dict__'):
+        logger.warning(f'Converting custom object {type(obj)} to dict representation: {obj}')
+        return {str(k): _to_basic_type(v) for k, v in obj.__dict__.items()}
+    logger.error(f'Converting unknown type {type(obj)} to string: {obj}')
+    return str(obj)
+
+
+def _is_empty(obj: Any) -> bool:
+    """Check if object is an empty container (dict, list, tuple, set)."""
+    return isinstance(obj, (dict, list, tuple, set)) and len(obj) == 0
+
+
+def resolve_reference_structure(structure: Any, arrays_dict: dict[str, xr.DataArray]) -> Any:
+    """Resolve a reference structure back to actual objects.
+
+    Standalone replacement for ``Interface._resolve_reference_structure``.
+    Handles ``:::path`` DataArray references, registered classes, lists, and dicts.
+
+    Args:
+        structure: Structure containing ``:::path`` references or ``__class__`` markers.
+        arrays_dict: Dictionary mapping path keys to DataArrays.
+
+    Returns:
+        Resolved structure with DataArrays and reconstructed objects.
+    """
+    # Handle DataArray references
+    if isinstance(structure, str) and structure.startswith(':::'):
+        return _resolve_dataarray_reference(structure, arrays_dict)
+
+    if isinstance(structure, list):
+        resolved_list = []
+        for item in structure:
+            resolved_item = resolve_reference_structure(item, arrays_dict)
+            if resolved_item is not None:
+                resolved_list.append(resolved_item)
+        return resolved_list
+
+    if isinstance(structure, dict):
+        if structure.get('__class__'):
+            class_name = structure['__class__']
+            if class_name not in CLASS_REGISTRY:
+                raise ValueError(
+                    f"Class '{class_name}' not found in CLASS_REGISTRY. "
+                    f'Available classes: {list(CLASS_REGISTRY.keys())}'
+                )
+
+            nested_class = CLASS_REGISTRY[class_name]
+            nested_data = {k: v for k, v in structure.items() if k != '__class__'}
+            resolved_nested_data = resolve_reference_structure(nested_data, arrays_dict)
+
+            try:
+                init_params = set(inspect.signature(nested_class.__init__).parameters.keys())
+
+                # Handle deferred init attributes
+                deferred_attr_names = getattr(nested_class, '_deferred_init_attrs', set())
+                deferred_attrs = {k: v for k, v in resolved_nested_data.items() if k in deferred_attr_names}
+                constructor_data = {k: v for k, v in resolved_nested_data.items() if k not in deferred_attr_names}
+
+                # Handle renamed parameters from old serialized data
+                if 'label' in constructor_data and 'label' not in init_params:
+                    new_key = 'flow_id' if 'flow_id' in init_params else 'id'
+                    constructor_data[new_key] = constructor_data.pop('label')
+                if 'id' in constructor_data and 'id' not in init_params and 'flow_id' in init_params:
+                    constructor_data['flow_id'] = constructor_data.pop('id')
+
+                # Check for unknown parameters
+                unknown_params = set(constructor_data.keys()) - init_params
+                if unknown_params:
+                    raise TypeError(
+                        f'{class_name}.__init__() got unexpected keyword arguments: {unknown_params}. '
+                        f'This may indicate renamed parameters that need conversion. '
+                        f'Valid parameters are: {init_params - {"self"}}'
+                    )
+
+                instance = nested_class(**constructor_data)
+
+                for attr_name, attr_value in deferred_attrs.items():
+                    setattr(instance, attr_name, attr_value)
+
+                return instance
+            except TypeError as e:
+                raise ValueError(f'Failed to create instance of {class_name}: {e}') from e
+            except Exception as e:
+                raise ValueError(f'Failed to create instance of {class_name}: {e}') from e
+        else:
+            # Regular dictionary
+            resolved_dict = {}
+            for key, value in structure.items():
+                resolved_value = resolve_reference_structure(value, arrays_dict)
+                if resolved_value is not None or value is None:
+                    resolved_dict[key] = resolved_value
+            return resolved_dict
+
+    return structure
+
+
+def _resolve_dataarray_reference(reference: str, arrays_dict: dict[str, xr.DataArray]) -> xr.DataArray | TimeSeriesData:
+    """Resolve a single ``:::path`` DataArray reference.
+
+    Args:
+        reference: Reference string starting with ``:::``.
+        arrays_dict: Dictionary of available DataArrays.
+
+    Returns:
+        Resolved DataArray or TimeSeriesData object.
+    """
+    array_name = reference[3:]
+    if array_name not in arrays_dict:
+        raise ValueError(f"Referenced DataArray '{array_name}' not found in dataset")
+
+    array = arrays_dict[array_name]
+
+    # Handle null values with warning
+    has_nulls = (np.issubdtype(array.dtype, np.floating) and np.any(np.isnan(array.values))) or (
+        array.dtype == object and pd.isna(array.values).any()
+    )
+    if has_nulls:
+        logger.error(f"DataArray '{array_name}' contains null values. Dropping all-null along present dims.")
+        if 'time' in array.dims:
+            array = array.dropna(dim='time', how='all')
+
+    if TimeSeriesData.is_timeseries_data(array):
+        return TimeSeriesData.from_dataarray(array)
+
+    return array
+
+
+def obj_to_dataset(obj, path_prefix: str = '') -> xr.Dataset:
+    """Convert an object to an xr.Dataset using path-based DataArray keys.
+
+    High-level convenience wrapper around :func:`create_reference_structure`.
+    """
+    structure, arrays = create_reference_structure(obj, path_prefix)
+    return xr.Dataset(arrays, attrs=structure)
+
+
+def obj_from_dataset(ds: xr.Dataset):
+    """Recreate an object from an xr.Dataset produced by :func:`obj_to_dataset`.
+
+    High-level convenience wrapper around :func:`resolve_reference_structure`.
+    """
+    structure = dict(ds.attrs)
+    arrays = {name: ds[name] for name in ds.data_vars}
+    class_name = structure.pop('__class__')
+    resolved = resolve_reference_structure(structure, arrays)
+    return CLASS_REGISTRY[class_name](**resolved)
+
+
 class _BuildTimer:
     """Simple timing helper for build_model profiling."""
 
@@ -1279,172 +1580,14 @@ class Interface:
         return self._flow_system
 
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
-        """
-        Convert all DataArrays to references and extract them.
-        This is the core method that both to_dict() and to_dataset() build upon.
+        """Convert all DataArrays to references and extract them.
+
+        Delegates to the standalone :func:`create_reference_structure`.
 
         Returns:
             Tuple of (reference_structure, extracted_arrays_dict)
-
-        Raises:
-            ValueError: If DataArrays don't have unique names or are duplicated
         """
-        # Get constructor parameters using caching for performance
-        if not hasattr(self, '_cached_init_params'):
-            self._cached_init_params = list(inspect.signature(self.__init__).parameters.keys())
-
-        # Process all constructor parameters
-        reference_structure = {'__class__': self.__class__.__name__}
-        all_extracted_arrays = {}
-
-        # Deprecated init params that should not be serialized (they alias other params)
-        _deprecated_init_params = {'label', 'label_as_positional'}
-        # On Flow, 'id' is deprecated in favor of 'flow_id'
-        if 'flow_id' in self._cached_init_params:
-            _deprecated_init_params.add('id')
-
-        for name in self._cached_init_params:
-            if name == 'self' or name in _deprecated_init_params:
-                continue
-
-            # For 'id' or 'flow_id' param, use _short_id to get the raw constructor value
-            # (Flow.id property returns qualified name, but constructor expects short name)
-            if name in ('id', 'flow_id') and hasattr(self, '_short_id'):
-                value = self._short_id
-            else:
-                value = getattr(self, name, None)
-
-            if value is None:
-                continue
-            if isinstance(value, pd.Index):
-                logger.debug(f'Skipping {name=} because it is an Index')
-                continue
-
-            # Extract arrays and get reference structure
-            processed_value, extracted_arrays = self._extract_dataarrays_recursive(value, name)
-
-            # Check for array name conflicts
-            conflicts = set(all_extracted_arrays.keys()) & set(extracted_arrays.keys())
-            if conflicts:
-                raise ValueError(
-                    f'DataArray name conflicts detected: {conflicts}. '
-                    f'Each DataArray must have a unique name for serialization.'
-                )
-
-            # Add extracted arrays to the collection
-            all_extracted_arrays.update(extracted_arrays)
-
-            # Only store in structure if it's not None/empty after processing
-            if processed_value is not None and not self._is_empty_container(processed_value):
-                reference_structure[name] = processed_value
-
-        return reference_structure, all_extracted_arrays
-
-    @staticmethod
-    def _is_empty_container(obj) -> bool:
-        """Check if object is an empty container (dict, list, tuple, set)."""
-        return isinstance(obj, (dict, list, tuple, set)) and len(obj) == 0
-
-    def _extract_dataarrays_recursive(self, obj, context_name: str = '') -> tuple[Any, dict[str, xr.DataArray]]:
-        """
-        Recursively extract DataArrays from nested structures.
-
-        Args:
-            obj: Object to process
-            context_name: Name context for better error messages
-
-        Returns:
-            Tuple of (processed_object_with_references, extracted_arrays_dict)
-
-        Raises:
-            ValueError: If DataArrays don't have unique names
-        """
-        extracted_arrays = {}
-
-        # Handle DataArrays directly - use their unique name
-        if isinstance(obj, xr.DataArray):
-            if not obj.name:
-                # Use context name as fallback (e.g. attribute path) if no explicit name
-                obj = obj.rename(context_name)
-
-            array_name = str(obj.name)  # Ensure string type
-            if array_name in extracted_arrays:
-                raise ValueError(
-                    f'DataArray name "{array_name}" is duplicated in {context_name}. '
-                    f'Each DataArray must have a unique name for serialization.'
-                )
-
-            extracted_arrays[array_name] = obj
-            return f':::{array_name}', extracted_arrays
-
-        # Handle Interface objects - extract their DataArrays too
-        elif isinstance(obj, Interface):
-            try:
-                interface_structure, interface_arrays = obj._create_reference_structure()
-                extracted_arrays.update(interface_arrays)
-                return interface_structure, extracted_arrays
-            except Exception as e:
-                raise ValueError(f'Failed to process nested Interface object in {context_name}: {e}') from e
-
-        # Handle plain dataclasses (not Interface) - serialize via fields
-        elif dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-            structure = {'__class__': obj.__class__.__name__}
-            arrays = {}
-            for field in dataclasses.fields(obj):
-                value = getattr(obj, field.name)
-                if value is None:
-                    continue
-                field_context = f'{context_name}.{field.name}' if context_name else field.name
-                processed, field_arrays = self._extract_dataarrays_recursive(value, field_context)
-                if processed is not None and not self._is_empty_container(processed):
-                    structure[field.name] = processed
-                arrays.update(field_arrays)
-            extracted_arrays.update(arrays)
-            return structure, extracted_arrays
-
-        # Handle sequences (lists, tuples)
-        elif isinstance(obj, (list, tuple)):
-            processed_items = []
-            for i, item in enumerate(obj):
-                item_context = f'{context_name}[{i}]' if context_name else f'item[{i}]'
-                processed_item, nested_arrays = self._extract_dataarrays_recursive(item, item_context)
-                extracted_arrays.update(nested_arrays)
-                processed_items.append(processed_item)
-            return processed_items, extracted_arrays
-
-        # Handle IdList containers (treat as dict for serialization)
-        elif isinstance(obj, IdList):
-            processed_dict = {}
-            for key, value in obj.items():
-                key_context = f'{context_name}.{key}' if context_name else str(key)
-                processed_value, nested_arrays = self._extract_dataarrays_recursive(value, key_context)
-                extracted_arrays.update(nested_arrays)
-                processed_dict[key] = processed_value
-            return processed_dict, extracted_arrays
-
-        # Handle dictionaries
-        elif isinstance(obj, dict):
-            processed_dict = {}
-            for key, value in obj.items():
-                key_context = f'{context_name}.{key}' if context_name else str(key)
-                processed_value, nested_arrays = self._extract_dataarrays_recursive(value, key_context)
-                extracted_arrays.update(nested_arrays)
-                processed_dict[key] = processed_value
-            return processed_dict, extracted_arrays
-
-        # Handle sets (convert to list for JSON compatibility)
-        elif isinstance(obj, set):
-            processed_items = []
-            for i, item in enumerate(obj):
-                item_context = f'{context_name}.set_item[{i}]' if context_name else f'set_item[{i}]'
-                processed_item, nested_arrays = self._extract_dataarrays_recursive(item, item_context)
-                extracted_arrays.update(nested_arrays)
-                processed_items.append(processed_item)
-            return processed_items, extracted_arrays
-
-        # For all other types, serialize to basic types
-        else:
-            return self._serialize_to_basic_types(obj), extracted_arrays
+        return create_reference_structure(self)
 
     def _handle_deprecated_kwarg(
         self,
@@ -1580,170 +1723,19 @@ class Interface:
     def _resolve_dataarray_reference(
         cls, reference: str, arrays_dict: dict[str, xr.DataArray]
     ) -> xr.DataArray | TimeSeriesData:
+        """Resolve a single ``:::path`` DataArray reference.
+
+        Delegates to standalone :func:`_resolve_dataarray_reference`.
         """
-        Resolve a single DataArray reference (:::name) to actual DataArray or TimeSeriesData.
-
-        Args:
-            reference: Reference string starting with ":::"
-            arrays_dict: Dictionary of available DataArrays
-
-        Returns:
-            Resolved DataArray or TimeSeriesData object
-
-        Raises:
-            ValueError: If referenced array is not found
-        """
-        array_name = reference[3:]  # Remove ":::" prefix
-        if array_name not in arrays_dict:
-            raise ValueError(f"Referenced DataArray '{array_name}' not found in dataset")
-
-        array = arrays_dict[array_name]
-
-        # Handle null values with warning (use numpy for performance - 200x faster than xarray)
-        has_nulls = (np.issubdtype(array.dtype, np.floating) and np.any(np.isnan(array.values))) or (
-            array.dtype == object and pd.isna(array.values).any()
-        )
-        if has_nulls:
-            logger.error(f"DataArray '{array_name}' contains null values. Dropping all-null along present dims.")
-            if 'time' in array.dims:
-                array = array.dropna(dim='time', how='all')
-
-        # Check if this should be restored as TimeSeriesData
-        if TimeSeriesData.is_timeseries_data(array):
-            return TimeSeriesData.from_dataarray(array)
-
-        return array
+        return _resolve_dataarray_reference(reference, arrays_dict)
 
     @classmethod
     def _resolve_reference_structure(cls, structure, arrays_dict: dict[str, xr.DataArray]):
+        """Resolve reference structure back to objects.
+
+        Delegates to standalone :func:`resolve_reference_structure`.
         """
-        Convert reference structure back to actual objects using provided arrays.
-
-        Args:
-            structure: Structure containing references (:::name) or special type markers
-            arrays_dict: Dictionary of available DataArrays
-
-        Returns:
-            Structure with references resolved to actual DataArrays or objects
-
-        Raises:
-            ValueError: If referenced arrays are not found or class is not registered
-        """
-        # Handle DataArray references
-        if isinstance(structure, str) and structure.startswith(':::'):
-            return cls._resolve_dataarray_reference(structure, arrays_dict)
-
-        elif isinstance(structure, list):
-            resolved_list = []
-            for item in structure:
-                resolved_item = cls._resolve_reference_structure(item, arrays_dict)
-                if resolved_item is not None:  # Filter out None values from missing references
-                    resolved_list.append(resolved_item)
-            return resolved_list
-
-        elif isinstance(structure, dict):
-            if structure.get('__class__'):
-                class_name = structure['__class__']
-                if class_name not in CLASS_REGISTRY:
-                    raise ValueError(
-                        f"Class '{class_name}' not found in CLASS_REGISTRY. "
-                        f'Available classes: {list(CLASS_REGISTRY.keys())}'
-                    )
-
-                # This is a nested Interface object - restore it recursively
-                nested_class = CLASS_REGISTRY[class_name]
-                # Remove the __class__ key and process the rest
-                nested_data = {k: v for k, v in structure.items() if k != '__class__'}
-                # Resolve references in the nested data
-                resolved_nested_data = cls._resolve_reference_structure(nested_data, arrays_dict)
-
-                try:
-                    # Get valid constructor parameters for this class
-                    init_params = set(inspect.signature(nested_class.__init__).parameters.keys())
-
-                    # Check for deferred init attributes (defined as class attribute on Element subclasses)
-                    # These are serialized but set after construction, not passed to child __init__
-                    deferred_attr_names = getattr(nested_class, '_deferred_init_attrs', set())
-                    deferred_attrs = {k: v for k, v in resolved_nested_data.items() if k in deferred_attr_names}
-                    constructor_data = {k: v for k, v in resolved_nested_data.items() if k not in deferred_attr_names}
-
-                    # Handle renamed parameters from old serialized data
-                    if 'label' in constructor_data and 'label' not in init_params:
-                        # label → id for most elements, label → flow_id for Flow
-                        new_key = 'flow_id' if 'flow_id' in init_params else 'id'
-                        constructor_data[new_key] = constructor_data.pop('label')
-                    if 'id' in constructor_data and 'id' not in init_params and 'flow_id' in init_params:
-                        # id → flow_id for Flow (from recently serialized data)
-                        constructor_data['flow_id'] = constructor_data.pop('id')
-
-                    # Check for unknown parameters - these could be typos or renamed params
-                    unknown_params = set(constructor_data.keys()) - init_params
-                    if unknown_params:
-                        raise TypeError(
-                            f'{class_name}.__init__() got unexpected keyword arguments: {unknown_params}. '
-                            f'This may indicate renamed parameters that need conversion. '
-                            f'Valid parameters are: {init_params - {"self"}}'
-                        )
-
-                    # Create instance with constructor parameters
-                    instance = nested_class(**constructor_data)
-
-                    # Set internal attributes after construction
-                    for attr_name, attr_value in deferred_attrs.items():
-                        setattr(instance, attr_name, attr_value)
-
-                    return instance
-                except TypeError as e:
-                    raise ValueError(f'Failed to create instance of {class_name}: {e}') from e
-                except Exception as e:
-                    raise ValueError(f'Failed to create instance of {class_name}: {e}') from e
-            else:
-                # Regular dictionary - resolve references in values
-                resolved_dict = {}
-                for key, value in structure.items():
-                    resolved_value = cls._resolve_reference_structure(value, arrays_dict)
-                    if resolved_value is not None or value is None:  # Keep None values if they were originally None
-                        resolved_dict[key] = resolved_value
-                return resolved_dict
-
-        else:
-            return structure
-
-    def _serialize_to_basic_types(self, obj):
-        """
-        Convert object to basic Python types only (no DataArrays, no custom objects).
-
-        Args:
-            obj: Object to serialize
-
-        Returns:
-            Object converted to basic Python types (str, int, float, bool, list, dict)
-        """
-        if obj is None or isinstance(obj, (str, int, float, bool)):
-            return obj
-        elif isinstance(obj, np.integer):
-            return int(obj)
-        elif isinstance(obj, np.floating):
-            return float(obj)
-        elif isinstance(obj, np.bool_):
-            return bool(obj)
-        elif isinstance(obj, (np.ndarray, pd.Series, pd.DataFrame)):
-            return obj.tolist() if hasattr(obj, 'tolist') else list(obj)
-        elif isinstance(obj, dict):
-            return {k: self._serialize_to_basic_types(v) for k, v in obj.items()}
-        elif isinstance(obj, (list, tuple)):
-            return [self._serialize_to_basic_types(item) for item in obj]
-        elif isinstance(obj, set):
-            return [self._serialize_to_basic_types(item) for item in obj]
-        elif hasattr(obj, 'isoformat'):  # datetime objects
-            return obj.isoformat()
-        elif hasattr(obj, '__dict__'):  # Custom objects with attributes
-            logger.warning(f'Converting custom object {type(obj)} to dict representation: {obj}')
-            return {str(k): self._serialize_to_basic_types(v) for k, v in obj.__dict__.items()}
-        else:
-            # For any other object, try to convert to string as fallback
-            logger.error(f'Converting unknown type {type(obj)} to string: {obj}')
-            return str(obj)
+        return resolve_reference_structure(structure, arrays_dict)
 
     def to_dataset(self) -> xr.Dataset:
         """
@@ -2067,23 +2059,6 @@ class Element(Interface):
                     break
             data_vars[var_name] = var
         return xr.Dataset(data_vars)
-
-    def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
-        """
-        Override to include _variable_names and _constraint_names in serialization.
-
-        These attributes are defined in Element but may not be in subclass constructors,
-        so we need to add them explicitly.
-        """
-        reference_structure, all_extracted_arrays = super()._create_reference_structure()
-
-        # Always include variable/constraint names for solution access after loading
-        if self._variable_names:
-            reference_structure['_variable_names'] = self._variable_names
-        if self._constraint_names:
-            reference_structure['_constraint_names'] = self._constraint_names
-
-        return reference_structure, all_extracted_arrays
 
     def __repr__(self) -> str:
         """Return string representation."""

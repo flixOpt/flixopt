@@ -35,6 +35,7 @@ from .structure import (
     Element,
     FlowSystemModel,
     Interface,
+    create_reference_structure,
 )
 from .topology_accessor import TopologyAccessor
 from .transform_accessor import TransformAccessor
@@ -396,37 +397,39 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """
         Override Interface method to handle FlowSystem-specific serialization.
-        Combines custom FlowSystem logic with Interface pattern for nested objects.
+
+        Uses path-based DataArray keys via standalone ``create_reference_structure``:
+        ``components.{id}.param``, ``buses.{id}.param``, ``effects.{id}.param``.
 
         Returns:
             Tuple of (reference_structure, extracted_arrays_dict)
         """
-        # Start with Interface base functionality for constructor parameters
-        reference_structure, all_extracted_arrays = super()._create_reference_structure()
+        # Start with standalone function for FlowSystem's own constructor params
+        reference_structure, all_extracted_arrays = create_reference_structure(self)
 
         # Remove timesteps, as it's directly stored in dataset index
         reference_structure.pop('timesteps', None)
 
-        # Extract from components
+        # Extract from components with path prefix
         components_structure = {}
         for comp_id, component in self.components.items():
-            comp_structure, comp_arrays = component._create_reference_structure()
+            comp_structure, comp_arrays = create_reference_structure(component, f'components.{comp_id}')
             all_extracted_arrays.update(comp_arrays)
             components_structure[comp_id] = comp_structure
         reference_structure['components'] = components_structure
 
-        # Extract from buses
+        # Extract from buses with path prefix
         buses_structure = {}
         for bus_id, bus in self.buses.items():
-            bus_structure, bus_arrays = bus._create_reference_structure()
+            bus_structure, bus_arrays = create_reference_structure(bus, f'buses.{bus_id}')
             all_extracted_arrays.update(bus_arrays)
             buses_structure[bus_id] = bus_structure
         reference_structure['buses'] = buses_structure
 
-        # Extract from effects
+        # Extract from effects with path prefix
         effects_structure = {}
         for effect in self.effects.values():
-            effect_structure, effect_arrays = effect._create_reference_structure()
+            effect_structure, effect_arrays = create_reference_structure(effect, f'effects.{effect.id}')
             all_extracted_arrays.update(effect_arrays)
             effects_structure[effect.id] = effect_structure
         reference_structure['effects'] = effects_structure

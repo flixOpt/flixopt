@@ -27,6 +27,40 @@ if TYPE_CHECKING:
     from .flow_system import FlowSystem
     from .types import Numeric_TPS
 
+# Lazy imports to avoid circular dependency (structure.py imports io.py)
+# These are used at call time, not at import time.
+_resolve_ref = None
+_resolve_da_ref = None
+_create_ref = None
+
+
+def _get_resolve_reference_structure():
+    global _resolve_ref
+    if _resolve_ref is None:
+        from .structure import resolve_reference_structure
+
+        _resolve_ref = resolve_reference_structure
+    return _resolve_ref
+
+
+def _get_resolve_dataarray_reference():
+    global _resolve_da_ref
+    if _resolve_da_ref is None:
+        from .structure import _resolve_dataarray_reference
+
+        _resolve_da_ref = _resolve_dataarray_reference
+    return _resolve_da_ref
+
+
+def _get_create_reference_structure():
+    global _create_ref
+    if _create_ref is None:
+        from .structure import create_reference_structure
+
+        _create_ref = create_reference_structure
+    return _create_ref
+
+
 logger = logging.getLogger('flixopt')
 
 
@@ -1707,12 +1741,14 @@ class FlowSystemDatasetIO:
         cls: type[FlowSystem],
     ) -> FlowSystem:
         """Create FlowSystem instance with constructor parameters."""
+        _resolve_da = _get_resolve_dataarray_reference()
+
         # Extract cluster index if present (clustered FlowSystem)
         clusters = ds.indexes.get('cluster')
 
         # Resolve cluster_weight if present in reference structure
         cluster_weight_for_constructor = (
-            cls._resolve_dataarray_reference(reference_structure['cluster_weight'], arrays_dict)
+            _resolve_da(reference_structure['cluster_weight'], arrays_dict)
             if 'cluster_weight' in reference_structure
             else None
         )
@@ -1720,14 +1756,14 @@ class FlowSystemDatasetIO:
         # Resolve scenario_weights only if scenario dimension exists
         scenario_weights = None
         if ds.indexes.get('scenario') is not None and 'scenario_weights' in reference_structure:
-            scenario_weights = cls._resolve_dataarray_reference(reference_structure['scenario_weights'], arrays_dict)
+            scenario_weights = _resolve_da(reference_structure['scenario_weights'], arrays_dict)
 
         # Resolve timestep_duration if present as DataArray reference
         timestep_duration = None
         if 'timestep_duration' in reference_structure:
             ref_value = reference_structure['timestep_duration']
             if isinstance(ref_value, str) and ref_value.startswith(':::'):
-                timestep_duration = cls._resolve_dataarray_reference(ref_value, arrays_dict)
+                timestep_duration = _resolve_da(ref_value, arrays_dict)
 
         # Get timesteps - convert integer index to RangeIndex for segmented systems
         time_index = ds.indexes['time']
@@ -1761,23 +1797,25 @@ class FlowSystemDatasetIO:
         from .effects import Effect
         from .elements import Bus, Component
 
+        _resolve = _get_resolve_reference_structure()
+
         # Restore components
         for comp_label, comp_data in reference_structure.get('components', {}).items():
-            component = cls._resolve_reference_structure(comp_data, arrays_dict)
+            component = _resolve(comp_data, arrays_dict)
             if not isinstance(component, Component):
                 logger.critical(f'Restoring component {comp_label} failed.')
             flow_system._add_components(component)
 
         # Restore buses
         for bus_label, bus_data in reference_structure.get('buses', {}).items():
-            bus = cls._resolve_reference_structure(bus_data, arrays_dict)
+            bus = _resolve(bus_data, arrays_dict)
             if not isinstance(bus, Bus):
                 logger.critical(f'Restoring bus {bus_label} failed.')
             flow_system._add_buses(bus)
 
         # Restore effects
         for effect_label, effect_data in reference_structure.get('effects', {}).items():
-            effect = cls._resolve_reference_structure(effect_data, arrays_dict)
+            effect = _resolve(effect_data, arrays_dict)
             if not isinstance(effect, Effect):
                 logger.critical(f'Restoring effect {effect_label} failed.')
             flow_system._add_effects(effect)
@@ -1845,7 +1883,7 @@ class FlowSystemDatasetIO:
             else:
                 main_var_names.append(name)
 
-        clustering = fs_cls._resolve_reference_structure(clustering_structure, clustering_arrays)
+        clustering = _get_resolve_reference_structure()(clustering_structure, clustering_arrays)
         flow_system.clustering = clustering
 
         # Reconstruct aggregated_data from FlowSystem's main data arrays
@@ -1866,11 +1904,12 @@ class FlowSystemDatasetIO:
         cls: type[FlowSystem],
     ) -> None:
         """Restore carriers from reference structure."""
+        _resolve = _get_resolve_reference_structure()
         # Restore carriers if present
         if 'carriers' in reference_structure:
             carriers_structure = json.loads(reference_structure['carriers'])
             for carrier_data in carriers_structure.values():
-                carrier = cls._resolve_reference_structure(carrier_data, {})
+                carrier = _resolve(carrier_data, {})
                 flow_system.carriers.add(carrier)
 
     # --- Serialization (FlowSystem -> Dataset) ---
@@ -1962,9 +2001,10 @@ class FlowSystemDatasetIO:
     def _add_carriers_to_dataset(ds: xr.Dataset, carriers: Any) -> xr.Dataset:
         """Add carrier definitions to dataset attributes."""
         if carriers:
+            _create_ref_fn = _get_create_reference_structure()
             carriers_structure = {}
             for name, carrier in carriers.items():
-                carrier_ref, _ = carrier._create_reference_structure()
+                carrier_ref, _ = _create_ref_fn(carrier)
                 carriers_structure[name] = carrier_ref
             ds.attrs['carriers'] = json.dumps(carriers_structure, ensure_ascii=False)
 
