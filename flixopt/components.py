@@ -189,63 +189,8 @@ class LinearConverter(Component):
         """Propagate flow_system reference to parent Component."""
         super().link_to_flow_system(flow_system, prefix)
 
-    def validate_config(self) -> None:
-        """Validate configuration consistency.
-
-        Called BEFORE transformation via FlowSystem._run_config_validation().
-        These are simple checks that don't require DataArray operations.
-        """
-        super().validate_config()
-        if not self.conversion_factors and not self.piecewise_conversion:
-            raise PlausibilityError('Either conversion_factors or piecewise_conversion must be defined!')
-        if self.conversion_factors and self.piecewise_conversion:
-            raise PlausibilityError('Only one of conversion_factors or piecewise_conversion can be defined, not both!')
-
-        if self.conversion_factors:
-            if self.degrees_of_freedom <= 0:
-                raise PlausibilityError(
-                    f'Too Many conversion_factors_specified. Care that you use less conversion_factors '
-                    f'then inputs + outputs!! With {len(self.inputs + self.outputs)} inputs and outputs, '
-                    f'use not more than {len(self.inputs + self.outputs) - 1} conversion_factors!'
-                )
-
-            for conversion_factor in self.conversion_factors:
-                for flow in conversion_factor:
-                    if flow not in self.flows:
-                        raise PlausibilityError(
-                            f'{self.id}: Flow {flow} in conversion_factors is not in inputs/outputs'
-                        )
-        if self.piecewise_conversion:
-            for flow in self.flows.values():
-                if isinstance(flow.size, InvestParameters) and flow.size.fixed_size is None:
-                    logger.warning(
-                        f'Using a Flow with variable size (InvestParameters without fixed_size) '
-                        f'and a piecewise_conversion in {self.id} is uncommon. Please verify intent '
-                        f'({flow.id}).'
-                    )
-
-    def _plausibility_checks(self) -> None:
-        """Legacy validation method - delegates to validate_config()."""
-        self.validate_config()
-
     def transform_data(self) -> None:
-        super().transform_data()
-        if self.conversion_factors:
-            self.conversion_factors = self._transform_conversion_factors()
-
-    def _transform_conversion_factors(self) -> list[dict[str, xr.DataArray]]:
-        """Converts all conversion factors to internal datatypes"""
-        list_of_conversion_factors = []
-        for idx, conversion_factor in enumerate(self.conversion_factors):
-            transformed_dict = {}
-            for flow, values in conversion_factor.items():
-                # TODO: Might be better to use the label of the component instead of the flow
-                ts = self._fit_coords(f'{self.flows[flow].id}|conversion_factor{idx}', values)
-                if ts is None:
-                    raise PlausibilityError(f'{self.id}: conversion factor for flow "{flow}" must not be None')
-                transformed_dict[flow] = ts
-            list_of_conversion_factors.append(transformed_dict)
-        return list_of_conversion_factors
+        super().transform_data()  # Component._propagate_status_parameters
 
     @property
     def degrees_of_freedom(self):

@@ -2160,10 +2160,17 @@ class ComponentsData:
 class ConvertersData:
     """Batched data container for converters."""
 
-    def __init__(self, converters: list[LinearConverter], flow_ids: list[str], timesteps: pd.DatetimeIndex):
+    def __init__(
+        self,
+        converters: list[LinearConverter],
+        flow_ids: list[str],
+        timesteps: pd.DatetimeIndex,
+        coords: dict[str, pd.Index],
+    ):
         self._converters = converters
         self._flow_ids = flow_ids
         self._timesteps = timesteps
+        self._coords = coords
         self.elements: IdList = element_id_list(converters)
 
     @property
@@ -2183,6 +2190,22 @@ class ConvertersData:
     def with_piecewise(self) -> list[LinearConverter]:
         """Converters with piecewise_conversion."""
         return [c for c in self._converters if c.piecewise_conversion]
+
+    def aligned_conversion_factors(self, converter: LinearConverter) -> list[dict[str, xr.DataArray]]:
+        """Align all conversion factors for a converter to model coords."""
+        result = []
+        for idx, conv_factor in enumerate(converter.conversion_factors):
+            aligned_dict = {}
+            for flow_label, values in conv_factor.items():
+                flow_id = converter.flows[flow_label].id
+                aligned = align_to_coords(values, self._coords, name=f'{flow_id}|conversion_factor{idx}')
+                if aligned is None:
+                    raise PlausibilityError(
+                        f'{converter.id}: conversion factor for flow "{flow_label}" must not be None'
+                    )
+                aligned_dict[flow_label] = aligned
+            result.append(aligned_dict)
+        return result
 
     # === Linear Conversion Properties ===
 
@@ -2238,7 +2261,8 @@ class ConvertersData:
             flow_signs = {f.id: 1.0 for f in conv.inputs.values() if f.id in all_flow_ids_set}
             flow_signs.update({f.id: -1.0 for f in conv.outputs.values() if f.id in all_flow_ids_set})
 
-            for eq_idx, conv_factors in enumerate(conv.conversion_factors):
+            aligned_factors = self.aligned_conversion_factors(conv)
+            for eq_idx, conv_factors in enumerate(aligned_factors):
                 for flow_label, coeff in conv_factors.items():
                     flow_id = flow_map.get(flow_label)
                     sign = flow_signs.get(flow_id, 0.0) if flow_id else 0.0
@@ -2387,9 +2411,49 @@ class ConvertersData:
         return xr.Dataset({'starts': starts_combined, 'ends': ends_combined})
 
     def validate(self) -> None:
-        """Validate all converters (config checks, no DataArray operations needed)."""
-        for converter in self._converters:
-            converter.validate_config()
+        """Validate all converters."""
+        for conv in self._converters:
+            # Checks from LinearConverter.validate_config
+            conv._check_unique_flow_ids()
+            # Validate flow sizes for status_parameters
+            if conv.status_parameters:
+                for flow in conv.flows.values():
+                    if flow.size is None:
+                        raise PlausibilityError(
+                            f'"{conv.id}": Flow "{flow.flow_id}" must have a defined size '
+                            f'because {conv.id} has status_parameters. '
+                            f'A size is required for big-M constraints.'
+                        )
+
+            if not conv.conversion_factors and not conv.piecewise_conversion:
+                raise PlausibilityError('Either conversion_factors or piecewise_conversion must be defined!')
+            if conv.conversion_factors and conv.piecewise_conversion:
+                raise PlausibilityError(
+                    'Only one of conversion_factors or piecewise_conversion can be defined, not both!'
+                )
+
+            if conv.conversion_factors:
+                if conv.degrees_of_freedom <= 0:
+                    raise PlausibilityError(
+                        f'Too Many conversion_factors_specified. Care that you use less conversion_factors '
+                        f'then inputs + outputs!! With {len(conv.inputs + conv.outputs)} inputs and outputs, '
+                        f'use not more than {len(conv.inputs + conv.outputs) - 1} conversion_factors!'
+                    )
+
+                for conversion_factor in conv.conversion_factors:
+                    for flow in conversion_factor:
+                        if flow not in conv.flows:
+                            raise PlausibilityError(
+                                f'{conv.id}: Flow {flow} in conversion_factors is not in inputs/outputs'
+                            )
+            if conv.piecewise_conversion:
+                for flow in conv.flows.values():
+                    if isinstance(flow.size, InvestParameters) and flow.size.fixed_size is None:
+                        logger.warning(
+                            f'Using a Flow with variable size (InvestParameters without fixed_size) '
+                            f'and a piecewise_conversion in {conv.id} is uncommon. Please verify intent '
+                            f'({flow.id}).'
+                        )
 
 
 class TransmissionsData:
@@ -2680,7 +2744,12 @@ class BatchedAccessor:
             from .components import LinearConverter
 
             converters = [c for c in self._fs.components.values() if isinstance(c, LinearConverter)]
-            self._converters = ConvertersData(converters, flow_ids=self.flows.element_ids, timesteps=self._fs.timesteps)
+            self._converters = ConvertersData(
+                converters,
+                flow_ids=self.flows.element_ids,
+                timesteps=self._fs.timesteps,
+                coords=self._fs.indexes,
+            )
         return self._converters
 
     @property
