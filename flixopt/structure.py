@@ -780,12 +780,12 @@ def _extract_recursive(
         return structure, arrays
 
     if isinstance(obj, IdList):
-        processed_dict: dict[str, Any] = {}
-        for key, value in obj.items():
-            p, a = _extract_recursive(value, f'{path}.{key}', coords)
+        processed_list: list[Any] = []
+        for i, item in enumerate(obj.values()):
+            p, a = _extract_recursive(item, f'{path}.{i}', coords)
             arrays.update(a)
-            processed_dict[key] = p
-        return processed_dict, arrays
+            processed_list.append(p)
+        return processed_list, arrays
 
     if isinstance(obj, dict):
         processed_dict = {}

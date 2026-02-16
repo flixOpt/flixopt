@@ -142,8 +142,8 @@ class Component(Element):
     """
 
     id: str
-    inputs: list[Flow] | dict[str, Flow] = field(default_factory=list)
-    outputs: list[Flow] | dict[str, Flow] = field(default_factory=list)
+    inputs: list[Flow] = field(default_factory=list)
+    outputs: list[Flow] = field(default_factory=list)
     status_parameters: StatusParameters | None = None
     prevent_simultaneous_flows: list[Flow] = field(default_factory=list)
     meta_data: dict = field(default_factory=dict)
@@ -151,15 +151,6 @@ class Component(Element):
 
     def __post_init__(self):
         self.id = valid_id(self.id)
-
-        # Handle dict inputs from IO deserialization
-        if isinstance(self.inputs, dict):
-            self.inputs = list(self.inputs.values())
-        if isinstance(self.outputs, dict):
-            self.outputs = list(self.outputs.values())
-        if isinstance(self.prevent_simultaneous_flows, dict):
-            self.prevent_simultaneous_flows = list(self.prevent_simultaneous_flows.values())
-        self.prevent_simultaneous_flows = self.prevent_simultaneous_flows or []
 
         _inputs = self.inputs or []
         _outputs = self.outputs or []

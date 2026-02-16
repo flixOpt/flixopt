@@ -1839,9 +1839,7 @@ class SourceAndSink(Component):
 
     def __post_init__(self):
         if self.prevent_simultaneous_flow_rates:
-            _inputs = list(self.inputs.values()) if isinstance(self.inputs, dict) else (self.inputs or [])
-            _outputs = list(self.outputs.values()) if isinstance(self.outputs, dict) else (self.outputs or [])
-            self.prevent_simultaneous_flows = _inputs + _outputs
+            self.prevent_simultaneous_flows = (self.inputs or []) + (self.outputs or [])
         super().__post_init__()
 
 
@@ -1928,8 +1926,7 @@ class Source(Component):
 
     def __post_init__(self):
         if self.prevent_simultaneous_flow_rates:
-            outputs = list(self.outputs.values()) if isinstance(self.outputs, dict) else (self.outputs or [])
-            self.prevent_simultaneous_flows = outputs
+            self.prevent_simultaneous_flows = self.outputs or []
         super().__post_init__()
 
 
@@ -2017,6 +2014,5 @@ class Sink(Component):
 
     def __post_init__(self):
         if self.prevent_simultaneous_flow_rates:
-            inputs = list(self.inputs.values()) if isinstance(self.inputs, dict) else (self.inputs or [])
-            self.prevent_simultaneous_flows = inputs
+            self.prevent_simultaneous_flows = self.inputs or []
         super().__post_init__()
