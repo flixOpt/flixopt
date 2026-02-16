@@ -43,9 +43,7 @@ if TYPE_CHECKING:
     import linopy
 
     from .batched import BusesData, ComponentsData, ConvertersData, FlowsData, TransmissionsData
-    from .flow_system import FlowSystem
     from .types import (
-        Effect_TPS,
         Numeric_PS,
         Numeric_S,
         Numeric_TPS,
@@ -150,9 +148,6 @@ class Component(Element):
     prevent_simultaneous_flows: list[Flow] = field(default_factory=list)
     meta_data: dict = field(default_factory=dict)
     color: str | None = None
-    _flow_system: FlowSystem | None = field(default=None, init=False, repr=False)
-    _variable_names: list[str] = field(default_factory=list, init=False, repr=False)
-    _constraint_names: list[str] = field(default_factory=list, init=False, repr=False)
 
     def __post_init__(self):
         self.id = valid_id(self.id)
@@ -337,9 +332,6 @@ class Bus(Element):
     # Internal state (populated by FlowSystem._connect_network)
     inputs: IdList = field(default_factory=lambda: flow_id_list(display_name='inputs'), init=False, repr=False)
     outputs: IdList = field(default_factory=lambda: flow_id_list(display_name='outputs'), init=False, repr=False)
-    _flow_system: FlowSystem | None = field(default=None, init=False, repr=False)
-    _variable_names: list[str] = field(default_factory=list, init=False, repr=False)
-    _constraint_names: list[str] = field(default_factory=list, init=False, repr=False)
 
     def __post_init__(self):
         self.id = valid_id(self.id)
@@ -393,7 +385,7 @@ class Connection:
 
 
 @register_class_for_io
-@dataclass(eq=False, repr=False, init=False)
+@dataclass(eq=False, repr=False)
 class Flow(Element):
     """Define a directed flow of energy or material between bus and component.
 
@@ -417,7 +409,7 @@ class Flow(Element):
         See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/Flow/>
 
     Args:
-        bus: Bus this flow connects to (string id). First positional argument.
+        bus: Bus this flow connects to (string id).
         flow_id: Unique flow identifier within its component. Defaults to the bus name.
         size: Flow capacity. Scalar, InvestParameters, or None (unbounded).
         relative_minimum: Minimum flow rate as fraction of size (0-1). Default: 0.
@@ -443,7 +435,7 @@ class Flow(Element):
 
         ```python
         generator_output = Flow(
-            'electricity_grid',
+            bus='electricity_grid',
             flow_id='electricity_out',
             size=100,  # 100 MW capacity
             relative_minimum=0.4,  # Cannot operate below 40 MW
@@ -455,7 +447,7 @@ class Flow(Element):
 
         ```python
         battery_flow = Flow(
-            'electricity_grid',
+            bus='electricity_grid',
             size=InvestParameters(
                 minimum_size=10,  # Minimum 10 MWh
                 maximum_size=100,  # Maximum 100 MWh
@@ -468,7 +460,7 @@ class Flow(Element):
 
         ```python
         heat_pump = Flow(
-            'heating_network',
+            bus='heating_network',
             flow_id='heat_output',
             size=50,  # 50 kW thermal
             relative_minimum=0.3,  # Minimum 15 kW output when active
@@ -486,7 +478,7 @@ class Flow(Element):
 
         ```python
         solar_generation = Flow(
-            'electricity_grid',
+            bus='electricity_grid',
             flow_id='solar_power',
             size=25,  # 25 MW installed capacity
             fixed_relative_profile=np.array([0, 0.1, 0.4, 0.8, 0.9, 0.7, 0.3, 0.1, 0]),
@@ -498,7 +490,7 @@ class Flow(Element):
 
         ```python
         production_line = Flow(
-            'product_market',
+            bus='product_market',
             flow_id='product_output',
             size=1000,  # 1000 units/hour capacity
             load_factor_min=0.6,  # Must achieve 60% annual utilization
@@ -529,15 +521,13 @@ class Flow(Element):
 
     """
 
-    _io_exclude: ClassVar[set[str]] = {'_pos'}
-
     bus: str = ''
     flow_id: str | None = None
     size: Numeric_PS | InvestParameters | None = None
     relative_minimum: Numeric_TPS = 0
     relative_maximum: Numeric_TPS = 1
     fixed_relative_profile: Numeric_TPS | None = None
-    effects_per_flow_hour: dict = field(default_factory=dict)
+    effects_per_flow_hour: Numeric_TPS | dict | None = None
     status_parameters: StatusParameters | None = None
     flow_hours_max: Numeric_PS | None = None
     flow_hours_min: Numeric_PS | None = None
@@ -549,70 +539,8 @@ class Flow(Element):
     meta_data: dict = field(default_factory=dict)
     color: str | None = None
     # Internal state (not user-facing)
-    component: str = 'UnknownComponent'
-    is_input_in_component: bool | None = None
-    _flows_model: FlowsModel | None = None
-    _flow_system: FlowSystem | None = None
-    _variable_names: list[str] = field(default_factory=list)
-    _constraint_names: list[str] = field(default_factory=list)
-
-    def __init__(
-        self,
-        _pos='',
-        /,
-        *,
-        bus: str | None = None,
-        flow_id: str | None = None,
-        size: Numeric_PS | InvestParameters | None = None,
-        relative_minimum: Numeric_TPS = 0,
-        relative_maximum: Numeric_TPS = 1,
-        fixed_relative_profile: Numeric_TPS | None = None,
-        effects_per_flow_hour: Effect_TPS | Numeric_TPS | None = None,
-        status_parameters: StatusParameters | None = None,
-        flow_hours_max: Numeric_PS | None = None,
-        flow_hours_min: Numeric_PS | None = None,
-        flow_hours_max_over_periods: Numeric_S | None = None,
-        flow_hours_min_over_periods: Numeric_S | None = None,
-        load_factor_min: Numeric_PS | None = None,
-        load_factor_max: Numeric_PS | None = None,
-        previous_flow_rate: Scalar | list[Scalar] | None = None,
-        meta_data: dict | None = None,
-        color: str | None = None,
-    ):
-        # Resolve bus and flow_id from positional/keyword arguments.
-        # Supports both: Flow('bus', flow_id='name') and Flow('name', bus='bus')
-        if bus is not None:
-            self.bus = bus
-            self.flow_id = flow_id if flow_id is not None else (_pos or None)
-        else:
-            self.bus = _pos
-            self.flow_id = flow_id
-
-        self.size = size
-        self.relative_minimum = relative_minimum
-        self.relative_maximum = relative_maximum
-        self.fixed_relative_profile = fixed_relative_profile
-        self.effects_per_flow_hour = effects_per_flow_hour
-        self.status_parameters = status_parameters
-        self.flow_hours_max = flow_hours_max
-        self.flow_hours_min = flow_hours_min
-        self.flow_hours_max_over_periods = flow_hours_max_over_periods
-        self.flow_hours_min_over_periods = flow_hours_min_over_periods
-        self.load_factor_min = load_factor_min
-        self.load_factor_max = load_factor_max
-        self.previous_flow_rate = previous_flow_rate
-        self.meta_data = meta_data
-        self.color = color
-
-        # Internal state defaults
-        self.component = 'UnknownComponent'
-        self.is_input_in_component = None
-        self._flows_model = None
-        self._flow_system = None
-        self._variable_names = []
-        self._constraint_names = []
-
-        self.__post_init__()
+    component: str = field(default='UnknownComponent', init=False)
+    is_input_in_component: bool | None = field(default=None, init=False)
 
     def __post_init__(self):
         # Default flow_id to bus name
@@ -625,11 +553,6 @@ class Flow(Element):
                 f'Bus {self.bus.id} is passed as a Bus object to Flow {self.flow_id}. '
                 f'This is no longer supported. Add the Bus to the FlowSystem and pass its id (string) to the Flow.'
             )
-
-        if self.effects_per_flow_hour is None:
-            self.effects_per_flow_hour = {}
-        if self.meta_data is None:
-            self.meta_data = {}
 
     @property
     def id(self) -> str:
@@ -661,43 +584,6 @@ class Flow(Element):
 
     def __repr__(self) -> str:
         return fx_io.build_repr_from_init(self, excluded_params={'self', 'id'}, skip_default_size=True)
-
-    # =========================================================================
-    # Type-Level Model Access (for FlowsModel integration)
-    # =========================================================================
-
-    def set_flows_model(self, flows_model: FlowsModel) -> None:
-        """Set reference to the type-level FlowsModel.
-
-        Called by FlowsModel during initialization to enable element access.
-        """
-        self._flows_model = flows_model
-
-    @property
-    def flow_rate_from_type_model(self) -> linopy.Variable | None:
-        """Get flow_rate from FlowsModel (if using type-level modeling).
-
-        Returns the slice of the batched variable for this specific flow.
-        """
-        if self._flows_model is None:
-            return None
-        return self._flows_model.get_variable(FlowVarName.RATE, self.id)
-
-    @property
-    def total_flow_hours_from_type_model(self) -> linopy.Variable | None:
-        """Get total_flow_hours from FlowsModel (if using type-level modeling)."""
-        if self._flows_model is None:
-            return None
-        return self._flows_model.get_variable(FlowVarName.TOTAL_FLOW_HOURS, self.id)
-
-    @property
-    def status_from_type_model(self) -> linopy.Variable | None:
-        """Get status from FlowsModel (if using type-level modeling)."""
-        if self._flows_model is None or FlowVarName.STATUS not in self._flows_model:
-            return None
-        if self.id not in self._flows_model.status_ids:
-            return None
-        return self._flows_model.get_variable(FlowVarName.STATUS, self.id)
 
     @property
     def size_is_fixed(self) -> bool:
@@ -927,10 +813,6 @@ class FlowsModel(TypeModel):
             data: FlowsData container with batched flow data.
         """
         super().__init__(model, data)
-
-        # Set reference on each flow element for element access pattern
-        for flow in self.elements.values():
-            flow.set_flows_model(self)
 
         self.create_variables()
         self.create_status_model()
@@ -1547,10 +1429,6 @@ class BusesModel(TypeModel):
 
         # Element ID lists for subsets
         self.imbalance_ids: list[str] = data.with_imbalance
-
-        # Set reference on each bus element
-        for bus in self.elements.values():
-            bus._buses_model = self
 
         self.create_variables()
         self.create_constraints()

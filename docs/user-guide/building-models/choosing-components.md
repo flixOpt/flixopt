@@ -39,7 +39,7 @@ graph TD
 ```python
 fx.Source(
     'GridElectricity',
-    outputs=[fx.Flow('Elec', bus='Electricity', size=1000, effects_per_flow_hour=0.25)]
+    outputs=[fx.Flow(bus='Electricity', flow_id='Elec', size=1000, effects_per_flow_hour=0.25)]
 )
 ```
 
@@ -67,13 +67,13 @@ fx.Source(
 # Fixed demand (must be met)
 fx.Sink(
     'Building',
-    inputs=[fx.Flow('Heat', bus='Heat', size=1, fixed_relative_profile=demand)]
+    inputs=[fx.Flow(bus='Heat', size=1, fixed_relative_profile=demand)]
 )
 
 # Optional export (can sell if profitable)
 fx.Sink(
     'Export',
-    inputs=[fx.Flow('Elec', bus='Electricity', size=100, effects_per_flow_hour=-0.15)]
+    inputs=[fx.Flow(bus='Electricity', flow_id='Elec', size=100, effects_per_flow_hour=-0.15)]
 )
 ```
 
@@ -100,8 +100,8 @@ fx.Sink(
 ```python
 fx.SourceAndSink(
     'GridConnection',
-    inputs=[fx.Flow('import', bus='Electricity', size=500, effects_per_flow_hour=0.25)],
-    outputs=[fx.Flow('export', bus='Electricity', size=500, effects_per_flow_hour=-0.15)],
+    inputs=[fx.Flow(bus='Electricity', flow_id='import', size=500, effects_per_flow_hour=0.25)],
+    outputs=[fx.Flow(bus='Electricity', flow_id='export', size=500, effects_per_flow_hour=-0.15)],
     prevent_simultaneous_flow_rates=True,  # Can't buy and sell at same time
 )
 ```
@@ -121,18 +121,18 @@ fx.SourceAndSink(
 # Single input, single output
 fx.LinearConverter(
     'Boiler',
-    inputs=[fx.Flow('Gas', bus='Gas', size=500)],
-    outputs=[fx.Flow('Heat', bus='Heat', size=450)],
+    inputs=[fx.Flow(bus='Gas', size=500)],
+    outputs=[fx.Flow(bus='Heat', size=450)],
     conversion_factors=[{'Gas': 1, 'Heat': 0.9}],
 )
 
 # Multiple outputs (CHP)
 fx.LinearConverter(
     'CHP',
-    inputs=[fx.Flow('Gas', bus='Gas', size=300)],
+    inputs=[fx.Flow(bus='Gas', size=300)],
     outputs=[
-        fx.Flow('Elec', bus='Electricity', size=100),
-        fx.Flow('Heat', bus='Heat', size=150),
+        fx.Flow(bus='Electricity', flow_id='Elec', size=100),
+        fx.Flow(bus='Heat', size=150),
     ],
     conversion_factors=[{'Gas': 1, 'Elec': 0.35, 'Heat': 0.50}],
 )
@@ -141,10 +141,10 @@ fx.LinearConverter(
 fx.LinearConverter(
     'CoFiringBoiler',
     inputs=[
-        fx.Flow('Gas', bus='Gas', size=200),
-        fx.Flow('Biomass', bus='Biomass', size=100),
+        fx.Flow(bus='Gas', size=200),
+        fx.Flow(bus='Biomass', size=100),
     ],
-    outputs=[fx.Flow('Heat', bus='Heat', size=270)],
+    outputs=[fx.Flow(bus='Heat', size=270)],
     conversion_factors=[{'Gas': 1, 'Biomass': 1, 'Heat': 0.9}],
 )
 ```
@@ -183,8 +183,8 @@ from flixopt.linear_converters import Boiler, HeatPump
 boiler = Boiler(
     'GasBoiler',
     thermal_efficiency=0.92,
-    fuel_flow=fx.Flow('gas', bus='Gas', size=500, effects_per_flow_hour=0.05),
-    thermal_flow=fx.Flow('heat', bus='Heat', size=460),
+    fuel_flow=fx.Flow(bus='Gas', flow_id='gas', size=500, effects_per_flow_hour=0.05),
+    thermal_flow=fx.Flow(bus='Heat', flow_id='heat', size=460),
 )
 ```
 
@@ -197,8 +197,8 @@ boiler = Boiler(
 ```python
 fx.Storage(
     'Battery',
-    charging=fx.Flow('charge', bus='Electricity', size=100),
-    discharging=fx.Flow('discharge', bus='Electricity', size=100),
+    charging=fx.Flow(bus='Electricity', flow_id='charge', size=100),
+    discharging=fx.Flow(bus='Electricity', flow_id='discharge', size=100),
     capacity_in_flow_hours=4,  # 4 hours at full rate = 400 kWh
     eta_charge=0.95,
     eta_discharge=0.95,
@@ -233,18 +233,18 @@ fx.Storage(
 # Unidirectional
 fx.Transmission(
     'HeatPipe',
-    in1=fx.Flow('from_A', bus='Heat_A', size=200),
-    out1=fx.Flow('to_B', bus='Heat_B', size=200),
+    in1=fx.Flow(bus='Heat_A', flow_id='from_A', size=200),
+    out1=fx.Flow(bus='Heat_B', flow_id='to_B', size=200),
     relative_losses=0.05,
 )
 
 # Bidirectional
 fx.Transmission(
     'PowerLine',
-    in1=fx.Flow('A_to_B', bus='Elec_A', size=100),
-    out1=fx.Flow('at_B', bus='Elec_B', size=100),
-    in2=fx.Flow('B_to_A', bus='Elec_B', size=100),
-    out2=fx.Flow('at_A', bus='Elec_A', size=100),
+    in1=fx.Flow(bus='Elec_A', flow_id='A_to_B', size=100),
+    out1=fx.Flow(bus='Elec_B', flow_id='at_B', size=100),
+    in2=fx.Flow(bus='Elec_B', flow_id='B_to_A', size=100),
+    out2=fx.Flow(bus='Elec_A', flow_id='at_A', size=100),
     relative_losses=0.03,
     prevent_simultaneous_flows_in_both_directions=True,
 )
@@ -274,7 +274,6 @@ Add `InvestParameters` to flows to let the optimizer choose sizes:
 
 ```python
 fx.Flow(
-    'Heat',
     bus='Heat',
     invest_parameters=fx.InvestParameters(
         effects_of_investment_per_size={'costs': 100},  # €/kW
@@ -292,7 +291,6 @@ Add `StatusParameters` to flows for on/off behavior:
 
 ```python
 fx.Flow(
-    'Heat',
     bus='Heat',
     size=500,
     status_parameters=fx.StatusParameters(
@@ -312,8 +310,8 @@ Use `PiecewiseConversion` for load-dependent efficiency:
 ```python
 fx.LinearConverter(
     'GasEngine',
-    inputs=[fx.Flow('Fuel', bus='Gas')],
-    outputs=[fx.Flow('Elec', bus='Electricity')],
+    inputs=[fx.Flow(bus='Gas', flow_id='Fuel')],
+    outputs=[fx.Flow(bus='Electricity', flow_id='Elec')],
     piecewise_conversion=fx.PiecewiseConversion({
         'Fuel': fx.Piecewise([fx.Piece(100, 200), fx.Piece(200, 300)]),
         'Elec': fx.Piecewise([fx.Piece(35, 80), fx.Piece(80, 110)]),
@@ -334,8 +332,8 @@ for i in range(3):
     flow_system.add_elements(
         fx.LinearConverter(
             f'Boiler_{i}',
-            inputs=[fx.Flow('Gas', bus='Gas', size=100)],
-            outputs=[fx.Flow('Heat', bus='Heat', size=90)],
+            inputs=[fx.Flow(bus='Gas', size=100)],
+            outputs=[fx.Flow(bus='Heat', size=90)],
             conversion_factors=[{'Gas': 1, 'Heat': 0.9}],
         )
     )
@@ -349,10 +347,10 @@ Model waste heat recovery from one process to another:
 # Process that generates waste heat
 process = fx.LinearConverter(
     'Process',
-    inputs=[fx.Flow('Elec', bus='Electricity', size=100)],
+    inputs=[fx.Flow(bus='Electricity', flow_id='Elec', size=100)],
     outputs=[
-        fx.Flow('Product', bus='Products', size=80),
-        fx.Flow('WasteHeat', bus='Heat', size=20),  # Recovered heat
+        fx.Flow(bus='Products', flow_id='Product', size=80),
+        fx.Flow(bus='Heat', flow_id='WasteHeat', size=20),  # Recovered heat
     ],
     conversion_factors=[{'Elec': 1, 'Product': 0.8, 'WasteHeat': 0.2}],
 )
@@ -366,10 +364,10 @@ Model a component that can use multiple fuels:
 flex_boiler = fx.LinearConverter(
     'FlexBoiler',
     inputs=[
-        fx.Flow('Gas', bus='Gas', size=200, effects_per_flow_hour=0.05),
-        fx.Flow('Oil', bus='Oil', size=200, effects_per_flow_hour=0.08),
+        fx.Flow(bus='Gas', size=200, effects_per_flow_hour=0.05),
+        fx.Flow(bus='Oil', size=200, effects_per_flow_hour=0.08),
     ],
-    outputs=[fx.Flow('Heat', bus='Heat', size=180)],
+    outputs=[fx.Flow(bus='Heat', size=180)],
     conversion_factors=[{'Gas': 1, 'Oil': 1, 'Heat': 0.9}],
 )
 ```

@@ -246,7 +246,7 @@ def create_large_system(
     fs.add_elements(
         fx.Source(
             'GasGrid',
-            outputs=[fx.Flow('Gas', bus='Gas', size=5000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.2})],
+            outputs=[fx.Flow(bus='Gas', size=5000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.2})],
         )
     )
 
@@ -255,19 +255,25 @@ def create_large_system(
         fx.Source(
             'ElecBuy',
             outputs=[
-                fx.Flow('El', bus='Electricity', size=2000, effects_per_flow_hour={'costs': elec_price, 'CO2': 0.4})
+                fx.Flow(
+                    bus='Electricity', flow_id='El', size=2000, effects_per_flow_hour={'costs': elec_price, 'CO2': 0.4}
+                )
             ],
         ),
         fx.Sink(
             'ElecSell',
-            inputs=[fx.Flow('El', bus='Electricity', size=1000, effects_per_flow_hour={'costs': -elec_price * 0.8})],
+            inputs=[
+                fx.Flow(bus='Electricity', flow_id='El', size=1000, effects_per_flow_hour={'costs': -elec_price * 0.8})
+            ],
         ),
     )
 
     # Demands
     fs.add_elements(
-        fx.Sink('HeatDemand', inputs=[fx.Flow('Heat', bus='Heat', size=1, fixed_relative_profile=heat_profile)]),
-        fx.Sink('ElecDemand', inputs=[fx.Flow('El', bus='Electricity', size=1, fixed_relative_profile=elec_profile)]),
+        fx.Sink('HeatDemand', inputs=[fx.Flow(bus='Heat', size=1, fixed_relative_profile=heat_profile)]),
+        fx.Sink(
+            'ElecDemand', inputs=[fx.Flow(bus='Electricity', flow_id='El', size=1, fixed_relative_profile=elec_profile)]
+        ),
     )
 
     # Converters (CHPs and Boilers)
@@ -294,10 +300,10 @@ def create_large_system(
                 fs.add_elements(
                     fx.LinearConverter(
                         f'CHP_{i}',
-                        inputs=[fx.Flow('Gas', bus='Gas', size=300)],
+                        inputs=[fx.Flow(bus='Gas', size=300)],
                         outputs=[
-                            fx.Flow('El', bus='Electricity', size=100),
-                            fx.Flow('Heat', bus='Heat', size=size_param, status_parameters=status_param),
+                            fx.Flow(bus='Electricity', flow_id='El', size=100),
+                            fx.Flow(bus='Heat', size=size_param, status_parameters=status_param),
                         ],
                         piecewise_conversion=fx.PiecewiseConversion(
                             {
@@ -314,9 +320,9 @@ def create_large_system(
                         f'CHP_{i}',
                         thermal_efficiency=0.50,
                         electrical_efficiency=0.35,
-                        thermal_flow=fx.Flow('Heat', bus='Heat', size=size_param, status_parameters=status_param),
-                        electrical_flow=fx.Flow('El', bus='Electricity', size=100),
-                        fuel_flow=fx.Flow('Gas', bus='Gas'),
+                        thermal_flow=fx.Flow(bus='Heat', size=size_param, status_parameters=status_param),
+                        electrical_flow=fx.Flow(bus='Electricity', flow_id='El', size=100),
+                        fuel_flow=fx.Flow(bus='Gas'),
                     )
                 )
         else:
@@ -326,13 +332,12 @@ def create_large_system(
                     f'Boiler_{i}',
                     thermal_efficiency=0.90,
                     thermal_flow=fx.Flow(
-                        'Heat',
                         bus='Heat',
                         size=size_param,
                         relative_minimum=0.2,
                         status_parameters=status_param,
                     ),
-                    fuel_flow=fx.Flow('Gas', bus='Gas'),
+                    fuel_flow=fx.Flow(bus='Gas'),
                 )
             )
 
@@ -356,8 +361,8 @@ def create_large_system(
                 eta_charge=0.95,
                 eta_discharge=0.95,
                 relative_loss_per_hour=0.001,
-                charging=fx.Flow('Charge', bus='Heat', size=100),
-                discharging=fx.Flow('Discharge', bus='Heat', size=100),
+                charging=fx.Flow(bus='Heat', flow_id='Charge', size=100),
+                discharging=fx.Flow(bus='Heat', flow_id='Discharge', size=100),
             )
         )
 

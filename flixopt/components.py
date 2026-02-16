@@ -560,10 +560,6 @@ class StoragesModel(TypeModel):
         super().__init__(model, data)
         self._flows_model = flows_model
 
-        # Set reference on each storage element
-        for storage in self.elements.values():
-            storage._storages_model = self
-
         self.create_variables()
         self.create_constraints()
         self.create_investment_model()

@@ -14,8 +14,8 @@ class TestBusModel:
         bus = fx.Bus('TestBus', imbalance_penalty_per_flow_hour=None)
         flow_system.add_elements(
             bus,
-            fx.Sink('WärmelastTest', inputs=[fx.Flow('Q_th_Last', 'TestBus')]),
-            fx.Source('GastarifTest', outputs=[fx.Flow('Q_Gas', 'TestBus')]),
+            fx.Sink('WärmelastTest', inputs=[fx.Flow(bus='TestBus', flow_id='Q_th_Last')]),
+            fx.Source('GastarifTest', outputs=[fx.Flow(bus='TestBus', flow_id='Q_Gas')]),
         )
         model = create_linopy_model(flow_system)
 
@@ -39,8 +39,8 @@ class TestBusModel:
         bus = fx.Bus('TestBus', imbalance_penalty_per_flow_hour=1e5)
         flow_system.add_elements(
             bus,
-            fx.Sink('WärmelastTest', inputs=[fx.Flow('Q_th_Last', 'TestBus')]),
-            fx.Source('GastarifTest', outputs=[fx.Flow('Q_Gas', 'TestBus')]),
+            fx.Sink('WärmelastTest', inputs=[fx.Flow(bus='TestBus', flow_id='Q_th_Last')]),
+            fx.Source('GastarifTest', outputs=[fx.Flow(bus='TestBus', flow_id='Q_Gas')]),
         )
         model = create_linopy_model(flow_system)
 
@@ -70,8 +70,8 @@ class TestBusModel:
         bus = fx.Bus('TestBus', imbalance_penalty_per_flow_hour=None)
         flow_system.add_elements(
             bus,
-            fx.Sink('WärmelastTest', inputs=[fx.Flow('Q_th_Last', 'TestBus')]),
-            fx.Source('GastarifTest', outputs=[fx.Flow('Q_Gas', 'TestBus')]),
+            fx.Sink('WärmelastTest', inputs=[fx.Flow(bus='TestBus', flow_id='Q_th_Last')]),
+            fx.Source('GastarifTest', outputs=[fx.Flow(bus='TestBus', flow_id='Q_Gas')]),
         )
         model = create_linopy_model(flow_system)
 

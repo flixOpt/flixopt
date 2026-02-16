@@ -71,9 +71,9 @@ def flow_system_base(timesteps: pd.DatetimeIndex) -> fx.FlowSystem:
     flow_system.add_elements(
         fx.Sink(
             'Wärmelast',
-            inputs=[fx.Flow('Fernwärme', flow_id='Wärme', fixed_relative_profile=data.thermal_demand, size=1)],
+            inputs=[fx.Flow(bus='Fernwärme', flow_id='Wärme', fixed_relative_profile=data.thermal_demand, size=1)],
         ),
-        fx.Source('Gastarif', outputs=[fx.Flow('Gas', flow_id='Gas', effects_per_flow_hour=1)]),
+        fx.Source('Gastarif', outputs=[fx.Flow(bus='Gas', flow_id='Gas', effects_per_flow_hour=1)]),
     )
     return flow_system
 
@@ -84,8 +84,8 @@ def flow_system_minimal(timesteps) -> fx.FlowSystem:
         fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.5,
-            fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
-            thermal_flow=fx.Flow('Fernwärme', flow_id='Q_th'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
+            thermal_flow=fx.Flow(bus='Fernwärme', flow_id='Q_th'),
         )
     )
     return flow_system
@@ -140,9 +140,9 @@ def test_fixed_size(solver_fixture, time_steps_fixture):
         fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.5,
-            fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
             thermal_flow=fx.Flow(
-                'Fernwärme',
+                bus='Fernwärme',
                 flow_id='Q_th',
                 size=fx.InvestParameters(fixed_size=1000, effects_of_investment=10, effects_of_investment_per_size=1),
             ),
@@ -179,9 +179,9 @@ def test_optimize_size(solver_fixture, time_steps_fixture):
         fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.5,
-            fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
             thermal_flow=fx.Flow(
-                'Fernwärme',
+                bus='Fernwärme',
                 flow_id='Q_th',
                 size=fx.InvestParameters(effects_of_investment=10, effects_of_investment_per_size=1, maximum_size=100),
             ),
@@ -218,9 +218,9 @@ def test_size_bounds(solver_fixture, time_steps_fixture):
         fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.5,
-            fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
             thermal_flow=fx.Flow(
-                'Fernwärme',
+                bus='Fernwärme',
                 flow_id='Q_th',
                 size=fx.InvestParameters(
                     minimum_size=40, maximum_size=100, effects_of_investment=10, effects_of_investment_per_size=1
@@ -259,9 +259,9 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
         fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.5,
-            fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
             thermal_flow=fx.Flow(
-                'Fernwärme',
+                bus='Fernwärme',
                 flow_id='Q_th',
                 size=fx.InvestParameters(
                     mandatory=False,
@@ -275,9 +275,9 @@ def test_optional_invest(solver_fixture, time_steps_fixture):
         fx.linear_converters.Boiler(
             'Boiler_optional',
             thermal_efficiency=0.5,
-            fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
             thermal_flow=fx.Flow(
-                'Fernwärme',
+                bus='Fernwärme',
                 flow_id='Q_th',
                 size=fx.InvestParameters(
                     mandatory=False,
@@ -336,8 +336,8 @@ def test_on(solver_fixture, time_steps_fixture):
         fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.5,
-            fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
-            thermal_flow=fx.Flow('Fernwärme', flow_id='Q_th', size=100, status_parameters=fx.StatusParameters()),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
+            thermal_flow=fx.Flow(bus='Fernwärme', flow_id='Q_th', size=100, status_parameters=fx.StatusParameters()),
         )
     )
 
@@ -373,9 +373,9 @@ def test_off(solver_fixture, time_steps_fixture):
         fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.5,
-            fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
             thermal_flow=fx.Flow(
-                'Fernwärme',
+                bus='Fernwärme',
                 flow_id='Q_th',
                 size=100,
                 status_parameters=fx.StatusParameters(max_downtime=100),
@@ -422,9 +422,9 @@ def test_startup_shutdown(solver_fixture, time_steps_fixture):
         fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.5,
-            fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
             thermal_flow=fx.Flow(
-                'Fernwärme',
+                bus='Fernwärme',
                 flow_id='Q_th',
                 size=100,
                 status_parameters=fx.StatusParameters(force_startup_tracking=True),
@@ -478,9 +478,9 @@ def test_on_total_max(solver_fixture, time_steps_fixture):
         fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.5,
-            fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
             thermal_flow=fx.Flow(
-                'Fernwärme',
+                bus='Fernwärme',
                 flow_id='Q_th',
                 size=100,
                 status_parameters=fx.StatusParameters(active_hours_max=1),
@@ -489,8 +489,8 @@ def test_on_total_max(solver_fixture, time_steps_fixture):
         fx.linear_converters.Boiler(
             'Boiler_backup',
             thermal_efficiency=0.2,
-            fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
-            thermal_flow=fx.Flow('Fernwärme', flow_id='Q_th', size=100),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
+            thermal_flow=fx.Flow(bus='Fernwärme', flow_id='Q_th', size=100),
         ),
     )
 
@@ -526,9 +526,9 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
         fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.5,
-            fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
             thermal_flow=fx.Flow(
-                'Fernwärme',
+                bus='Fernwärme',
                 flow_id='Q_th',
                 size=100,
                 status_parameters=fx.StatusParameters(active_hours_max=2),
@@ -537,9 +537,9 @@ def test_on_total_bounds(solver_fixture, time_steps_fixture):
         fx.linear_converters.Boiler(
             'Boiler_backup',
             thermal_efficiency=0.2,
-            fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
             thermal_flow=fx.Flow(
-                'Fernwärme',
+                bus='Fernwärme',
                 flow_id='Q_th',
                 size=100,
                 status_parameters=fx.StatusParameters(active_hours_min=3),
@@ -597,9 +597,9 @@ def test_consecutive_uptime_downtime(solver_fixture, time_steps_fixture):
         fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.5,
-            fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
             thermal_flow=fx.Flow(
-                'Fernwärme',
+                bus='Fernwärme',
                 flow_id='Q_th',
                 size=100,
                 previous_flow_rate=0,  # Required for initial uptime constraint
@@ -609,8 +609,8 @@ def test_consecutive_uptime_downtime(solver_fixture, time_steps_fixture):
         fx.linear_converters.Boiler(
             'Boiler_backup',
             thermal_efficiency=0.2,
-            fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
-            thermal_flow=fx.Flow('Fernwärme', flow_id='Q_th', size=100),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
+            thermal_flow=fx.Flow(bus='Fernwärme', flow_id='Q_th', size=100),
         ),
     )
     flow_system['Wärmelast'].inputs[0].fixed_relative_profile = np.array([5, 10, 20, 18, 12])
@@ -656,15 +656,15 @@ def test_consecutive_off(solver_fixture, time_steps_fixture):
         fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.5,
-            fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
-            thermal_flow=fx.Flow('Fernwärme', flow_id='Q_th'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
+            thermal_flow=fx.Flow(bus='Fernwärme', flow_id='Q_th'),
         ),
         fx.linear_converters.Boiler(
             'Boiler_backup',
             thermal_efficiency=0.2,
-            fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
             thermal_flow=fx.Flow(
-                'Fernwärme',
+                bus='Fernwärme',
                 flow_id='Q_th',
                 size=100,
                 previous_flow_rate=np.array([20]),  # Otherwise its Off before the start

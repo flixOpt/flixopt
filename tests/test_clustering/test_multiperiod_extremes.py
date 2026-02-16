@@ -109,14 +109,14 @@ def create_multiperiod_system_with_different_profiles(
         fx.Effect('costs', '€', is_standard=True, is_objective=True),
         fx.Sink(
             'HeatDemand',
-            inputs=[fx.Flow('Q', bus='Heat', fixed_relative_profile=demand_da, size=1)],
+            inputs=[fx.Flow(bus='Heat', flow_id='Q', fixed_relative_profile=demand_da, size=1)],
         ),
-        fx.Source('GasSource', outputs=[fx.Flow('Gas', bus='Gas', effects_per_flow_hour=0.05)]),
+        fx.Source('GasSource', outputs=[fx.Flow(bus='Gas', effects_per_flow_hour=0.05)]),
         fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.9,
-            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
-            thermal_flow=fx.Flow('Q_th', bus='Heat'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
+            thermal_flow=fx.Flow(bus='Heat', flow_id='Q_th'),
         ),
     )
     return flow_system
@@ -195,14 +195,14 @@ def create_system_with_extreme_peaks(
         fx.Effect('costs', '€', is_standard=True, is_objective=True),
         fx.Sink(
             'HeatDemand',
-            inputs=[fx.Flow('Q', bus='Heat', fixed_relative_profile=demand_input, size=1)],
+            inputs=[fx.Flow(bus='Heat', flow_id='Q', fixed_relative_profile=demand_input, size=1)],
         ),
-        fx.Source('GasSource', outputs=[fx.Flow('Gas', bus='Gas', effects_per_flow_hour=0.05)]),
+        fx.Source('GasSource', outputs=[fx.Flow(bus='Gas', effects_per_flow_hour=0.05)]),
         fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.9,
-            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
-            thermal_flow=fx.Flow('Q_th', bus='Heat'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
+            thermal_flow=fx.Flow(bus='Heat', flow_id='Q_th'),
         ),
     )
     return flow_system
@@ -250,14 +250,14 @@ def create_multiperiod_multiscenario_system(
         fx.Effect('costs', '€', is_standard=True, is_objective=True),
         fx.Sink(
             'HeatDemand',
-            inputs=[fx.Flow('Q', bus='Heat', fixed_relative_profile=demand_da, size=1)],
+            inputs=[fx.Flow(bus='Heat', flow_id='Q', fixed_relative_profile=demand_da, size=1)],
         ),
-        fx.Source('GasSource', outputs=[fx.Flow('Gas', bus='Gas', effects_per_flow_hour=0.05)]),
+        fx.Source('GasSource', outputs=[fx.Flow(bus='Gas', effects_per_flow_hour=0.05)]),
         fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.9,
-            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
-            thermal_flow=fx.Flow('Q_th', bus='Heat'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
+            thermal_flow=fx.Flow(bus='Heat', flow_id='Q_th'),
         ),
     )
     return flow_system
@@ -435,13 +435,13 @@ class TestExtremeConfigNewCluster:
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink('HeatDemand', inputs=[fx.Flow('Q', bus='Heat', fixed_relative_profile=demand, size=1)]),
-            fx.Source('GasSource', outputs=[fx.Flow('Gas', bus='Gas', effects_per_flow_hour=0.05)]),
+            fx.Sink('HeatDemand', inputs=[fx.Flow(bus='Heat', flow_id='Q', fixed_relative_profile=demand, size=1)]),
+            fx.Source('GasSource', outputs=[fx.Flow(bus='Gas', effects_per_flow_hour=0.05)]),
             fx.linear_converters.Boiler(
                 'Boiler',
                 thermal_efficiency=0.9,
-                fuel_flow=fx.Flow('Q_fu', bus='Gas'),
-                thermal_flow=fx.Flow('Q_th', bus='Heat'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
+                thermal_flow=fx.Flow(bus='Heat', flow_id='Q_th'),
             ),
         )
 
@@ -737,13 +737,13 @@ class TestMultiScenarioWithClustering:
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink('HeatDemand', inputs=[fx.Flow('Q', bus='Heat', fixed_relative_profile=demand_da, size=1)]),
-            fx.Source('GasSource', outputs=[fx.Flow('Gas', bus='Gas', effects_per_flow_hour=0.05)]),
+            fx.Sink('HeatDemand', inputs=[fx.Flow(bus='Heat', flow_id='Q', fixed_relative_profile=demand_da, size=1)]),
+            fx.Source('GasSource', outputs=[fx.Flow(bus='Gas', effects_per_flow_hour=0.05)]),
             fx.linear_converters.Boiler(
                 'Boiler',
                 thermal_efficiency=0.9,
-                fuel_flow=fx.Flow('Q_fu', bus='Gas'),
-                thermal_flow=fx.Flow('Q_th', bus='Heat'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
+                thermal_flow=fx.Flow(bus='Heat', flow_id='Q_th'),
             ),
         )
 

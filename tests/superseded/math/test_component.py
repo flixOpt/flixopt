@@ -14,12 +14,12 @@ class TestComponentModel:
     def test_flow_label_check(self):
         """Test that flow model constraints are correctly generated."""
         inputs = [
-            fx.Flow('Q_th_Last', 'Fernwärme', relative_minimum=np.ones(10) * 0.1),
-            fx.Flow('Q_Gas', 'Fernwärme', relative_minimum=np.ones(10) * 0.1),
+            fx.Flow(bus='Fernwärme', flow_id='Q_th_Last', relative_minimum=np.ones(10) * 0.1),
+            fx.Flow(bus='Fernwärme', flow_id='Q_Gas', relative_minimum=np.ones(10) * 0.1),
         ]
         outputs = [
-            fx.Flow('Q_th_Last', 'Gas', relative_minimum=np.ones(10) * 0.01),
-            fx.Flow('Q_Gas', 'Gas', relative_minimum=np.ones(10) * 0.01),
+            fx.Flow(bus='Gas', flow_id='Q_th_Last', relative_minimum=np.ones(10) * 0.01),
+            fx.Flow(bus='Gas', flow_id='Q_Gas', relative_minimum=np.ones(10) * 0.01),
         ]
         with pytest.raises(ValueError, match='Flow names must be unique!'):
             _ = flixopt.elements.Component('TestComponent', inputs=inputs, outputs=outputs)
@@ -28,12 +28,12 @@ class TestComponentModel:
         """Test that flow model constraints are correctly generated."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         inputs = [
-            fx.Flow('In1', 'Fernwärme', size=100, relative_minimum=np.ones(10) * 0.1),
-            fx.Flow('In2', 'Fernwärme', size=100, relative_minimum=np.ones(10) * 0.1),
+            fx.Flow(bus='Fernwärme', flow_id='In1', size=100, relative_minimum=np.ones(10) * 0.1),
+            fx.Flow(bus='Fernwärme', flow_id='In2', size=100, relative_minimum=np.ones(10) * 0.1),
         ]
         outputs = [
-            fx.Flow('Out1', 'Gas', size=100, relative_minimum=np.ones(10) * 0.01),
-            fx.Flow('Out2', 'Gas', size=100, relative_minimum=np.ones(10) * 0.01),
+            fx.Flow(bus='Gas', flow_id='Out1', size=100, relative_minimum=np.ones(10) * 0.01),
+            fx.Flow(bus='Gas', flow_id='Out2', size=100, relative_minimum=np.ones(10) * 0.01),
         ]
         comp = flixopt.elements.Component('TestComponent', inputs=inputs, outputs=outputs)
         flow_system.add_elements(comp)
@@ -55,11 +55,11 @@ class TestComponentModel:
 
         ub_out2 = np.linspace(1, 1.5, 10).round(2)
         inputs = [
-            fx.Flow('In1', 'Fernwärme', relative_minimum=np.ones(10) * 0.1, size=100),
+            fx.Flow(bus='Fernwärme', flow_id='In1', relative_minimum=np.ones(10) * 0.1, size=100),
         ]
         outputs = [
-            fx.Flow('Out1', 'Gas', relative_minimum=np.ones(10) * 0.2, size=200),
-            fx.Flow('Out2', 'Gas', relative_minimum=np.ones(10) * 0.3, relative_maximum=ub_out2, size=300),
+            fx.Flow(bus='Gas', flow_id='Out1', relative_minimum=np.ones(10) * 0.2, size=200),
+            fx.Flow(bus='Gas', flow_id='Out2', relative_minimum=np.ones(10) * 0.3, relative_maximum=ub_out2, size=300),
         ]
         comp = flixopt.elements.Component(
             'TestComponent', inputs=inputs, outputs=outputs, status_parameters=fx.StatusParameters()
@@ -102,7 +102,7 @@ class TestComponentModel:
         """Test that component with status and single flow is correctly generated."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         inputs = [
-            fx.Flow('In1', 'Fernwärme', relative_minimum=np.ones(10) * 0.1, size=100),
+            fx.Flow(bus='Fernwärme', flow_id='In1', relative_minimum=np.ones(10) * 0.1, size=100),
         ]
         outputs = []
         comp = flixopt.elements.Component(
@@ -137,18 +137,20 @@ class TestComponentModel:
         ub_out2 = np.linspace(1, 1.5, 10).round(2)
         inputs = [
             fx.Flow(
-                'In1',
-                'Fernwärme',
+                bus='Fernwärme',
+                flow_id='In1',
                 relative_minimum=np.ones(10) * 0.1,
                 size=100,
                 previous_flow_rate=np.array([0, 0, 1e-6, 1e-5, 1e-4, 3, 4]),
             ),
         ]
         outputs = [
-            fx.Flow('Out1', 'Gas', relative_minimum=np.ones(10) * 0.2, size=200, previous_flow_rate=[3, 4, 5]),
             fx.Flow(
-                'Out2',
-                'Gas',
+                bus='Gas', flow_id='Out1', relative_minimum=np.ones(10) * 0.2, size=200, previous_flow_rate=[3, 4, 5]
+            ),
+            fx.Flow(
+                bus='Gas',
+                flow_id='Out2',
                 relative_minimum=np.ones(10) * 0.3,
                 relative_maximum=ub_out2,
                 size=300,
@@ -200,8 +202,8 @@ class TestComponentModel:
         ub_out2 = np.linspace(1, 1.5, 10).round(2)
         inputs = [
             fx.Flow(
-                'In1',
-                'Fernwärme',
+                bus='Fernwärme',
+                flow_id='In1',
                 relative_minimum=np.ones(10) * 0.1,
                 size=100,
                 previous_flow_rate=in1_previous_flow_rate,
@@ -210,11 +212,15 @@ class TestComponentModel:
         ]
         outputs = [
             fx.Flow(
-                'Out1', 'Gas', relative_minimum=np.ones(10) * 0.2, size=200, previous_flow_rate=out1_previous_flow_rate
+                bus='Gas',
+                flow_id='Out1',
+                relative_minimum=np.ones(10) * 0.2,
+                size=200,
+                previous_flow_rate=out1_previous_flow_rate,
             ),
             fx.Flow(
-                'Out2',
-                'Gas',
+                bus='Gas',
+                flow_id='Out2',
                 relative_minimum=np.ones(10) * 0.3,
                 relative_maximum=ub_out2,
                 size=300,
@@ -260,8 +266,8 @@ class TestTransmissionModel:
         boiler = fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.5,
-            thermal_flow=fx.Flow('Q_th', bus='Wärme lokal'),
-            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow(bus='Wärme lokal', flow_id='Q_th'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
         )
 
         transmission = fx.Transmission(
@@ -269,9 +275,11 @@ class TestTransmissionModel:
             relative_losses=0.2,
             absolute_losses=20,
             in1=fx.Flow(
-                'Rohr1', 'Wärme lokal', size=fx.InvestParameters(effects_of_investment_per_size=5, maximum_size=1e6)
+                bus='Wärme lokal',
+                flow_id='Rohr1',
+                size=fx.InvestParameters(effects_of_investment_per_size=5, maximum_size=1e6),
             ),
-            out1=fx.Flow('Rohr2', 'Fernwärme', size=1000),
+            out1=fx.Flow(bus='Fernwärme', flow_id='Rohr2', size=1000),
         )
 
         flow_system.add_elements(transmission, boiler)
@@ -300,24 +308,24 @@ class TestTransmissionModel:
             'Boiler_Standard',
             thermal_efficiency=0.9,
             thermal_flow=fx.Flow(
-                'Q_th', bus='Fernwärme', size=1000, relative_maximum=np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 1])
+                bus='Fernwärme', flow_id='Q_th', size=1000, relative_maximum=np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 1])
             ),
-            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
         )
 
         boiler2 = fx.linear_converters.Boiler(
             'Boiler_backup',
             thermal_efficiency=0.4,
-            thermal_flow=fx.Flow('Q_th', bus='Wärme lokal'),
-            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow(bus='Wärme lokal', flow_id='Q_th'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
         )
 
         last2 = fx.Sink(
             'Wärmelast2',
             inputs=[
                 fx.Flow(
-                    'Q_th_Last',
                     bus='Wärme lokal',
+                    flow_id='Q_th_Last',
                     size=1,
                     fixed_relative_profile=flow_system.components['Wärmelast'].inputs[0].fixed_relative_profile
                     * np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1]),
@@ -330,13 +338,13 @@ class TestTransmissionModel:
             relative_losses=0.2,
             absolute_losses=20,
             in1=fx.Flow(
-                'Rohr1a',
                 bus='Wärme lokal',
+                flow_id='Rohr1a',
                 size=fx.InvestParameters(effects_of_investment_per_size=5, maximum_size=1000),
             ),
-            out1=fx.Flow('Rohr1b', 'Fernwärme', size=1000),
-            in2=fx.Flow('Rohr2a', 'Fernwärme', size=fx.InvestParameters(maximum_size=1000)),
-            out2=fx.Flow('Rohr2b', bus='Wärme lokal', size=1000),
+            out1=fx.Flow(bus='Fernwärme', flow_id='Rohr1b', size=1000),
+            in2=fx.Flow(bus='Fernwärme', flow_id='Rohr2a', size=fx.InvestParameters(maximum_size=1000)),
+            out2=fx.Flow(bus='Wärme lokal', flow_id='Rohr2b', size=1000),
             balanced=True,
         )
 
@@ -375,24 +383,24 @@ class TestTransmissionModel:
             'Boiler_Standard',
             thermal_efficiency=0.9,
             thermal_flow=fx.Flow(
-                'Q_th', bus='Fernwärme', size=1000, relative_maximum=np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 1])
+                bus='Fernwärme', flow_id='Q_th', size=1000, relative_maximum=np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 1])
             ),
-            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
         )
 
         boiler2 = fx.linear_converters.Boiler(
             'Boiler_backup',
             thermal_efficiency=0.4,
-            thermal_flow=fx.Flow('Q_th', bus='Wärme lokal'),
-            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow(bus='Wärme lokal', flow_id='Q_th'),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
         )
 
         last2 = fx.Sink(
             'Wärmelast2',
             inputs=[
                 fx.Flow(
-                    'Q_th_Last',
                     bus='Wärme lokal',
+                    flow_id='Q_th_Last',
                     size=1,
                     fixed_relative_profile=flow_system.components['Wärmelast'].inputs[0].fixed_relative_profile
                     * np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1]),
@@ -405,19 +413,19 @@ class TestTransmissionModel:
             relative_losses=0.2,
             absolute_losses=20,
             in1=fx.Flow(
-                'Rohr1a',
                 bus='Wärme lokal',
+                flow_id='Rohr1a',
                 size=fx.InvestParameters(effects_of_investment_per_size=50, maximum_size=1000),
             ),
-            out1=fx.Flow('Rohr1b', 'Fernwärme', size=1000),
+            out1=fx.Flow(bus='Fernwärme', flow_id='Rohr1b', size=1000),
             in2=fx.Flow(
-                'Rohr2a',
-                'Fernwärme',
+                bus='Fernwärme',
+                flow_id='Rohr2a',
                 size=fx.InvestParameters(
                     effects_of_investment_per_size=100, minimum_size=10, maximum_size=1000, mandatory=True
                 ),
             ),
-            out2=fx.Flow('Rohr2b', bus='Wärme lokal', size=1000),
+            out2=fx.Flow(bus='Wärme lokal', flow_id='Rohr2b', size=1000),
             balanced=False,
         )
 

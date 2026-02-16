@@ -29,13 +29,13 @@ class TestEffects:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 20])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 20])),
                 ],
             ),
             fx.Source(
                 'HeatSrc',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 2, 'CO2': 0.5}),
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 2, 'CO2': 0.5}),
                 ],
             ),
         )
@@ -64,13 +64,13 @@ class TestEffects:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
             fx.Source(
                 'HeatSrc',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 1, 'CO2': 10}),
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 1, 'CO2': 10}),
                 ],
             ),
         )
@@ -101,19 +101,19 @@ class TestEffects:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
             fx.Source(
                 'Dirty',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
                 ],
             ),
             fx.Source(
                 'Clean',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 10, 'CO2': 0}),
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 10, 'CO2': 0}),
                 ],
             ),
         )
@@ -147,19 +147,19 @@ class TestEffects:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
             fx.Source(
                 'Dirty',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
                 ],
             ),
             fx.Source(
                 'Clean',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 1, 'CO2': 0}),
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 1, 'CO2': 0}),
                 ],
             ),
         )
@@ -191,19 +191,19 @@ class TestEffects:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([15, 5])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([15, 5])),
                 ],
             ),
             fx.Source(
                 'Dirty',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
                 ],
             ),
             fx.Source(
                 'Clean',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 5, 'CO2': 0}),
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 5, 'CO2': 0}),
                 ],
             ),
         )
@@ -232,13 +232,13 @@ class TestEffects:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([5, 5])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([5, 5])),
                 ],
             ),
             fx.Source(
                 'Dirty',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
                 ],
             ),
         )
@@ -267,19 +267,19 @@ class TestEffects:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
             fx.Source(
                 'Dirty',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
                 ],
             ),
             fx.Source(
                 'Clean',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 5, 'CO2': 0}),
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 5, 'CO2': 0}),
                 ],
             ),
         )
@@ -309,13 +309,13 @@ class TestEffects:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
             fx.Source(
                 'Dirty',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
                 ],
             ),
         )
@@ -344,22 +344,22 @@ class TestEffects:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.linear_converters.Boiler(
                 'Boiler',
                 thermal_efficiency=1.0,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
                 thermal_flow=fx.Flow(
-                    'heat',
                     bus='Heat',
+                    flow_id='heat',
                     size=fx.InvestParameters(
                         fixed_size=50,
                         effects_of_investment={'costs': 100, 'CO2': 5},
@@ -397,22 +397,22 @@ class TestEffects:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.linear_converters.Boiler(
                 'CheapBoiler',
                 thermal_efficiency=1.0,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
                 thermal_flow=fx.Flow(
-                    'heat',
                     bus='Heat',
+                    flow_id='heat',
                     size=fx.InvestParameters(
                         fixed_size=50,
                         effects_of_investment={'costs': 10, 'CO2': 100},
@@ -422,10 +422,10 @@ class TestEffects:
             fx.linear_converters.Boiler(
                 'ExpensiveBoiler',
                 thermal_efficiency=1.0,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
                 thermal_flow=fx.Flow(
-                    'heat',
                     bus='Heat',
+                    flow_id='heat',
                     size=fx.InvestParameters(
                         fixed_size=50,
                         effects_of_investment={'costs': 50, 'CO2': 10},
@@ -461,22 +461,22 @@ class TestEffects:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.linear_converters.Boiler(
                 'InvestBoiler',
                 thermal_efficiency=1.0,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
                 thermal_flow=fx.Flow(
-                    'heat',
                     bus='Heat',
+                    flow_id='heat',
                     size=fx.InvestParameters(
                         fixed_size=50,
                         effects_of_investment={'costs': 100, 'CO2': 50},
@@ -486,8 +486,8 @@ class TestEffects:
             fx.linear_converters.Boiler(
                 'Backup',
                 thermal_efficiency=0.5,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
-                thermal_flow=fx.Flow('heat', bus='Heat', size=100),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
+                thermal_flow=fx.Flow(bus='Heat', flow_id='heat', size=100),
             ),
         )
         fs = optimize(fs)

@@ -1090,7 +1090,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 - **Penalty as first-class Effect**: Users can now add Penalty contributions anywhere effects are used:
   ```python
-  fx.Flow('Q', 'Bus', effects_per_flow_hour={'Penalty': 2.5})
+  fx.Flow(bus='Bus', flow_id='Q', effects_per_flow_hour={'Penalty': 2.5})
   fx.InvestParameters(..., effects_of_investment={'Penalty': 100})
   ```
 - **User-definable Penalty**: Optionally define custom Penalty with constraints (auto-created if not defined):

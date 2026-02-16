@@ -135,13 +135,16 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
         fx.Bus('Fernwärme'),
         fx.Bus('Gas'),
         fx.Sink(
-            'Wärmelast', inputs=[fx.Flow('Fernwärme', flow_id='Q_th_Last', size=1, fixed_relative_profile=thermal_load)]
+            'Wärmelast',
+            inputs=[fx.Flow(bus='Fernwärme', flow_id='Q_th_Last', size=1, fixed_relative_profile=thermal_load)],
         ),
         fx.Source(
             'Gastarif',
-            outputs=[fx.Flow('Gas', flow_id='Q_Gas', size=1000, effects_per_flow_hour={'costs': 0.04, 'CO2': 0.3})],
+            outputs=[fx.Flow(bus='Gas', flow_id='Q_Gas', size=1000, effects_per_flow_hour={'costs': 0.04, 'CO2': 0.3})],
         ),
-        fx.Sink('Einspeisung', inputs=[fx.Flow('Strom', flow_id='P_el', effects_per_flow_hour=-1 * electrical_load)]),
+        fx.Sink(
+            'Einspeisung', inputs=[fx.Flow(bus='Strom', flow_id='P_el', effects_per_flow_hour=-1 * electrical_load)]
+        ),
     )
 
     boiler = fx.linear_converters.Boiler(
@@ -149,7 +152,7 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
         thermal_efficiency=0.5,
         status_parameters=fx.StatusParameters(effects_per_active_hour={'costs': 0, 'CO2': 1000}),
         thermal_flow=fx.Flow(
-            'Fernwärme',
+            bus='Fernwärme',
             flow_id='Q_th',
             load_factor_max=1.0,
             load_factor_min=0.1,
@@ -173,7 +176,7 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
             ),
             flow_hours_max=1e6,
         ),
-        fuel_flow=fx.Flow('Gas', flow_id='Q_fu', size=200, relative_minimum=0, relative_maximum=1),
+        fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu', size=200, relative_minimum=0, relative_maximum=1),
     )
 
     invest_speicher = fx.InvestParameters(
@@ -192,8 +195,8 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
     )
     speicher = fx.Storage(
         'Speicher',
-        charging=fx.Flow('Fernwärme', flow_id='Q_th_load', size=1e4),
-        discharging=fx.Flow('Fernwärme', flow_id='Q_th_unload', size=1e4),
+        charging=fx.Flow(bus='Fernwärme', flow_id='Q_th_load', size=1e4),
+        discharging=fx.Flow(bus='Fernwärme', flow_id='Q_th_unload', size=1e4),
         capacity_in_flow_hours=invest_speicher,
         initial_charge_state=0,
         maximal_final_charge_state=10,
@@ -218,10 +221,10 @@ def flow_system_piecewise_conversion_scenarios(flow_system_complex_scenarios) ->
     flow_system.add_elements(
         fx.LinearConverter(
             'KWK',
-            inputs=[fx.Flow('Gas', flow_id='Q_fu', size=200)],
+            inputs=[fx.Flow(bus='Gas', flow_id='Q_fu', size=200)],
             outputs=[
-                fx.Flow('Strom', flow_id='P_el', size=60, relative_maximum=55, previous_flow_rate=10),
-                fx.Flow('Fernwärme', flow_id='Q_th', size=100),
+                fx.Flow(bus='Strom', flow_id='P_el', size=60, relative_maximum=55, previous_flow_rate=10),
+                fx.Flow(bus='Fernwärme', flow_id='Q_th', size=100),
             ],
             piecewise_conversion=fx.PiecewiseConversion(
                 {
@@ -512,7 +515,7 @@ def test_size_equality_constraints():
         'solar',
         outputs=[
             fx.Flow(
-                'grid',
+                bus='grid',
                 flow_id='out',
                 size=fx.InvestParameters(
                     minimum_size=10,
@@ -551,7 +554,7 @@ def test_flow_rate_equality_constraints():
         'solar',
         outputs=[
             fx.Flow(
-                'grid',
+                bus='grid',
                 flow_id='out',
                 size=fx.InvestParameters(
                     minimum_size=10,
@@ -590,7 +593,7 @@ def test_selective_scenario_independence():
         'solar',
         outputs=[
             fx.Flow(
-                'grid',
+                bus='grid',
                 flow_id='out',
                 size=fx.InvestParameters(
                     minimum_size=10, maximum_size=100, effects_of_investment_per_size={'cost': 100}
@@ -600,7 +603,7 @@ def test_selective_scenario_independence():
     )
     sink = fx.Sink(
         'demand',
-        inputs=[fx.Flow('grid', flow_id='in', size=50)],
+        inputs=[fx.Flow(bus='grid', flow_id='in', size=50)],
     )
 
     fs.add_elements(bus, source, sink, fx.Effect('cost', 'Total cost', '€', is_objective=True))
@@ -649,7 +652,7 @@ def test_scenario_parameters_io_persistence():
         'solar',
         outputs=[
             fx.Flow(
-                'grid',
+                bus='grid',
                 flow_id='out',
                 size=fx.InvestParameters(
                     minimum_size=10, maximum_size=100, effects_of_investment_per_size={'cost': 100}
@@ -689,7 +692,7 @@ def test_scenario_parameters_io_with_calculation(tmp_path):
         'solar',
         outputs=[
             fx.Flow(
-                'grid',
+                bus='grid',
                 flow_id='out',
                 size=fx.InvestParameters(
                     minimum_size=10, maximum_size=100, effects_of_investment_per_size={'cost': 100}
@@ -699,7 +702,7 @@ def test_scenario_parameters_io_with_calculation(tmp_path):
     )
     sink = fx.Sink(
         'demand',
-        inputs=[fx.Flow('grid', flow_id='in', size=50)],
+        inputs=[fx.Flow(bus='grid', flow_id='in', size=50)],
     )
 
     fs.add_elements(bus, source, sink, fx.Effect('cost', 'Total cost', '€', is_objective=True))
@@ -747,7 +750,7 @@ def test_weights_io_persistence():
         'solar',
         outputs=[
             fx.Flow(
-                'grid',
+                bus='grid',
                 flow_id='out',
                 size=fx.InvestParameters(
                     minimum_size=10, maximum_size=100, effects_of_investment_per_size={'cost': 100}
@@ -788,7 +791,7 @@ def test_weights_selection():
         'solar',
         outputs=[
             fx.Flow(
-                'grid',
+                bus='grid',
                 flow_id='out',
                 size=10,
             )

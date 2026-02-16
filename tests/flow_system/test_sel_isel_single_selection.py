@@ -20,8 +20,10 @@ def fs_with_scenarios():
         fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
     )
     fs.add_elements(
-        fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=np.ones(24), size=10)]),
-        fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50, effects_per_flow_hour={'costs': 0.05})]),
+        fx.Sink('demand', inputs=[fx.Flow(bus='heat', flow_id='in', fixed_relative_profile=np.ones(24), size=10)]),
+        fx.Source(
+            'source', outputs=[fx.Flow(bus='heat', flow_id='out', size=50, effects_per_flow_hour={'costs': 0.05})]
+        ),
     )
     return fs
 
@@ -38,8 +40,10 @@ def fs_with_periods():
         fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
     )
     fs.add_elements(
-        fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=np.ones(24), size=10)]),
-        fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50, effects_per_flow_hour={'costs': 0.05})]),
+        fx.Sink('demand', inputs=[fx.Flow(bus='heat', flow_id='in', fixed_relative_profile=np.ones(24), size=10)]),
+        fx.Source(
+            'source', outputs=[fx.Flow(bus='heat', flow_id='out', size=50, effects_per_flow_hour={'costs': 0.05})]
+        ),
     )
     return fs
 
@@ -57,8 +61,10 @@ def fs_with_periods_and_scenarios():
         fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
     )
     fs.add_elements(
-        fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=np.ones(24), size=10)]),
-        fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50, effects_per_flow_hour={'costs': 0.05})]),
+        fx.Sink('demand', inputs=[fx.Flow(bus='heat', flow_id='in', fixed_relative_profile=np.ones(24), size=10)]),
+        fx.Source(
+            'source', outputs=[fx.Flow(bus='heat', flow_id='out', size=50, effects_per_flow_hour={'costs': 0.05})]
+        ),
     )
     return fs
 

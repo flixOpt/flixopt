@@ -14,7 +14,6 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-import flixopt as fx
 from flixopt import plotting
 
 # ============================================================================
@@ -112,53 +111,6 @@ class TestFlowSystemSolution:
     def test_solution_none_before_optimization(self, simple_flow_system):
         """Verify solution is None before optimization."""
         assert simple_flow_system.solution is None
-
-
-class TestElementSolution:
-    """Tests for element.solution API (filtered view of flow_system.solution)."""
-
-    def test_element_solution_is_filtered_dataset(self, simple_flow_system, highs_solver):
-        """Verify element.solution returns filtered Dataset."""
-        simple_flow_system.optimize(highs_solver)
-
-        boiler = simple_flow_system.components['Boiler']
-        element_solution = boiler.solution
-
-        assert isinstance(element_solution, xr.Dataset)
-
-    def test_element_solution_contains_only_element_variables(self, simple_flow_system, highs_solver):
-        """Verify element.solution only contains variables for that element."""
-        simple_flow_system.optimize(highs_solver)
-
-        boiler = simple_flow_system.components['Boiler']
-        element_solution = boiler.solution
-
-        # Variables should be batched names from _variable_names
-        assert len(list(element_solution.data_vars)) > 0
-        # Element solution should contain flow|rate (Boiler has flows)
-        assert 'flow|rate' in element_solution
-
-    def test_storage_element_solution(self, simple_flow_system, highs_solver):
-        """Verify storage element solution contains charge state."""
-        simple_flow_system.optimize(highs_solver)
-
-        storage = simple_flow_system.components['Speicher']
-        element_solution = storage.solution
-
-        # Should contain storage charge variable
-        charge_vars = [v for v in element_solution.data_vars if 'charge' in v]
-        assert len(charge_vars) > 0
-
-    def test_element_solution_raises_for_unlinked_element(self):
-        """Verify accessing solution for unlinked element raises error."""
-        boiler = fx.linear_converters.Boiler(
-            'TestBoiler',
-            thermal_efficiency=0.9,
-            thermal_flow=fx.Flow('Heat', flow_id='Q_th'),
-            fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
-        )
-        with pytest.raises(ValueError, match='not linked to a FlowSystem'):
-            _ = boiler.solution
 
 
 # ============================================================================

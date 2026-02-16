@@ -14,8 +14,8 @@ class TestLinearConverterModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create input and output flows
-        input_flow = fx.Flow('input_bus', flow_id='input', size=100)
-        output_flow = fx.Flow('output_bus', flow_id='output', size=100)
+        input_flow = fx.Flow(bus='input_bus', flow_id='input', size=100)
+        output_flow = fx.Flow(bus='output_bus', flow_id='output', size=100)
 
         # Create a simple linear converter with constant conversion factor
         converter = fx.LinearConverter(
@@ -48,8 +48,8 @@ class TestLinearConverterModel:
         varying_efficiency = np.linspace(0.7, 0.9, len(timesteps))
 
         # Create input and output flows
-        input_flow = fx.Flow('input_bus', flow_id='input', size=100)
-        output_flow = fx.Flow('output_bus', flow_id='output', size=100)
+        input_flow = fx.Flow(bus='input_bus', flow_id='input', size=100)
+        output_flow = fx.Flow(bus='output_bus', flow_id='output', size=100)
 
         # Create a linear converter with time-varying conversion factor
         converter = fx.LinearConverter(
@@ -78,10 +78,10 @@ class TestLinearConverterModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create flows
-        input_flow1 = fx.Flow('input_bus1', flow_id='input1', size=100)
-        input_flow2 = fx.Flow('input_bus2', flow_id='input2', size=100)
-        output_flow1 = fx.Flow('output_bus1', flow_id='output1', size=100)
-        output_flow2 = fx.Flow('output_bus2', flow_id='output2', size=100)
+        input_flow1 = fx.Flow(bus='input_bus1', flow_id='input1', size=100)
+        input_flow2 = fx.Flow(bus='input_bus2', flow_id='input2', size=100)
+        output_flow1 = fx.Flow(bus='output_bus1', flow_id='output1', size=100)
+        output_flow2 = fx.Flow(bus='output_bus2', flow_id='output2', size=100)
 
         # Create a linear converter with multiple inputs/outputs and conversion factors
         converter = fx.LinearConverter(
@@ -111,8 +111,8 @@ class TestLinearConverterModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create input and output flows
-        input_flow = fx.Flow('input_bus', flow_id='input', size=100)
-        output_flow = fx.Flow('output_bus', flow_id='output', size=100)
+        input_flow = fx.Flow(bus='input_bus', flow_id='input', size=100)
+        output_flow = fx.Flow(bus='output_bus', flow_id='output', size=100)
 
         # Create StatusParameters
         status_params = fx.StatusParameters(
@@ -158,10 +158,10 @@ class TestLinearConverterModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create a more complex setup with multiple flows
-        input_flow1 = fx.Flow('fuel_bus', flow_id='fuel', size=100)
-        input_flow2 = fx.Flow('electricity_bus', flow_id='electricity', size=50)
-        output_flow1 = fx.Flow('heat_bus', flow_id='heat', size=70)
-        output_flow2 = fx.Flow('cooling_bus', flow_id='cooling', size=30)
+        input_flow1 = fx.Flow(bus='fuel_bus', flow_id='fuel', size=100)
+        input_flow2 = fx.Flow(bus='electricity_bus', flow_id='electricity', size=50)
+        output_flow1 = fx.Flow(bus='heat_bus', flow_id='heat', size=70)
+        output_flow2 = fx.Flow(bus='cooling_bus', flow_id='cooling', size=30)
 
         # Create a CHP-like converter with more complex connections
         converter = fx.LinearConverter(
@@ -205,8 +205,8 @@ class TestLinearConverterModel:
         )
 
         # Create input and output flows
-        input_flow = fx.Flow('electricity_bus', flow_id='electricity', size=100)
-        output_flow = fx.Flow('heat_bus', flow_id='heat', size=500)  # Higher maximum to allow for COP of 5
+        input_flow = fx.Flow(bus='electricity_bus', flow_id='electricity', size=100)
+        output_flow = fx.Flow(bus='heat_bus', flow_id='heat', size=500)  # Higher maximum to allow for COP of 5
 
         conversion_factors = [{input_flow.label: fluctuating_cop, output_flow.label: np.ones(len(timesteps))}]
 
@@ -229,8 +229,8 @@ class TestLinearConverterModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create input and output flows
-        input_flow = fx.Flow('input_bus', flow_id='input', size=100)
-        output_flow = fx.Flow('output_bus', flow_id='output', size=100)
+        input_flow = fx.Flow(bus='input_bus', flow_id='input', size=100)
+        output_flow = fx.Flow(bus='output_bus', flow_id='output', size=100)
 
         # Create pieces for piecewise conversion
         # For input flow: two pieces from 0-50 and 50-100
@@ -269,8 +269,8 @@ class TestLinearConverterModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create input and output flows
-        input_flow = fx.Flow('input_bus', flow_id='input', size=100)
-        output_flow = fx.Flow('output_bus', flow_id='output', size=100)
+        input_flow = fx.Flow(bus='input_bus', flow_id='input', size=100)
+        output_flow = fx.Flow(bus='output_bus', flow_id='output', size=100)
 
         # Create pieces for piecewise conversion
         input_pieces = [fx.Piece(start=0, end=50), fx.Piece(start=50, end=100)]

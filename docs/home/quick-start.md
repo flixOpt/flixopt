@@ -54,8 +54,7 @@ solar_profile = np.array([0, 0, 0, 0, 0, 0, 0.2, 0.5, 0.8, 1.0,
 solar = fx.Source(
     'solar',
     outputs=[fx.Flow(
-        'power',
-        bus='electricity',
+        bus='electricity', flow_id='power',
         size=100,  # 100 kW capacity
         relative_maximum=solar_profile
     )
@@ -67,8 +66,7 @@ demand_profile = np.array([30, 25, 20, 20, 25, 35, 50, 70, 80, 75,
                            60, 50, 40, 35])
 
 demand = fx.Sink('demand', inputs=[
-    fx.Flow('consumption',
-            bus='electricity',
+    fx.Flow(bus='electricity', flow_id='consumption',
             size=1,
             fixed_relative_profile=demand_profile)
 ])
@@ -76,8 +74,8 @@ demand = fx.Sink('demand', inputs=[
 # Battery storage
 battery = fx.Storage(
     'battery',
-    charging=fx.Flow('charge', bus='electricity', size=50),
-    discharging=fx.Flow('discharge', bus='electricity', size=50),
+    charging=fx.Flow(bus='electricity', flow_id='charge', size=50),
+    discharging=fx.Flow(bus='electricity', flow_id='discharge', size=50),
     capacity_in_flow_hours=100,  # 100 kWh capacity
     initial_charge_state=50,  # Start at 50%
     eta_charge=0.95,

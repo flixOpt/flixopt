@@ -40,22 +40,22 @@ class TestPiecewiseWithInvestment:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([40, 40])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([40, 40])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.LinearConverter(
                 'Converter',
-                inputs=[fx.Flow('fuel', bus='Gas', size=fx.InvestParameters(maximum_size=100))],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel', size=fx.InvestParameters(maximum_size=100))],
                 outputs=[
                     fx.Flow(
-                        'heat',
                         bus='Heat',
+                        flow_id='heat',
                         size=fx.InvestParameters(
                             maximum_size=100,
                             effects_of_investment_per_size=1,
@@ -99,20 +99,20 @@ class TestPiecewiseWithInvestment:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
-                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1)],
             ),
             fx.linear_converters.Boiler(
                 'InvestBoiler',
                 thermal_efficiency=1.0,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
                 thermal_flow=fx.Flow(
-                    'heat',
                     bus='Heat',
+                    flow_id='heat',
                     size=fx.InvestParameters(
                         maximum_size=100,
                         piecewise_effects_of_investment=fx.PiecewiseEffects(
@@ -127,8 +127,8 @@ class TestPiecewiseWithInvestment:
             fx.linear_converters.Boiler(
                 'Backup',
                 thermal_efficiency=0.5,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
-                thermal_flow=fx.Flow('heat', bus='Heat', size=100),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
+                thermal_flow=fx.Flow(bus='Heat', flow_id='heat', size=100),
             ),
         )
         fs = optimize(fs)
@@ -166,8 +166,8 @@ class TestPiecewiseWithStatus:
                 'Demand',
                 inputs=[
                     fx.Flow(
-                        'heat',
                         bus='Heat',
+                        flow_id='heat',
                         size=1,
                         fixed_relative_profile=np.array([0, 40, 0, 40]),
                     ),
@@ -175,20 +175,20 @@ class TestPiecewiseWithStatus:
             ),
             fx.Source(
                 'GasSrc',
-                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1)],
             ),
             fx.LinearConverter(
                 'Converter',
                 inputs=[
                     fx.Flow(
-                        'fuel',
                         bus='Gas',
+                        flow_id='fuel',
                         size=100,
                         previous_flow_rate=0,
                         status_parameters=fx.StatusParameters(effects_per_startup=100),
                     )
                 ],
-                outputs=[fx.Flow('heat', bus='Heat', size=100)],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', size=100)],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
                         # Non-1:1 ratio in operating range!
@@ -227,8 +227,8 @@ class TestPiecewiseWithStatus:
                 'Demand',
                 inputs=[
                     fx.Flow(
-                        'heat',
                         bus='Heat',
+                        flow_id='heat',
                         size=1,
                         fixed_relative_profile=np.array([15, 40]),
                     ),
@@ -236,16 +236,16 @@ class TestPiecewiseWithStatus:
             ),
             fx.Source(
                 'GasSrc',
-                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1)],
             ),
             fx.Source(
                 'Backup',
-                outputs=[fx.Flow('heat', bus='Heat', effects_per_flow_hour=5)],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=5)],
             ),
             fx.LinearConverter(
                 'Converter',
-                inputs=[fx.Flow('fuel', bus='Gas', size=100)],
-                outputs=[fx.Flow('heat', bus='Heat', size=100)],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel', size=100)],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', size=100)],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
                         'fuel': fx.Piecewise([fx.Piece(0, 0), fx.Piece(20, 50)]),
@@ -292,8 +292,8 @@ class TestPiecewiseWithStatus:
                 'Demand',
                 inputs=[
                     fx.Flow(
-                        'heat',
                         bus='Heat',
+                        flow_id='heat',
                         size=1,
                         fixed_relative_profile=np.array([5, 35]),
                     ),
@@ -301,23 +301,23 @@ class TestPiecewiseWithStatus:
             ),
             fx.Source(
                 'GasSrc',
-                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1)],
             ),
             fx.Source(
                 'Backup',
-                outputs=[fx.Flow('heat', bus='Heat', effects_per_flow_hour=5)],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=5)],
             ),
             fx.LinearConverter(
                 'Converter',
                 inputs=[
                     fx.Flow(
-                        'fuel',
                         bus='Gas',
+                        flow_id='fuel',
                         size=100,
                         status_parameters=fx.StatusParameters(),
                     )
                 ],
-                outputs=[fx.Flow('heat', bus='Heat', size=100)],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', size=100)],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
                         # NO off-state piece — operating range only
@@ -360,8 +360,8 @@ class TestPiecewiseWithStatus:
                 'Demand',
                 inputs=[
                     fx.Flow(
-                        'heat',
                         bus='Heat',
+                        flow_id='heat',
                         size=1,
                         fixed_relative_profile=np.array([0, 40, 0, 40]),
                     ),
@@ -369,24 +369,24 @@ class TestPiecewiseWithStatus:
             ),
             fx.Source(
                 'GasSrc',
-                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1)],
             ),
             fx.Source(
                 'Backup',
-                outputs=[fx.Flow('heat', bus='Heat', effects_per_flow_hour=100)],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=100)],
             ),
             fx.LinearConverter(
                 'Converter',
                 inputs=[
                     fx.Flow(
-                        'fuel',
                         bus='Gas',
+                        flow_id='fuel',
                         size=100,
                         previous_flow_rate=0,
                         status_parameters=fx.StatusParameters(effects_per_startup=200),
                     )
                 ],
-                outputs=[fx.Flow('heat', bus='Heat', size=100)],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', size=100)],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
                         # NO off-state piece
@@ -431,17 +431,17 @@ class TestPiecewiseThreeSegments:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([40, 40])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([40, 40])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
-                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1)],
             ),
             fx.LinearConverter(
                 'Converter',
-                inputs=[fx.Flow('fuel', bus='Gas')],
-                outputs=[fx.Flow('heat', bus='Heat')],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel')],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat')],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
                         'fuel': fx.Piecewise([fx.Piece(0, 10), fx.Piece(10, 30), fx.Piece(30, 60)]),
@@ -472,17 +472,17 @@ class TestPiecewiseThreeSegments:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([5, 5])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([5, 5])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
-                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1)],
             ),
             fx.LinearConverter(
                 'Converter',
-                inputs=[fx.Flow('fuel', bus='Gas')],
-                outputs=[fx.Flow('heat', bus='Heat')],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel')],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat')],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
                         'fuel': fx.Piecewise([fx.Piece(0, 10), fx.Piece(10, 30), fx.Piece(30, 60)]),
@@ -513,17 +513,17 @@ class TestPiecewiseThreeSegments:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([18, 18])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([18, 18])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
-                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1)],
             ),
             fx.LinearConverter(
                 'Converter',
-                inputs=[fx.Flow('fuel', bus='Gas')],
-                outputs=[fx.Flow('heat', bus='Heat')],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel')],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat')],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
                         'fuel': fx.Piecewise([fx.Piece(0, 10), fx.Piece(10, 30), fx.Piece(30, 60)]),
@@ -569,8 +569,8 @@ class TestStatusWithEffects:
                 'Demand',
                 inputs=[
                     fx.Flow(
-                        'heat',
                         bus='Heat',
+                        flow_id='heat',
                         size=1,
                         fixed_relative_profile=np.array([0, 20, 0, 20]),
                     ),
@@ -578,15 +578,15 @@ class TestStatusWithEffects:
             ),
             fx.Source(
                 'GasSrc',
-                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1)],
             ),
             fx.linear_converters.Boiler(
                 'Boiler',
                 thermal_efficiency=1.0,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
                 thermal_flow=fx.Flow(
-                    'heat',
                     bus='Heat',
+                    flow_id='heat',
                     size=100,
                     relative_minimum=0.1,
                     previous_flow_rate=0,
@@ -628,20 +628,20 @@ class TestStatusWithEffects:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([20, 20])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([20, 20])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
-                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1)],
             ),
             fx.linear_converters.Boiler(
                 'Boiler',
                 thermal_efficiency=1.0,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
                 thermal_flow=fx.Flow(
-                    'heat',
                     bus='Heat',
+                    flow_id='heat',
                     size=100,
                     status_parameters=fx.StatusParameters(
                         effects_per_active_hour={'costs': 10, 'CO2': 5},
@@ -685,24 +685,24 @@ class TestInvestWithRelativeMinimum:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([5, 50])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([5, 50])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
-                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1)],
             ),
             fx.Source(
                 'Backup',
-                outputs=[fx.Flow('heat', bus='Heat', effects_per_flow_hour=10)],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=10)],
             ),
             fx.linear_converters.Boiler(
                 'Boiler',
                 thermal_efficiency=1.0,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
                 thermal_flow=fx.Flow(
-                    'heat',
                     bus='Heat',
+                    flow_id='heat',
                     relative_minimum=0.5,
                     size=fx.InvestParameters(
                         maximum_size=100,
@@ -749,20 +749,20 @@ class TestConversionWithTimeVaryingEffects:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([20, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([20, 10])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=np.array([1, 3])),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=np.array([1, 3])),
                 ],
             ),
             fx.linear_converters.Boiler(
                 'Boiler',
                 thermal_efficiency=0.5,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
-                thermal_flow=fx.Flow('heat', bus='Heat'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
+                thermal_flow=fx.Flow(bus='Heat', flow_id='heat'),
             ),
         )
         fs = optimize(fs)
@@ -792,28 +792,28 @@ class TestConversionWithTimeVaryingEffects:
             fx.Sink(
                 'HeatDemand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([50, 50])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([50, 50])),
                 ],
             ),
             fx.Sink(
                 'ElecGrid',
                 inputs=[
-                    fx.Flow('elec', bus='Elec', effects_per_flow_hour={'costs': -2, 'CO2': -0.3}),
+                    fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour={'costs': -2, 'CO2': -0.3}),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour={'costs': 1, 'CO2': 0.5}),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour={'costs': 1, 'CO2': 0.5}),
                 ],
             ),
             fx.linear_converters.CHP(
                 'CHP',
                 thermal_efficiency=0.5,
                 electrical_efficiency=0.4,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
-                thermal_flow=fx.Flow('heat', bus='Heat'),
-                electrical_flow=fx.Flow('elec', bus='Elec'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
+                thermal_flow=fx.Flow(bus='Heat', flow_id='heat'),
+                electrical_flow=fx.Flow(bus='Elec', flow_id='elec'),
             ),
         )
         fs = optimize(fs)
@@ -852,8 +852,8 @@ class TestPiecewiseInvestWithStatus:
                 'Demand',
                 inputs=[
                     fx.Flow(
-                        'heat',
                         bus='Heat',
+                        flow_id='heat',
                         size=1,
                         fixed_relative_profile=np.array([0, 80, 0, 80]),
                     ),
@@ -861,15 +861,15 @@ class TestPiecewiseInvestWithStatus:
             ),
             fx.Source(
                 'GasSrc',
-                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1)],
             ),
             fx.linear_converters.Boiler(
                 'Boiler',
                 thermal_efficiency=1.0,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
                 thermal_flow=fx.Flow(
-                    'heat',
                     bus='Heat',
+                    flow_id='heat',
                     relative_minimum=0.5,
                     previous_flow_rate=0,
                     size=fx.InvestParameters(
@@ -922,8 +922,8 @@ class TestStatusWithMultipleConstraints:
                 'Demand',
                 inputs=[
                     fx.Flow(
-                        'heat',
                         bus='Heat',
+                        flow_id='heat',
                         size=1,
                         fixed_relative_profile=np.array([10, 10, 10, 10, 10, 10]),
                     ),
@@ -931,15 +931,15 @@ class TestStatusWithMultipleConstraints:
             ),
             fx.Source(
                 'GasSrc',
-                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1)],
             ),
             fx.linear_converters.Boiler(
                 'CheapBoiler',
                 thermal_efficiency=1.0,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
                 thermal_flow=fx.Flow(
-                    'heat',
                     bus='Heat',
+                    flow_id='heat',
                     size=20,
                     relative_minimum=0.5,
                     previous_flow_rate=10,
@@ -952,8 +952,8 @@ class TestStatusWithMultipleConstraints:
             fx.linear_converters.Boiler(
                 'Backup',
                 thermal_efficiency=0.5,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
-                thermal_flow=fx.Flow('heat', bus='Heat', size=100),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
+                thermal_flow=fx.Flow(bus='Heat', flow_id='heat', size=100),
             ),
         )
         fs = optimize(fs)
@@ -995,8 +995,8 @@ class TestStatusWithMultipleConstraints:
                 'Demand',
                 inputs=[
                     fx.Flow(
-                        'heat',
                         bus='Heat',
+                        flow_id='heat',
                         size=1,
                         fixed_relative_profile=np.array([20, 20, 20, 20, 20, 20]),
                     ),
@@ -1004,15 +1004,15 @@ class TestStatusWithMultipleConstraints:
             ),
             fx.Source(
                 'GasSrc',
-                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1)],
             ),
             fx.linear_converters.Boiler(
                 'CheapBoiler',
                 thermal_efficiency=1.0,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
                 thermal_flow=fx.Flow(
-                    'heat',
                     bus='Heat',
+                    flow_id='heat',
                     size=100,
                     relative_minimum=0.1,
                     previous_flow_rate=0,
@@ -1022,8 +1022,8 @@ class TestStatusWithMultipleConstraints:
             fx.linear_converters.Boiler(
                 'Backup',
                 thermal_efficiency=0.5,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
-                thermal_flow=fx.Flow('heat', bus='Heat', size=100),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
+                thermal_flow=fx.Flow(bus='Heat', flow_id='heat', size=100),
             ),
         )
         fs = optimize(fs)
@@ -1090,20 +1090,20 @@ class TestEffectsWithConversion:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
-                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1)],
             ),
             fx.linear_converters.Boiler(
                 'Boiler',
                 thermal_efficiency=1.0,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
                 thermal_flow=fx.Flow(
-                    'heat',
                     bus='Heat',
+                    flow_id='heat',
                     size=fx.InvestParameters(
                         fixed_size=50,
                         effects_of_investment={'costs': 50, 'CO2': 10},
@@ -1142,8 +1142,8 @@ class TestEffectsWithConversion:
                 'Demand',
                 inputs=[
                     fx.Flow(
-                        'heat',
                         bus='Heat',
+                        flow_id='heat',
                         size=1,
                         fixed_relative_profile=np.array([0, 10, 0, 10]),
                     ),
@@ -1152,16 +1152,16 @@ class TestEffectsWithConversion:
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour={'costs': 1, 'CO2': 0.1}),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour={'costs': 1, 'CO2': 0.1}),
                 ],
             ),
             fx.linear_converters.Boiler(
                 'Boiler',
                 thermal_efficiency=1.0,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
                 thermal_flow=fx.Flow(
-                    'heat',
                     bus='Heat',
+                    flow_id='heat',
                     size=100,
                     relative_minimum=0.1,
                     previous_flow_rate=0,
@@ -1202,20 +1202,20 @@ class TestInvestWithEffects:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([30, 30])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([30, 30])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
-                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1)],
             ),
             fx.linear_converters.Boiler(
                 'InvestBoiler',
                 thermal_efficiency=1.0,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
                 thermal_flow=fx.Flow(
-                    'heat',
                     bus='Heat',
+                    flow_id='heat',
                     size=fx.InvestParameters(
                         maximum_size=100,
                         mandatory=True,
@@ -1226,8 +1226,8 @@ class TestInvestWithEffects:
             fx.linear_converters.Boiler(
                 'Backup',
                 thermal_efficiency=0.5,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
-                thermal_flow=fx.Flow('heat', bus='Heat', size=100),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
+                thermal_flow=fx.Flow(bus='Heat', flow_id='heat', size=100),
             ),
         )
         fs = optimize(fs)

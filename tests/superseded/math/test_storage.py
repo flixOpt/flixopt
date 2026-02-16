@@ -16,8 +16,8 @@ class TestStorageModel:
         # Create a simple storage
         storage = fx.Storage(
             'TestStorage',
-            charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
-            discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
+            charging=fx.Flow(bus='Fernwärme', flow_id='Q_th_in', size=20),
+            discharging=fx.Flow(bus='Fernwärme', flow_id='Q_th_out', size=20),
             capacity_in_flow_hours=30,  # 30 kWh storage capacity
             initial_charge_state=0,  # Start empty
             prevent_simultaneous_charge_and_discharge=True,
@@ -64,8 +64,8 @@ class TestStorageModel:
         # Create a simple storage
         storage = fx.Storage(
             'TestStorage',
-            charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
-            discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
+            charging=fx.Flow(bus='Fernwärme', flow_id='Q_th_in', size=20),
+            discharging=fx.Flow(bus='Fernwärme', flow_id='Q_th_out', size=20),
             capacity_in_flow_hours=30,  # 30 kWh storage capacity
             initial_charge_state=0,  # Start empty
             eta_charge=0.9,  # Charging efficiency
@@ -111,8 +111,8 @@ class TestStorageModel:
         # Create a simple storage with time-varying bounds
         storage = fx.Storage(
             'TestStorage',
-            charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
-            discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
+            charging=fx.Flow(bus='Fernwärme', flow_id='Q_th_in', size=20),
+            discharging=fx.Flow(bus='Fernwärme', flow_id='Q_th_out', size=20),
             capacity_in_flow_hours=30,  # 30 kWh storage capacity
             initial_charge_state=3,
             prevent_simultaneous_charge_and_discharge=True,
@@ -159,8 +159,8 @@ class TestStorageModel:
         # Create storage with investment parameters
         storage = fx.Storage(
             'InvestStorage',
-            charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
-            discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
+            charging=fx.Flow(bus='Fernwärme', flow_id='Q_th_in', size=20),
+            discharging=fx.Flow(bus='Fernwärme', flow_id='Q_th_out', size=20),
             capacity_in_flow_hours=fx.InvestParameters(
                 effects_of_investment={'costs': 100},
                 effects_of_investment_per_size={'costs': 10},
@@ -207,8 +207,8 @@ class TestStorageModel:
         # Create storage with final state constraints
         storage = fx.Storage(
             'FinalStateStorage',
-            charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
-            discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
+            charging=fx.Flow(bus='Fernwärme', flow_id='Q_th_in', size=20),
+            discharging=fx.Flow(bus='Fernwärme', flow_id='Q_th_out', size=20),
             capacity_in_flow_hours=30,
             initial_charge_state=10,  # Start with 10 kWh
             minimal_final_charge_state=15,  # End with at least 15 kWh
@@ -235,8 +235,8 @@ class TestStorageModel:
         # Create storage with cyclic initialization
         storage = fx.Storage(
             'CyclicStorage',
-            charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
-            discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
+            charging=fx.Flow(bus='Fernwärme', flow_id='Q_th_in', size=20),
+            discharging=fx.Flow(bus='Fernwärme', flow_id='Q_th_out', size=20),
             capacity_in_flow_hours=30,
             initial_charge_state='equals_final',  # Cyclic initialization
             eta_charge=0.9,
@@ -261,8 +261,8 @@ class TestStorageModel:
         # Create storage with or without simultaneous charge/discharge prevention
         storage = fx.Storage(
             'SimultaneousStorage',
-            charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
-            discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
+            charging=fx.Flow(bus='Fernwärme', flow_id='Q_th_in', size=20),
+            discharging=fx.Flow(bus='Fernwärme', flow_id='Q_th_out', size=20),
             capacity_in_flow_hours=30,
             initial_charge_state=0,
             eta_charge=0.9,
@@ -317,8 +317,8 @@ class TestStorageModel:
         # Create storage with specified investment parameters
         storage = fx.Storage(
             'InvestStorage',
-            charging=fx.Flow('Q_th_in', bus='Fernwärme', size=20),
-            discharging=fx.Flow('Q_th_out', bus='Fernwärme', size=20),
+            charging=fx.Flow(bus='Fernwärme', flow_id='Q_th_in', size=20),
+            discharging=fx.Flow(bus='Fernwärme', flow_id='Q_th_out', size=20),
             capacity_in_flow_hours=fx.InvestParameters(**invest_params),
             initial_charge_state=0,
             eta_charge=0.9,

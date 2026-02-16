@@ -111,10 +111,9 @@ def _clear_solved(fs: FlowSystem) -> None:
 
 def _clear_model_built(fs: FlowSystem) -> None:
     """Clear artifacts from MODEL_BUILT status."""
-    # Clear element variable/constraint name mappings
-    for element in fs.values():
-        element._variable_names = []
-        element._constraint_names = []
+    # Clear element variable/constraint name registries
+    fs._element_variable_names.clear()
+    fs._element_constraint_names.clear()
     # Reset the model-built flag so status downgrades to MODEL_CREATED
     if fs.model is not None:
         fs.model._is_built = False

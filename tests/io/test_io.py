@@ -247,8 +247,8 @@ class TestNetCDFRoundtrip:
             fx.Effect('costs', unit='EUR', is_objective=True),
         )
         fs.add_elements(
-            fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', size=10)]),
-            fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50)]),
+            fx.Sink('demand', inputs=[fx.Flow(bus='heat', flow_id='in', size=10)]),
+            fx.Source('source', outputs=[fx.Flow(bus='heat', flow_id='out', size=50)]),
         )
 
         path = tmp_path / 'test_periods.nc'
@@ -271,8 +271,8 @@ class TestNetCDFRoundtrip:
             fx.Effect('costs', unit='EUR', is_objective=True),
         )
         fs.add_elements(
-            fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', size=10)]),
-            fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50)]),
+            fx.Sink('demand', inputs=[fx.Flow(bus='heat', flow_id='in', size=10)]),
+            fx.Source('source', outputs=[fx.Flow(bus='heat', flow_id='out', size=50)]),
         )
 
         path = tmp_path / 'test_scenarios.nc'
@@ -300,8 +300,12 @@ class TestNetCDFRoundtrip:
             fx.Effect('costs', unit='EUR', is_objective=True),
         )
         fs.add_elements(
-            fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=demand_profile, size=10)]),
-            fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50, effects_per_flow_hour={'costs': 0.05})]),
+            fx.Sink(
+                'demand', inputs=[fx.Flow(bus='heat', flow_id='in', fixed_relative_profile=demand_profile, size=10)]
+            ),
+            fx.Source(
+                'source', outputs=[fx.Flow(bus='heat', flow_id='out', size=50, effects_per_flow_hour={'costs': 0.05})]
+            ),
         )
 
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')

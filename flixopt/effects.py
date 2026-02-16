@@ -28,7 +28,6 @@ from .structure import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from .flow_system import FlowSystem
     from .types import Effect_PS, Effect_TPS, Numeric_PS, Numeric_S, Numeric_TPS, Scalar
 
 logger = logging.getLogger('flixopt')
@@ -212,10 +211,6 @@ class Effect(Element):
     maximum_over_periods: Numeric_S | None = None
     meta_data: dict = field(default_factory=dict)
     color: str | None = None
-    # Internal state (not init params)
-    _flow_system: FlowSystem | None = field(default=None, init=False, repr=False)
-    _variable_names: list[str] = field(default_factory=list, init=False, repr=False)
-    _constraint_names: list[str] = field(default_factory=list, init=False, repr=False)
 
     def __post_init__(self):
         self.id = valid_id(self.id)

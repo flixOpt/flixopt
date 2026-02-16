@@ -44,11 +44,11 @@ class TestScenarios:
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
             fx.Sink(
                 'Demand',
-                inputs=[fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=demand)],
+                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=demand)],
             ),
             fx.Source(
                 'Grid',
-                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
         )
         fs = optimize(fs)
@@ -76,14 +76,14 @@ class TestScenarios:
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
             fx.Sink(
                 'Demand',
-                inputs=[fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=demand)],
+                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=demand)],
             ),
             fx.Source(
                 'Grid',
                 outputs=[
                     fx.Flow(
-                        'elec',
                         bus='Elec',
+                        flow_id='elec',
                         size=fx.InvestParameters(maximum_size=100, effects_of_investment_per_size=1),
                         effects_per_flow_hour=1,
                     ),
@@ -123,15 +123,15 @@ class TestScenarios:
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
             fx.Sink(
                 'Demand',
-                inputs=[fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=demand)],
+                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=demand)],
             ),
             fx.Sink(
                 'Dump',
-                inputs=[fx.Flow('elec', bus='Elec')],
+                inputs=[fx.Flow(bus='Elec', flow_id='elec')],
             ),
             fx.Source(
                 'Grid',
-                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
         )
         fs = optimize(fs)
@@ -162,19 +162,19 @@ class TestScenarios:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([0, 0, 80])),
+                    fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0, 0, 80])),
                 ],
             ),
             fx.Source(
                 'Grid',
                 outputs=[
-                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([1, 1, 100])),
+                    fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 1, 100])),
                 ],
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow('charge', bus='Elec', size=200),
-                discharging=fx.Flow('discharge', bus='Elec', size=200),
+                charging=fx.Flow(bus='Elec', flow_id='charge', size=200),
+                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=200),
                 capacity_in_flow_hours=100,
                 initial_charge_state=50,
                 relative_minimum_final_charge_state=0.5,
@@ -209,19 +209,19 @@ class TestScenarios:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([50, 0, 0])),
+                    fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([50, 0, 0])),
                 ],
             ),
             fx.Source(
                 'Grid',
                 outputs=[
-                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([100, 1, 1])),
+                    fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([100, 1, 1])),
                 ],
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow('charge', bus='Elec', size=200),
-                discharging=fx.Flow('discharge', bus='Elec', size=200),
+                charging=fx.Flow(bus='Elec', flow_id='charge', size=200),
+                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=200),
                 capacity_in_flow_hours=100,
                 initial_charge_state=80,
                 relative_maximum_final_charge_state=0.2,

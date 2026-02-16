@@ -19,8 +19,10 @@ def simple_system_24h():
         fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
     )
     fs.add_elements(
-        fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=np.ones(24), size=10)]),
-        fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50, effects_per_flow_hour={'costs': 0.05})]),
+        fx.Sink('demand', inputs=[fx.Flow(bus='heat', flow_id='in', fixed_relative_profile=np.ones(24), size=10)]),
+        fx.Source(
+            'source', outputs=[fx.Flow(bus='heat', flow_id='out', size=50, effects_per_flow_hour={'costs': 0.05})]
+        ),
     )
     return fs
 
@@ -54,8 +56,10 @@ def simple_system_8_days():
         fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
     )
     fs.add_elements(
-        fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=demand_profile, size=10)]),
-        fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50, effects_per_flow_hour={'costs': 0.05})]),
+        fx.Sink('demand', inputs=[fx.Flow(bus='heat', flow_id='in', fixed_relative_profile=demand_profile, size=10)]),
+        fx.Source(
+            'source', outputs=[fx.Flow(bus='heat', flow_id='out', size=50, effects_per_flow_hour={'costs': 0.05})]
+        ),
     )
     return fs
 
@@ -224,8 +228,12 @@ class TestClusteringWithScenarios:
             fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
         )
         fs.add_elements(
-            fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=demand_profile, size=10)]),
-            fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50, effects_per_flow_hour={'costs': 0.05})]),
+            fx.Sink(
+                'demand', inputs=[fx.Flow(bus='heat', flow_id='in', fixed_relative_profile=demand_profile, size=10)]
+            ),
+            fx.Source(
+                'source', outputs=[fx.Flow(bus='heat', flow_id='out', size=50, effects_per_flow_hour={'costs': 0.05})]
+            ),
         )
         return fs
 
@@ -349,8 +357,12 @@ class TestClusteringWithPeriodsIO:
             fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
         )
         fs.add_elements(
-            fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=demand_profile, size=10)]),
-            fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50, effects_per_flow_hour={'costs': 0.05})]),
+            fx.Sink(
+                'demand', inputs=[fx.Flow(bus='heat', flow_id='in', fixed_relative_profile=demand_profile, size=10)]
+            ),
+            fx.Source(
+                'source', outputs=[fx.Flow(bus='heat', flow_id='out', size=50, effects_per_flow_hour={'costs': 0.05})]
+            ),
         )
         return fs
 
@@ -434,12 +446,16 @@ class TestInterclusterStorageIO:
             fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
         )
         fs.add_elements(
-            fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=demand_profile, size=10)]),
-            fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50, effects_per_flow_hour={'costs': 0.1})]),
+            fx.Sink(
+                'demand', inputs=[fx.Flow(bus='heat', flow_id='in', fixed_relative_profile=demand_profile, size=10)]
+            ),
+            fx.Source(
+                'source', outputs=[fx.Flow(bus='heat', flow_id='out', size=50, effects_per_flow_hour={'costs': 0.1})]
+            ),
             fx.Storage(
                 'storage',
-                charging=fx.Flow('in', bus='heat', size=20),
-                discharging=fx.Flow('out', bus='heat', size=20),
+                charging=fx.Flow(bus='heat', flow_id='in', size=20),
+                discharging=fx.Flow(bus='heat', flow_id='out', size=20),
                 capacity_in_flow_hours=100,
                 cluster_mode='intercluster',  # Key: intercluster mode
             ),
@@ -576,8 +592,10 @@ class TestMultiDimensionalClusteringIO:
         fs.add_elements(
             fx.Bus('heat'),
             fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
-            fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=demand, size=1)]),
-            fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=200, effects_per_flow_hour={'costs': 0.05})]),
+            fx.Sink('demand', inputs=[fx.Flow(bus='heat', flow_id='in', fixed_relative_profile=demand, size=1)]),
+            fx.Source(
+                'source', outputs=[fx.Flow(bus='heat', flow_id='out', size=200, effects_per_flow_hour={'costs': 0.05})]
+            ),
         )
         return fs
 

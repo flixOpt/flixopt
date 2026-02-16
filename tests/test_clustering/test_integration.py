@@ -142,9 +142,10 @@ class TestClusteringData:
         # Add components with time-varying data
         demand_data = np.sin(np.linspace(0, 4 * np.pi, n_hours)) + 2
         bus = Bus('electricity')
-        source = Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)])
+        source = Source('grid', outputs=[Flow(bus='electricity', flow_id='grid_in', size=100)])
         sink = Sink(
-            'demand', inputs=[Flow('demand_out', bus='electricity', size=100, fixed_relative_profile=demand_data)]
+            'demand',
+            inputs=[Flow(bus='electricity', flow_id='demand_out', size=100, fixed_relative_profile=demand_data)],
         )
         fs.add_elements(source, sink, bus)
 
@@ -162,9 +163,10 @@ class TestClusteringData:
         # Add components with time-varying and constant data
         demand_data = np.sin(np.linspace(0, 4 * np.pi, n_hours)) + 2
         bus = Bus('electricity')
-        source = Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)])
+        source = Source('grid', outputs=[Flow(bus='electricity', flow_id='grid_in', size=100)])
         sink = Sink(
-            'demand', inputs=[Flow('demand_out', bus='electricity', size=100, fixed_relative_profile=demand_data)]
+            'demand',
+            inputs=[Flow(bus='electricity', flow_id='demand_out', size=100, fixed_relative_profile=demand_data)],
         )
         fs.add_elements(source, sink, bus)
 
@@ -196,9 +198,10 @@ class TestClusteringData:
         )
         bus = Bus('electricity')
         effect = Effect('costs', '€', is_objective=True)
-        source = Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)])
+        source = Source('grid', outputs=[Flow(bus='electricity', flow_id='grid_in', size=100)])
         sink = Sink(
-            'demand', inputs=[Flow('demand_out', bus='electricity', size=100, fixed_relative_profile=demand_data)]
+            'demand',
+            inputs=[Flow(bus='electricity', flow_id='demand_out', size=100, fixed_relative_profile=demand_data)],
         )
         fs.add_elements(source, sink, bus, effect)
 
@@ -238,9 +241,9 @@ class TestClusterMethod:
         demand_data = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2  # Varying demand over 7 days
         bus = Bus('electricity')
         # Bus label is passed as string to Flow
-        grid_flow = Flow('grid_in', bus='electricity', size=100)
+        grid_flow = Flow(bus='electricity', flow_id='grid_in', size=100)
         demand_flow = Flow(
-            'demand_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(demand_data / 100)
+            bus='electricity', flow_id='demand_out', size=100, fixed_relative_profile=TimeSeriesData(demand_data / 100)
         )
         source = Source('grid', outputs=[grid_flow])
         sink = Sink('demand', inputs=[demand_flow])
@@ -276,9 +279,9 @@ class TestClusterAdvancedOptions:
 
         demand_data = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2
         bus = Bus('electricity')
-        grid_flow = Flow('grid_in', bus='electricity', size=100)
+        grid_flow = Flow(bus='electricity', flow_id='grid_in', size=100)
         demand_flow = Flow(
-            'demand_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(demand_data / 100)
+            bus='electricity', flow_id='demand_out', size=100, fixed_relative_profile=TimeSeriesData(demand_data / 100)
         )
         source = Source('grid', outputs=[grid_flow])
         sink = Sink('demand', inputs=[demand_flow])
@@ -349,9 +352,9 @@ class TestClusterAdvancedOptions:
 
         demand_data = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2
         bus = Bus('electricity')
-        grid_flow = Flow('grid_in', bus='electricity', size=100)
+        grid_flow = Flow(bus='electricity', flow_id='grid_in', size=100)
         demand_flow = Flow(
-            'demand_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(demand_data / 100)
+            bus='electricity', flow_id='demand_out', size=100, fixed_relative_profile=TimeSeriesData(demand_data / 100)
         )
         source = Source('grid', outputs=[grid_flow])
         sink = Sink('demand', inputs=[demand_flow])

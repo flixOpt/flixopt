@@ -143,17 +143,17 @@ class TestReset:
         assert simple_flow_system.model is None
 
     def test_reset_clears_element_variable_names(self, simple_flow_system, highs_solver):
-        """Reset should clear element variable names."""
+        """Reset should clear element variable name registries."""
         simple_flow_system.optimize(highs_solver)
 
-        # Check that elements have variable names after optimization
+        # Check that registry has variable names after optimization
         boiler = simple_flow_system.components['Boiler']
-        assert len(boiler._variable_names) > 0
+        assert len(simple_flow_system._element_variable_names.get(boiler.id, [])) > 0
 
         simple_flow_system.reset()
 
-        # Check that variable names are cleared
-        assert len(boiler._variable_names) == 0
+        # Check that variable name registry is cleared
+        assert len(simple_flow_system._element_variable_names) == 0
 
     def test_reset_returns_self(self, simple_flow_system, highs_solver):
         """Reset should return self for method chaining."""

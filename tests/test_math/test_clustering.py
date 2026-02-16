@@ -41,11 +41,11 @@ class TestClustering:
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
             fx.Sink(
                 'Demand',
-                inputs=[fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=demand)],
+                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=demand)],
             ),
             fx.Source(
                 'Grid',
-                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
         )
         fs_full.optimize(_SOLVER)
@@ -70,11 +70,11 @@ class TestClustering:
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
             fx.Sink(
                 'Demand',
-                inputs=[fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=demand_avg)],
+                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=demand_avg)],
             ),
             fx.Source(
                 'Grid',
-                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
         )
         fs_clust.optimize(_SOLVER)
@@ -100,16 +100,16 @@ class TestClustering:
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
             fx.Sink(
                 'Demand',
-                inputs=[fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([10, 20, 30, 10]))],
+                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 20, 30, 10]))],
             ),
             fx.Source(
                 'Grid',
-                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([1, 10, 1, 10]))],
+                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 10, 1, 10]))],
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow('charge', bus='Elec', size=100),
-                discharging=fx.Flow('discharge', bus='Elec', size=100),
+                charging=fx.Flow(bus='Elec', flow_id='charge', size=100),
+                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=100),
                 capacity_in_flow_hours=100,
                 initial_charge_state=0,
                 eta_charge=1,
@@ -138,16 +138,18 @@ class TestClustering:
                 fx.Effect('costs', '€', is_standard=True, is_objective=True),
                 fx.Sink(
                     'Demand',
-                    inputs=[fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([10, 20, 30, 10]))],
+                    inputs=[
+                        fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 20, 30, 10]))
+                    ],
                 ),
                 fx.Source(
                     'Grid',
-                    outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([1, 10, 1, 10]))],
+                    outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 10, 1, 10]))],
                 ),
                 fx.Storage(
                     'Battery',
-                    charging=fx.Flow('charge', bus='Elec', size=100),
-                    discharging=fx.Flow('discharge', bus='Elec', size=100),
+                    charging=fx.Flow(bus='Elec', flow_id='charge', size=100),
+                    discharging=fx.Flow(bus='Elec', flow_id='discharge', size=100),
                     capacity_in_flow_hours=100,
                     initial_charge_state=0,
                     eta_charge=1,
@@ -184,8 +186,8 @@ class TestClustering:
                 'Demand',
                 inputs=[
                     fx.Flow(
-                        'heat',
                         bus='Heat',
+                        flow_id='heat',
                         size=1,
                         fixed_relative_profile=np.array([10, 10, 10, 10]),
                     ),
@@ -193,15 +195,15 @@ class TestClustering:
             ),
             fx.Source(
                 'GasSrc',
-                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1)],
             ),
             fx.linear_converters.Boiler(
                 'Boiler',
                 thermal_efficiency=1.0,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
                 thermal_flow=fx.Flow(
-                    'heat',
                     bus='Heat',
+                    flow_id='heat',
                     size=100,
                     status_parameters=fx.StatusParameters(
                         effects_per_startup=10,
@@ -242,11 +244,11 @@ class TestClusteringExact:
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
             fx.Sink(
                 'Demand',
-                inputs=[fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([10, 20, 30, 40]))],
+                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 20, 30, 40]))],
             ),
             fx.Source(
                 'Grid',
-                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
         )
         fs = optimize(fs)
@@ -269,11 +271,11 @@ class TestClusteringExact:
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
             fx.Sink(
                 'Demand',
-                inputs=[fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([10, 10, 10, 10]))],
+                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 10, 10, 10]))],
             ),
             fx.Source(
                 'Grid',
-                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([1, 2, 3, 4]))],
+                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 2, 3, 4]))],
             ),
         )
         fs = optimize(fs)
@@ -305,16 +307,16 @@ class TestClusteringExact:
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
             fx.Sink(
                 'Demand',
-                inputs=[fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([0, 50, 0, 50]))],
+                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0, 50, 0, 50]))],
             ),
             fx.Source(
                 'Grid',
-                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([1, 100, 1, 100]))],
+                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 100, 1, 100]))],
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow('charge', bus='Elec', size=100),
-                discharging=fx.Flow('discharge', bus='Elec', size=100),
+                charging=fx.Flow(bus='Elec', flow_id='charge', size=100),
+                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=100),
                 capacity_in_flow_hours=100,
                 initial_charge_state=0,
                 eta_charge=1,

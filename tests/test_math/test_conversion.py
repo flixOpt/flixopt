@@ -22,20 +22,20 @@ class TestConversionEfficiency:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 20, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 20, 10])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.linear_converters.Boiler(
                 'Boiler',
                 thermal_efficiency=0.8,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
-                thermal_flow=fx.Flow('heat', bus='Heat'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
+                thermal_flow=fx.Flow(bus='Heat', flow_id='heat'),
             ),
         )
         fs = optimize(fs)
@@ -56,20 +56,20 @@ class TestConversionEfficiency:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.linear_converters.Boiler(
                 'Boiler',
                 thermal_efficiency=np.array([0.5, 1.0]),
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
-                thermal_flow=fx.Flow('heat', bus='Heat'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
+                thermal_flow=fx.Flow(bus='Heat', flow_id='heat'),
             ),
         )
         fs = optimize(fs)
@@ -92,28 +92,28 @@ class TestConversionEfficiency:
             fx.Sink(
                 'HeatDemand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([50, 50])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([50, 50])),
                 ],
             ),
             fx.Sink(
                 'ElecGrid',
                 inputs=[
-                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=-2),
+                    fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=-2),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.linear_converters.CHP(
                 'CHP',
                 thermal_efficiency=0.5,
                 electrical_efficiency=0.4,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
-                thermal_flow=fx.Flow('heat', bus='Heat'),
-                electrical_flow=fx.Flow('elec', bus='Elec'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
+                thermal_flow=fx.Flow(bus='Heat', flow_id='heat'),
+                electrical_flow=fx.Flow(bus='Elec', flow_id='elec'),
             ),
         )
         fs = optimize(fs)

@@ -49,8 +49,10 @@ class TestLegacySolutionAccess:
         fs.add_elements(
             fx.Bus('Heat'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Source('Src', outputs=[fx.Flow('heat', bus='Heat', size=10, effects_per_flow_hour=1)]),
-            fx.Sink('Snk', inputs=[fx.Flow('heat', bus='Heat', size=10, fixed_relative_profile=np.array([1, 1]))]),
+            fx.Source('Src', outputs=[fx.Flow(bus='Heat', flow_id='heat', size=10, effects_per_flow_hour=1)]),
+            fx.Sink(
+                'Snk', inputs=[fx.Flow(bus='Heat', flow_id='heat', size=10, fixed_relative_profile=np.array([1, 1]))]
+            ),
         )
         fs = optimize(fs)
 
@@ -68,8 +70,10 @@ class TestLegacySolutionAccess:
         fs.add_elements(
             fx.Bus('Heat'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Source('Src', outputs=[fx.Flow('heat', bus='Heat', size=10)]),
-            fx.Sink('Snk', inputs=[fx.Flow('heat', bus='Heat', size=10, fixed_relative_profile=np.array([1, 1]))]),
+            fx.Source('Src', outputs=[fx.Flow(bus='Heat', flow_id='heat', size=10)]),
+            fx.Sink(
+                'Snk', inputs=[fx.Flow(bus='Heat', flow_id='heat', size=10, fixed_relative_profile=np.array([1, 1]))]
+            ),
         )
         fs = optimize(fs)
 
@@ -89,9 +93,15 @@ class TestLegacySolutionAccess:
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
             fx.Source(
                 'Src',
-                outputs=[fx.Flow('heat', bus='Heat', size=fx.InvestParameters(fixed_size=50), effects_per_flow_hour=1)],
+                outputs=[
+                    fx.Flow(
+                        bus='Heat', flow_id='heat', size=fx.InvestParameters(fixed_size=50), effects_per_flow_hour=1
+                    )
+                ],
             ),
-            fx.Sink('Snk', inputs=[fx.Flow('heat', bus='Heat', size=10, fixed_relative_profile=np.array([5, 5]))]),
+            fx.Sink(
+                'Snk', inputs=[fx.Flow(bus='Heat', flow_id='heat', size=10, fixed_relative_profile=np.array([5, 5]))]
+            ),
         )
         fs = optimize(fs)
 
@@ -109,15 +119,18 @@ class TestLegacySolutionAccess:
         fs.add_elements(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Source('Grid', outputs=[fx.Flow('elec', bus='Elec', size=100, effects_per_flow_hour=1)]),
+            fx.Source('Grid', outputs=[fx.Flow(bus='Elec', flow_id='elec', size=100, effects_per_flow_hour=1)]),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow('charge', bus='Elec', size=10),
-                discharging=fx.Flow('discharge', bus='Elec', size=10),
+                charging=fx.Flow(bus='Elec', flow_id='charge', size=10),
+                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=10),
                 capacity_in_flow_hours=50,
                 initial_charge_state=25,
             ),
-            fx.Sink('Load', inputs=[fx.Flow('elec', bus='Elec', size=10, fixed_relative_profile=np.array([1, 1, 1]))]),
+            fx.Sink(
+                'Load',
+                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=10, fixed_relative_profile=np.array([1, 1, 1]))],
+            ),
         )
         fs = optimize(fs)
 
@@ -143,8 +156,11 @@ class TestLegacySolutionAccess:
             fs.add_elements(
                 fx.Bus('Heat'),
                 fx.Effect('costs', '€', is_standard=True, is_objective=True),
-                fx.Source('Src', outputs=[fx.Flow('heat', bus='Heat', size=10, effects_per_flow_hour=1)]),
-                fx.Sink('Snk', inputs=[fx.Flow('heat', bus='Heat', size=10, fixed_relative_profile=np.array([1, 1]))]),
+                fx.Source('Src', outputs=[fx.Flow(bus='Heat', flow_id='heat', size=10, effects_per_flow_hour=1)]),
+                fx.Sink(
+                    'Snk',
+                    inputs=[fx.Flow(bus='Heat', flow_id='heat', size=10, fixed_relative_profile=np.array([1, 1]))],
+                ),
             )
             solver = fx.solvers.HighsSolver(log_to_console=False)
             fs.optimize(solver)
@@ -167,8 +183,10 @@ class TestLegacySolutionAccess:
         fs.add_elements(
             fx.Bus('Heat'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Source('Src', outputs=[fx.Flow('heat', bus='Heat', size=10, effects_per_flow_hour=1)]),
-            fx.Sink('Snk', inputs=[fx.Flow('heat', bus='Heat', size=10, fixed_relative_profile=np.array([1, 1]))]),
+            fx.Source('Src', outputs=[fx.Flow(bus='Heat', flow_id='heat', size=10, effects_per_flow_hour=1)]),
+            fx.Sink(
+                'Snk', inputs=[fx.Flow(bus='Heat', flow_id='heat', size=10, fixed_relative_profile=np.array([1, 1]))]
+            ),
         )
         fs = optimize(fs)
 

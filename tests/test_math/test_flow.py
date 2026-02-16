@@ -27,20 +27,20 @@ class TestFlowConstraints:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([30, 30])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([30, 30])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.linear_converters.Boiler(
                 'Boiler',
                 thermal_efficiency=1.0,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
-                thermal_flow=fx.Flow('heat', bus='Heat', size=100, relative_minimum=0.4),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
+                thermal_flow=fx.Flow(bus='Heat', flow_id='heat', size=100, relative_minimum=0.4),
             ),
         )
         fs = optimize(fs)
@@ -68,19 +68,19 @@ class TestFlowConstraints:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([60, 60])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([60, 60])),
                 ],
             ),
             fx.Source(
                 'CheapSrc',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', size=100, relative_maximum=0.5, effects_per_flow_hour=1),
+                    fx.Flow(bus='Heat', flow_id='heat', size=100, relative_maximum=0.5, effects_per_flow_hour=1),
                 ],
             ),
             fx.Source(
                 'ExpensiveSrc',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour=5),
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=5),
                 ],
             ),
         )
@@ -109,19 +109,19 @@ class TestFlowConstraints:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([20, 20, 20])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([20, 20, 20])),
                 ],
             ),
             fx.Source(
                 'CheapSrc',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', flow_hours_max=30, effects_per_flow_hour=1),
+                    fx.Flow(bus='Heat', flow_id='heat', flow_hours_max=30, effects_per_flow_hour=1),
                 ],
             ),
             fx.Source(
                 'ExpensiveSrc',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour=5),
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=5),
                 ],
             ),
         )
@@ -150,19 +150,19 @@ class TestFlowConstraints:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([30, 30])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([30, 30])),
                 ],
             ),
             fx.Source(
                 'CheapSrc',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour=1),
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=1),
                 ],
             ),
             fx.Source(
                 'ExpensiveSrc',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', flow_hours_min=40, effects_per_flow_hour=5),
+                    fx.Flow(bus='Heat', flow_id='heat', flow_hours_min=40, effects_per_flow_hour=5),
                 ],
             ),
         )
@@ -191,19 +191,19 @@ class TestFlowConstraints:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([40, 40])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([40, 40])),
                 ],
             ),
             fx.Source(
                 'CheapSrc',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', size=50, load_factor_max=0.5, effects_per_flow_hour=1),
+                    fx.Flow(bus='Heat', flow_id='heat', size=50, load_factor_max=0.5, effects_per_flow_hour=1),
                 ],
             ),
             fx.Source(
                 'ExpensiveSrc',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour=5),
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=5),
                 ],
             ),
         )
@@ -230,19 +230,19 @@ class TestFlowConstraints:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([30, 30])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([30, 30])),
                 ],
             ),
             fx.Source(
                 'CheapSrc',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour=1),
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=1),
                 ],
             ),
             fx.Source(
                 'ExpensiveSrc',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', size=100, load_factor_min=0.3, effects_per_flow_hour=5),
+                    fx.Flow(bus='Heat', flow_id='heat', size=100, load_factor_min=0.3, effects_per_flow_hour=5),
                 ],
             ),
         )

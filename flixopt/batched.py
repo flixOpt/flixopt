@@ -1061,7 +1061,7 @@ class FlowsData:
     @cached_property
     def has_effects(self) -> xr.DataArray:
         """(flow,) - boolean mask for flows with effects_per_flow_hour."""
-        return self._mask(lambda f: bool(f.effects_per_flow_hour))
+        return self._mask(lambda f: f.effects_per_flow_hour is not None)
 
     @cached_property
     def has_flow_hours_min(self) -> xr.DataArray:

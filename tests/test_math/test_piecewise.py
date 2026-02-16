@@ -29,19 +29,19 @@ class TestPiecewise:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([45, 45])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([45, 45])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.LinearConverter(
                 'Converter',
-                inputs=[fx.Flow('fuel', bus='Gas')],
-                outputs=[fx.Flow('heat', bus='Heat')],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel')],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat')],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
                         'fuel': fx.Piecewise([fx.Piece(10, 30), fx.Piece(30, 100)]),
@@ -74,19 +74,19 @@ class TestPiecewise:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([15, 15])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([15, 15])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.LinearConverter(
                 'Converter',
-                inputs=[fx.Flow('fuel', bus='Gas')],
-                outputs=[fx.Flow('heat', bus='Heat')],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel')],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat')],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
                         'fuel': fx.Piecewise([fx.Piece(10, 30), fx.Piece(30, 100)]),
@@ -121,25 +121,25 @@ class TestPiecewise:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([50, 50])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([50, 50])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.Source(
                 'CheapSrc',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour=10),  # More expensive backup
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=10),  # More expensive backup
                 ],
             ),
             fx.LinearConverter(
                 'Converter',
-                inputs=[fx.Flow('fuel', bus='Gas')],
-                outputs=[fx.Flow('heat', bus='Heat')],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel')],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat')],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
                         # Gap between 0 and 40: forbidden region (minimum load requirement)
@@ -180,25 +180,25 @@ class TestPiecewise:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([20, 20])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([20, 20])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=10),  # Expensive gas
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=10),  # Expensive gas
                 ],
             ),
             fx.Source(
                 'Backup',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour=1),  # Cheap backup
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=1),  # Cheap backup
                 ],
             ),
             fx.LinearConverter(
                 'Converter',
-                inputs=[fx.Flow('fuel', bus='Gas')],
-                outputs=[fx.Flow('heat', bus='Heat')],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel')],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat')],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
                         # Off state (0,0) + operating range with minimum load
@@ -236,19 +236,19 @@ class TestPiecewise:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([35, 35])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([35, 35])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.LinearConverter(
                 'Converter',
-                inputs=[fx.Flow('fuel', bus='Gas')],
-                outputs=[fx.Flow('heat', bus='Heat')],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel')],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat')],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
                         # Low load: less efficient. High load: more efficient.

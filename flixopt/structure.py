@@ -17,7 +17,6 @@ from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
-    ClassVar,
     Generic,
     Literal,
     TypeVar,
@@ -737,12 +736,6 @@ def create_reference_structure(
         if processed is not None and not _is_empty(processed):
             structure[name] = processed
 
-    # Handle deferred attrs (e.g., _variable_names on Element)
-    for attr_name in getattr(obj.__class__, '_deferred_init_attrs', set()):
-        value = getattr(obj, attr_name, None)
-        if value:
-            structure[attr_name] = value
-
     return structure, all_arrays
 
 
@@ -822,22 +815,32 @@ def _extract_recursive(
     return _to_basic_type(obj), arrays
 
 
+def _has_dataclass_init(cls: type) -> bool:
+    """Check if a class uses a dataclass-generated __init__ (not a custom override).
+
+    Returns True only when @dataclass was applied directly to ``cls`` with init=True.
+    Classes that merely inherit from a dataclass (e.g. Boiler(LinearConverter))
+    but define their own __init__ return False.
+    """
+    params = cls.__dict__.get('__dataclass_params__')
+    return params is not None and params.init
+
+
 def _get_serializable_params(obj) -> dict[str, Any]:
     """Get name->value pairs for serialization from ``__init__`` parameters."""
-    params: dict[str, Any] = {}
     _skip = {'self', 'label', 'label_as_positional', 'args', 'kwargs'}
 
     # Class-level exclusion set for IO serialization
     io_exclude = getattr(obj.__class__, '_io_exclude', set())
     _skip |= io_exclude
 
-    sig = inspect.signature(obj.__init__)
+    # Prefer dataclass fields when class uses dataclass-generated __init__
+    if _has_dataclass_init(obj.__class__):
+        return {f.name: getattr(obj, f.name, None) for f in dataclasses.fields(obj) if f.name not in _skip and f.init}
 
-    for name in sig.parameters:
-        if name in _skip:
-            continue
-        params[name] = getattr(obj, name, None)
-    return params
+    # Fallback for non-dataclass or custom-__init__ classes
+    sig = inspect.signature(obj.__init__)
+    return {name: getattr(obj, name, None) for name in sig.parameters if name not in _skip}
 
 
 def _to_basic_type(obj: Any) -> Any:
@@ -911,12 +914,15 @@ def resolve_reference_structure(structure: Any, arrays_dict: dict[str, xr.DataAr
             resolved_nested_data = resolve_reference_structure(nested_data, arrays_dict)
 
             try:
-                init_params = set(inspect.signature(nested_class.__init__).parameters.keys())
+                # Discover init parameters — prefer dataclass fields
+                if _has_dataclass_init(nested_class):
+                    init_params = {f.name for f in dataclasses.fields(nested_class) if f.init} | {'self'}
+                else:
+                    init_params = set(inspect.signature(nested_class.__init__).parameters.keys())
 
-                # Handle deferred init attributes
-                deferred_attr_names = getattr(nested_class, '_deferred_init_attrs', set())
-                deferred_attrs = {k: v for k, v in resolved_nested_data.items() if k in deferred_attr_names}
-                constructor_data = {k: v for k, v in resolved_nested_data.items() if k not in deferred_attr_names}
+                # Filter out legacy runtime attrs from old serialized files
+                _legacy_deferred = {'_variable_names', '_constraint_names'}
+                constructor_data = {k: v for k, v in resolved_nested_data.items() if k not in _legacy_deferred}
 
                 # Handle renamed parameters from old serialized data
                 if 'label' in constructor_data and 'label' not in init_params:
@@ -935,9 +941,6 @@ def resolve_reference_structure(structure: Any, arrays_dict: dict[str, xr.DataAr
                     )
 
                 instance = nested_class(**constructor_data)
-
-                for attr_name, attr_value in deferred_attrs.items():
-                    setattr(instance, attr_name, attr_value)
 
                 return instance
             except TypeError as e:
@@ -1079,7 +1082,9 @@ class FlowSystemModel(linopy.Model):
         self._populate_names_from_type_level_models()
 
     def _populate_names_from_type_level_models(self):
-        """Populate element variable/constraint names from type-level models."""
+        """Populate element variable/constraint names in FlowSystem registry."""
+        var_names = self.flow_system._element_variable_names
+        con_names = self.flow_system._element_constraint_names
 
         # Helper to find batched variables that contain a specific element ID in a dimension
         def _find_vars_for_element(element_id: str, dim_name: str) -> list[str]:
@@ -1087,73 +1092,79 @@ class FlowSystemModel(linopy.Model):
 
             Returns the batched variable names (e.g., 'flow|rate', 'storage|charge').
             """
-            var_names = []
+            result = []
             for var_name in self.variables:
                 var = self.variables[var_name]
                 if dim_name in var.dims:
                     try:
                         if element_id in var.coords[dim_name].values:
-                            var_names.append(var_name)
+                            result.append(var_name)
                     except (KeyError, AttributeError):
                         pass
-            return var_names
+            return result
 
         def _find_constraints_for_element(element_id: str, dim_name: str) -> list[str]:
             """Find all constraint names that have this element in their dimension."""
-            con_names = []
+            result = []
             for con_name in self.constraints:
                 con = self.constraints[con_name]
                 if dim_name in con.dims:
                     try:
                         if element_id in con.coords[dim_name].values:
-                            con_names.append(con_name)
+                            result.append(con_name)
                     except (KeyError, AttributeError):
                         pass
                 # Also check for element-specific constraints (e.g., bus|BusLabel|balance)
                 elif element_id in con_name.split('|'):
-                    con_names.append(con_name)
-            return con_names
+                    result.append(con_name)
+            return result
 
         # Populate flows
         for flow in self.flow_system.flows.values():
-            flow._variable_names = _find_vars_for_element(flow.id, 'flow')
-            flow._constraint_names = _find_constraints_for_element(flow.id, 'flow')
+            var_names[flow.id] = _find_vars_for_element(flow.id, 'flow')
+            con_names[flow.id] = _find_constraints_for_element(flow.id, 'flow')
 
         # Populate buses
         for bus in self.flow_system.buses.values():
-            bus._variable_names = _find_vars_for_element(bus.id, 'bus')
-            bus._constraint_names = _find_constraints_for_element(bus.id, 'bus')
+            var_names[bus.id] = _find_vars_for_element(bus.id, 'bus')
+            con_names[bus.id] = _find_constraints_for_element(bus.id, 'bus')
 
         # Populate storages
         from .components import Storage
 
         for comp in self.flow_system.components.values():
             if isinstance(comp, Storage):
-                comp._variable_names = _find_vars_for_element(comp.id, 'storage')
-                comp._constraint_names = _find_constraints_for_element(comp.id, 'storage')
+                comp_vars = _find_vars_for_element(comp.id, 'storage')
+                comp_cons = _find_constraints_for_element(comp.id, 'storage')
                 # Also add flow variables (storages have charging/discharging flows)
                 for flow in comp.flows.values():
-                    comp._variable_names.extend(flow._variable_names)
-                    comp._constraint_names.extend(flow._constraint_names)
+                    comp_vars.extend(var_names[flow.id])
+                    comp_cons.extend(con_names[flow.id])
+                var_names[comp.id] = comp_vars
+                con_names[comp.id] = comp_cons
             else:
                 # Generic component - collect from child flows
-                comp._variable_names = []
-                comp._constraint_names = []
+                comp_vars = []
+                comp_cons = []
                 # Add component-level variables (status, etc.)
-                comp._variable_names.extend(_find_vars_for_element(comp.id, 'component'))
-                comp._constraint_names.extend(_find_constraints_for_element(comp.id, 'component'))
+                comp_vars.extend(_find_vars_for_element(comp.id, 'component'))
+                comp_cons.extend(_find_constraints_for_element(comp.id, 'component'))
                 # Add flow variables
                 for flow in comp.flows.values():
-                    comp._variable_names.extend(flow._variable_names)
-                    comp._constraint_names.extend(flow._constraint_names)
+                    comp_vars.extend(var_names[flow.id])
+                    comp_cons.extend(con_names[flow.id])
+                var_names[comp.id] = comp_vars
+                con_names[comp.id] = comp_cons
 
         # Populate effects
         for effect in self.flow_system.effects.values():
-            effect._variable_names = _find_vars_for_element(effect.id, 'effect')
-            effect._constraint_names = _find_constraints_for_element(effect.id, 'effect')
+            var_names[effect.id] = _find_vars_for_element(effect.id, 'effect')
+            con_names[effect.id] = _find_constraints_for_element(effect.id, 'effect')
 
     def _build_results_structure(self) -> dict[str, dict]:
         """Build results structure for all elements using type-level models."""
+        var_names = self.flow_system._element_variable_names
+        con_names = self.flow_system._element_constraint_names
 
         results = {
             'Components': {},
@@ -1167,8 +1178,8 @@ class FlowSystemModel(linopy.Model):
             flow_ids = [f.id for f in comp.flows.values()]
             results['Components'][comp.id] = {
                 'id': comp.id,
-                'variables': comp._variable_names,
-                'constraints': comp._constraint_names,
+                'variables': var_names.get(comp.id, []),
+                'constraints': con_names.get(comp.id, []),
                 'inputs': ['flow|rate'] * len(comp.inputs),
                 'outputs': ['flow|rate'] * len(comp.outputs),
                 'flows': flow_ids,
@@ -1183,8 +1194,8 @@ class FlowSystemModel(linopy.Model):
                 output_vars.append('bus|virtual_demand')
             results['Buses'][bus.id] = {
                 'id': bus.id,
-                'variables': bus._variable_names,
-                'constraints': bus._constraint_names,
+                'variables': var_names.get(bus.id, []),
+                'constraints': con_names.get(bus.id, []),
                 'inputs': input_vars,
                 'outputs': output_vars,
                 'flows': [f.id for f in bus.flows.values()],
@@ -1194,16 +1205,16 @@ class FlowSystemModel(linopy.Model):
         for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.id.upper()):
             results['Effects'][effect.id] = {
                 'id': effect.id,
-                'variables': effect._variable_names,
-                'constraints': effect._constraint_names,
+                'variables': var_names.get(effect.id, []),
+                'constraints': con_names.get(effect.id, []),
             }
 
         # Flows
         for flow in sorted(self.flow_system.flows.values(), key=lambda f: f.id.upper()):
             results['Flows'][flow.id] = {
                 'id': flow.id,
-                'variables': flow._variable_names,
-                'constraints': flow._constraint_names,
+                'variables': var_names.get(flow.id, []),
+                'constraints': con_names.get(flow.id, []),
                 'start': flow.bus if flow.is_input_in_component else flow.component,
                 'end': flow.component if flow.is_input_in_component else flow.bus,
                 'component': flow.component,
@@ -1532,15 +1543,14 @@ def valid_id(id: str) -> str:
 
 
 class Element:
-    """Mixin for all elements in flixopt. Provides IO, solution access, and deprecated label.
+    """Mixin for all elements in flixopt. Provides deprecated label properties.
 
     Subclasses (Effect, Bus, Flow, Component) are @dataclass classes that declare
     their own ``id`` field. Element does NOT define ``id`` — each subclass owns it.
-    """
 
-    # Attributes that are serialized but set after construction (not passed to child __init__)
-    # These are internal state populated during modeling, not user-facing parameters
-    _deferred_init_attrs: ClassVar[set[str]] = {'_variable_names', '_constraint_names'}
+    Runtime state (variable names, constraint names) is stored in FlowSystem registries,
+    not on the element objects themselves.
+    """
 
     @property
     def label(self) -> str:
@@ -1580,55 +1590,6 @@ class Element:
             stacklevel=2,
         )
         return self.id
-
-    @property
-    def solution(self) -> xr.Dataset:
-        """Solution data for this element's variables.
-
-        Returns a Dataset built by selecting this element from batched variables
-        in FlowSystem.solution.
-
-        Raises:
-            ValueError: If no solution is available (optimization not run or not solved).
-        """
-        if self._flow_system is None:
-            raise ValueError(f'Element "{self.id}" is not linked to a FlowSystem.')
-        if self._flow_system.solution is None:
-            raise ValueError(f'No solution available for "{self.id}". Run optimization first or load results.')
-        if not self._variable_names:
-            raise ValueError(f'No variable names available for "{self.id}". Element may not have been modeled yet.')
-        full_solution = self._flow_system.solution
-        data_vars = {}
-        for var_name in self._variable_names:
-            if var_name not in full_solution:
-                continue
-            var = full_solution[var_name]
-            # Select this element from the appropriate dimension
-            for dim in var.dims:
-                if dim in ('time', 'period', 'scenario', 'cluster'):
-                    continue
-                if self.id in var.coords[dim].values:
-                    var = var.sel({dim: self.id}, drop=True)
-                    break
-            data_vars[var_name] = var
-        return xr.Dataset(data_vars)
-
-    @property
-    def flow_system(self) -> FlowSystem:
-        """Access the FlowSystem this element is linked to.
-
-        Returns:
-            The FlowSystem instance this element belongs to.
-
-        Raises:
-            RuntimeError: If element has not been linked to a FlowSystem yet.
-        """
-        if self._flow_system is None:
-            raise RuntimeError(
-                f'{self.__class__.__name__} is not linked to a FlowSystem. '
-                f'Ensure the parent element is registered via flow_system.add_elements() first.'
-            )
-        return self._flow_system
 
 
 # Precompiled regex pattern for natural sorting

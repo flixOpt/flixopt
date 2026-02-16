@@ -143,13 +143,13 @@ class TestEffectResults:
                 'Boiler',
                 thermal_efficiency=0.5,
                 thermal_flow=fx.Flow(
-                    'Q_th',
                     bus='Fernwärme',
+                    flow_id='Q_th',
                     size=fx.InvestParameters(
                         effects_of_investment_per_size=10, minimum_size=20, maximum_size=200, mandatory=True
                     ),
                 ),
-                fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
             ),
         )
 

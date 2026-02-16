@@ -151,14 +151,14 @@ class Converters:
                 'Boiler',
                 thermal_efficiency=0.5,
                 thermal_flow=fx.Flow(
-                    'Fernwärme',
+                    bus='Fernwärme',
                     flow_id='Q_th',
                     size=50,
                     relative_minimum=5 / 50,
                     relative_maximum=1,
                     status_parameters=fx.StatusParameters(),
                 ),
-                fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
             )
 
         @staticmethod
@@ -169,7 +169,7 @@ class Converters:
                 thermal_efficiency=0.5,
                 status_parameters=fx.StatusParameters(effects_per_active_hour={'costs': 0, 'CO2': 1000}),
                 thermal_flow=fx.Flow(
-                    'Fernwärme',
+                    bus='Fernwärme',
                     flow_id='Q_th',
                     load_factor_max=1.0,
                     load_factor_min=0.1,
@@ -193,7 +193,7 @@ class Converters:
                     ),
                     flow_hours_max=1e6,
                 ),
-                fuel_flow=fx.Flow('Gas', flow_id='Q_fu', size=200, relative_minimum=0, relative_maximum=1),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu', size=200, relative_minimum=0, relative_maximum=1),
             )
 
     class CHPs:
@@ -205,10 +205,14 @@ class Converters:
                 thermal_efficiency=0.5,
                 electrical_efficiency=0.4,
                 electrical_flow=fx.Flow(
-                    'Strom', flow_id='P_el', size=60, relative_minimum=5 / 60, status_parameters=fx.StatusParameters()
+                    bus='Strom',
+                    flow_id='P_el',
+                    size=60,
+                    relative_minimum=5 / 60,
+                    status_parameters=fx.StatusParameters(),
                 ),
-                thermal_flow=fx.Flow('Fernwärme', flow_id='Q_th'),
-                fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
+                thermal_flow=fx.Flow(bus='Fernwärme', flow_id='Q_th'),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
             )
 
         @staticmethod
@@ -220,10 +224,10 @@ class Converters:
                 electrical_efficiency=0.4,
                 status_parameters=fx.StatusParameters(effects_per_startup=0.01),
                 electrical_flow=fx.Flow(
-                    'Strom', flow_id='P_el', size=60, relative_minimum=5 / 60, previous_flow_rate=10
+                    bus='Strom', flow_id='P_el', size=60, relative_minimum=5 / 60, previous_flow_rate=10
                 ),
-                thermal_flow=fx.Flow('Fernwärme', flow_id='Q_th', size=1e3),
-                fuel_flow=fx.Flow('Gas', flow_id='Q_fu', size=1e3),
+                thermal_flow=fx.Flow(bus='Fernwärme', flow_id='Q_th', size=1e3),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu', size=1e3),
             )
 
     class LinearConverters:
@@ -232,10 +236,10 @@ class Converters:
             """Piecewise converter from flow_system_piecewise_conversion"""
             return fx.LinearConverter(
                 'KWK',
-                inputs=[fx.Flow('Gas', flow_id='Q_fu', size=200)],
+                inputs=[fx.Flow(bus='Gas', flow_id='Q_fu', size=200)],
                 outputs=[
-                    fx.Flow('Strom', flow_id='P_el', size=60, relative_maximum=55, previous_flow_rate=10),
-                    fx.Flow('Fernwärme', flow_id='Q_th', size=100),
+                    fx.Flow(bus='Strom', flow_id='P_el', size=60, relative_maximum=55, previous_flow_rate=10),
+                    fx.Flow(bus='Fernwärme', flow_id='Q_th', size=100),
                 ],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
@@ -252,10 +256,10 @@ class Converters:
             """Segments converter with time-varying piecewise conversion"""
             return fx.LinearConverter(
                 'KWK',
-                inputs=[fx.Flow('Gas', flow_id='Q_fu', size=200)],
+                inputs=[fx.Flow(bus='Gas', flow_id='Q_fu', size=200)],
                 outputs=[
-                    fx.Flow('Strom', flow_id='P_el', size=60, relative_maximum=55, previous_flow_rate=10),
-                    fx.Flow('Fernwärme', flow_id='Q_th', size=100),
+                    fx.Flow(bus='Strom', flow_id='P_el', size=60, relative_maximum=55, previous_flow_rate=10),
+                    fx.Flow(bus='Fernwärme', flow_id='Q_th', size=100),
                 ],
                 piecewise_conversion=fx.PiecewiseConversion(
                     {
@@ -286,11 +290,11 @@ class Storage:
         return fx.Storage(
             'Speicher',
             charging=fx.Flow(
-                'Fernwärme',
+                bus='Fernwärme',
                 flow_id='Q_th_load',
                 size=fx.InvestParameters(fixed_size=1e4, mandatory=True),  # Investment for testing sizes
             ),
-            discharging=fx.Flow('Fernwärme', flow_id='Q_th_unload', size=1e4),
+            discharging=fx.Flow(bus='Fernwärme', flow_id='Q_th_unload', size=1e4),
             capacity_in_flow_hours=fx.InvestParameters(effects_of_investment=20, fixed_size=30, mandatory=True),
             initial_charge_state=0,
             relative_maximum_charge_state=1 / 100 * np.array(charge_state_values),
@@ -320,8 +324,8 @@ class Storage:
         )
         return fx.Storage(
             'Speicher',
-            charging=fx.Flow('Fernwärme', flow_id='Q_th_load', size=1e4),
-            discharging=fx.Flow('Fernwärme', flow_id='Q_th_unload', size=1e4),
+            charging=fx.Flow(bus='Fernwärme', flow_id='Q_th_load', size=1e4),
+            discharging=fx.Flow(bus='Fernwärme', flow_id='Q_th_unload', size=1e4),
             capacity_in_flow_hours=invest_speicher,
             initial_charge_state=0,
             maximal_final_charge_state=10,
@@ -379,7 +383,7 @@ class Sinks:
         """Create thermal heat load sink"""
         return fx.Sink(
             'Wärmelast',
-            inputs=[fx.Flow('Fernwärme', flow_id='Q_th_Last', size=1, fixed_relative_profile=thermal_profile)],
+            inputs=[fx.Flow(bus='Fernwärme', flow_id='Q_th_Last', size=1, fixed_relative_profile=thermal_profile)],
         )
 
     @staticmethod
@@ -387,7 +391,7 @@ class Sinks:
         """Create electricity feed-in sink"""
         return fx.Sink(
             'Einspeisung',
-            inputs=[fx.Flow('Strom', flow_id='P_el', effects_per_flow_hour=-1 * electrical_price_profile)],
+            inputs=[fx.Flow(bus='Strom', flow_id='P_el', effects_per_flow_hour=-1 * electrical_price_profile)],
         )
 
     @staticmethod
@@ -395,7 +399,7 @@ class Sinks:
         """Create electrical load sink (for flow_system_long)"""
         return fx.Sink(
             'Stromlast',
-            inputs=[fx.Flow('Strom', flow_id='P_el_Last', size=1, fixed_relative_profile=electrical_profile)],
+            inputs=[fx.Flow(bus='Strom', flow_id='P_el_Last', size=1, fixed_relative_profile=electrical_profile)],
         )
 
 
@@ -413,7 +417,7 @@ class Sources:
     def gas_with_costs():
         """Simple gas tariff without CO2"""
         return fx.Source(
-            'Gastarif', outputs=[fx.Flow('Gas', flow_id='Q_Gas', size=1000, effects_per_flow_hour={'costs': 0.04})]
+            'Gastarif', outputs=[fx.Flow(bus='Gas', flow_id='Q_Gas', size=1000, effects_per_flow_hour={'costs': 0.04})]
         )
 
 
@@ -604,26 +608,32 @@ def flow_system_long():
         Effects.primary_energy(),
         fx.Sink(
             'Wärmelast',
-            inputs=[fx.Flow('Fernwärme', flow_id='Q_th_Last', size=1, fixed_relative_profile=thermal_load_ts)],
+            inputs=[fx.Flow(bus='Fernwärme', flow_id='Q_th_Last', size=1, fixed_relative_profile=thermal_load_ts)],
         ),
         fx.Sink(
             'Stromlast',
-            inputs=[fx.Flow('Strom', flow_id='P_el_Last', size=1, fixed_relative_profile=electrical_load_ts)],
+            inputs=[fx.Flow(bus='Strom', flow_id='P_el_Last', size=1, fixed_relative_profile=electrical_load_ts)],
         ),
         fx.Source(
             'Kohletarif',
-            outputs=[fx.Flow('Kohle', flow_id='Q_Kohle', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3})],
+            outputs=[
+                fx.Flow(bus='Kohle', flow_id='Q_Kohle', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3})
+            ],
         ),
         fx.Source(
             'Gastarif',
             outputs=[
-                fx.Flow('Gas', flow_id='Q_Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3})
+                fx.Flow(bus='Gas', flow_id='Q_Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3})
             ],
         ),
-        fx.Sink('Einspeisung', inputs=[fx.Flow('Strom', flow_id='P_el', size=1000, effects_per_flow_hour=p_feed_in)]),
+        fx.Sink(
+            'Einspeisung', inputs=[fx.Flow(bus='Strom', flow_id='P_el', size=1000, effects_per_flow_hour=p_feed_in)]
+        ),
         fx.Source(
             'Stromtarif',
-            outputs=[fx.Flow('Strom', flow_id='P_el', size=1000, effects_per_flow_hour={'costs': p_sell, 'CO2': 0.3})],
+            outputs=[
+                fx.Flow(bus='Strom', flow_id='P_el', size=1000, effects_per_flow_hour={'costs': p_sell, 'CO2': 0.3})
+            ],
         ),
     )
 
@@ -631,9 +641,9 @@ def flow_system_long():
         fx.linear_converters.Boiler(
             'Kessel',
             thermal_efficiency=0.85,
-            thermal_flow=fx.Flow('Fernwärme', flow_id='Q_th'),
+            thermal_flow=fx.Flow(bus='Fernwärme', flow_id='Q_th'),
             fuel_flow=fx.Flow(
-                'Gas',
+                bus='Gas',
                 flow_id='Q_fu',
                 size=95,
                 relative_minimum=12 / 95,
@@ -646,14 +656,14 @@ def flow_system_long():
             thermal_efficiency=(eta_th := 0.58),
             electrical_efficiency=(eta_el := 0.22),
             status_parameters=fx.StatusParameters(effects_per_startup=24000),
-            fuel_flow=fx.Flow('Kohle', flow_id='Q_fu', size=(fuel_size := 288), relative_minimum=87 / fuel_size),
-            electrical_flow=fx.Flow('Strom', flow_id='P_el', size=fuel_size * eta_el),
-            thermal_flow=fx.Flow('Fernwärme', flow_id='Q_th', size=fuel_size * eta_th),
+            fuel_flow=fx.Flow(bus='Kohle', flow_id='Q_fu', size=(fuel_size := 288), relative_minimum=87 / fuel_size),
+            electrical_flow=fx.Flow(bus='Strom', flow_id='P_el', size=fuel_size * eta_el),
+            thermal_flow=fx.Flow(bus='Fernwärme', flow_id='Q_th', size=fuel_size * eta_th),
         ),
         fx.Storage(
             'Speicher',
-            charging=fx.Flow('Fernwärme', flow_id='Q_th_load', size=137),
-            discharging=fx.Flow('Fernwärme', flow_id='Q_th_unload', size=158),
+            charging=fx.Flow(bus='Fernwärme', flow_id='Q_th_load', size=137),
+            discharging=fx.Flow(bus='Fernwärme', flow_id='Q_th_unload', size=158),
             capacity_in_flow_hours=684,
             initial_charge_state=137,
             minimal_final_charge_state=137,

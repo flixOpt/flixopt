@@ -19,9 +19,11 @@ def simple_fs():
     fs.add_elements(
         fx.Sink(
             'demand',
-            inputs=[fx.Flow('heat', flow_id='in', fixed_relative_profile=np.linspace(10, 20, 24), size=1)],
+            inputs=[fx.Flow(bus='heat', flow_id='in', fixed_relative_profile=np.linspace(10, 20, 24), size=1)],
         ),
-        fx.Source('source', outputs=[fx.Flow('heat', flow_id='out', size=50, effects_per_flow_hour={'costs': 0.05})]),
+        fx.Source(
+            'source', outputs=[fx.Flow(bus='heat', flow_id='out', size=50, effects_per_flow_hour={'costs': 0.05})]
+        ),
     )
     return fs
 
@@ -42,15 +44,15 @@ def complex_fs():
     fs.add_elements(
         fx.Storage(
             'battery',
-            charging=fx.Flow('elec', flow_id='charge', size=10),
-            discharging=fx.Flow('elec', flow_id='discharge', size=10),
+            charging=fx.Flow(bus='elec', flow_id='charge', size=10),
+            discharging=fx.Flow(bus='elec', flow_id='discharge', size=10),
             capacity_in_flow_hours=fx.InvestParameters(fixed_size=100),
         )
     )
 
     # Piecewise converter
     converter = fx.linear_converters.Boiler(
-        'boiler', thermal_efficiency=0.9, fuel_flow=fx.Flow('elec', flow_id='gas'), thermal_flow=fx.Flow('heat')
+        'boiler', thermal_efficiency=0.9, fuel_flow=fx.Flow(bus='elec', flow_id='gas'), thermal_flow=fx.Flow(bus='heat')
     )
     converter.thermal_flow.size = 100
     fs.add_elements(converter)
@@ -61,7 +63,7 @@ def complex_fs():
             'pv',
             outputs=[
                 fx.Flow(
-                    'elec',
+                    bus='elec',
                     flow_id='gen',
                     size=fx.InvestParameters(maximum_size=1000, effects_of_investment_per_size={'costs': 100}),
                 )
@@ -101,7 +103,7 @@ def test_resample_methods(method, expected):
     fs.add_elements(
         fx.Sink(
             's',
-            inputs=[fx.Flow('b', flow_id='in', fixed_relative_profile=np.array([10.0, 20.0, 30.0, 40.0]), size=1)],
+            inputs=[fx.Flow(bus='b', flow_id='in', fixed_relative_profile=np.array([10.0, 20.0, 30.0, 40.0]), size=1)],
         )
     )
 
@@ -144,7 +146,7 @@ def test_with_dimensions(simple_fs, dim_name, dim_value):
     """Test resampling preserves period/scenario dimensions."""
     fs = fx.FlowSystem(simple_fs.timesteps, **{dim_name: dim_value})
     fs.add_elements(fx.Bus('h'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
-    fs.add_elements(fx.Sink('d', inputs=[fx.Flow('h', flow_id='in', fixed_relative_profile=np.ones(24), size=1)]))
+    fs.add_elements(fx.Sink('d', inputs=[fx.Flow(bus='h', flow_id='in', fixed_relative_profile=np.ones(24), size=1)]))
 
     fs_r = fs.resample('2h', method='mean')
     assert getattr(fs_r, dim_name) is not None
@@ -195,8 +197,8 @@ def test_modeling(with_dim):
     fs = fx.FlowSystem(ts, **kwargs)
     fs.add_elements(fx.Bus('h'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
     fs.add_elements(
-        fx.Sink('d', inputs=[fx.Flow('h', flow_id='in', fixed_relative_profile=np.linspace(10, 30, 48), size=1)]),
-        fx.Source('s', outputs=[fx.Flow('h', flow_id='out', size=100, effects_per_flow_hour={'costs': 0.05})]),
+        fx.Sink('d', inputs=[fx.Flow(bus='h', flow_id='in', fixed_relative_profile=np.linspace(10, 30, 48), size=1)]),
+        fx.Source('s', outputs=[fx.Flow(bus='h', flow_id='out', size=100, effects_per_flow_hour={'costs': 0.05})]),
     )
 
     fs_r = fs.resample('4h', method='mean')
@@ -212,8 +214,8 @@ def test_model_structure_preserved():
     fs = fx.FlowSystem(ts)
     fs.add_elements(fx.Bus('h'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
     fs.add_elements(
-        fx.Sink('d', inputs=[fx.Flow('h', flow_id='in', fixed_relative_profile=np.linspace(10, 30, 48), size=1)]),
-        fx.Source('s', outputs=[fx.Flow('h', flow_id='out', size=100, effects_per_flow_hour={'costs': 0.05})]),
+        fx.Sink('d', inputs=[fx.Flow(bus='h', flow_id='in', fixed_relative_profile=np.linspace(10, 30, 48), size=1)]),
+        fx.Source('s', outputs=[fx.Flow(bus='h', flow_id='out', size=100, effects_per_flow_hour={'costs': 0.05})]),
     )
 
     fs.build_model()
@@ -256,7 +258,7 @@ def test_frequencies(freq, exp_len):
     ts = pd.date_range('2023-01-01', periods=168, freq='h')
     fs = fx.FlowSystem(ts)
     fs.add_elements(fx.Bus('b'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
-    fs.add_elements(fx.Sink('s', inputs=[fx.Flow('b', flow_id='in', fixed_relative_profile=np.ones(168), size=1)]))
+    fs.add_elements(fx.Sink('s', inputs=[fx.Flow(bus='b', flow_id='in', fixed_relative_profile=np.ones(168), size=1)]))
 
     assert len(fs.resample(freq, method='mean').timesteps) == exp_len
 
@@ -266,7 +268,7 @@ def test_irregular_timesteps_error():
     ts = pd.DatetimeIndex(['2023-01-01 00:00', '2023-01-01 01:00', '2023-01-01 03:00'], name='time')
     fs = fx.FlowSystem(ts)
     fs.add_elements(fx.Bus('b'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
-    fs.add_elements(fx.Sink('s', inputs=[fx.Flow('b', flow_id='in', fixed_relative_profile=np.ones(3), size=1)]))
+    fs.add_elements(fx.Sink('s', inputs=[fx.Flow(bus='b', flow_id='in', fixed_relative_profile=np.ones(3), size=1)]))
 
     with pytest.raises(ValueError, match='Resampling created gaps'):
         fs.transform.resample('1h', method='mean')
@@ -278,7 +280,7 @@ def test_irregular_timesteps_with_fill_gaps():
     fs = fx.FlowSystem(ts)
     fs.add_elements(fx.Bus('b'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
     fs.add_elements(
-        fx.Sink('s', inputs=[fx.Flow('b', flow_id='in', fixed_relative_profile=np.array([1.0, 2.0, 4.0]), size=1)])
+        fx.Sink('s', inputs=[fx.Flow(bus='b', flow_id='in', fixed_relative_profile=np.array([1.0, 2.0, 4.0]), size=1)])
     )
 
     # Test with ffill

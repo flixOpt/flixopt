@@ -35,26 +35,26 @@ def _build_base_flow_system():
     fs.add_elements(
         fx.Source(
             'Grid',
-            outputs=[fx.Flow('P_el', bus='Electricity', size=100, effects_per_flow_hour={'costs': 0.3})],
+            outputs=[fx.Flow(bus='Electricity', flow_id='P_el', size=100, effects_per_flow_hour={'costs': 0.3})],
         ),
         fx.Source(
             'GasSupply',
-            outputs=[fx.Flow('Q_gas', bus='Gas', size=200, effects_per_flow_hour={'costs': 0.05, 'CO2': 0.2})],
+            outputs=[fx.Flow(bus='Gas', flow_id='Q_gas', size=200, effects_per_flow_hour={'costs': 0.05, 'CO2': 0.2})],
         ),
         fx.Sink(
             'HeatDemand',
-            inputs=[fx.Flow('Q_demand', bus='Heat', size=50, fixed_relative_profile=0.6)],
+            inputs=[fx.Flow(bus='Heat', flow_id='Q_demand', size=50, fixed_relative_profile=0.6)],
         ),
         fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.9,
-            thermal_flow=fx.Flow('Q_th', bus='Heat', size=60),
-            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow(bus='Heat', flow_id='Q_th', size=60),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
         ),
         fx.Storage(
             'ThermalStorage',
-            charging=fx.Flow('Q_charge', bus='Heat', size=20),
-            discharging=fx.Flow('Q_discharge', bus='Heat', size=20),
+            charging=fx.Flow(bus='Heat', flow_id='Q_charge', size=20),
+            discharging=fx.Flow(bus='Heat', flow_id='Q_discharge', size=20),
             capacity_in_flow_hours=40,
             initial_charge_state=0.5,
         ),
@@ -75,38 +75,38 @@ def _build_flow_system_with_chp():
     fs.add_elements(
         fx.Source(
             'Grid',
-            outputs=[fx.Flow('P_el', bus='Electricity', size=100, effects_per_flow_hour={'costs': 0.3})],
+            outputs=[fx.Flow(bus='Electricity', flow_id='P_el', size=100, effects_per_flow_hour={'costs': 0.3})],
         ),
         fx.Source(
             'GasSupply',
-            outputs=[fx.Flow('Q_gas', bus='Gas', size=200, effects_per_flow_hour={'costs': 0.05, 'CO2': 0.2})],
+            outputs=[fx.Flow(bus='Gas', flow_id='Q_gas', size=200, effects_per_flow_hour={'costs': 0.05, 'CO2': 0.2})],
         ),
         fx.Sink(
             'HeatDemand',
-            inputs=[fx.Flow('Q_demand', bus='Heat', size=50, fixed_relative_profile=0.6)],
+            inputs=[fx.Flow(bus='Heat', flow_id='Q_demand', size=50, fixed_relative_profile=0.6)],
         ),
         fx.Sink(
             'ElectricitySink',
-            inputs=[fx.Flow('P_sink', bus='Electricity', size=100)],
+            inputs=[fx.Flow(bus='Electricity', flow_id='P_sink', size=100)],
         ),
         fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.9,
-            thermal_flow=fx.Flow('Q_th', bus='Heat', size=60),
-            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow(bus='Heat', flow_id='Q_th', size=60),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
         ),
         fx.linear_converters.CHP(
             'CHP',
             thermal_efficiency=0.5,
             electrical_efficiency=0.3,
-            thermal_flow=fx.Flow('Q_th_chp', bus='Heat', size=30),
-            electrical_flow=fx.Flow('P_el_chp', bus='Electricity', size=18),
-            fuel_flow=fx.Flow('Q_fu_chp', bus='Gas'),
+            thermal_flow=fx.Flow(bus='Heat', flow_id='Q_th_chp', size=30),
+            electrical_flow=fx.Flow(bus='Electricity', flow_id='P_el_chp', size=18),
+            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu_chp'),
         ),
         fx.Storage(
             'ThermalStorage',
-            charging=fx.Flow('Q_charge', bus='Heat', size=20),
-            discharging=fx.Flow('Q_discharge', bus='Heat', size=20),
+            charging=fx.Flow(bus='Heat', flow_id='Q_charge', size=20),
+            discharging=fx.Flow(bus='Heat', flow_id='Q_discharge', size=20),
             capacity_in_flow_hours=40,
             initial_charge_state=0.5,
         ),

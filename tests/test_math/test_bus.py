@@ -27,19 +27,19 @@ class TestBusBalance:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([30, 30])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([30, 30])),
                 ],
             ),
             fx.Source(
                 'Src1',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour=1, size=20),
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=1, size=20),
                 ],
             ),
             fx.Source(
                 'Src2',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', effects_per_flow_hour=2, size=20),
+                    fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=2, size=20),
                 ],
             ),
         )
@@ -70,14 +70,18 @@ class TestBusBalance:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
             fx.Source(
                 'Src',
                 outputs=[
                     fx.Flow(
-                        'heat', bus='Heat', size=1, fixed_relative_profile=np.array([20, 20]), effects_per_flow_hour=1
+                        bus='Heat',
+                        flow_id='heat',
+                        size=1,
+                        fixed_relative_profile=np.array([20, 20]),
+                        effects_per_flow_hour=1,
                     ),
                 ],
             ),
@@ -109,33 +113,33 @@ class TestBusBalance:
             fx.Sink(
                 'Demand1',
                 inputs=[
-                    fx.Flow('heat', bus='Heat1', size=1, fixed_relative_profile=np.array([10, 10])),
+                    fx.Flow(bus='Heat1', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
             fx.Sink(
                 'Demand2',
                 inputs=[
-                    fx.Flow('heat', bus='Heat2', size=1, fixed_relative_profile=np.array([10, 10])),
+                    fx.Flow(bus='Heat2', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
             fx.Source(
                 'DualSrc',
                 outputs=[
-                    fx.Flow('heat1', bus='Heat1', effects_per_flow_hour=1, size=100),
-                    fx.Flow('heat2', bus='Heat2', effects_per_flow_hour=1, size=100),
+                    fx.Flow(bus='Heat1', flow_id='heat1', effects_per_flow_hour=1, size=100),
+                    fx.Flow(bus='Heat2', flow_id='heat2', effects_per_flow_hour=1, size=100),
                 ],
                 prevent_simultaneous_flow_rates=True,
             ),
             fx.Source(
                 'Backup1',
                 outputs=[
-                    fx.Flow('heat', bus='Heat1', effects_per_flow_hour=5),
+                    fx.Flow(bus='Heat1', flow_id='heat', effects_per_flow_hour=5),
                 ],
             ),
             fx.Source(
                 'Backup2',
                 outputs=[
-                    fx.Flow('heat', bus='Heat2', effects_per_flow_hour=5),
+                    fx.Flow(bus='Heat2', flow_id='heat', effects_per_flow_hour=5),
                 ],
             ),
         )

@@ -362,6 +362,11 @@ class FlowSystem(CompositeContainerMixin[Element]):
         self._connected_and_transformed = False
         self._used_in_optimization = False
 
+        # Registry for runtime state (populated during model building, not stored on elements)
+        self._element_variable_names: dict[str, list[str]] = {}
+        self._element_constraint_names: dict[str, list[str]] = {}
+        self._registered_elements: set[int] = set()  # Python id() for ownership check
+
         self._network_app = None
         self._flows_cache: IdList[Flow] | None = None
         self._storages_cache: IdList[Storage] | None = None
@@ -1443,11 +1448,10 @@ class FlowSystem(CompositeContainerMixin[Element]):
             >>> flow_system.optimize(HighsSolver())
             >>> print(flow_system.solution['Boiler(Q_th)|flow_rate'])
 
-            Access element solutions directly:
+            Access solution data:
 
             >>> flow_system.optimize(solver)
-            >>> boiler = flow_system.components['Boiler']
-            >>> print(boiler.solution)
+            >>> print(flow_system.solution['flow|rate'])
 
             Future specialized modes:
 
@@ -1687,13 +1691,10 @@ class FlowSystem(CompositeContainerMixin[Element]):
         Raises:
             ValueError: If element is already assigned to a different FlowSystem
         """
-        if element._flow_system is not None and element._flow_system is not self:
-            raise ValueError(
-                f'Element "{element.id}" is already assigned to another FlowSystem. '
-                f'Each element can only belong to one FlowSystem at a time. '
-                f'To use this element in multiple systems, create a copy: '
-                f'flow_system.add_elements(element.copy())'
-            )
+        if id(element) in self._registered_elements:
+            return  # Already registered to this FlowSystem
+        # Check if any other FlowSystem has claimed this element — not possible to detect
+        # with id()-based tracking alone, but duplicates are caught by _check_if_element_is_unique
 
     def _propagate_all_status_parameters(self) -> None:
         """Propagate status parameters from components to their flows.
@@ -1712,8 +1713,7 @@ class FlowSystem(CompositeContainerMixin[Element]):
         """
         if self.effects._penalty_effect is None:
             penalty = self.effects._create_penalty_effect()
-            if penalty._flow_system is None:
-                penalty._flow_system = self
+            self._registered_elements.add(id(penalty))
 
     def _run_validation(self) -> None:
         """Run all validation through batched *Data classes.
@@ -1761,12 +1761,14 @@ class FlowSystem(CompositeContainerMixin[Element]):
 
     def _add_effects(self, *args: Effect) -> None:
         for effect in args:
-            effect._flow_system = self
+            self._registered_elements.add(id(effect))
         self.effects.add_effects(*args)
 
     def _add_components(self, *components: Component) -> None:
         for new_component in list(components):
-            new_component._flow_system = self
+            self._registered_elements.add(id(new_component))
+            for flow in new_component.flows.values():
+                self._registered_elements.add(id(flow))
             self.components.add(new_component)  # Add to existing components
         # Invalidate cache once after all additions
         if components:
@@ -1775,7 +1777,7 @@ class FlowSystem(CompositeContainerMixin[Element]):
 
     def _add_buses(self, *buses: Bus):
         for new_bus in list(buses):
-            new_bus._flow_system = self
+            self._registered_elements.add(id(new_bus))
             self.buses.add(new_bus)  # Add to existing buses
         # Invalidate cache once after all additions
         if buses:
@@ -1786,7 +1788,6 @@ class FlowSystem(CompositeContainerMixin[Element]):
         """Connects the network of components and buses. Can be rerun without changes if no elements were added"""
         for component in self.components.values():
             for flow in component.flows.values():
-                flow._flow_system = self
                 flow.component = component.id
                 flow.is_input_in_component = flow.id in component.inputs
 

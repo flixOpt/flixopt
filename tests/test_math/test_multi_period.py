@@ -31,12 +31,12 @@ class TestMultiPeriod:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
+                    fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
                 ],
             ),
             fx.Source(
                 'Grid',
-                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
         )
         fs = optimize(fs)
@@ -62,15 +62,15 @@ class TestMultiPeriod:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
+                    fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
                 ],
             ),
             fx.Source(
                 'DirtySource',
                 outputs=[
                     fx.Flow(
-                        'elec',
                         bus='Elec',
+                        flow_id='elec',
                         effects_per_flow_hour=1,
                         flow_hours_max_over_periods=50,
                     ),
@@ -78,7 +78,7 @@ class TestMultiPeriod:
             ),
             fx.Source(
                 'CleanSource',
-                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=10)],
+                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=10)],
             ),
         )
         fs = optimize(fs)
@@ -104,19 +104,19 @@ class TestMultiPeriod:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
+                    fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
                 ],
             ),
             fx.Source(
                 'CheapSource',
-                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
             fx.Source(
                 'ExpensiveSource',
                 outputs=[
                     fx.Flow(
-                        'elec',
                         bus='Elec',
+                        flow_id='elec',
                         effects_per_flow_hour=10,
                         flow_hours_min_over_periods=100,
                     ),
@@ -146,18 +146,18 @@ class TestMultiPeriod:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
+                    fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
                 ],
             ),
             fx.Source(
                 'DirtySource',
                 outputs=[
-                    fx.Flow('elec', bus='Elec', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
+                    fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
                 ],
             ),
             fx.Source(
                 'CleanSource',
-                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=10)],
+                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=10)],
             ),
         )
         fs = optimize(fs)
@@ -184,18 +184,18 @@ class TestMultiPeriod:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([2, 2, 2])),
+                    fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([2, 2, 2])),
                 ],
             ),
             fx.Source(
                 'DirtySource',
                 outputs=[
-                    fx.Flow('elec', bus='Elec', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
+                    fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
                 ],
             ),
             fx.Source(
                 'CheapSource',
-                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
         )
         fs = optimize(fs)
@@ -222,15 +222,15 @@ class TestMultiPeriod:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
+                    fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
                 ],
             ),
             fx.Source(
                 'Grid',
                 outputs=[
                     fx.Flow(
-                        'elec',
                         bus='Elec',
+                        flow_id='elec',
                         size=fx.InvestParameters(
                             maximum_size=100,
                             effects_of_investment_per_size=1,
@@ -273,12 +273,12 @@ class TestMultiPeriod:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
+                    fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
                 ],
             ),
             fx.Source(
                 'Grid',
-                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
         )
         fs = optimize(fs)
@@ -305,19 +305,19 @@ class TestMultiPeriod:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([0, 0, 80])),
+                    fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0, 0, 80])),
                 ],
             ),
             fx.Source(
                 'Grid',
                 outputs=[
-                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([1, 1, 100])),
+                    fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 1, 100])),
                 ],
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow('charge', bus='Elec', size=200),
-                discharging=fx.Flow('discharge', bus='Elec', size=200),
+                charging=fx.Flow(bus='Elec', flow_id='charge', size=200),
+                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=200),
                 capacity_in_flow_hours=100,
                 initial_charge_state=50,
                 relative_minimum_final_charge_state=0.5,
@@ -349,19 +349,19 @@ class TestMultiPeriod:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([50, 0, 0])),
+                    fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([50, 0, 0])),
                 ],
             ),
             fx.Source(
                 'Grid',
                 outputs=[
-                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=np.array([100, 1, 1])),
+                    fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([100, 1, 1])),
                 ],
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow('charge', bus='Elec', size=200),
-                discharging=fx.Flow('discharge', bus='Elec', size=200),
+                charging=fx.Flow(bus='Elec', flow_id='charge', size=200),
+                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=200),
                 capacity_in_flow_hours=100,
                 initial_charge_state=80,
                 relative_maximum_final_charge_state=0.2,

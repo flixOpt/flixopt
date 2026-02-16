@@ -35,19 +35,19 @@ class TestComponentStatus:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([0, 20, 0, 20])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([0, 20, 0, 20])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.LinearConverter(
                 'Boiler',
-                inputs=[fx.Flow('fuel', bus='Gas', size=100)],  # Size required for component status
-                outputs=[fx.Flow('heat', bus='Heat', size=100)],  # Size required for component status
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel', size=100)],  # Size required for component status
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', size=100)],  # Size required for component status
                 conversion_factors=[{'fuel': 1, 'heat': 1}],
                 status_parameters=fx.StatusParameters(effects_per_startup=100),
             ),
@@ -74,19 +74,19 @@ class TestComponentStatus:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([20, 10, 20])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([20, 10, 20])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.LinearConverter(
                 'Boiler',
-                inputs=[fx.Flow('fuel', bus='Gas', size=100)],  # Size required
-                outputs=[fx.Flow('heat', bus='Heat', size=100)],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel', size=100)],  # Size required
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', size=100)],
                 conversion_factors=[{'fuel': 1, 'heat': 1}],
                 status_parameters=fx.StatusParameters(min_uptime=2),
             ),
@@ -115,27 +115,27 @@ class TestComponentStatus:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10, 10, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10, 10, 10])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.LinearConverter(
                 'CheapBoiler',
-                inputs=[fx.Flow('fuel', bus='Gas', size=100)],  # Size required
-                outputs=[fx.Flow('heat', bus='Heat', size=100)],  # Size required
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel', size=100)],  # Size required
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', size=100)],  # Size required
                 conversion_factors=[{'fuel': 1, 'heat': 1}],
                 status_parameters=fx.StatusParameters(active_hours_max=2),
             ),
             fx.linear_converters.Boiler(
                 'ExpensiveBackup',
                 thermal_efficiency=0.5,
-                fuel_flow=fx.Flow('fuel', bus='Gas'),
-                thermal_flow=fx.Flow('heat', bus='Heat', size=100),
+                fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
+                thermal_flow=fx.Flow(bus='Heat', flow_id='heat', size=100),
             ),
         )
         fs = optimize(fs)
@@ -160,19 +160,19 @@ class TestComponentStatus:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.LinearConverter(
                 'Boiler',
-                inputs=[fx.Flow('fuel', bus='Gas', size=100)],
-                outputs=[fx.Flow('heat', bus='Heat', size=100)],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel', size=100)],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', size=100)],
                 conversion_factors=[{'fuel': 1, 'heat': 1}],
                 status_parameters=fx.StatusParameters(effects_per_active_hour=50),
             ),
@@ -199,26 +199,26 @@ class TestComponentStatus:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.LinearConverter(
                 'ExpensiveBoiler',
-                inputs=[fx.Flow('fuel', bus='Gas', size=100)],
-                outputs=[fx.Flow('heat', bus='Heat', size=100)],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel', size=100)],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', size=100)],
                 conversion_factors=[{'fuel': 1, 'heat': 2}],  # eta=0.5 (fuel:heat = 1:2 → eta = 1/2)
                 status_parameters=fx.StatusParameters(active_hours_min=2),
             ),
             fx.LinearConverter(
                 'CheapBoiler',
-                inputs=[fx.Flow('fuel', bus='Gas', size=100)],
-                outputs=[fx.Flow('heat', bus='Heat', size=100)],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel', size=100)],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', size=100)],
                 conversion_factors=[{'fuel': 1, 'heat': 1}],
             ),
         )
@@ -245,26 +245,26 @@ class TestComponentStatus:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10, 10, 10, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10, 10, 10, 10])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.LinearConverter(
                 'CheapBoiler',
-                inputs=[fx.Flow('fuel', bus='Gas', size=100, previous_flow_rate=10)],
-                outputs=[fx.Flow('heat', bus='Heat', size=100, previous_flow_rate=10)],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel', size=100, previous_flow_rate=10)],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', size=100, previous_flow_rate=10)],
                 conversion_factors=[{'fuel': 1, 'heat': 1}],
                 status_parameters=fx.StatusParameters(max_uptime=2, min_uptime=2),
             ),
             fx.LinearConverter(
                 'ExpensiveBackup',
-                inputs=[fx.Flow('fuel', bus='Gas', size=100)],
-                outputs=[fx.Flow('heat', bus='Heat', size=100)],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel', size=100)],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', size=100)],
                 conversion_factors=[{'fuel': 1, 'heat': 2}],  # eta=0.5 (fuel:heat = 1:2 → eta = 1/2)
             ),
         )
@@ -303,26 +303,26 @@ class TestComponentStatus:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([20, 0, 20, 0])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([20, 0, 20, 0])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.LinearConverter(
                 'CheapBoiler',
-                inputs=[fx.Flow('fuel', bus='Gas', size=100, previous_flow_rate=20, relative_minimum=0.1)],
-                outputs=[fx.Flow('heat', bus='Heat', size=100, previous_flow_rate=20, relative_minimum=0.1)],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel', size=100, previous_flow_rate=20, relative_minimum=0.1)],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', size=100, previous_flow_rate=20, relative_minimum=0.1)],
                 conversion_factors=[{'fuel': 1, 'heat': 1}],
                 status_parameters=fx.StatusParameters(min_downtime=3),
             ),
             fx.LinearConverter(
                 'ExpensiveBackup',
-                inputs=[fx.Flow('fuel', bus='Gas', size=100)],
-                outputs=[fx.Flow('heat', bus='Heat', size=100)],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel', size=100)],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', size=100)],
                 conversion_factors=[
                     {'fuel': 1, 'heat': 2}
                 ],  # eta=0.5 (fuel:heat = 1:2 → eta = 1/2) (1 fuel → 0.5 heat)
@@ -356,19 +356,19 @@ class TestComponentStatus:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 10, 10, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10, 10, 10])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.LinearConverter(
                 'ExpensiveBoiler',
-                inputs=[fx.Flow('fuel', bus='Gas', size=40, previous_flow_rate=20)],
-                outputs=[fx.Flow('heat', bus='Heat', size=20, relative_minimum=0.5, previous_flow_rate=10)],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel', size=40, previous_flow_rate=20)],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', size=20, relative_minimum=0.5, previous_flow_rate=10)],
                 conversion_factors=[
                     {'fuel': 1, 'heat': 2}
                 ],  # eta=0.5 (fuel:heat = 1:2 → eta = 1/2) (1 fuel → 0.5 heat)
@@ -376,8 +376,8 @@ class TestComponentStatus:
             ),
             fx.LinearConverter(
                 'CheapBackup',
-                inputs=[fx.Flow('fuel', bus='Gas', size=100)],
-                outputs=[fx.Flow('heat', bus='Heat', size=100)],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel', size=100)],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', size=100)],
                 conversion_factors=[{'fuel': 1, 'heat': 1}],
             ),
         )
@@ -409,26 +409,26 @@ class TestComponentStatus:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([10, 0, 10])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 0, 10])),
                 ],
             ),
             fx.Source(
                 'GasSrc',
                 outputs=[
-                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                    fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
             fx.LinearConverter(
                 'CheapBoiler',
-                inputs=[fx.Flow('fuel', bus='Gas', size=20, previous_flow_rate=0, relative_minimum=0.5)],
-                outputs=[fx.Flow('heat', bus='Heat', size=20, previous_flow_rate=0, relative_minimum=0.5)],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel', size=20, previous_flow_rate=0, relative_minimum=0.5)],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', size=20, previous_flow_rate=0, relative_minimum=0.5)],
                 conversion_factors=[{'fuel': 1, 'heat': 1}],  # eta=1.0
                 status_parameters=fx.StatusParameters(startup_limit=1),
             ),
             fx.LinearConverter(
                 'ExpensiveBackup',
-                inputs=[fx.Flow('fuel', bus='Gas', size=100)],
-                outputs=[fx.Flow('heat', bus='Heat', size=100)],
+                inputs=[fx.Flow(bus='Gas', flow_id='fuel', size=100)],
+                outputs=[fx.Flow(bus='Heat', flow_id='heat', size=100)],
                 conversion_factors=[
                     {'fuel': 1, 'heat': 2}
                 ],  # eta=0.5 (fuel:heat = 1:2 → eta = 1/2) (1 fuel → 0.5 heat)
@@ -465,19 +465,19 @@ class TestTransmission:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Sink', size=1, fixed_relative_profile=np.array([50, 50])),
+                    fx.Flow(bus='Sink', flow_id='heat', size=1, fixed_relative_profile=np.array([50, 50])),
                 ],
             ),
             fx.Source(
                 'CheapSource',
                 outputs=[
-                    fx.Flow('heat', bus='Source', effects_per_flow_hour=1),
+                    fx.Flow(bus='Source', flow_id='heat', effects_per_flow_hour=1),
                 ],
             ),
             fx.Transmission(
                 'Pipe',
-                in1=fx.Flow('in', bus='Source', size=200),
-                out1=fx.Flow('out', bus='Sink', size=200),
+                in1=fx.Flow(bus='Source', flow_id='in', size=200),
+                out1=fx.Flow(bus='Sink', flow_id='out', size=200),
                 relative_losses=0.1,
             ),
         )
@@ -504,19 +504,19 @@ class TestTransmission:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Sink', size=1, fixed_relative_profile=np.array([20, 20])),
+                    fx.Flow(bus='Sink', flow_id='heat', size=1, fixed_relative_profile=np.array([20, 20])),
                 ],
             ),
             fx.Source(
                 'CheapSource',
                 outputs=[
-                    fx.Flow('heat', bus='Source', effects_per_flow_hour=1),
+                    fx.Flow(bus='Source', flow_id='heat', effects_per_flow_hour=1),
                 ],
             ),
             fx.Transmission(
                 'Pipe',
-                in1=fx.Flow('in', bus='Source', size=200),
-                out1=fx.Flow('out', bus='Sink', size=200),
+                in1=fx.Flow(bus='Source', flow_id='in', size=200),
+                out1=fx.Flow(bus='Sink', flow_id='out', size=200),
                 absolute_losses=5,
             ),
         )
@@ -542,33 +542,33 @@ class TestTransmission:
             fx.Sink(
                 'LeftDemand',
                 inputs=[
-                    fx.Flow('heat', bus='Left', size=1, fixed_relative_profile=np.array([20, 0])),
+                    fx.Flow(bus='Left', flow_id='heat', size=1, fixed_relative_profile=np.array([20, 0])),
                 ],
             ),
             fx.Sink(
                 'RightDemand',
                 inputs=[
-                    fx.Flow('heat', bus='Right', size=1, fixed_relative_profile=np.array([0, 20])),
+                    fx.Flow(bus='Right', flow_id='heat', size=1, fixed_relative_profile=np.array([0, 20])),
                 ],
             ),
             fx.Source(
                 'LeftSource',
                 outputs=[
-                    fx.Flow('heat', bus='Left', effects_per_flow_hour=1),
+                    fx.Flow(bus='Left', flow_id='heat', effects_per_flow_hour=1),
                 ],
             ),
             fx.Source(
                 'RightSource',
                 outputs=[
-                    fx.Flow('heat', bus='Right', effects_per_flow_hour=10),  # Expensive
+                    fx.Flow(bus='Right', flow_id='heat', effects_per_flow_hour=10),  # Expensive
                 ],
             ),
             fx.Transmission(
                 'Link',
-                in1=fx.Flow('left', bus='Left', size=100),
-                out1=fx.Flow('right', bus='Right', size=100),
-                in2=fx.Flow('right_in', bus='Right', size=100),
-                out2=fx.Flow('left_out', bus='Left', size=100),
+                in1=fx.Flow(bus='Left', flow_id='left', size=100),
+                out1=fx.Flow(bus='Right', flow_id='right', size=100),
+                in2=fx.Flow(bus='Right', flow_id='right_in', size=100),
+                out2=fx.Flow(bus='Left', flow_id='left_out', size=100),
             ),
         )
         fs = optimize(fs)
@@ -594,25 +594,25 @@ class TestTransmission:
             fx.Sink(
                 'LeftDemand',
                 inputs=[
-                    fx.Flow('heat', bus='Left', size=1, fixed_relative_profile=np.array([20, 0])),
+                    fx.Flow(bus='Left', flow_id='heat', size=1, fixed_relative_profile=np.array([20, 0])),
                 ],
             ),
             fx.Sink(
                 'RightDemand',
                 inputs=[
-                    fx.Flow('heat', bus='Right', size=1, fixed_relative_profile=np.array([0, 20])),
+                    fx.Flow(bus='Right', flow_id='heat', size=1, fixed_relative_profile=np.array([0, 20])),
                 ],
             ),
             fx.Source(
                 'LeftSource',
-                outputs=[fx.Flow('heat', bus='Left', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Left', flow_id='heat', effects_per_flow_hour=1)],
             ),
             fx.Transmission(
                 'Link',
-                in1=fx.Flow('left', bus='Left', size=100),
-                out1=fx.Flow('right', bus='Right', size=100),
-                in2=fx.Flow('right_in', bus='Right', size=100),
-                out2=fx.Flow('left_out', bus='Left', size=100),
+                in1=fx.Flow(bus='Left', flow_id='left', size=100),
+                out1=fx.Flow(bus='Right', flow_id='right', size=100),
+                in2=fx.Flow(bus='Right', flow_id='right_in', size=100),
+                out2=fx.Flow(bus='Left', flow_id='left_out', size=100),
                 prevent_simultaneous_flows_in_both_directions=True,
             ),
         )
@@ -643,17 +643,17 @@ class TestTransmission:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Sink', size=1, fixed_relative_profile=np.array([20, 0, 20, 0])),
+                    fx.Flow(bus='Sink', flow_id='heat', size=1, fixed_relative_profile=np.array([20, 0, 20, 0])),
                 ],
             ),
             fx.Source(
                 'CheapSource',
-                outputs=[fx.Flow('heat', bus='Source', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Source', flow_id='heat', effects_per_flow_hour=1)],
             ),
             fx.Transmission(
                 'Pipe',
-                in1=fx.Flow('in', bus='Source', size=200, previous_flow_rate=0, relative_minimum=0.1),
-                out1=fx.Flow('out', bus='Sink', size=200, previous_flow_rate=0, relative_minimum=0.1),
+                in1=fx.Flow(bus='Source', flow_id='in', size=200, previous_flow_rate=0, relative_minimum=0.1),
+                out1=fx.Flow(bus='Sink', flow_id='out', size=200, previous_flow_rate=0, relative_minimum=0.1),
                 status_parameters=fx.StatusParameters(effects_per_startup=50),
             ),
         )
@@ -681,20 +681,20 @@ class TestHeatPump:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([30, 30])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([30, 30])),
                 ],
             ),
             fx.Source(
                 'Grid',
                 outputs=[
-                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=1),
+                    fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1),
                 ],
             ),
             fx.linear_converters.HeatPump(
                 'HP',
                 cop=3.0,
-                electrical_flow=fx.Flow('elec', bus='Elec'),
-                thermal_flow=fx.Flow('heat', bus='Heat'),
+                electrical_flow=fx.Flow(bus='Elec', flow_id='elec'),
+                thermal_flow=fx.Flow(bus='Heat', flow_id='heat'),
             ),
         )
         fs = optimize(fs)
@@ -716,20 +716,20 @@ class TestHeatPump:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([20, 20])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([20, 20])),
                 ],
             ),
             fx.Source(
                 'Grid',
                 outputs=[
-                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=1),
+                    fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1),
                 ],
             ),
             fx.linear_converters.HeatPump(
                 'HP',
                 cop=np.array([2.0, 4.0]),
-                electrical_flow=fx.Flow('elec', bus='Elec'),
-                thermal_flow=fx.Flow('heat', bus='Heat'),
+                electrical_flow=fx.Flow(bus='Elec', flow_id='elec'),
+                thermal_flow=fx.Flow(bus='Heat', flow_id='heat'),
             ),
         )
         fs = optimize(fs)
@@ -757,20 +757,20 @@ class TestCoolingTower:
             fx.Source(
                 'HeatSource',
                 outputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([100, 100])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([100, 100])),
                 ],
             ),
             fx.Source(
                 'Grid',
                 outputs=[
-                    fx.Flow('elec', bus='Elec', effects_per_flow_hour=1),
+                    fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1),
                 ],
             ),
             fx.linear_converters.CoolingTower(
                 'CT',
                 specific_electricity_demand=0.1,  # 0.1 kWel per kWth
-                thermal_flow=fx.Flow('heat', bus='Heat'),
-                electrical_flow=fx.Flow('elec', bus='Elec'),
+                thermal_flow=fx.Flow(bus='Heat', flow_id='heat'),
+                electrical_flow=fx.Flow(bus='Elec', flow_id='elec'),
             ),
         )
         fs = optimize(fs)
@@ -798,18 +798,18 @@ class TestPower2Heat:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([20, 20])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([20, 20])),
                 ],
             ),
             fx.Source(
                 'Grid',
-                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
             fx.linear_converters.Power2Heat(
                 'P2H',
                 thermal_efficiency=0.9,
-                electrical_flow=fx.Flow('elec', bus='Elec'),
-                thermal_flow=fx.Flow('heat', bus='Heat'),
+                electrical_flow=fx.Flow(bus='Elec', flow_id='elec'),
+                thermal_flow=fx.Flow(bus='Heat', flow_id='heat'),
             ),
         )
         fs = optimize(fs)
@@ -838,23 +838,23 @@ class TestHeatPumpWithSource:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=np.array([30, 30])),
+                    fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([30, 30])),
                 ],
             ),
             fx.Source(
                 'Grid',
-                outputs=[fx.Flow('elec', bus='Elec', effects_per_flow_hour=1)],
+                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
             fx.Source(
                 'FreeHeat',
-                outputs=[fx.Flow('heat', bus='HeatSource')],
+                outputs=[fx.Flow(bus='HeatSource', flow_id='heat')],
             ),
             fx.linear_converters.HeatPumpWithSource(
                 'HP',
                 cop=3.0,
-                electrical_flow=fx.Flow('elec', bus='Elec'),
-                heat_source_flow=fx.Flow('source', bus='HeatSource'),
-                thermal_flow=fx.Flow('heat', bus='Heat'),
+                electrical_flow=fx.Flow(bus='Elec', flow_id='elec'),
+                heat_source_flow=fx.Flow(bus='HeatSource', flow_id='source'),
+                thermal_flow=fx.Flow(bus='Heat', flow_id='heat'),
             ),
         )
         fs = optimize(fs)
@@ -881,19 +881,19 @@ class TestSourceAndSink:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
+                    fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
                 ],
             ),
             fx.Source(
                 'Solar',
                 outputs=[
-                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([30, 30, 0])),
+                    fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([30, 30, 0])),
                 ],
             ),
             fx.SourceAndSink(
                 'GridConnection',
-                outputs=[fx.Flow('buy', bus='Elec', size=100, effects_per_flow_hour=5)],
-                inputs=[fx.Flow('sell', bus='Elec', size=100, effects_per_flow_hour=-1)],
+                outputs=[fx.Flow(bus='Elec', flow_id='buy', size=100, effects_per_flow_hour=5)],
+                inputs=[fx.Flow(bus='Elec', flow_id='sell', size=100, effects_per_flow_hour=-1)],
                 prevent_simultaneous_flow_rates=True,
             ),
         )

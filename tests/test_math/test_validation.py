@@ -29,13 +29,13 @@ class TestValidation:
             fx.Sink(
                 'Demand',
                 inputs=[
-                    fx.Flow('elec', bus='Elec', size=1, fixed_relative_profile=np.array([0.1, 0.1, 0.1])),
+                    fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0.1, 0.1, 0.1])),
                 ],
             ),
             fx.SourceAndSink(
                 'GridConnection',
-                outputs=[fx.Flow('buy', bus='Elec', effects_per_flow_hour=5)],
-                inputs=[fx.Flow('sell', bus='Elec', effects_per_flow_hour=-1)],
+                outputs=[fx.Flow(bus='Elec', flow_id='buy', effects_per_flow_hour=5)],
+                inputs=[fx.Flow(bus='Elec', flow_id='sell', effects_per_flow_hour=-1)],
                 prevent_simultaneous_flow_rates=True,
             ),
         )
