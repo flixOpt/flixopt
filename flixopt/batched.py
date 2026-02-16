@@ -20,7 +20,7 @@ import pandas as pd
 import xarray as xr
 
 from .core import PlausibilityError, align_effects_to_coords, align_to_coords
-from .features import fast_isnull, fast_notnull, stack_along_dim
+from .features import stack_along_dim
 from .id_list import IdList, element_id_list
 from .interface import InvestParameters, StatusParameters
 from .modeling import _scalar_safe_isel_drop
@@ -1027,227 +1027,6 @@ class FlowsData:
     def dim_name(self) -> str:
         return 'flow'
 
-    # === Dataset variable access (properties for backward compat) ===
-
-    @cached_property
-    def has_status(self) -> xr.DataArray:
-        return self.ds['has_status']
-
-    @cached_property
-    def has_investment(self) -> xr.DataArray:
-        return self.ds['has_investment']
-
-    @cached_property
-    def has_optional_investment(self) -> xr.DataArray:
-        return self.ds['has_optional_investment']
-
-    @cached_property
-    def has_mandatory_investment(self) -> xr.DataArray:
-        return self.ds['has_mandatory_investment']
-
-    @cached_property
-    def has_fixed_size(self) -> xr.DataArray:
-        return self.ds['has_fixed_size']
-
-    @cached_property
-    def has_size(self) -> xr.DataArray:
-        return self.ds['has_size']
-
-    @cached_property
-    def has_effects(self) -> xr.DataArray:
-        return self.ds['has_effects']
-
-    @cached_property
-    def has_flow_hours_min(self) -> xr.DataArray:
-        return self.ds['has_flow_hours_min']
-
-    @cached_property
-    def has_flow_hours_max(self) -> xr.DataArray:
-        return self.ds['has_flow_hours_max']
-
-    @cached_property
-    def has_load_factor_min(self) -> xr.DataArray:
-        return self.ds['has_load_factor_min']
-
-    @cached_property
-    def has_load_factor_max(self) -> xr.DataArray:
-        return self.ds['has_load_factor_max']
-
-    @cached_property
-    def has_startup_tracking(self) -> xr.DataArray:
-        return self.ds['has_startup_tracking']
-
-    @cached_property
-    def has_uptime_tracking(self) -> xr.DataArray:
-        return self.ds['has_uptime_tracking']
-
-    @cached_property
-    def has_downtime_tracking(self) -> xr.DataArray:
-        return self.ds['has_downtime_tracking']
-
-    @cached_property
-    def has_startup_limit(self) -> xr.DataArray:
-        return self.ds['has_startup_limit']
-
-    # === Numeric arrays from Dataset ===
-
-    @cached_property
-    def relative_minimum(self) -> xr.DataArray:
-        return self.ds['relative_minimum']
-
-    @cached_property
-    def relative_maximum(self) -> xr.DataArray:
-        return self.ds['relative_maximum']
-
-    @cached_property
-    def fixed_relative_profile(self) -> xr.DataArray:
-        return self.ds['fixed_relative_profile']
-
-    @cached_property
-    def effective_relative_minimum(self) -> xr.DataArray:
-        return self.ds['effective_relative_minimum']
-
-    @cached_property
-    def effective_relative_maximum(self) -> xr.DataArray:
-        return self.ds['effective_relative_maximum']
-
-    @cached_property
-    def fixed_size(self) -> xr.DataArray:
-        return self.ds['fixed_size']
-
-    @cached_property
-    def effective_size_lower(self) -> xr.DataArray:
-        return self.ds['effective_size_lower']
-
-    @cached_property
-    def effective_size_upper(self) -> xr.DataArray:
-        return self.ds['effective_size_upper']
-
-    @cached_property
-    def size_minimum_all(self) -> xr.DataArray:
-        return self.ds['size_minimum_all']
-
-    @cached_property
-    def size_maximum_all(self) -> xr.DataArray:
-        return self.ds['size_maximum_all']
-
-    @cached_property
-    def absolute_lower_bounds(self) -> xr.DataArray:
-        """(flow, cluster, time, period, scenario) - absolute lower bounds for flow rate."""
-        from .datasets import _ensure_canonical_order
-
-        base = self.effective_relative_minimum * self.effective_size_lower
-        is_zero = self.has_status | self.has_optional_investment | fast_isnull(self.effective_size_lower)
-        result = base.where(~is_zero, 0.0).fillna(0.0)
-        return _ensure_canonical_order(result)
-
-    @cached_property
-    def absolute_upper_bounds(self) -> xr.DataArray:
-        """(flow, cluster, time, period, scenario) - absolute upper bounds for flow rate."""
-        from .datasets import _ensure_canonical_order
-
-        base = self.effective_relative_maximum * self.effective_size_upper
-        result = base.where(fast_notnull(self.effective_size_upper), np.inf)
-        return _ensure_canonical_order(result)
-
-    # === Optional arrays (may not exist in ds) ===
-    # Subset arrays: these were originally built only for applicable flows.
-    # The Dataset auto-aligns them to all flows (NaN fill), so we sel back to the subset.
-
-    def _subset_var(self, name: str, subset_ids: list[str]) -> xr.DataArray | None:
-        """Get a Dataset variable subsetted to the given flow IDs, or None if absent/empty."""
-        arr = self.ds.get(name)
-        if arr is None:
-            return None
-        if not subset_ids:
-            return None
-        return arr.sel(flow=subset_ids)
-
-    @cached_property
-    def flow_hours_minimum(self) -> xr.DataArray | None:
-        return self._subset_var('flow_hours_minimum', self.with_flow_hours_min)
-
-    @cached_property
-    def flow_hours_maximum(self) -> xr.DataArray | None:
-        return self._subset_var('flow_hours_maximum', self.with_flow_hours_max)
-
-    @cached_property
-    def flow_hours_minimum_over_periods(self) -> xr.DataArray | None:
-        return self._subset_var('flow_hours_minimum_over_periods', self.with_flow_hours_over_periods_min)
-
-    @cached_property
-    def flow_hours_maximum_over_periods(self) -> xr.DataArray | None:
-        return self._subset_var('flow_hours_maximum_over_periods', self.with_flow_hours_over_periods_max)
-
-    @cached_property
-    def load_factor_minimum(self) -> xr.DataArray | None:
-        return self._subset_var('load_factor_minimum', self.with_load_factor_min)
-
-    @cached_property
-    def load_factor_maximum(self) -> xr.DataArray | None:
-        return self._subset_var('load_factor_maximum', self.with_load_factor_max)
-
-    @cached_property
-    def effects_per_flow_hour(self) -> xr.DataArray | None:
-        return self._subset_var('effects_per_flow_hour', self.with_effects)
-
-    @cached_property
-    def linked_periods(self) -> xr.DataArray | None:
-        return self.ds.get('linked_periods')
-
-    @cached_property
-    def effects_per_active_hour(self) -> xr.DataArray | None:
-        arr = self.ds.get('effects_per_active_hour')
-        if arr is None:
-            return None
-        # Subset to flows that actually have the effect (non-NaN along non-flow dims)
-        return arr.dropna(dim='flow', how='all')
-
-    @cached_property
-    def effects_per_startup(self) -> xr.DataArray | None:
-        arr = self.ds.get('effects_per_startup')
-        if arr is None:
-            return None
-        return arr.dropna(dim='flow', how='all')
-
-    @cached_property
-    def min_uptime(self) -> xr.DataArray | None:
-        return self._subset_var('min_uptime', self.with_uptime_tracking)
-
-    @cached_property
-    def max_uptime(self) -> xr.DataArray | None:
-        return self._subset_var('max_uptime', self.with_uptime_tracking)
-
-    @cached_property
-    def min_downtime(self) -> xr.DataArray | None:
-        return self._subset_var('min_downtime', self.with_downtime_tracking)
-
-    @cached_property
-    def max_downtime(self) -> xr.DataArray | None:
-        return self._subset_var('max_downtime', self.with_downtime_tracking)
-
-    @cached_property
-    def startup_limit_values(self) -> xr.DataArray | None:
-        return self._subset_var('startup_limit', self.with_startup_limit)
-
-    @cached_property
-    def previous_uptime(self) -> xr.DataArray | None:
-        return self._subset_var('previous_uptime', self.with_uptime_tracking)
-
-    @cached_property
-    def previous_downtime(self) -> xr.DataArray | None:
-        return self._subset_var('previous_downtime', self.with_downtime_tracking)
-
-    # === Investment data from Dataset ===
-
-    @cached_property
-    def optional_investment_size_minimum(self) -> xr.DataArray | None:
-        return self.ds.get('optional_investment_size_minimum')
-
-    @cached_property
-    def optional_investment_size_maximum(self) -> xr.DataArray | None:
-        return self.ds.get('optional_investment_size_maximum')
-
     # === Piecewise metadata (from ds.attrs) ===
 
     @property
@@ -1408,27 +1187,29 @@ class FlowsData:
 
         errors: list[str] = []
 
-        invalid_bounds = self._any_per_flow(self.relative_minimum > self.relative_maximum)
+        invalid_bounds = self._any_per_flow(self.ds['relative_minimum'] > self.ds['relative_maximum'])
         if invalid_bounds.any():
             errors.append(f'relative_minimum > relative_maximum for flows: {self._flagged_ids(invalid_bounds)}')
 
-        has_nonzero_min = self._any_per_flow(self.relative_minimum > 0)
-        if (has_nonzero_min & ~self.has_size).any():
+        has_nonzero_min = self._any_per_flow(self.ds['relative_minimum'] > 0)
+        has_size = self.ds['has_size']
+        if (has_nonzero_min & ~has_size).any():
             errors.append(
                 f'relative_minimum > 0 but no size defined for flows: '
-                f'{self._flagged_ids(has_nonzero_min & ~self.has_size)}. '
+                f'{self._flagged_ids(has_nonzero_min & ~has_size)}. '
                 f'A size is required because the lower bound is size * relative_minimum.'
             )
 
-        has_nondefault_max = self._any_per_flow(self.relative_maximum < 1)
-        if (has_nondefault_max & ~self.has_size).any():
+        has_nondefault_max = self._any_per_flow(self.ds['relative_maximum'] < 1)
+        if (has_nondefault_max & ~has_size).any():
             errors.append(
                 f'relative_maximum < 1 but no size defined for flows: '
-                f'{self._flagged_ids(has_nondefault_max & ~self.has_size)}. '
+                f'{self._flagged_ids(has_nondefault_max & ~has_size)}. '
                 f'A size is required because the upper bound is size * relative_maximum.'
             )
 
-        has_nonzero_min_no_status = has_nonzero_min & ~self.has_status
+        has_status = self.ds['has_status']
+        has_nonzero_min_no_status = has_nonzero_min & ~has_status
         if has_nonzero_min_no_status.any():
             logger.warning(
                 f'Flows {self._flagged_ids(has_nonzero_min_no_status)} have relative_minimum > 0 '
@@ -1436,7 +1217,7 @@ class FlowsData:
                 f'Consider using status_parameters to allow switching active and inactive.'
             )
 
-        has_zero_min_with_status = ~has_nonzero_min & self.has_status
+        has_zero_min_with_status = ~has_nonzero_min & has_status
         if has_zero_min_with_status.any():
             logger.warning(
                 f'Flows {self._flagged_ids(has_zero_min_with_status)} have status_parameters but '

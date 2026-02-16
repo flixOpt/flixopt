@@ -19,6 +19,7 @@ from .config import CONFIG
 from .features import (
     MaskHelpers,
     StatusBuilder,
+    fast_isnull,
     fast_notnull,
     sparse_multiply_sum,
     sparse_weighted_sum,
@@ -617,12 +618,20 @@ class FlowsModel(TypeModel):
     @cached_property
     def rate(self) -> linopy.Variable:
         """(flow, time, ...) - flow rate variable for ALL flows."""
-        return self.add_variables(
-            FlowVarName.RATE,
-            lower=self.data.absolute_lower_bounds,
-            upper=self.data.absolute_upper_bounds,
-            dims=None,
-        )
+        from .datasets import _ensure_canonical_order
+
+        ds = self.data.ds
+
+        # Lower bounds (inline from former FlowsData.absolute_lower_bounds)
+        base_lower = ds['effective_relative_minimum'] * ds['effective_size_lower']
+        is_zero = ds['has_status'] | ds['has_optional_investment'] | fast_isnull(ds['effective_size_lower'])
+        lower = _ensure_canonical_order(base_lower.where(~is_zero, 0.0).fillna(0.0))
+
+        # Upper bounds (inline from former FlowsData.absolute_upper_bounds)
+        base_upper = ds['effective_relative_maximum'] * ds['effective_size_upper']
+        upper = _ensure_canonical_order(base_upper.where(fast_notnull(ds['effective_size_upper']), np.inf))
+
+        return self.add_variables(FlowVarName.RATE, lower=lower, upper=upper, dims=None)
 
     @cached_property
     def status(self) -> linopy.Variable | None:
@@ -632,7 +641,7 @@ class FlowsModel(TypeModel):
         return self.add_variables(
             FlowVarName.STATUS,
             dims=None,
-            mask=self.data.has_status,
+            mask=self.data.ds['has_status'],
             binary=True,
         )
 
@@ -641,12 +650,13 @@ class FlowsModel(TypeModel):
         """(flow, period, scenario) - size variable, masked to flows with investment."""
         if not self.data.with_investment:
             return None
+        ds = self.data.ds
         return self.add_variables(
             FlowVarName.SIZE,
-            lower=self.data.size_minimum_all,
-            upper=self.data.size_maximum_all,
+            lower=ds['size_minimum_all'],
+            upper=ds['size_maximum_all'],
             dims=('period', 'scenario'),
-            mask=self.data.has_investment,
+            mask=ds['has_investment'],
         )
 
     @cached_property
@@ -657,7 +667,7 @@ class FlowsModel(TypeModel):
         return self.add_variables(
             FlowVarName.INVESTED,
             dims=('period', 'scenario'),
-            mask=self.data.has_optional_investment,
+            mask=self.data.ds['has_optional_investment'],
             binary=True,
         )
 
@@ -707,12 +717,13 @@ class FlowsModel(TypeModel):
 
         # Optional investment: size controlled by invested binary
         if self.invested is not None:
+            ds = self.data.ds
             InvestmentBuilder.add_optional_size_bounds(
                 model=self.model,
                 size_var=self.size,
                 invested_var=self.invested,
-                min_bounds=self.data.optional_investment_size_minimum,
-                max_bounds=self.data.optional_investment_size_maximum,
+                min_bounds=ds.get('optional_investment_size_minimum'),
+                max_bounds=ds.get('optional_investment_size_maximum'),
                 element_ids=self.data.with_optional_investment,
                 dim_name=dim,
                 name_prefix='flow',
@@ -735,22 +746,24 @@ class FlowsModel(TypeModel):
     def constraint_flow_hours(self) -> None:
         """Constrain sum_temporal(rate) for flows with flow_hours bounds."""
         dim = self.dim_name
+        ds = self.data.ds
 
         # Min constraint
-        if self.data.flow_hours_minimum is not None:
-            flow_ids = self.data.with_flow_hours_min
+        flow_ids = self.data.with_flow_hours_min
+        if flow_ids:
             hours = self.model.sum_temporal(self.rate.sel({dim: flow_ids}))
-            self.add_constraints(hours >= self.data.flow_hours_minimum, name='hours_min')
+            self.add_constraints(hours >= ds['flow_hours_minimum'].sel(flow=flow_ids), name='hours_min')
 
         # Max constraint
-        if self.data.flow_hours_maximum is not None:
-            flow_ids = self.data.with_flow_hours_max
+        flow_ids = self.data.with_flow_hours_max
+        if flow_ids:
             hours = self.model.sum_temporal(self.rate.sel({dim: flow_ids}))
-            self.add_constraints(hours <= self.data.flow_hours_maximum, name='hours_max')
+            self.add_constraints(hours <= ds['flow_hours_maximum'].sel(flow=flow_ids), name='hours_max')
 
     def constraint_flow_hours_over_periods(self) -> None:
         """Constrain weighted sum of hours across periods."""
         dim = self.dim_name
+        ds = self.data.ds
 
         def compute_hours_over_periods(flow_ids: list[str]):
             rate_subset = self.rate.sel({dim: flow_ids})
@@ -761,36 +774,41 @@ class FlowsModel(TypeModel):
             return hours_per_period
 
         # Min constraint
-        if self.data.flow_hours_minimum_over_periods is not None:
-            flow_ids = self.data.with_flow_hours_over_periods_min
+        flow_ids = self.data.with_flow_hours_over_periods_min
+        if flow_ids:
             hours = compute_hours_over_periods(flow_ids)
-            self.add_constraints(hours >= self.data.flow_hours_minimum_over_periods, name='hours_over_periods_min')
+            self.add_constraints(
+                hours >= ds['flow_hours_minimum_over_periods'].sel(flow=flow_ids), name='hours_over_periods_min'
+            )
 
         # Max constraint
-        if self.data.flow_hours_maximum_over_periods is not None:
-            flow_ids = self.data.with_flow_hours_over_periods_max
+        flow_ids = self.data.with_flow_hours_over_periods_max
+        if flow_ids:
             hours = compute_hours_over_periods(flow_ids)
-            self.add_constraints(hours <= self.data.flow_hours_maximum_over_periods, name='hours_over_periods_max')
+            self.add_constraints(
+                hours <= ds['flow_hours_maximum_over_periods'].sel(flow=flow_ids), name='hours_over_periods_max'
+            )
 
     def constraint_load_factor(self) -> None:
         """Load factor min/max constraints for flows that have them."""
         dim = self.dim_name
+        ds = self.data.ds
         total_time = self.model.temporal_weight.sum(self.model.temporal_dims)
 
         # Min constraint: hours >= total_time * load_factor_min * size
-        if self.data.load_factor_minimum is not None:
-            flow_ids = self.data.with_load_factor_min
+        flow_ids = self.data.with_load_factor_min
+        if flow_ids:
             hours = self.model.sum_temporal(self.rate.sel({dim: flow_ids}))
-            size = self.data.effective_size_lower.sel({dim: flow_ids}).fillna(0)
-            rhs = total_time * self.data.load_factor_minimum * size
+            size = ds['effective_size_lower'].sel({dim: flow_ids}).fillna(0)
+            rhs = total_time * ds['load_factor_minimum'].sel(flow=flow_ids) * size
             self.add_constraints(hours >= rhs, name='load_factor_min')
 
         # Max constraint: hours <= total_time * load_factor_max * size
-        if self.data.load_factor_maximum is not None:
-            flow_ids = self.data.with_load_factor_max
+        flow_ids = self.data.with_load_factor_max
+        if flow_ids:
             hours = self.model.sum_temporal(self.rate.sel({dim: flow_ids}))
-            size = self.data.effective_size_upper.sel({dim: flow_ids}).fillna(np.inf)
-            rhs = total_time * self.data.load_factor_maximum * size
+            size = ds['effective_size_upper'].sel({dim: flow_ids}).fillna(np.inf)
+            rhs = total_time * ds['load_factor_maximum'].sel(flow=flow_ids) * size
             self.add_constraints(hours <= rhs, name='load_factor_max')
 
     def __init__(self, model: FlowSystemModel, data: FlowsData):
@@ -854,16 +872,18 @@ class FlowsModel(TypeModel):
         if not mask.any():
             return
 
+        ds = self.data.ds
+
         # Upper bound: rate <= size * relative_max
         self.model.add_constraints(
-            self.rate <= self.size * self.data.effective_relative_maximum,
+            self.rate <= self.size * ds['effective_relative_maximum'],
             name=f'{self.dim_name}|invest_ub',  # TODO Rename to size_ub
             mask=mask,
         )
 
         # Lower bound: rate >= size * relative_min
         self.model.add_constraints(
-            self.rate >= self.size * self.data.effective_relative_minimum,
+            self.rate >= self.size * ds['effective_relative_minimum'],
             name=f'{self.dim_name}|invest_lb',  # TODO Rename to size_lb
             mask=mask,
         )
@@ -874,13 +894,14 @@ class FlowsModel(TypeModel):
         rate <= status * size * relative_max, rate >= status * epsilon."""
         flow_ids = self.data.with_status_only
         dim = self.dim_name
+        ds = self.data.ds
         flow_rate = self.rate.sel({dim: flow_ids})
         status = self.status.sel({dim: flow_ids})
 
         # Get effective relative bounds and fixed size for the subset
-        rel_max = self.data.effective_relative_maximum.sel({dim: flow_ids})
-        rel_min = self.data.effective_relative_minimum.sel({dim: flow_ids})
-        size = self.data.fixed_size.sel({dim: flow_ids})
+        rel_max = ds['effective_relative_maximum'].sel({dim: flow_ids})
+        rel_min = ds['effective_relative_minimum'].sel({dim: flow_ids})
+        size = ds['fixed_size'].sel({dim: flow_ids})
 
         # Upper bound: rate <= status * size * relative_max
         upper_bounds = rel_max * size
@@ -900,14 +921,15 @@ class FlowsModel(TypeModel):
         """
         flow_ids = self.data.with_status_and_investment
         dim = self.dim_name
+        ds = self.data.ds
         flow_rate = self.rate.sel({dim: flow_ids})
         size = self.size.sel({dim: flow_ids})
         status = self.status.sel({dim: flow_ids})
 
         # Get effective relative bounds and effective_size_upper for the subset
-        rel_max = self.data.effective_relative_maximum.sel({dim: flow_ids})
-        rel_min = self.data.effective_relative_minimum.sel({dim: flow_ids})
-        max_size = self.data.effective_size_upper.sel({dim: flow_ids})
+        rel_max = ds['effective_relative_maximum'].sel({dim: flow_ids})
+        rel_min = ds['effective_relative_minimum'].sel({dim: flow_ids})
+        max_size = ds['effective_size_upper'].sel({dim: flow_ids})
 
         # Upper bound 1: rate <= status * M where M = max_size * relative_max
         big_m_upper = max_size * rel_max
@@ -1041,31 +1063,32 @@ class FlowsModel(TypeModel):
 
         # === Temporal: rate * effects_per_flow_hour * dt ===
         # Batched over flows and effects - _accumulate_shares handles effect dim internally
-        factors = self.data.effects_per_flow_hour
-        if factors is not None:
-            flow_ids = factors.coords[dim].values
+        ds = self.data.ds
+        flow_ids = self.data.with_effects
+        if flow_ids:
+            factors = ds['effects_per_flow_hour'].sel(flow=flow_ids)
             rate_subset = self.rate.sel({dim: flow_ids})
             effects_model.add_temporal_contribution(rate_subset * (factors * dt), contributor_dim=dim)
 
         # === Temporal: status effects ===
         if self.status is not None:
             # effects_per_active_hour
-            factor = self.data.effects_per_active_hour
+            factor = ds.get('effects_per_active_hour')
             if factor is not None:
+                factor = factor.dropna(dim='flow', how='all')
                 flow_ids = factor.coords[dim].values
                 status_subset = self.status.sel({dim: flow_ids})
                 effects_model.add_temporal_contribution(status_subset * (factor * dt), contributor_dim=dim)
 
             # effects_per_startup
-            factor = self.data.effects_per_startup
+            factor = ds.get('effects_per_startup')
             if self.startup is not None and factor is not None:
+                factor = factor.dropna(dim='flow', how='all')
                 flow_ids = factor.coords[dim].values
                 startup_subset = self.startup.sel({dim: flow_ids})
                 effects_model.add_temporal_contribution(startup_subset * factor, contributor_dim=dim)
 
         # === Periodic: size * effects_per_size ===
-        ds = self.data.ds
-
         def _get_subset(name):
             """Get investment effect array from ds, dropping auto-aligned NaN rows."""
             arr = ds.get(name)
@@ -1159,10 +1182,12 @@ class FlowsModel(TypeModel):
         ids = self.data.with_startup_limit
         if not ids:
             return None
+        startup_limit = self.data.ds.get('startup_limit')
+        upper = startup_limit.sel(flow=ids) if startup_limit is not None else None
         return self.add_variables(
             FlowVarName.STARTUP_COUNT,
             lower=0,
-            upper=self.data.startup_limit_values,
+            upper=upper,
             dims=('period', 'scenario'),
             element_ids=ids,
         )
@@ -1175,15 +1200,26 @@ class FlowsModel(TypeModel):
             return None
         from .features import StatusBuilder
 
-        prev = sd.previous_uptime
+        ds = sd.ds
+        ids = sd.with_uptime_tracking
+        min_up = ds.get('min_uptime')
+        if min_up is not None:
+            min_up = min_up.sel(flow=ids)
+        max_up = ds.get('max_uptime')
+        if max_up is not None:
+            max_up = max_up.sel(flow=ids)
+        prev = ds.get('previous_uptime')
+        if prev is not None:
+            prev = prev.sel(flow=ids)
+
         var = StatusBuilder.add_batched_duration_tracking(
             model=self.model,
-            state=self.status.sel({self.dim_name: sd.with_uptime_tracking}),
+            state=self.status.sel({self.dim_name: ids}),
             name=FlowVarName.UPTIME,
             dim_name=self.dim_name,
             timestep_duration=self.model.timestep_duration,
-            minimum_duration=sd.min_uptime,
-            maximum_duration=sd.max_uptime,
+            minimum_duration=min_up,
+            maximum_duration=max_up,
             previous_duration=prev if prev is not None and fast_notnull(prev).any() else None,
         )
         self._variables[FlowVarName.UPTIME] = var
@@ -1197,15 +1233,26 @@ class FlowsModel(TypeModel):
             return None
         from .features import StatusBuilder
 
-        prev = sd.previous_downtime
+        ds = sd.ds
+        ids = sd.with_downtime_tracking
+        min_down = ds.get('min_downtime')
+        if min_down is not None:
+            min_down = min_down.sel(flow=ids)
+        max_down = ds.get('max_downtime')
+        if max_down is not None:
+            max_down = max_down.sel(flow=ids)
+        prev = ds.get('previous_downtime')
+        if prev is not None:
+            prev = prev.sel(flow=ids)
+
         var = StatusBuilder.add_batched_duration_tracking(
             model=self.model,
             state=self.inactive,
             name=FlowVarName.DOWNTIME,
             dim_name=self.dim_name,
             timestep_duration=self.model.timestep_duration,
-            minimum_duration=sd.min_downtime,
-            maximum_duration=sd.max_downtime,
+            minimum_duration=min_down,
+            maximum_duration=max_down,
             previous_duration=prev if prev is not None and fast_notnull(prev).any() else None,
         )
         self._variables[FlowVarName.DOWNTIME] = var
