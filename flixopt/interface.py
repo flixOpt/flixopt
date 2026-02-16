@@ -39,27 +39,6 @@ def _has_value(param: Any) -> bool:
     return True
 
 
-def _to_dataarray(value: Any) -> xr.DataArray:
-    """Convert a numeric value to xr.DataArray if not already one."""
-    if isinstance(value, xr.DataArray):
-        return value
-    return xr.DataArray(value)
-
-
-def _to_dataarray_dict(d: dict) -> dict:
-    """Convert dict values to xr.DataArray."""
-    return {k: _to_dataarray(v) for k, v in d.items()}
-
-
-def _convert_effects(value: Any) -> dict | xr.DataArray:
-    """Normalize an effects field: None→{}, dict→convert values, scalar→DataArray."""
-    if value is None:
-        return {}
-    if isinstance(value, dict):
-        return _to_dataarray_dict(value)
-    return _to_dataarray(value)
-
-
 @register_class_for_io
 @dataclass(eq=False)
 class Piece:
@@ -109,10 +88,6 @@ class Piece:
 
     start: Numeric_TPS
     end: Numeric_TPS
-
-    def __post_init__(self):
-        self.start = _to_dataarray(self.start)
-        self.end = _to_dataarray(self.end)
 
     def __repr__(self) -> str:
         return build_repr_from_init(self)
@@ -511,6 +486,9 @@ class PiecewiseConversion:
 
         x_piecewise = self.piecewises[x_label]
 
+        def _ensure_da(v):
+            return v if isinstance(v, xr.DataArray) else xr.DataArray(v)
+
         # Build Dataset with all piece data
         datasets = []
         for y_label in y_flows:
@@ -518,8 +496,8 @@ class PiecewiseConversion:
             for i, (x_piece, y_piece) in enumerate(zip(x_piecewise, y_piecewise, strict=False)):
                 ds = xr.Dataset(
                     {
-                        x_label: xr.concat([x_piece.start, x_piece.end], dim='point'),
-                        'output': xr.concat([y_piece.start, y_piece.end], dim='point'),
+                        x_label: xr.concat([_ensure_da(x_piece.start), _ensure_da(x_piece.end)], dim='point'),
+                        'output': xr.concat([_ensure_da(y_piece.start), _ensure_da(y_piece.end)], dim='point'),
                     }
                 )
                 ds = ds.assign_coords(point=['start', 'end'])
@@ -825,6 +803,9 @@ class PiecewiseEffects:
         if not effect_labels:
             raise ValueError('Need at least one effect share to plot')
 
+        def _ensure_da(v):
+            return v if isinstance(v, xr.DataArray) else xr.DataArray(v)
+
         # Build Dataset with all piece data
         datasets = []
         for effect_label in effect_labels:
@@ -832,8 +813,8 @@ class PiecewiseEffects:
             for i, (x_piece, y_piece) in enumerate(zip(self.piecewise_origin, y_piecewise, strict=False)):
                 ds = xr.Dataset(
                     {
-                        'origin': xr.concat([x_piece.start, x_piece.end], dim='point'),
-                        'share': xr.concat([y_piece.start, y_piece.end], dim='point'),
+                        'origin': xr.concat([_ensure_da(x_piece.start), _ensure_da(x_piece.end)], dim='point'),
+                        'share': xr.concat([_ensure_da(y_piece.start), _ensure_da(y_piece.end)], dim='point'),
                     }
                 )
                 ds = ds.assign_coords(point=['start', 'end'])

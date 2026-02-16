@@ -681,7 +681,21 @@ def register_class_for_io(cls):
 # =============================================================================
 
 
-def create_reference_structure(obj, path_prefix: str = '') -> tuple[dict, dict[str, xr.DataArray]]:
+def _is_alignable_numeric(obj: Any) -> bool:
+    """Check if an object is a numeric array type that should be aligned to coords.
+
+    Only converts types that would lose structure through JSON serialization
+    (numpy arrays, pandas Series/DataFrame). Plain Python scalars (int, float)
+    and numpy scalars survive JSON round-trip fine via ``_to_basic_type``.
+    """
+    if isinstance(obj, (bool, np.bool_)):
+        return False
+    return isinstance(obj, (np.ndarray, pd.Series, pd.DataFrame))
+
+
+def create_reference_structure(
+    obj, path_prefix: str = '', coords: dict[str, pd.Index] | None = None
+) -> tuple[dict, dict[str, xr.DataArray]]:
     """Extract DataArrays from any registered object, using path-based keys.
 
     Works with
@@ -694,6 +708,9 @@ def create_reference_structure(obj, path_prefix: str = '') -> tuple[dict, dict[s
     Args:
         obj: Object to serialize.
         path_prefix: Path prefix for DataArray keys (e.g., ``'components.Boiler'``).
+        coords: Model coordinates. When provided, alignable numeric values
+            (int, float, np.ndarray, pd.Series, ...) are converted to DataArrays
+            via ``align_to_coords`` and stored as dataset variables.
 
     Returns:
         Tuple of (reference_structure dict, extracted_arrays dict).
@@ -711,7 +728,7 @@ def create_reference_structure(obj, path_prefix: str = '') -> tuple[dict, dict[s
             continue
 
         param_path = f'{path_prefix}.{name}' if path_prefix else name
-        processed, arrays = _extract_recursive(value, param_path)
+        processed, arrays = _extract_recursive(value, param_path, coords=coords)
         all_arrays.update(arrays)
         if processed is not None and not _is_empty(processed):
             structure[name] = processed
@@ -725,11 +742,17 @@ def create_reference_structure(obj, path_prefix: str = '') -> tuple[dict, dict[s
     return structure, all_arrays
 
 
-def _extract_recursive(obj: Any, path: str) -> tuple[Any, dict[str, xr.DataArray]]:
+def _extract_recursive(
+    obj: Any, path: str, coords: dict[str, pd.Index] | None = None
+) -> tuple[Any, dict[str, xr.DataArray]]:
     """Recursively extract DataArrays, using *path* as the array key.
 
     Handles DataArrays, registered classes, plain dataclasses, dicts, lists,
     tuples, sets, IdList, and scalar/basic types.
+
+    When *coords* is provided, alignable numeric values (int, float, np.ndarray,
+    pd.Series, pd.DataFrame) are converted to DataArrays via ``align_to_coords``
+    and stored as dataset variables instead of going through ``_to_basic_type``.
     """
     arrays: dict[str, xr.DataArray] = {}
 
@@ -737,9 +760,15 @@ def _extract_recursive(obj: Any, path: str) -> tuple[Any, dict[str, xr.DataArray
         arrays[path] = obj.rename(path)
         return f':::{path}', arrays
 
+    # Coords-aware numeric conversion: promote raw numerics to DataArray
+    if coords is not None and _is_alignable_numeric(obj):
+        da = align_to_coords(obj, coords, name=path)
+        arrays[path] = da.rename(path)
+        return f':::{path}', arrays
+
     if obj.__class__.__name__ in CLASS_REGISTRY:
         # Registered class — recurse with path prefix
-        return create_reference_structure(obj, path_prefix=path)
+        return create_reference_structure(obj, path_prefix=path, coords=coords)
 
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
         structure: dict[str, Any] = {'__class__': obj.__class__.__name__}
@@ -747,7 +776,7 @@ def _extract_recursive(obj: Any, path: str) -> tuple[Any, dict[str, xr.DataArray
             value = getattr(obj, field.name)
             if value is None:
                 continue
-            processed, field_arrays = _extract_recursive(value, f'{path}.{field.name}')
+            processed, field_arrays = _extract_recursive(value, f'{path}.{field.name}', coords=coords)
             arrays.update(field_arrays)
             if processed is not None and not _is_empty(processed):
                 structure[field.name] = processed
@@ -756,7 +785,7 @@ def _extract_recursive(obj: Any, path: str) -> tuple[Any, dict[str, xr.DataArray
     if isinstance(obj, IdList):
         processed_dict: dict[str, Any] = {}
         for key, value in obj.items():
-            p, a = _extract_recursive(value, f'{path}.{key}')
+            p, a = _extract_recursive(value, f'{path}.{key}', coords=coords)
             arrays.update(a)
             processed_dict[key] = p
         return processed_dict, arrays
@@ -764,7 +793,7 @@ def _extract_recursive(obj: Any, path: str) -> tuple[Any, dict[str, xr.DataArray
     if isinstance(obj, dict):
         processed_dict = {}
         for key, value in obj.items():
-            p, a = _extract_recursive(value, f'{path}.{key}')
+            p, a = _extract_recursive(value, f'{path}.{key}', coords=coords)
             arrays.update(a)
             processed_dict[key] = p
         return processed_dict, arrays
@@ -772,7 +801,7 @@ def _extract_recursive(obj: Any, path: str) -> tuple[Any, dict[str, xr.DataArray
     if isinstance(obj, (list, tuple)):
         processed_list: list[Any] = []
         for i, item in enumerate(obj):
-            p, a = _extract_recursive(item, f'{path}.{i}')
+            p, a = _extract_recursive(item, f'{path}.{i}', coords=coords)
             arrays.update(a)
             processed_list.append(p)
         return processed_list, arrays
@@ -780,7 +809,7 @@ def _extract_recursive(obj: Any, path: str) -> tuple[Any, dict[str, xr.DataArray
     if isinstance(obj, set):
         processed_list = []
         for i, item in enumerate(obj):
-            p, a = _extract_recursive(item, f'{path}.{i}')
+            p, a = _extract_recursive(item, f'{path}.{i}', coords=coords)
             arrays.update(a)
             processed_list.append(p)
         return processed_list, arrays
@@ -966,27 +995,6 @@ def replace_references_with_stats(structure, arrays_dict: dict[str, xr.DataArray
     elif isinstance(structure, list):
         return [replace_references_with_stats(item, arrays_dict) for item in structure]
     return structure
-
-
-def obj_to_dataset(obj, path_prefix: str = '') -> xr.Dataset:
-    """Convert an object to an xr.Dataset using path-based DataArray keys.
-
-    High-level convenience wrapper around :func:`create_reference_structure`.
-    """
-    structure, arrays = create_reference_structure(obj, path_prefix)
-    return xr.Dataset(arrays, attrs=structure)
-
-
-def obj_from_dataset(ds: xr.Dataset):
-    """Recreate an object from an xr.Dataset produced by :func:`obj_to_dataset`.
-
-    High-level convenience wrapper around :func:`resolve_reference_structure`.
-    """
-    structure = dict(ds.attrs)
-    arrays = {name: ds[name] for name in ds.data_vars}
-    class_name = structure.pop('__class__')
-    resolved = resolve_reference_structure(structure, arrays)
-    return CLASS_REGISTRY[class_name](**resolved)
 
 
 class _BuildTimer:
