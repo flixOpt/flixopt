@@ -181,7 +181,6 @@ class LinearConverter(Component):
 
 
 @register_class_for_io
-@dataclass(eq=False, repr=False)
 class Storage(Component):
     """
     A Storage models the temporary storage and release of energy or material.
@@ -333,33 +332,60 @@ class Storage(Component):
 
     _io_exclude: ClassVar[set[str]] = {'inputs', 'outputs', 'prevent_simultaneous_flows'}
 
-    charging: Flow = None  # type: ignore[assignment]  # Required, but None default needed for dataclass ordering
-    discharging: Flow = None  # type: ignore[assignment]  # Required, but None default needed for dataclass ordering
-    capacity_in_flow_hours: Numeric_PS | InvestParameters | None = None
-    relative_minimum_charge_state: Numeric_TPS = 0
-    relative_maximum_charge_state: Numeric_TPS = 1
-    initial_charge_state: Numeric_PS | Literal['equals_final'] | None = 0
-    minimal_final_charge_state: Numeric_PS | None = None
-    maximal_final_charge_state: Numeric_PS | None = None
-    relative_minimum_final_charge_state: Numeric_PS | None = None
-    relative_maximum_final_charge_state: Numeric_PS | None = None
-    eta_charge: Numeric_TPS = 1
-    eta_discharge: Numeric_TPS = 1
-    relative_loss_per_hour: Numeric_TPS = 0
-    prevent_simultaneous_charge_and_discharge: bool = True
-    balanced: bool = False
-    cluster_mode: Literal['independent', 'cyclic', 'intercluster', 'intercluster_cyclic'] = 'intercluster_cyclic'
+    def __init__(
+        self,
+        id: str,
+        charging: Flow,
+        discharging: Flow,
+        capacity_in_flow_hours: Numeric_PS | InvestParameters | None = None,
+        relative_minimum_charge_state: Numeric_TPS = 0,
+        relative_maximum_charge_state: Numeric_TPS = 1,
+        initial_charge_state: Numeric_PS | Literal['equals_final'] | None = 0,
+        minimal_final_charge_state: Numeric_PS | None = None,
+        maximal_final_charge_state: Numeric_PS | None = None,
+        relative_minimum_final_charge_state: Numeric_PS | None = None,
+        relative_maximum_final_charge_state: Numeric_PS | None = None,
+        eta_charge: Numeric_TPS = 1,
+        eta_discharge: Numeric_TPS = 1,
+        relative_loss_per_hour: Numeric_TPS = 0,
+        prevent_simultaneous_charge_and_discharge: bool = True,
+        balanced: bool = False,
+        cluster_mode: Literal['independent', 'cyclic', 'intercluster', 'intercluster_cyclic'] = 'intercluster_cyclic',
+        **kwargs,
+    ):
+        # Store all params as attributes
+        self.charging = charging
+        self.discharging = discharging
+        self.capacity_in_flow_hours = capacity_in_flow_hours
+        self.relative_minimum_charge_state = relative_minimum_charge_state
+        self.relative_maximum_charge_state = relative_maximum_charge_state
+        self.initial_charge_state = initial_charge_state
+        self.minimal_final_charge_state = minimal_final_charge_state
+        self.maximal_final_charge_state = maximal_final_charge_state
+        self.relative_minimum_final_charge_state = relative_minimum_final_charge_state
+        self.relative_maximum_final_charge_state = relative_maximum_final_charge_state
+        self.eta_charge = eta_charge
+        self.eta_discharge = eta_discharge
+        self.relative_loss_per_hour = relative_loss_per_hour
+        self.prevent_simultaneous_charge_and_discharge = prevent_simultaneous_charge_and_discharge
+        self.balanced = balanced
+        self.cluster_mode = cluster_mode
 
-    def __post_init__(self):
         # Default flow_ids to 'charging'/'discharging' when not explicitly set
         self.charging.flow_id = self.charging.flow_id or 'charging'
         self.discharging.flow_id = self.discharging.flow_id or 'discharging'
-        # Set Component fields from Storage-specific fields
-        self.inputs = [self.charging]
-        self.outputs = [self.discharging]
-        if self.prevent_simultaneous_charge_and_discharge:
-            self.prevent_simultaneous_flows = [self.charging, self.discharging]
-        super().__post_init__()
+
+        # Build Component fields from Storage-specific fields
+        prevent_simultaneous_flows = (
+            [self.charging, self.discharging] if prevent_simultaneous_charge_and_discharge else []
+        )
+        super().__init__(
+            id=id,
+            inputs=[self.charging],
+            outputs=[self.discharging],
+            prevent_simultaneous_flows=prevent_simultaneous_flows,
+            **kwargs,
+        )
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -372,7 +398,6 @@ class Storage(Component):
 
 
 @register_class_for_io
-@dataclass(eq=False, repr=False)
 class Transmission(Component):
     """
     Models transmission infrastructure that transports flows between two locations with losses.
@@ -485,21 +510,40 @@ class Transmission(Component):
 
     _io_exclude: ClassVar[set[str]] = {'inputs', 'outputs', 'prevent_simultaneous_flows'}
 
-    in1: Flow | None = None
-    out1: Flow | None = None
-    in2: Flow | None = None
-    out2: Flow | None = None
-    relative_losses: Numeric_TPS | None = None
-    absolute_losses: Numeric_TPS | None = None
-    prevent_simultaneous_flows_in_both_directions: bool = True
-    balanced: bool = False
+    def __init__(
+        self,
+        id: str,
+        in1: Flow,
+        out1: Flow,
+        in2: Flow | None = None,
+        out2: Flow | None = None,
+        relative_losses: Numeric_TPS | None = None,
+        absolute_losses: Numeric_TPS | None = None,
+        prevent_simultaneous_flows_in_both_directions: bool = True,
+        balanced: bool = False,
+        **kwargs,
+    ):
+        self.in1 = in1
+        self.out1 = out1
+        self.in2 = in2
+        self.out2 = out2
+        self.relative_losses = relative_losses
+        self.absolute_losses = absolute_losses
+        self.prevent_simultaneous_flows_in_both_directions = prevent_simultaneous_flows_in_both_directions
+        self.balanced = balanced
 
-    def __post_init__(self):
-        self.inputs = [f for f in (self.in1, self.in2) if f is not None]
-        self.outputs = [f for f in (self.out1, self.out2) if f is not None]
-        if self.in2 is not None and self.prevent_simultaneous_flows_in_both_directions:
-            self.prevent_simultaneous_flows = [self.in1, self.in2]
-        super().__post_init__()
+        inputs = [f for f in (self.in1, self.in2) if f is not None]
+        outputs = [f for f in (self.out1, self.out2) if f is not None]
+        prevent_simultaneous_flows = (
+            [self.in1, self.in2] if self.in2 is not None and prevent_simultaneous_flows_in_both_directions else []
+        )
+        super().__init__(
+            id=id,
+            inputs=inputs,
+            outputs=outputs,
+            prevent_simultaneous_flows=prevent_simultaneous_flows,
+            **kwargs,
+        )
 
     def _propagate_status_parameters(self) -> None:
         super()._propagate_status_parameters()
