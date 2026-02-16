@@ -339,7 +339,6 @@ class OptimizeAccessor:
         - Flow previous_flow_rate: Last nr_of_previous_values from non-overlap portion
         - Storage initial_charge_state: Charge state at end of non-overlap portion
         """
-        from .components import Storage
 
         solution = source_fs.solution
         time_slice = slice(horizon - nr_of_previous_values, horizon)
@@ -352,11 +351,10 @@ class OptimizeAccessor:
                 target_flow.previous_flow_rate = values.item() if values.size == 1 else values
 
         # Transfer storage charge states
-        for label, target_comp in target_fs.components.items():
-            if isinstance(target_comp, Storage):
-                var_name = f'{label}|charge_state'
-                if var_name in solution:
-                    target_comp.initial_charge_state = solution[var_name].isel(time=horizon).item()
+        for label, target_comp in target_fs.storages.items():
+            var_name = f'{label}|charge_state'
+            if var_name in solution:
+                target_comp.initial_charge_state = solution[var_name].isel(time=horizon).item()
 
     def _check_no_investments(self, segment_fs: FlowSystem) -> None:
         """Check that no InvestParameters are used (not supported in rolling horizon)."""
@@ -369,10 +367,8 @@ class OptimizeAccessor:
                 invest_elements.append(flow.id)
 
         # Check storages for InvestParameters
-        from .components import Storage
-
-        for comp in segment_fs.components.values():
-            if isinstance(comp, Storage) and isinstance(comp.capacity, InvestParameters):
+        for comp in segment_fs.storages.values():
+            if isinstance(comp.capacity, InvestParameters):
                 invest_elements.append(comp.id)
 
         if invest_elements:

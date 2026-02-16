@@ -22,7 +22,9 @@ from . import stats_accessor as _fxstats  # noqa: F401
 from .carrier import Carrier, CarrierContainer
 from .comparison import Comparison
 from .components import (
+    Converter,
     LinearConverter,
+    Port,
     Sink,
     Source,
     SourceAndSink,
@@ -52,6 +54,8 @@ __all__ = [
     'IdList',
     'PENALTY_EFFECT_ID',
     'PENALTY_EFFECT_LABEL',
+    'Converter',
+    'Port',
     'Source',
     'Sink',
     'SourceAndSink',

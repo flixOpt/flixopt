@@ -18,7 +18,7 @@ except ImportError as e:
     DASH_CYTOSCAPE_AVAILABLE = False
     VISUALIZATION_ERROR = str(e)
 
-from .components import LinearConverter, Sink, Source, SourceAndSink, Storage
+from .components import Converter, LinearConverter, Port, Sink, Source, SourceAndSink, Storage
 from .config import SUCCESS_LEVEL
 from .elements import Bus
 
@@ -131,13 +131,20 @@ def flow_graph(flow_system: FlowSystem) -> nx.DiGraph:
         """Determine element type for coloring"""
         if isinstance(element, Bus):
             return 'Bus'
+        elif isinstance(element, Port):
+            if element.exports and not element.imports:
+                return 'Sink'
+            elif element.imports and not element.exports:
+                return 'Source'
+            else:
+                return 'Sink'
         elif isinstance(element, Source):
             return 'Source'
         elif isinstance(element, (Sink, SourceAndSink)):
             return 'Sink'
         elif isinstance(element, Storage):
             return 'Storage'
-        elif isinstance(element, LinearConverter):
+        elif isinstance(element, (Converter, LinearConverter)):
             return 'Converter'
         else:
             return 'Other'

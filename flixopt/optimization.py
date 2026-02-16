@@ -576,11 +576,7 @@ class SegmentedOptimization:
         # Storing all original start values
         self._original_start_values = {
             **{flow.id: flow.previous_flow_rate for flow in self.flow_system.flows.values()},
-            **{
-                comp.id: comp.initial_charge_state
-                for comp in self.flow_system.components.values()
-                if isinstance(comp, Storage)
-            },
+            **{comp.id: comp.initial_charge_state for comp in self.flow_system.storages.values()},
         }
         self._transfered_start_values: list[dict[str, Any]] = []
 
@@ -748,8 +744,8 @@ class SegmentedOptimization:
 
         # Get previous charge state from type-level model
         storages_model = current_model._storages_model
-        for current_comp in current_flow_system.components.values():
-            next_comp = next_flow_system.components[current_comp.id]
+        for current_comp in current_flow_system.storages.values():
+            next_comp = next_flow_system.storages[current_comp.id]
             if isinstance(next_comp, Storage):
                 if storages_model is not None:
                     charge_state = storages_model.get_variable(StorageVarName.CHARGE, current_comp.id)

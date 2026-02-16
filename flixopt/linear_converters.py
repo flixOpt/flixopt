@@ -5,6 +5,7 @@ This Module contains high-level classes to easily model a FlowSystem.
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -84,6 +85,11 @@ class Boiler(LinearConverter):
         color: str | None = None,
         **kwargs,
     ):
+        warnings.warn(
+            'Boiler is deprecated. Use Converter.boiler() instead. Will be removed in a future release.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         # Validate required parameters
         if fuel_flow is None:
             raise ValueError(f"'{id}': fuel_flow is required and cannot be None")
@@ -183,6 +189,11 @@ class Power2Heat(LinearConverter):
         color: str | None = None,
         **kwargs,
     ):
+        warnings.warn(
+            'Power2Heat is deprecated. Use Converter.power2heat() instead. Will be removed in a future release.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         # Validate required parameters
         if electrical_flow is None:
             raise ValueError(f"'{id}': electrical_flow is required and cannot be None")
@@ -282,6 +293,11 @@ class HeatPump(LinearConverter):
         color: str | None = None,
         **kwargs,
     ):
+        warnings.warn(
+            'HeatPump is deprecated. Use Converter.heat_pump() instead. Will be removed in a future release.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         # Validate required parameters
         if electrical_flow is None:
             raise ValueError(f"'{id}': electrical_flow is required and cannot be None")
@@ -383,6 +399,11 @@ class CoolingTower(LinearConverter):
         color: str | None = None,
         **kwargs,
     ):
+        warnings.warn(
+            'CoolingTower is deprecated. Use Converter.cooling_tower() instead. Will be removed in a future release.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         # Validate required parameters
         if electrical_flow is None:
             raise ValueError(f"'{id}': electrical_flow is required and cannot be None")
@@ -491,6 +512,11 @@ class CHP(LinearConverter):
         color: str | None = None,
         **kwargs,
     ):
+        warnings.warn(
+            'CHP is deprecated. Use Converter.chp() instead. Will be removed in a future release.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         # Validate required parameters
         if fuel_flow is None:
             raise ValueError(f"'{id}': fuel_flow is required and cannot be None")
@@ -625,6 +651,12 @@ class HeatPumpWithSource(LinearConverter):
         color: str | None = None,
         **kwargs,
     ):
+        warnings.warn(
+            'HeatPumpWithSource is deprecated. Use Converter.heat_pump_with_source() instead. '
+            'Will be removed in a future release.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         # Validate required parameters
         if electrical_flow is None:
             raise ValueError(f"'{id}': electrical_flow is required and cannot be None")

@@ -202,19 +202,28 @@ filterwarnings = [
     # === Default behavior: show all warnings ===
     "default",
 
-    # === Ignore specific deprecation warnings for backward compatibility tests ===
-    # These are raised by deprecated classes (Optimization, Results) used in tests/deprecated/
-    "ignore:Results is deprecated:DeprecationWarning:flixopt",
-    "ignore:Optimization is deprecated:DeprecationWarning:flixopt",
-    "ignore:SegmentedOptimization is deprecated:DeprecationWarning:flixopt",
-    "ignore:SegmentedResults is deprecated:DeprecationWarning:flixopt",
-    "ignore:ClusteredOptimization is deprecated:DeprecationWarning:flixopt",
-
     # === Treat most flixopt warnings as errors (strict mode for our code) ===
     # This ensures we catch deprecations, future changes, and user warnings in our own code
     "error::DeprecationWarning:flixopt",
     "error::FutureWarning:flixopt",
     "error::UserWarning:flixopt",
+
+    # === Ignore specific deprecation warnings for backward compatibility tests ===
+    # These must come AFTER the "error" filter to take precedence (Python warnings: later = higher priority)
+    "ignore:Results is deprecated:DeprecationWarning:flixopt",
+    "ignore:Optimization is deprecated:DeprecationWarning:flixopt",
+    "ignore:SegmentedOptimization is deprecated:DeprecationWarning:flixopt",
+    "ignore:SegmentedResults is deprecated:DeprecationWarning:flixopt",
+    "ignore:ClusteredOptimization is deprecated:DeprecationWarning:flixopt",
+    "ignore:Boiler is deprecated:DeprecationWarning",
+    "ignore:CHP is deprecated:DeprecationWarning",
+    "ignore:HeatPump is deprecated:DeprecationWarning",
+    "ignore:CoolingTower is deprecated:DeprecationWarning",
+    "ignore:Power2Heat is deprecated:DeprecationWarning",
+    "ignore:HeatPumpWithSource is deprecated:DeprecationWarning",
+    "ignore:Source is deprecated:DeprecationWarning",
+    "ignore:Sink is deprecated:DeprecationWarning",
+    "ignore:SourceAndSink is deprecated:DeprecationWarning",
     "ignore:.*network visualization is still experimental.*:UserWarning:flixopt",
 ]
 

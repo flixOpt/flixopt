@@ -51,9 +51,9 @@ solar_profile = np.array([0, 0, 0, 0, 0, 0, 0.2, 0.5, 0.8, 1.0,
                           1.0, 0.9, 0.8, 0.7, 0.5, 0.3, 0.1, 0,
                           0, 0, 0, 0, 0, 0])
 
-solar = fx.Source(
+solar = fx.Port(
     'solar',
-    outputs=[fx.Flow(
+    imports=[fx.Flow(
         bus='electricity',
         size=100,  # 100 kW capacity
         relative_maximum=solar_profile
@@ -65,7 +65,7 @@ demand_profile = np.array([30, 25, 20, 20, 25, 35, 50, 70, 80, 75,
                            70, 65, 60, 65, 70, 80, 90, 95, 85, 70,
                            60, 50, 40, 35])
 
-demand = fx.Sink('demand', inputs=[
+demand = fx.Port('demand', exports=[
     fx.Flow(bus='electricity',
             size=1,
             fixed_relative_profile=demand_profile)

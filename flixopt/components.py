@@ -7,24 +7,29 @@ from __future__ import annotations
 import functools
 import logging
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from functools import cached_property
 from typing import TYPE_CHECKING, ClassVar, Literal
 
 import numpy as np
 import xarray as xr
 
 from . import io as fx_io
-from .elements import Component, Flow
+from .elements import Component, Flow, _connect_and_validate_flows
 from .features import MaskHelpers, stack_along_dim
-from .interface import InvestParameters, PiecewiseConversion
+from .id_list import IdList, flow_id_list
+from .interface import InvestParameters, PiecewiseConversion, StatusParameters
 from .modeling import _scalar_safe_reduce
 from .structure import (
+    CLASS_REGISTRY,
+    Element,
     FlowSystemModel,
     FlowVarName,
     InterclusterStorageVarName,
     StorageVarName,
     TypeModel,
     register_class_for_io,
+    valid_id,
 )
 
 if TYPE_CHECKING:
@@ -36,152 +41,452 @@ if TYPE_CHECKING:
 logger = logging.getLogger('flixopt')
 
 
+def check_bounds(
+    value,
+    parameter_label: str,
+    element_label: str,
+    lower_bound,
+    upper_bound,
+) -> None:
+    """Check if the value is within the bounds. The bounds are exclusive. If not, log a warning."""
+    value_arr = np.asarray(value)
+    if not np.all(value_arr > lower_bound):
+        logger.warning(
+            f"'{element_label}.{parameter_label}' <= lower bound {lower_bound}. "
+            f'{parameter_label}.min={float(np.min(value_arr))}, shape={np.shape(value_arr)}'
+        )
+    if not np.all(value_arr < upper_bound):
+        logger.warning(
+            f"'{element_label}.{parameter_label}' >= upper bound {upper_bound}. "
+            f'{parameter_label}.max={float(np.max(value_arr))}, shape={np.shape(value_arr)}'
+        )
+
+
 @register_class_for_io
-@dataclass(eq=False, repr=False)
-class LinearConverter(Component):
-    """
-    Converts input-Flows into output-Flows via linear conversion factors.
+class Converter(Element):
+    """Converts input-Flows into output-Flows via linear conversion factors.
 
-    LinearConverter models equipment that transforms one or more input flows into one or
-    more output flows through linear relationships. This includes heat exchangers,
-    electrical converters, chemical reactors, and other equipment where the
-    relationship between inputs and outputs can be expressed as linear equations.
+    Self-contained component class that handles its own flows directly.
+    Supports both simple conversion factors and piecewise conversion.
 
-    The component supports two modeling approaches: simple conversion factors for
-    straightforward linear relationships, or piecewise conversion for complex non-linear
-    behavior approximated through piecewise linear segments.
-
-    Mathematical Formulation:
-        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/LinearConverter/>
+    Use factory classmethods (``Converter.boiler()``, ``Converter.chp()``, etc.)
+    for common component types.
 
     Args:
-        id: The id of the Element. Used to identify it in the FlowSystem.
-        inputs: list of input Flows that feed into the converter.
-        outputs: list of output Flows that are produced by the converter.
-        status_parameters: Information about active and inactive state of LinearConverter.
-            Component is active/inactive if all connected Flows are active/inactive. This induces a
-            status variable (binary) in all Flows! If possible, use StatusParameters in a
-            single Flow instead to keep the number of binary variables low.
-        conversion_factors: Linear relationships between flows expressed as a list of
-            dictionaries. Each dictionary maps flow ids to their coefficients in one
-            linear equation. The number of conversion factors must be less than the total
-            number of flows to ensure degrees of freedom > 0. Either 'conversion_factors'
-            OR 'piecewise_conversion' can be used, but not both.
-            For examples also look into the linear_converters.py file.
-        piecewise_conversion: Define piecewise linear relationships between flow rates
-            of different flows. Enables modeling of non-linear conversion behavior through
-            linear approximation. Either 'conversion_factors' or 'piecewise_conversion'
-            can be used, but not both.
-        meta_data: Used to store additional information about the Element. Not used
-            internally, but saved in results. Only use Python native types.
-
-    Examples:
-        Simple 1:1 heat exchanger with 95% efficiency:
-
-        ```python
-        heat_exchanger = LinearConverter(
-            id='primary_hx',
-            inputs=[hot_water_in],
-            outputs=[hot_water_out],
-            conversion_factors=[{'hot_water_in': 0.95, 'hot_water_out': 1}],
-        )
-        ```
-
-        Multi-input heat pump with COP=3:
-
-        ```python
-        heat_pump = LinearConverter(
-            id='air_source_hp',
-            inputs=[electricity_in],
-            outputs=[heat_output],
-            conversion_factors=[{'electricity_in': 3, 'heat_output': 1}],
-        )
-        ```
-
-        Combined heat and power (CHP) unit with multiple outputs:
-
-        ```python
-        chp_unit = LinearConverter(
-            id='gas_chp',
-            inputs=[natural_gas],
-            outputs=[electricity_out, heat_out],
-            conversion_factors=[
-                {'natural_gas': 0.35, 'electricity_out': 1},
-                {'natural_gas': 0.45, 'heat_out': 1},
-            ],
-        )
-        ```
-
-        Electrolyzer with multiple conversion relationships:
-
-        ```python
-        electrolyzer = LinearConverter(
-            id='pem_electrolyzer',
-            inputs=[electricity_in, water_in],
-            outputs=[hydrogen_out, oxygen_out],
-            conversion_factors=[
-                {'electricity_in': 1, 'hydrogen_out': 50},  # 50 kWh/kg H2
-                {'water_in': 1, 'hydrogen_out': 9},  # 9 kg H2O/kg H2
-                {'hydrogen_out': 8, 'oxygen_out': 1},  # Mass balance
-            ],
-        )
-        ```
-
-        Complex converter with piecewise efficiency:
-
-        ```python
-        variable_efficiency_converter = LinearConverter(
-            id='variable_converter',
-            inputs=[fuel_in],
-            outputs=[power_out],
-            piecewise_conversion=PiecewiseConversion(
-                {
-                    'fuel_in': Piecewise(
-                        [
-                            Piece(0, 10),  # Low load operation
-                            Piece(10, 25),  # High load operation
-                        ]
-                    ),
-                    'power_out': Piecewise(
-                        [
-                            Piece(0, 3.5),  # Lower efficiency at part load
-                            Piece(3.5, 10),  # Higher efficiency at full load
-                        ]
-                    ),
-                }
-            ),
-        )
-        ```
-
-    Note:
-        Conversion factors define linear relationships where the sum of (coefficient × flow_rate)
-        equals zero for each equation: factor1×flow1 + factor2×flow2 + ... = 0
-        Conversion factors define linear relationships:
-        `{flow1: a1, flow2: a2, ...}` yields `a1×flow_rate1 + a2×flow_rate2 + ... = 0`.
-        Note: The input format may be unintuitive. For example,
-        `{"electricity": 1, "H2": 50}` implies `1×electricity = 50×H2`,
-        i.e., 50 units of electricity produce 1 unit of H2.
-
-        The system must have fewer conversion factors than total flows (degrees of freedom > 0)
-        to avoid over-constraining the problem. For n total flows, use at most n-1 conversion factors.
-
-        When using piecewise_conversion, the converter operates on one piece at a time,
-        with binary variables determining which piece is active.
-
+        id: Element identifier.
+        inputs: Input Flows feeding into the converter.
+        outputs: Output Flows produced by the converter.
+        conversion_factors: Linear relationships between flows.
+        piecewise_conversion: Piecewise linear relationships between flow rates.
+        status_parameters: Binary operation constraints and costs.
+        meta_data: Additional metadata stored in results.
+        color: Visualization color.
     """
 
     _io_exclude: ClassVar[set[str]] = {'prevent_simultaneous_flows'}
 
-    conversion_factors: list[dict[str, Numeric_TPS]] = field(default_factory=list)
-    piecewise_conversion: PiecewiseConversion | None = None
+    def __init__(
+        self,
+        id: str,
+        inputs: list[Flow],
+        outputs: list[Flow],
+        conversion_factors: list[dict[str, Numeric_TPS]] | None = None,
+        piecewise_conversion: PiecewiseConversion | None = None,
+        status_parameters: StatusParameters | None = None,
+        prevent_simultaneous_flows: list[Flow] | None = None,
+        meta_data: dict | None = None,
+        color: str | None = None,
+    ):
+        self.id = valid_id(id)
+        self.conversion_factors = conversion_factors or []
+        self.piecewise_conversion = piecewise_conversion
+        self.status_parameters = status_parameters
+        self.prevent_simultaneous_flows = list(prevent_simultaneous_flows) if prevent_simultaneous_flows else []
+        self.meta_data = meta_data or {}
+        self.color = color
+
+        _connect_and_validate_flows(self.id, inputs, outputs, self.prevent_simultaneous_flows)
+        self.inputs: IdList = flow_id_list(inputs, display_name='inputs')
+        self.outputs: IdList = flow_id_list(outputs, display_name='outputs')
+
+    @cached_property
+    def flows(self) -> IdList:
+        """All flows (inputs and outputs) as an IdList."""
+        return self.inputs + self.outputs
 
     @property
     def degrees_of_freedom(self):
         return len(self.inputs + self.outputs) - len(self.conversion_factors)
 
+    def _propagate_status_parameters(self) -> None:
+        if self.status_parameters:
+            for flow in self.flows.values():
+                if flow.status_parameters is None:
+                    flow.status_parameters = StatusParameters()
+        if self.prevent_simultaneous_flows:
+            for flow in self.prevent_simultaneous_flows:
+                if flow.status_parameters is None:
+                    flow.status_parameters = StatusParameters()
+
+    def _check_unique_flow_ids(self, inputs: list = None, outputs: list = None):
+        if inputs is None:
+            inputs = list(self.inputs.values())
+        if outputs is None:
+            outputs = list(self.outputs.values())
+        all_flow_ids = [flow.flow_id for flow in inputs + outputs]
+        if len(set(all_flow_ids)) != len(all_flow_ids):
+            duplicates = {fid for fid in all_flow_ids if all_flow_ids.count(fid) > 1}
+            raise ValueError(f'Flow names must be unique! "{self.id}" got 2 or more of: {duplicates}')
+
+    def __repr__(self) -> str:
+        return fx_io.build_repr_from_init(
+            self, excluded_params={'self', 'id', 'inputs', 'outputs', 'kwargs'}, skip_default_size=True
+        ) + fx_io.format_flow_details(self)
+
+    # === Factory classmethods for common converter types ===
+
+    @classmethod
+    def boiler(
+        cls,
+        id: str,
+        *,
+        thermal_efficiency,
+        fuel_flow: Flow,
+        thermal_flow: Flow,
+        status_parameters: StatusParameters | None = None,
+        meta_data: dict | None = None,
+        color: str | None = None,
+    ) -> Converter:
+        """Create a fuel-fired boiler.
+
+        Args:
+            id: Element identifier.
+            thermal_efficiency: Thermal efficiency (0-1).
+            fuel_flow: Fuel input flow.
+            thermal_flow: Thermal output flow.
+            status_parameters: Optional status parameters.
+            meta_data: Optional metadata.
+            color: Optional visualization color.
+        """
+        check_bounds(thermal_efficiency, 'thermal_efficiency', id, 0, 1)
+        fuel_id = fuel_flow.flow_id or (fuel_flow.bus if isinstance(fuel_flow.bus, str) else str(fuel_flow.bus))
+        thermal_id = thermal_flow.flow_id or (
+            thermal_flow.bus if isinstance(thermal_flow.bus, str) else str(thermal_flow.bus)
+        )
+        return cls(
+            id,
+            inputs=[fuel_flow],
+            outputs=[thermal_flow],
+            conversion_factors=[{fuel_id: thermal_efficiency, thermal_id: 1}],
+            status_parameters=status_parameters,
+            meta_data=meta_data,
+            color=color,
+        )
+
+    @classmethod
+    def power2heat(
+        cls,
+        id: str,
+        *,
+        thermal_efficiency,
+        electrical_flow: Flow,
+        thermal_flow: Flow,
+        status_parameters: StatusParameters | None = None,
+        meta_data: dict | None = None,
+        color: str | None = None,
+    ) -> Converter:
+        """Create an electric resistance heater / power-to-heat converter.
+
+        Args:
+            id: Element identifier.
+            thermal_efficiency: Thermal efficiency (0-1).
+            electrical_flow: Electrical input flow.
+            thermal_flow: Thermal output flow.
+            status_parameters: Optional status parameters.
+            meta_data: Optional metadata.
+            color: Optional visualization color.
+        """
+        check_bounds(thermal_efficiency, 'thermal_efficiency', id, 0, 1)
+        elec_id = electrical_flow.flow_id or (
+            electrical_flow.bus if isinstance(electrical_flow.bus, str) else str(electrical_flow.bus)
+        )
+        thermal_id = thermal_flow.flow_id or (
+            thermal_flow.bus if isinstance(thermal_flow.bus, str) else str(thermal_flow.bus)
+        )
+        return cls(
+            id,
+            inputs=[electrical_flow],
+            outputs=[thermal_flow],
+            conversion_factors=[{elec_id: thermal_efficiency, thermal_id: 1}],
+            status_parameters=status_parameters,
+            meta_data=meta_data,
+            color=color,
+        )
+
+    @classmethod
+    def heat_pump(
+        cls,
+        id: str,
+        *,
+        cop,
+        electrical_flow: Flow,
+        thermal_flow: Flow,
+        status_parameters: StatusParameters | None = None,
+        meta_data: dict | None = None,
+        color: str | None = None,
+    ) -> Converter:
+        """Create a heat pump.
+
+        Args:
+            id: Element identifier.
+            cop: Coefficient of Performance (typically 1-20).
+            electrical_flow: Electrical input flow.
+            thermal_flow: Thermal output flow.
+            status_parameters: Optional status parameters.
+            meta_data: Optional metadata.
+            color: Optional visualization color.
+        """
+        check_bounds(cop, 'cop', id, 1, 20)
+        elec_id = electrical_flow.flow_id or (
+            electrical_flow.bus if isinstance(electrical_flow.bus, str) else str(electrical_flow.bus)
+        )
+        thermal_id = thermal_flow.flow_id or (
+            thermal_flow.bus if isinstance(thermal_flow.bus, str) else str(thermal_flow.bus)
+        )
+        return cls(
+            id,
+            inputs=[electrical_flow],
+            outputs=[thermal_flow],
+            conversion_factors=[{elec_id: cop, thermal_id: 1}],
+            status_parameters=status_parameters,
+            meta_data=meta_data,
+            color=color,
+        )
+
+    @classmethod
+    def cooling_tower(
+        cls,
+        id: str,
+        *,
+        specific_electricity_demand,
+        electrical_flow: Flow,
+        thermal_flow: Flow,
+        status_parameters: StatusParameters | None = None,
+        meta_data: dict | None = None,
+        color: str | None = None,
+    ) -> Converter:
+        """Create a cooling tower.
+
+        Args:
+            id: Element identifier.
+            specific_electricity_demand: Auxiliary electricity per unit cooling (0-1).
+            electrical_flow: Electrical input flow.
+            thermal_flow: Thermal input flow (waste heat).
+            status_parameters: Optional status parameters.
+            meta_data: Optional metadata.
+            color: Optional visualization color.
+        """
+        check_bounds(specific_electricity_demand, 'specific_electricity_demand', id, 0, 1)
+        elec_id = electrical_flow.flow_id or (
+            electrical_flow.bus if isinstance(electrical_flow.bus, str) else str(electrical_flow.bus)
+        )
+        thermal_id = thermal_flow.flow_id or (
+            thermal_flow.bus if isinstance(thermal_flow.bus, str) else str(thermal_flow.bus)
+        )
+        return cls(
+            id,
+            inputs=[electrical_flow, thermal_flow],
+            outputs=[],
+            conversion_factors=[{elec_id: -1, thermal_id: specific_electricity_demand}],
+            status_parameters=status_parameters,
+            meta_data=meta_data,
+            color=color,
+        )
+
+    @classmethod
+    def chp(
+        cls,
+        id: str,
+        *,
+        thermal_efficiency,
+        electrical_efficiency,
+        fuel_flow: Flow,
+        electrical_flow: Flow,
+        thermal_flow: Flow,
+        status_parameters: StatusParameters | None = None,
+        meta_data: dict | None = None,
+        color: str | None = None,
+    ) -> Converter:
+        """Create a combined heat and power (CHP) unit.
+
+        Args:
+            id: Element identifier.
+            thermal_efficiency: Thermal efficiency (0-1).
+            electrical_efficiency: Electrical efficiency (0-1).
+            fuel_flow: Fuel input flow.
+            electrical_flow: Electrical output flow.
+            thermal_flow: Thermal output flow.
+            status_parameters: Optional status parameters.
+            meta_data: Optional metadata.
+            color: Optional visualization color.
+        """
+        check_bounds(thermal_efficiency, 'thermal_efficiency', id, 0, 1)
+        check_bounds(electrical_efficiency, 'electrical_efficiency', id, 0, 1)
+        check_bounds(electrical_efficiency + thermal_efficiency, 'thermal_efficiency+electrical_efficiency', id, 0, 1)
+        fuel_id = fuel_flow.flow_id or (fuel_flow.bus if isinstance(fuel_flow.bus, str) else str(fuel_flow.bus))
+        elec_id = electrical_flow.flow_id or (
+            electrical_flow.bus if isinstance(electrical_flow.bus, str) else str(electrical_flow.bus)
+        )
+        thermal_id = thermal_flow.flow_id or (
+            thermal_flow.bus if isinstance(thermal_flow.bus, str) else str(thermal_flow.bus)
+        )
+        return cls(
+            id,
+            inputs=[fuel_flow],
+            outputs=[thermal_flow, electrical_flow],
+            conversion_factors=[
+                {fuel_id: thermal_efficiency, thermal_id: 1},
+                {fuel_id: electrical_efficiency, elec_id: 1},
+            ],
+            status_parameters=status_parameters,
+            meta_data=meta_data,
+            color=color,
+        )
+
+    @classmethod
+    def heat_pump_with_source(
+        cls,
+        id: str,
+        *,
+        cop,
+        electrical_flow: Flow,
+        heat_source_flow: Flow,
+        thermal_flow: Flow,
+        status_parameters: StatusParameters | None = None,
+        meta_data: dict | None = None,
+        color: str | None = None,
+    ) -> Converter:
+        """Create a heat pump with explicit heat source modeling.
+
+        Args:
+            id: Element identifier.
+            cop: Coefficient of Performance (>1, !=1).
+            electrical_flow: Electrical input flow.
+            heat_source_flow: Heat source input flow.
+            thermal_flow: Thermal output flow.
+            status_parameters: Optional status parameters.
+            meta_data: Optional metadata.
+            color: Optional visualization color.
+        """
+        check_bounds(cop, 'cop', id, 1, 20)
+        if np.any(np.asarray(cop) == 1):
+            raise ValueError(f'{id}.cop must be strictly !=1 for heat_pump_with_source.')
+        elec_id = electrical_flow.flow_id or (
+            electrical_flow.bus if isinstance(electrical_flow.bus, str) else str(electrical_flow.bus)
+        )
+        source_id = heat_source_flow.flow_id or (
+            heat_source_flow.bus if isinstance(heat_source_flow.bus, str) else str(heat_source_flow.bus)
+        )
+        thermal_id = thermal_flow.flow_id or (
+            thermal_flow.bus if isinstance(thermal_flow.bus, str) else str(thermal_flow.bus)
+        )
+        return cls(
+            id,
+            inputs=[electrical_flow, heat_source_flow],
+            outputs=[thermal_flow],
+            conversion_factors=[
+                {elec_id: cop, thermal_id: 1},
+                {source_id: cop / (cop - 1), thermal_id: 1},
+            ],
+            status_parameters=status_parameters,
+            meta_data=meta_data,
+            color=color,
+        )
+
+
+# Backward compatibility alias
+LinearConverter = Converter
+
+# Register under old name for IO backward compat with saved files
+CLASS_REGISTRY['LinearConverter'] = Converter
+
 
 @register_class_for_io
-class Storage(Component):
+class Port(Element):
+    """A Port represents a system boundary for importing/exporting energy or material.
+
+    Ports replace Source, Sink, and SourceAndSink with a unified interface.
+    Imports are flows coming INTO the system (supply), exports are flows going OUT
+    (demand).
+
+    Args:
+        id: Element identifier.
+        imports: Flows supplying energy/material into the system (component outputs to buses).
+        exports: Flows consuming energy/material from the system (component inputs from buses).
+        prevent_simultaneous_flow_rates: If True, prevents simultaneous import and export.
+        status_parameters: Binary operation constraints and costs.
+        meta_data: Additional metadata stored in results.
+        color: Visualization color.
+    """
+
+    _io_exclude: ClassVar[set[str]] = {'prevent_simultaneous_flows'}
+
+    def __init__(
+        self,
+        id: str,
+        imports: list[Flow] | None = None,
+        exports: list[Flow] | None = None,
+        prevent_simultaneous_flow_rates: bool = False,
+        status_parameters: StatusParameters | None = None,
+        meta_data: dict | None = None,
+        color: str | None = None,
+    ):
+        self.id = valid_id(id)
+        self.imports = imports or []
+        self.exports = exports or []
+        self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
+        self.status_parameters = status_parameters
+        self.meta_data = meta_data or {}
+        self.color = color
+
+        # imports go TO buses (is_input=False in component terms, i.e. outputs of the component)
+        # exports come FROM buses (is_input=True in component terms, i.e. inputs of the component)
+        self.prevent_simultaneous_flows = self.imports + self.exports if prevent_simultaneous_flow_rates else []
+        _connect_and_validate_flows(self.id, self.exports, self.imports, self.prevent_simultaneous_flows)
+
+        # For backward compat with code that accesses .inputs/.outputs
+        self.inputs: IdList = flow_id_list(list(self.exports), display_name='inputs')
+        self.outputs: IdList = flow_id_list(list(self.imports), display_name='outputs')
+
+    @cached_property
+    def flows(self) -> IdList:
+        """All flows as an IdList."""
+        return flow_id_list(list(self.imports) + list(self.exports))
+
+    def _propagate_status_parameters(self) -> None:
+        if self.status_parameters:
+            for flow in self.flows.values():
+                if flow.status_parameters is None:
+                    flow.status_parameters = StatusParameters()
+        if self.prevent_simultaneous_flows:
+            for flow in self.prevent_simultaneous_flows:
+                if flow.status_parameters is None:
+                    flow.status_parameters = StatusParameters()
+
+    def _check_unique_flow_ids(self, inputs: list = None, outputs: list = None):
+        all_flow_ids = [flow.flow_id for flow in self.flows.values()]
+        if len(set(all_flow_ids)) != len(all_flow_ids):
+            duplicates = {fid for fid in all_flow_ids if all_flow_ids.count(fid) > 1}
+            raise ValueError(f'Flow names must be unique! "{self.id}" got 2 or more of: {duplicates}')
+
+    def __repr__(self) -> str:
+        return fx_io.build_repr_from_init(
+            self, excluded_params={'self', 'id', 'imports', 'exports', 'kwargs'}, skip_default_size=True
+        ) + fx_io.format_flow_details(self)
+
+
+@register_class_for_io
+class Storage(Element):
     """
     A Storage models the temporary storage and release of energy or material.
 
@@ -353,6 +658,7 @@ class Storage(Component):
         cluster_mode: Literal['independent', 'cyclic', 'intercluster', 'intercluster_cyclic'] = 'intercluster_cyclic',
         **kwargs,
     ):
+        self.id = valid_id(id)
         # Store all params as attributes
         self.charging = charging
         self.discharging = discharging
@@ -371,21 +677,41 @@ class Storage(Component):
         self.balanced = balanced
         self.cluster_mode = cluster_mode
 
+        self.status_parameters = kwargs.get('status_parameters')
+        self.meta_data = kwargs.get('meta_data') or {}
+        self.color = kwargs.get('color')
+
         # Default flow_ids to 'charging'/'discharging' when not explicitly set
         self.charging.flow_id = self.charging.flow_id or 'charging'
         self.discharging.flow_id = self.discharging.flow_id or 'discharging'
 
-        # Build Component fields from Storage-specific fields
-        prevent_simultaneous_flows = (
+        self.prevent_simultaneous_flows = (
             [self.charging, self.discharging] if prevent_simultaneous_charge_and_discharge else []
         )
-        super().__init__(
-            id=id,
-            inputs=[self.charging],
-            outputs=[self.discharging],
-            prevent_simultaneous_flows=prevent_simultaneous_flows,
-            **kwargs,
-        )
+        _connect_and_validate_flows(self.id, [self.charging], [self.discharging], self.prevent_simultaneous_flows)
+        self.inputs: IdList = flow_id_list([self.charging], display_name='inputs')
+        self.outputs: IdList = flow_id_list([self.discharging], display_name='outputs')
+
+    @cached_property
+    def flows(self) -> IdList:
+        """All flows (charging and discharging) as an IdList."""
+        return flow_id_list([self.charging, self.discharging])
+
+    def _propagate_status_parameters(self) -> None:
+        if self.status_parameters:
+            for flow in self.flows.values():
+                if flow.status_parameters is None:
+                    flow.status_parameters = StatusParameters()
+        if self.prevent_simultaneous_flows:
+            for flow in self.prevent_simultaneous_flows:
+                if flow.status_parameters is None:
+                    flow.status_parameters = StatusParameters()
+
+    def _check_unique_flow_ids(self, inputs: list = None, outputs: list = None):
+        all_flow_ids = [flow.flow_id for flow in self.flows.values()]
+        if len(set(all_flow_ids)) != len(all_flow_ids):
+            duplicates = {fid for fid in all_flow_ids if all_flow_ids.count(fid) > 1}
+            raise ValueError(f'Flow names must be unique! "{self.id}" got 2 or more of: {duplicates}')
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -519,9 +845,11 @@ class Transmission(Component):
         out2: Flow | None = None,
         relative_losses: Numeric_TPS | None = None,
         absolute_losses: Numeric_TPS | None = None,
+        status_parameters: StatusParameters | None = None,
         prevent_simultaneous_flows_in_both_directions: bool = True,
         balanced: bool = False,
-        **kwargs,
+        meta_data: dict | None = None,
+        color: str | None = None,
     ):
         self.in1 = in1
         self.out1 = out1
@@ -541,8 +869,10 @@ class Transmission(Component):
             id=id,
             inputs=inputs,
             outputs=outputs,
+            status_parameters=status_parameters,
             prevent_simultaneous_flows=prevent_simultaneous_flows,
-            **kwargs,
+            meta_data=meta_data or {},
+            color=color,
         )
 
     def _propagate_status_parameters(self) -> None:
@@ -1838,6 +2168,12 @@ class SourceAndSink(Component):
     prevent_simultaneous_flow_rates: bool = True
 
     def __post_init__(self):
+        warnings.warn(
+            'SourceAndSink is deprecated. Use Port(imports=..., exports=...) instead. '
+            'Will be removed in a future release.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if self.prevent_simultaneous_flow_rates:
             self.prevent_simultaneous_flows = (self.inputs or []) + (self.outputs or [])
         super().__post_init__()
@@ -1925,6 +2261,11 @@ class Source(Component):
     prevent_simultaneous_flow_rates: bool = False
 
     def __post_init__(self):
+        warnings.warn(
+            'Source is deprecated. Use Port(imports=[...]) instead. Will be removed in a future release.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if self.prevent_simultaneous_flow_rates:
             self.prevent_simultaneous_flows = self.outputs or []
         super().__post_init__()
@@ -2013,6 +2354,11 @@ class Sink(Component):
     prevent_simultaneous_flow_rates: bool = False
 
     def __post_init__(self):
+        warnings.warn(
+            'Sink is deprecated. Use Port(exports=[...]) instead. Will be removed in a future release.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if self.prevent_simultaneous_flow_rates:
             self.prevent_simultaneous_flows = self.inputs or []
         super().__post_init__()

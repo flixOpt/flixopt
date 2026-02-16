@@ -7,11 +7,11 @@ This guide helps you select the right flixOpt component for your modeling needs.
 ```mermaid
 graph TD
     A[What does this element do?] --> B{Brings energy INTO system?}
-    B -->|Yes| C[Source]
+    B -->|Yes| C["Port (imports)"]
     B -->|No| D{Takes energy OUT of system?}
-    D -->|Yes| E[Sink]
+    D -->|Yes| E["Port (exports)"]
     D -->|No| F{Converts energy type?}
-    F -->|Yes| G[LinearConverter]
+    F -->|Yes| G[Converter]
     F -->|No| H{Stores energy?}
     H -->|Yes| I[Storage]
     H -->|No| J{Transports between locations?}
@@ -21,25 +21,25 @@ graph TD
 
 ## Component Comparison
 
-| Component | Purpose | Inputs | Outputs | Key Parameters |
-|-----------|---------|--------|---------|----------------|
-| **Source** | External supply | None | 1+ flows | `effects_per_flow_hour` |
-| **Sink** | Demand/export | 1+ flows | None | `fixed_relative_profile` |
-| **SourceAndSink** | Bidirectional exchange | 1+ flows | 1+ flows | Both input and output |
-| **LinearConverter** | Transform energy | 1+ flows | 1+ flows | `conversion_factors` |
+| Component | Purpose | Imports | Exports | Key Parameters |
+|-----------|---------|---------|---------|----------------|
+| **Port** (imports only) | External supply | 1+ flows | None | `effects_per_flow_hour` |
+| **Port** (exports only) | Demand/export | None | 1+ flows | `fixed_relative_profile` |
+| **Port** (bidirectional) | Bidirectional exchange | 1+ flows | 1+ flows | Both imports and exports |
+| **Converter** | Transform energy | 1+ flows | 1+ flows | `conversion_factors` |
 | **Storage** | Time-shift energy | charge flow | discharge flow | `capacity_in_flow_hours` |
 | **Transmission** | Transport energy | in1, in2 | out1, out2 | `relative_losses` |
 
 ## Detailed Component Guide
 
-### Source
+### Port (imports only)
 
 **Use when:** Purchasing or importing energy/material from outside your system boundary.
 
 ```python
-fx.Source(
+fx.Port(
     'GridElectricity',
-    outputs=[fx.Flow(bus='Electricity', size=1000, effects_per_flow_hour=0.25)]
+    imports=[fx.Flow(bus='Electricity', size=1000, effects_per_flow_hour=0.25)]
 )
 ```
 
@@ -53,27 +53,27 @@ fx.Source(
 
 | Parameter | Purpose |
 |-----------|---------|
-| `outputs` | List of flows leaving this source |
+| `imports` | List of flows coming into the system |
 | `effects_per_flow_hour` | Cost/emissions per unit |
 | `invest_parameters` | For optimizing connection capacity |
 
 ---
 
-### Sink
+### Port (exports only)
 
 **Use when:** Energy/material leaves your system (demand, export, waste).
 
 ```python
 # Fixed demand (must be met)
-fx.Sink(
+fx.Port(
     'Building',
-    inputs=[fx.Flow(bus='Heat', size=1, fixed_relative_profile=demand)]
+    exports=[fx.Flow(bus='Heat', size=1, fixed_relative_profile=demand)]
 )
 
 # Optional export (can sell if profitable)
-fx.Sink(
+fx.Port(
     'Export',
-    inputs=[fx.Flow(bus='Electricity', size=100, effects_per_flow_hour=-0.15)]
+    exports=[fx.Flow(bus='Electricity', size=100, effects_per_flow_hour=-0.15)]
 )
 ```
 
@@ -87,21 +87,21 @@ fx.Sink(
 
 | Parameter | Purpose |
 |-----------|---------|
-| `inputs` | List of flows entering this sink |
+| `exports` | List of flows going out of the system |
 | `fixed_relative_profile` | Demand profile (on flow) |
 | `effects_per_flow_hour` | Negative = revenue |
 
 ---
 
-### SourceAndSink
+### Port (bidirectional)
 
 **Use when:** Bidirectional exchange at a single point (buy AND sell from same connection).
 
 ```python
-fx.SourceAndSink(
+fx.Port(
     'GridConnection',
-    inputs=[fx.Flow(bus='Electricity', flow_id='import', size=500, effects_per_flow_hour=0.25)],
-    outputs=[fx.Flow(bus='Electricity', flow_id='export', size=500, effects_per_flow_hour=-0.15)],
+    imports=[fx.Flow(bus='Electricity', flow_id='import', size=500, effects_per_flow_hour=0.25)],
+    exports=[fx.Flow(bus='Electricity', flow_id='export', size=500, effects_per_flow_hour=-0.15)],
     prevent_simultaneous_flow_rates=True,  # Can't buy and sell at same time
 )
 ```
@@ -113,13 +113,13 @@ fx.SourceAndSink(
 
 ---
 
-### LinearConverter
+### Converter
 
 **Use when:** Transforming one energy type to another with a linear relationship.
 
 ```python
 # Single input, single output
-fx.LinearConverter(
+fx.Converter(
     'Boiler',
     inputs=[fx.Flow(bus='Gas', size=500)],
     outputs=[fx.Flow(bus='Heat', size=450)],
@@ -127,7 +127,7 @@ fx.LinearConverter(
 )
 
 # Multiple outputs (CHP)
-fx.LinearConverter(
+fx.Converter(
     'CHP',
     inputs=[fx.Flow(bus='Gas', size=300)],
     outputs=[
@@ -138,7 +138,7 @@ fx.LinearConverter(
 )
 
 # Multiple inputs
-fx.LinearConverter(
+fx.Converter(
     'CoFiringBoiler',
     inputs=[
         fx.Flow(bus='Gas', size=200),
@@ -167,20 +167,18 @@ fx.LinearConverter(
 
 #### Pre-built Converters
 
-flixOpt includes ready-to-use converters in `flixopt.linear_converters`:
+flixOpt includes ready-to-use converters as factory methods on `Converter`:
 
-| Class | Description | Key Parameters |
-|-------|-------------|----------------|
-| `Boiler` | Fuel → Heat | `thermal_efficiency` |
-| `HeatPump` | Electricity → Heat | `cop` |
-| `HeatPumpWithSource` | Elec + Ambient → Heat | `cop`, source flow |
-| `CHP` | Fuel → Elec + Heat | `electrical_efficiency`, `thermal_efficiency` |
-| `Chiller` | Electricity → Cooling | `cop` |
+| Factory Method | Description | Key Parameters |
+|----------------|-------------|----------------|
+| `Converter.boiler()` | Fuel → Heat | `thermal_efficiency` |
+| `Converter.heat_pump()` | Electricity → Heat | `cop` |
+| `Converter.heat_pump_with_source()` | Elec + Ambient → Heat | `cop`, source flow |
+| `Converter.chp()` | Fuel → Elec + Heat | `electrical_efficiency`, `thermal_efficiency` |
+| `Converter.cooling_tower()` | Electricity → Cooling | `cop` |
 
 ```python
-from flixopt.linear_converters import Boiler, HeatPump
-
-boiler = Boiler(
+boiler = fx.Converter.boiler(
     'GasBoiler',
     thermal_efficiency=0.92,
     fuel_flow=fx.Flow(bus='Gas', size=500, effects_per_flow_hour=0.05),
@@ -283,7 +281,7 @@ fx.Flow(
 )
 ```
 
-Works with: Source, Sink, LinearConverter, Storage, Transmission
+Works with: Port, Converter, Storage, Transmission
 
 ### Operational Constraints
 
@@ -308,7 +306,7 @@ Works with: All components with flows
 Use `PiecewiseConversion` for load-dependent efficiency:
 
 ```python
-fx.LinearConverter(
+fx.Converter(
     'GasEngine',
     inputs=[fx.Flow(bus='Gas')],
     outputs=[fx.Flow(bus='Electricity')],
@@ -319,7 +317,7 @@ fx.LinearConverter(
 )
 ```
 
-Works with: LinearConverter
+Works with: Converter
 
 ## Common Modeling Patterns
 
@@ -330,7 +328,7 @@ Model N identical units that can operate independently:
 ```python
 for i in range(3):
     flow_system.add_elements(
-        fx.LinearConverter(
+        fx.Converter(
             f'Boiler_{i}',
             inputs=[fx.Flow(bus='Gas', size=100)],
             outputs=[fx.Flow(bus='Heat', size=90)],
@@ -345,7 +343,7 @@ Model waste heat recovery from one process to another:
 
 ```python
 # Process that generates waste heat
-process = fx.LinearConverter(
+process = fx.Converter(
     'Process',
     inputs=[fx.Flow(bus='Electricity', size=100)],
     outputs=[
@@ -361,7 +359,7 @@ process = fx.LinearConverter(
 Model a component that can use multiple fuels:
 
 ```python
-flex_boiler = fx.LinearConverter(
+flex_boiler = fx.Converter(
     'FlexBoiler',
     inputs=[
         fx.Flow(bus='Gas', size=200, effects_per_flow_hour=0.05),

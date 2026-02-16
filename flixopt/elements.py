@@ -94,52 +94,68 @@ def _add_prevent_simultaneous_constraints(
     )
 
 
+def _connect_flow(flow: Flow, component_id: str, is_input: bool) -> None:
+    """Connect a flow to its owning component.
+
+    Sets component name, defaults flow_id to bus name, and sets is_input_in_component.
+    """
+    if flow.flow_id is None:
+        flow.flow_id = valid_id(flow.bus if isinstance(flow.bus, str) else str(flow.bus))
+    if flow.component not in ('UnknownComponent', component_id):
+        raise ValueError(
+            f'Flow "{flow.id}" already assigned to component "{flow.component}". Cannot attach to "{component_id}".'
+        )
+    flow.component = component_id
+    flow.is_input_in_component = is_input
+
+
+def _connect_and_validate_flows(
+    component_id: str,
+    input_flows: list[Flow],
+    output_flows: list[Flow],
+    prevent_simultaneous: list[Flow] | None = None,
+) -> None:
+    """Connect flows and validate uniqueness. Shared by all component-like classes."""
+    for flow in input_flows:
+        _connect_flow(flow, component_id, is_input=True)
+    for flow in output_flows:
+        _connect_flow(flow, component_id, is_input=False)
+
+    all_flows = input_flows + output_flows
+    all_ids = [f.flow_id for f in all_flows]
+    if len(set(all_ids)) != len(all_ids):
+        dupes = {fid for fid in all_ids if all_ids.count(fid) > 1}
+        raise ValueError(f'Flow names must be unique! "{component_id}" got 2 or more of: {dupes}')
+
+    if prevent_simultaneous:
+        # Deduplicate while preserving order
+        seen = set()
+        prevent_simultaneous[:] = [f for f in prevent_simultaneous if id(f) not in seen and not seen.add(id(f))]
+        local = set(all_flows)
+        foreign = [f for f in prevent_simultaneous if f not in local]
+        if foreign:
+            names = ', '.join(f.id for f in foreign)
+            raise ValueError(
+                f'prevent_simultaneous_flows for "{component_id}" must reference its own flows. '
+                f'Foreign flows detected: {names}'
+            )
+
+
 @register_class_for_io
 @dataclass(eq=False, repr=False)
 class Component(Element):
-    """
-    Base class for all system components that transform, convert, or process flows.
+    """Deprecated base class for flow-owning elements.
 
-    Components are the active elements in energy systems that define how input and output
-    Flows interact with each other. They represent equipment, processes, or logical
-    operations that transform energy or materials between different states, carriers,
-    or locations.
-
-    Components serve as connection points between Buses through their associated Flows,
-    enabling the modeling of complex energy system topologies and operational constraints.
+    Use Converter, Port, or Storage directly instead. Component is kept only
+    as an internal base class for Transmission and the deprecated Source/Sink/SourceAndSink.
 
     Args:
         id: The id of the Element. Used to identify it in the FlowSystem.
-        inputs: list of input Flows feeding into the component. These represent
-            energy/material consumption by the component.
-        outputs: list of output Flows leaving the component. These represent
-            energy/material production by the component.
-        status_parameters: Defines binary operation constraints and costs when the
-            component has discrete active/inactive states. Creates binary variables for all
-            connected Flows. For better performance, prefer defining StatusParameters
-            on individual Flows when possible.
-        prevent_simultaneous_flows: list of Flows that cannot be active simultaneously.
-            Creates binary variables to enforce mutual exclusivity. Use sparingly as
-            it increases computational complexity.
-        meta_data: Used to store additional information. Not used internally but saved
-            in results. Only use Python native types.
-
-    Note:
-        Component operational state is determined by its connected Flows:
-        - Component is "active" if ANY of its Flows is active (flow_rate > 0)
-        - Component is "inactive" only when ALL Flows are inactive (flow_rate = 0)
-
-        Binary variables and constraints:
-        - status_parameters creates binary variables for ALL connected Flows
-        - prevent_simultaneous_flows creates binary variables for specified Flows
-        - For better computational performance, prefer Flow-level StatusParameters
-
-        Component is an abstract base class. In practice, use specialized subclasses:
-        - LinearConverter: Linear input/output relationships
-        - Storage: Temporal energy/material storage
-        - Transmission: Transport between locations
-        - Source/Sink: System boundaries
-
+        inputs: list of input Flows.
+        outputs: list of output Flows.
+        status_parameters: Binary operation constraints and costs.
+        prevent_simultaneous_flows: Flows that cannot be active simultaneously.
+        meta_data: Additional metadata.
     """
 
     id: str
@@ -156,14 +172,7 @@ class Component(Element):
         _inputs = self.inputs or []
         _outputs = self.outputs or []
 
-        # Connect flows (sets component name, defaults flow_id to bus name)
-        self._connect_flows(_inputs, _outputs)
-
-        # Check uniqueness after flow_ids are resolved
-        all_flow_ids = [flow.flow_id for flow in _inputs + _outputs]
-        if len(set(all_flow_ids)) != len(all_flow_ids):
-            duplicates = {fid for fid in all_flow_ids if all_flow_ids.count(fid) > 1}
-            raise ValueError(f'Flow names must be unique! "{self.id}" got 2 or more of: {duplicates}')
+        _connect_and_validate_flows(self.id, _inputs, _outputs, self.prevent_simultaneous_flows)
 
         # Now flow.id is qualified, so IdList can key by it
         self.inputs: IdList = flow_id_list(_inputs, display_name='inputs')
@@ -202,48 +211,6 @@ class Component(Element):
         if len(set(all_flow_ids)) != len(all_flow_ids):
             duplicates = {fid for fid in all_flow_ids if all_flow_ids.count(fid) > 1}
             raise ValueError(f'Flow names must be unique! "{self.id}" got 2 or more of: {duplicates}')
-
-    def _connect_flows(self, inputs=None, outputs=None):
-        if inputs is None:
-            inputs = list(self.inputs.values())
-        if outputs is None:
-            outputs = list(self.outputs.values())
-        # Default flow_id to bus name if not explicitly set
-        for flow in inputs + outputs:
-            if flow.flow_id is None:
-                flow.flow_id = valid_id(flow.bus if isinstance(flow.bus, str) else str(flow.bus))
-        # Inputs
-        for flow in inputs:
-            if flow.component not in ('UnknownComponent', self.id):
-                raise ValueError(
-                    f'Flow "{flow.id}" already assigned to component "{flow.component}". Cannot attach to "{self.id}".'
-                )
-            flow.component = self.id
-            flow.is_input_in_component = True
-        # Outputs
-        for flow in outputs:
-            if flow.component not in ('UnknownComponent', self.id):
-                raise ValueError(
-                    f'Flow "{flow.id}" already assigned to component "{flow.component}". Cannot attach to "{self.id}".'
-                )
-            flow.component = self.id
-            flow.is_input_in_component = False
-
-        # Validate prevent_simultaneous_flows: only allow local flows
-        if self.prevent_simultaneous_flows:
-            # Deduplicate while preserving order
-            seen = set()
-            self.prevent_simultaneous_flows = [
-                f for f in self.prevent_simultaneous_flows if id(f) not in seen and not seen.add(id(f))
-            ]
-            local = set(inputs + outputs)
-            foreign = [f for f in self.prevent_simultaneous_flows if f not in local]
-            if foreign:
-                names = ', '.join(f.id for f in foreign)
-                raise ValueError(
-                    f'prevent_simultaneous_flows for "{self.id}" must reference its own flows. '
-                    f'Foreign flows detected: {names}'
-                )
 
     def __repr__(self) -> str:
         """Return string representation with flow information."""
@@ -1668,8 +1635,8 @@ class ComponentsModel(TypeModel):
         flow_sum = sparse_weighted_sum(flow_status, mask, sum_dim='flow', group_dim='component')
 
         # Separate single-flow vs multi-flow components
-        single_flow_ids = [c.id for c in self.components if len(c.inputs) + len(c.outputs) == 1]
-        multi_flow_ids = [c.id for c in self.components if len(c.inputs) + len(c.outputs) > 1]
+        single_flow_ids = [c.id for c in self.components if len(list(c.flows)) == 1]
+        multi_flow_ids = [c.id for c in self.components if len(list(c.flows)) > 1]
 
         # Single-flow: exact equality
         if single_flow_ids:

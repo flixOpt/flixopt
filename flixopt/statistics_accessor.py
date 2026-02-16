@@ -2383,8 +2383,8 @@ class StatisticsPlotAccessor:
             raise ValueError(f"'{storage}' is not a storage (no charge_state variable found)")
 
         # Get flow data
-        input_labels = [f.id for f in component.inputs.values()]
-        output_labels = [f.id for f in component.outputs.values()]
+        input_labels = [f.id for f in component.flows.values() if f.is_input_in_component]
+        output_labels = [f.id for f in component.flows.values() if not f.is_input_in_component]
         all_labels = input_labels + output_labels
 
         source_da = self._stats.flow_rates if unit == 'flow_rate' else self._stats.flow_hours

@@ -15,7 +15,7 @@ import xarray as xr
 
 from . import io as fx_io
 from .batched import BatchedAccessor
-from .components import Storage
+from .components import Converter, Port, Storage, Transmission
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
 from .core import (
     ConversionError,
@@ -353,8 +353,11 @@ class FlowSystem(CompositeContainerMixin[Element]):
             fit_to_model_coords=self.fit_to_model_coords,
         )
 
-        # Element collections
-        self.components: IdList[Component] = element_id_list(display_name='components', truncate_repr=10)
+        # Element collections — component sub-containers
+        self.converters: IdList[Converter] = element_id_list(display_name='converters', truncate_repr=10)
+        self.ports: IdList[Port] = element_id_list(display_name='ports', truncate_repr=10)
+        self.storages: IdList[Storage] = element_id_list(display_name='storages', truncate_repr=10)
+        self.transmissions: IdList[Transmission] = element_id_list(display_name='transmissions', truncate_repr=10)
         self.buses: IdList[Bus] = element_id_list(display_name='buses', truncate_repr=10)
         self.effects: EffectCollection = EffectCollection(truncate_repr=10)
         self.model: FlowSystemModel | None = None
@@ -369,7 +372,7 @@ class FlowSystem(CompositeContainerMixin[Element]):
 
         self._network_app = None
         self._flows_cache: IdList[Flow] | None = None
-        self._storages_cache: IdList[Storage] | None = None
+        self._components_cache: IdList | None = None
 
         # Solution dataset - populated after optimization or loaded from file
         self._solution: xr.Dataset | None = None
@@ -417,13 +420,22 @@ class FlowSystem(CompositeContainerMixin[Element]):
         # Remove timesteps, as it's directly stored in dataset index
         reference_structure.pop('timesteps', None)
 
-        # Extract from components with path prefix
-        components_structure = {}
-        for comp_id, component in self.components.items():
-            comp_structure, comp_arrays = create_reference_structure(component, f'components|{comp_id}', coords=coords)
-            all_extracted_arrays.update(comp_arrays)
-            components_structure[comp_id] = comp_structure
-        reference_structure['components'] = components_structure
+        # Extract from component containers with path prefix
+        for container_key, container in [
+            ('converters', self.converters),
+            ('ports', self.ports),
+            ('storages', self.storages),
+            ('transmissions', self.transmissions),
+        ]:
+            container_structure = {}
+            for comp_id, component in container.items():
+                comp_structure, comp_arrays = create_reference_structure(
+                    component, f'{container_key}|{comp_id}', coords=coords
+                )
+                all_extracted_arrays.update(comp_arrays)
+                container_structure[comp_id] = comp_structure
+            if container_structure:
+                reference_structure[container_key] = container_structure
 
         # Extract from buses with path prefix
         buses_structure = {}
@@ -985,7 +997,7 @@ class FlowSystem(CompositeContainerMixin[Element]):
 
         for new_element in list(elements):
             # Validate element type first
-            if not isinstance(new_element, (Component, Effect, Bus)):
+            if not isinstance(new_element, (Component, Converter, Port, Storage, Effect, Bus)):
                 raise TypeError(
                     f'Tried to add incompatible object to FlowSystem: {type(new_element)=}: {new_element=} '
                 )
@@ -995,7 +1007,7 @@ class FlowSystem(CompositeContainerMixin[Element]):
             self._check_if_element_is_unique(new_element)
 
             # Dispatch to type-specific handlers
-            if isinstance(new_element, Component):
+            if isinstance(new_element, (Component, Converter, Port, Storage)):
                 self._add_components(new_element)
             elif isinstance(new_element, Effect):
                 self._add_effects(new_element)
@@ -1764,16 +1776,27 @@ class FlowSystem(CompositeContainerMixin[Element]):
             self._registered_elements.add(id(effect))
         self.effects.add_effects(*args)
 
-    def _add_components(self, *components: Component) -> None:
+    def _add_components(self, *components) -> None:
         for new_component in list(components):
             self._registered_elements.add(id(new_component))
             for flow in new_component.flows.values():
                 self._registered_elements.add(id(flow))
-            self.components.add(new_component)  # Add to existing components
-        # Invalidate cache once after all additions
+            # Dispatch to the right container
+            if isinstance(new_component, Converter):
+                self.converters.add(new_component)
+            elif isinstance(new_component, Port):
+                self.ports.add(new_component)
+            elif isinstance(new_component, Storage):
+                self.storages.add(new_component)
+            elif isinstance(new_component, Transmission):
+                self.transmissions.add(new_component)
+            else:
+                # Legacy Component subclass (Source, Sink, SourceAndSink) → ports
+                self.ports.add(new_component)
+        # Invalidate caches once after all additions
         if components:
             self._flows_cache = None
-            self._storages_cache = None
+            self._components_cache = None
 
     def _add_buses(self, *buses: Bus):
         for new_bus in list(buses):
@@ -1782,7 +1805,6 @@ class FlowSystem(CompositeContainerMixin[Element]):
         # Invalidate cache once after all additions
         if buses:
             self._flows_cache = None
-            self._storages_cache = None
 
     def _connect_network(self):
         """Connects the network of components and buses. Can be rerun without changes if no elements were added"""
@@ -1803,7 +1825,7 @@ class FlowSystem(CompositeContainerMixin[Element]):
                     bus.inputs.add(flow)
 
         # Count flows manually to avoid triggering cache rebuild
-        flow_count = sum(len(c.inputs) + len(c.outputs) for c in self.components.values())
+        flow_count = sum(len(list(c.flows)) for c in self.components.values())
         logger.debug(
             f'Connected {len(self.buses)} Buses and {len(self.components)} '
             f'via {flow_count} Flows inside the FlowSystem.'
@@ -1874,35 +1896,49 @@ class FlowSystem(CompositeContainerMixin[Element]):
 
     def _get_container_groups(self) -> dict[str, IdList]:
         """Return ordered container groups for CompositeContainerMixin."""
-        return {
-            'Components': self.components,
-            'Buses': self.buses,
-            'Effects': self.effects,
-            'Flows': self.flows,
-        }
+        groups: dict[str, IdList] = {}
+        if self.converters:
+            groups['Converters'] = self.converters
+        if self.ports:
+            groups['Ports'] = self.ports
+        if self.storages:
+            groups['Storages'] = self.storages
+        if self.transmissions:
+            groups['Transmissions'] = self.transmissions
+        groups['Buses'] = self.buses
+        groups['Effects'] = self.effects
+        groups['Flows'] = self.flows
+        return groups
+
+    @property
+    def components(self) -> IdList:
+        """All component-like elements as a combined IdList (backward compat).
+
+        Prefer accessing specific containers directly:
+        ``self.converters``, ``self.ports``, ``self.storages``, ``self.transmissions``.
+        """
+        if self._components_cache is None:
+            all_comps = (
+                list(self.converters.values())
+                + list(self.ports.values())
+                + list(self.storages.values())
+                + list(self.transmissions.values())
+            )
+            all_comps.sort(key=lambda c: c.id.lower())
+            self._components_cache = element_id_list(all_comps, display_name='components', truncate_repr=10)
+        return self._components_cache
 
     @property
     def flows(self) -> IdList[Flow]:
         if self._flows_cache is None:
-            flows = [f for c in self.components.values() for f in c.flows.values()]
+            flows = []
+            for container in (self.converters, self.ports, self.storages, self.transmissions):
+                for c in container.values():
+                    flows.extend(c.flows.values())
             # Deduplicate by id and sort for reproducibility
             flows = sorted({id(f): f for f in flows}.values(), key=lambda f: f.id.lower())
             self._flows_cache = element_id_list(flows, display_name='flows', truncate_repr=10)
         return self._flows_cache
-
-    @property
-    def storages(self) -> IdList[Storage]:
-        """All storage components as an IdList.
-
-        Returns:
-            IdList containing all Storage components in the FlowSystem,
-            sorted by id for reproducibility.
-        """
-        if self._storages_cache is None:
-            storages = [c for c in self.components.values() if isinstance(c, Storage)]
-            storages = sorted(storages, key=lambda s: s.id.lower())
-            self._storages_cache = element_id_list(storages, display_name='storages', truncate_repr=10)
-        return self._storages_cache
 
     # --- Forwarding properties for model coordinate state ---
 

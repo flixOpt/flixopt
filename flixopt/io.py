@@ -1794,15 +1794,22 @@ class FlowSystemDatasetIO:
         cls: type[FlowSystem],
     ) -> None:
         """Restore components, buses, and effects to FlowSystem."""
+        from .components import Converter, Port, Storage
         from .effects import Effect
         from .elements import Bus, Component
 
         _resolve = _get_resolve_reference_structure()
 
-        # Restore components
+        # Restore components (new format: separate container keys)
+        for container_key in ('converters', 'ports', 'storages', 'transmissions'):
+            for _comp_label, comp_data in reference_structure.get(container_key, {}).items():
+                component = _resolve(comp_data, arrays_dict)
+                flow_system._add_components(component)
+
+        # Legacy format: all components under single 'components' key
         for comp_label, comp_data in reference_structure.get('components', {}).items():
             component = _resolve(comp_data, arrays_dict)
-            if not isinstance(component, Component):
+            if not isinstance(component, (Component, Converter, Port, Storage)):
                 logger.critical(f'Restoring component {comp_label} failed.')
             flow_system._add_components(component)
 

@@ -82,49 +82,43 @@ heat_bus = fx.Bus(
 
 Components are the equipment in your system. Choose based on function:
 
-### Sources — External Inputs
+### Ports — External Inputs and Demands
 
-Use for **purchasing** energy or materials from outside:
+Use for **importing** energy or materials from outside, or for **consuming** energy (demands, exports):
 
 ```python
-# Grid electricity with time-varying price
-grid = fx.Source(
+# Grid electricity with time-varying price (importing into the system)
+grid = fx.Port(
     'Grid',
-    outputs=[fx.Flow(bus='Electricity', size=1000, effects_per_flow_hour=price_profile)]
+    imports=[fx.Flow(bus='Electricity', size=1000, effects_per_flow_hour=price_profile)]
 )
 
-# Natural gas with fixed price
-gas_supply = fx.Source(
+# Natural gas with fixed price (importing into the system)
+gas_supply = fx.Port(
     'GasSupply',
-    outputs=[fx.Flow(bus='Gas', size=500, effects_per_flow_hour=0.05)]
+    imports=[fx.Flow(bus='Gas', size=500, effects_per_flow_hour=0.05)]
 )
-```
 
-### Sinks — Demands
-
-Use for **consuming** energy or materials (demands, exports):
-
-```python
-# Heat demand (must be met exactly)
-building = fx.Sink(
+# Heat demand (must be met exactly, exporting from the system)
+building = fx.Port(
     'Building',
-    inputs=[fx.Flow(bus='Heat', size=1, fixed_relative_profile=demand_profile)]
+    exports=[fx.Flow(bus='Heat', size=1, fixed_relative_profile=demand_profile)]
 )
 
 # Optional export (can sell but not required)
-export = fx.Sink(
+export = fx.Port(
     'Export',
-    inputs=[fx.Flow(bus='Electricity', size=100, effects_per_flow_hour=-0.15)]  # Negative = revenue
+    exports=[fx.Flow(bus='Electricity', size=100, effects_per_flow_hour=-0.15)]  # Negative = revenue
 )
 ```
 
-### LinearConverter — Transformations
+### Converter — Transformations
 
 Use for **converting** one form of energy to another:
 
 ```python
 # Gas boiler: Gas → Heat
-boiler = fx.LinearConverter(
+boiler = fx.Converter(
     'Boiler',
     inputs=[fx.Flow(bus='Gas', size=500)],
     outputs=[fx.Flow(bus='Heat', size=450)],
@@ -132,7 +126,7 @@ boiler = fx.LinearConverter(
 )
 
 # Heat pump: Electricity → Heat
-heat_pump = fx.LinearConverter(
+heat_pump = fx.Converter(
     'HeatPump',
     inputs=[fx.Flow(bus='Electricity', size=100)],
     outputs=[fx.Flow(bus='Heat', size=350)],
@@ -140,7 +134,7 @@ heat_pump = fx.LinearConverter(
 )
 
 # CHP: Gas → Electricity + Heat (multiple outputs)
-chp = fx.LinearConverter(
+chp = fx.Converter(
     'CHP',
     inputs=[fx.Flow(bus='Gas', size=300)],
     outputs=[
@@ -234,14 +228,14 @@ flow_system.add_elements(
     fx.Effect('costs', '€', is_standard=True, is_objective=True),
 
     # Components
-    fx.Source('GasGrid', outputs=[fx.Flow(bus='Gas', size=500, effects_per_flow_hour=0.05)]),
-    fx.LinearConverter(
+    fx.Port('GasGrid', imports=[fx.Flow(bus='Gas', size=500, effects_per_flow_hour=0.05)]),
+    fx.Converter(
         'Boiler',
         inputs=[fx.Flow(bus='Gas', size=500)],
         outputs=[fx.Flow(bus='Heat', size=450)],
         conversion_factors=[{'Gas': 1, 'Heat': 0.9}],
     ),
-    fx.Sink('Building', inputs=[fx.Flow(bus='Heat', size=1, fixed_relative_profile=demand)]),
+    fx.Port('Building', exports=[fx.Flow(bus='Heat', size=1, fixed_relative_profile=demand)]),
 )
 ```
 
@@ -255,14 +249,14 @@ Gas → Boiler → Heat
 flow_system.add_elements(
     fx.Bus('Heat'),
     fx.Effect('costs', '€', is_standard=True, is_objective=True),
-    fx.Source('Gas', outputs=[fx.Flow(bus='Gas', size=500, effects_per_flow_hour=0.05)]),
-    fx.LinearConverter(
+    fx.Port('Gas', imports=[fx.Flow(bus='Gas', size=500, effects_per_flow_hour=0.05)]),
+    fx.Converter(
         'Boiler',
         inputs=[fx.Flow(bus='Gas', size=500)],
         outputs=[fx.Flow(bus='Heat', size=450)],
         conversion_factors=[{'Gas': 1, 'Heat': 0.9}],
     ),
-    fx.Sink('Demand', inputs=[fx.Flow(bus='Heat', size=1, fixed_relative_profile=demand)]),
+    fx.Port('Demand', exports=[fx.Flow(bus='Heat', size=1, fixed_relative_profile=demand)]),
 )
 ```
 
@@ -276,13 +270,13 @@ flow_system.add_elements(
     fx.Effect('costs', '€', is_standard=True, is_objective=True),
 
     # Option 1: Gas boiler (cheap gas, moderate efficiency)
-    fx.LinearConverter('Boiler', ...),
+    fx.Converter('Boiler', ...),
 
     # Option 2: Heat pump (expensive electricity, high efficiency)
-    fx.LinearConverter('HeatPump', ...),
+    fx.Converter('HeatPump', ...),
 
     # Demand
-    fx.Sink('Building', ...),
+    fx.Port('Building', ...),
 )
 ```
 
@@ -298,13 +292,13 @@ flow_system.add_elements(
     fx.Effect('costs', '€', is_standard=True, is_objective=True),
 
     # Generation
-    fx.LinearConverter('Boiler', ...),
+    fx.Converter('Boiler', ...),
 
     # Storage (can shift load in time)
     fx.Storage('Tank', ...),
 
     # Demand
-    fx.Sink('Building', ...),
+    fx.Port('Building', ...),
 )
 ```
 
@@ -312,13 +306,13 @@ flow_system.add_elements(
 
 | I need to... | Use this component |
 |-------------|-------------------|
-| Buy/import energy | `Source` |
-| Sell/export energy | `Sink` with negative effects |
-| Meet a demand | `Sink` with `fixed_relative_profile` |
-| Convert energy type | `LinearConverter` |
+| Buy/import energy | `Port` with `imports` |
+| Sell/export energy | `Port` with `exports` and negative effects |
+| Meet a demand | `Port` with `exports` and `fixed_relative_profile` |
+| Convert energy type | `Converter` |
 | Store energy | `Storage` |
 | Transport between sites | `Transmission` |
-| Model combined heat & power | `LinearConverter` with multiple outputs |
+| Model combined heat & power | `Converter` with multiple outputs |
 
 For detailed component selection, see [Choosing Components](choosing-components.md).
 
@@ -384,7 +378,7 @@ graph LR
     B -->|create variables &<br/>constraints| C["<b>Model Layer</b><br/>FlowsModel, StoragesModel, ..."]
 ```
 
-1. **User Layer** — The Python objects you create (`Flow`, `Bus`, `LinearConverter`, etc.) with their parameters.
+1. **User Layer** — The Python objects you create (`Flow`, `Bus`, `Converter`, etc.) with their parameters.
 2. **Data Layer** — `*Data` classes (`FlowsData`, `StoragesData`, etc.) batch parameters from all elements of the same type into `xr.DataArray` arrays and validate them.
 3. **Model Layer** — `*Model` classes (`FlowsModel`, `StoragesModel`, etc.) create linopy variables and constraints from the batched data.
 

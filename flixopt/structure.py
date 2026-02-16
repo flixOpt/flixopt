@@ -1183,13 +1183,16 @@ class FlowSystemModel(linopy.Model):
 
         # Components
         for comp in sorted(self.flow_system.components.values(), key=lambda c: c.id.upper()):
-            flow_ids = [f.id for f in comp.flows.values()]
+            flows_list = list(comp.flows.values())
+            flow_ids = [f.id for f in flows_list]
+            inputs_count = sum(1 for f in flows_list if f.is_input_in_component)
+            outputs_count = len(flows_list) - inputs_count
             results['Components'][comp.id] = {
                 'id': comp.id,
                 'variables': var_names.get(comp.id, []),
                 'constraints': con_names.get(comp.id, []),
-                'inputs': ['flow|rate'] * len(comp.inputs),
-                'outputs': ['flow|rate'] * len(comp.outputs),
+                'inputs': ['flow|rate'] * inputs_count,
+                'outputs': ['flow|rate'] * outputs_count,
                 'flows': flow_ids,
             }
 

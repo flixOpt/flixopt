@@ -1,6 +1,6 @@
-# LinearConverter
+# Converter
 
-A LinearConverter transforms inputs into outputs with fixed ratios.
+A Converter transforms inputs into outputs with fixed ratios.
 
 ## Basic: Conversion Equation
 
@@ -13,7 +13,7 @@ $$
     $0.9 \cdot p_{gas}(t) = p_{heat}(t)$
 
     ```python
-    boiler = fx.LinearConverter(
+    boiler = fx.Converter(
         label='boiler',
         inputs=[fx.Flow(label='gas', bus=gas_bus, size=111)],
         outputs=[fx.Flow(label='heat', bus=heat_bus, size=100)],
@@ -26,7 +26,7 @@ $$
     $3.5 \cdot p_{el}(t) = p_{heat}(t)$
 
     ```python
-    hp = fx.LinearConverter(
+    hp = fx.Converter(
         label='hp',
         inputs=[fx.Flow(label='el', bus=elec_bus, size=100)],
         outputs=[fx.Flow(label='heat', bus=heat_bus, size=350)],
@@ -39,7 +39,7 @@ $$
     Two constraints linking fuel to outputs:
 
     ```python
-    chp = fx.LinearConverter(
+    chp = fx.Converter(
         label='chp',
         inputs=[fx.Flow(label='fuel', bus=gas_bus, size=100)],
         outputs=[
@@ -62,7 +62,7 @@ Pass a list for time-dependent conversion:
 ```python
 cop = np.array([3.0, 3.2, 3.5, 4.0, 3.8, ...])  # Varies with ambient temperature
 
-hp = fx.LinearConverter(
+hp = fx.Converter(
     ...,
     conversion_factors=[{'el': cop, 'heat': 1}],
 )
@@ -103,7 +103,7 @@ chp = fx.linear_converters.CHP(
     A component is active when any of its flows is non-zero. Add startup costs, minimum run times:
 
     ```python
-    gen = fx.LinearConverter(
+    gen = fx.Converter(
         ...,
         status_parameters=fx.StatusParameters(
             effects_per_startup={'costs': 1000},
@@ -119,7 +119,7 @@ chp = fx.linear_converters.CHP(
     For variable efficiency — all flows change together based on operating point:
 
     ```python
-    chp = fx.LinearConverter(
+    chp = fx.Converter(
         label='CHP',
         inputs=[fx.Flow(bus='Gas')],
         outputs=[
@@ -148,4 +148,4 @@ The converter creates **constraints** linking flows, not new variables.
 | $a_f$ | $\mathbb{R}$ | Conversion factor for input flow $f$ |
 | $b_f$ | $\mathbb{R}$ | Conversion factor for output flow $f$ |
 
-**Classes:** [`LinearConverter`][flixopt.components.LinearConverter], [`LinearConverterModel`][flixopt.components.LinearConverterModel]
+**Classes:** [`Converter`][flixopt.components.Converter], [`ConverterModel`][flixopt.elements.ConvertersModel]

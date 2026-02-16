@@ -1661,7 +1661,7 @@ class ComponentsData:
     @cached_property
     def flow_count(self) -> xr.DataArray:
         """(component,) number of flows per component."""
-        counts = [len(c.inputs) + len(c.outputs) for c in self._components_with_status]
+        counts = [len(list(c.flows)) for c in self._components_with_status]
         return xr.DataArray(
             counts,
             dims=['component'],
@@ -1793,8 +1793,11 @@ class ConvertersData:
         for conv in self.with_factors:
             flow_map = {fl.flow_id: fl.id for fl in conv.flows.values()}
             # +1 for inputs, -1 for outputs
-            flow_signs = {f.id: 1.0 for f in conv.inputs.values() if f.id in all_flow_ids_set}
-            flow_signs.update({f.id: -1.0 for f in conv.outputs.values() if f.id in all_flow_ids_set})
+            flow_signs = {
+                f.id: (1.0 if f.is_input_in_component else -1.0)
+                for f in conv.flows.values()
+                if f.id in all_flow_ids_set
+            }
 
             aligned_factors = self.aligned_conversion_factors(conv)
             for eq_idx, conv_factors in enumerate(aligned_factors):
@@ -1969,10 +1972,11 @@ class ConvertersData:
 
             if conv.conversion_factors:
                 if conv.degrees_of_freedom <= 0:
+                    n_flows = len(list(conv.flows))
                     raise PlausibilityError(
                         f'Too Many conversion_factors_specified. Care that you use less conversion_factors '
-                        f'then inputs + outputs!! With {len(conv.inputs + conv.outputs)} inputs and outputs, '
-                        f'use not more than {len(conv.inputs + conv.outputs) - 1} conversion_factors!'
+                        f'then inputs + outputs!! With {n_flows} inputs and outputs, '
+                        f'use not more than {n_flows - 1} conversion_factors!'
                     )
 
                 for conversion_factor in conv.conversion_factors:
@@ -2233,14 +2237,11 @@ class BatchedAccessor:
     def storages(self) -> StoragesData:
         """Get or create StoragesData for basic storages (excludes intercluster)."""
         if self._storages is None:
-            from .components import Storage
-
             clustering = self._fs.clustering
             basic_storages = [
                 c
-                for c in self._fs.components.values()
-                if isinstance(c, Storage)
-                and not (clustering is not None and c.cluster_mode in ('intercluster', 'intercluster_cyclic'))
+                for c in self._fs.storages.values()
+                if not (clustering is not None and c.cluster_mode in ('intercluster', 'intercluster_cyclic'))
             ]
             effect_ids = list(self._fs.effects.keys())
             self._storages = StoragesData(
@@ -2257,15 +2258,11 @@ class BatchedAccessor:
     def intercluster_storages(self) -> StoragesData:
         """Get or create StoragesData for intercluster storages."""
         if self._intercluster_storages is None:
-            from .components import Storage
-
             clustering = self._fs.clustering
             intercluster = [
                 c
-                for c in self._fs.components.values()
-                if isinstance(c, Storage)
-                and clustering is not None
-                and c.cluster_mode in ('intercluster', 'intercluster_cyclic')
+                for c in self._fs.storages.values()
+                if clustering is not None and c.cluster_mode in ('intercluster', 'intercluster_cyclic')
             ]
             effect_ids = list(self._fs.effects.keys())
             self._intercluster_storages = StoragesData(
@@ -2314,9 +2311,7 @@ class BatchedAccessor:
     def converters(self) -> ConvertersData:
         """Get or create ConvertersData for all converters."""
         if self._converters is None:
-            from .components import LinearConverter
-
-            converters = [c for c in self._fs.components.values() if isinstance(c, LinearConverter)]
+            converters = list(self._fs.converters.values())
             self._converters = ConvertersData(
                 converters,
                 flow_ids=self.flows.element_ids,
@@ -2329,9 +2324,7 @@ class BatchedAccessor:
     def transmissions(self) -> TransmissionsData:
         """Get or create TransmissionsData for all transmissions."""
         if self._transmissions is None:
-            from .components import Transmission
-
-            transmissions = [c for c in self._fs.components.values() if isinstance(c, Transmission)]
+            transmissions = list(self._fs.transmissions.values())
             self._transmissions = TransmissionsData(
                 transmissions,
                 flow_ids=self.flows.element_ids,
