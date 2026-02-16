@@ -316,8 +316,8 @@ class TestMultiPeriod:
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow(bus='Elec', flow_id='charge', size=200),
-                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=200),
+                charging=fx.Flow(bus='Elec', size=200),
+                discharging=fx.Flow(bus='Elec', size=200),
                 capacity_in_flow_hours=100,
                 initial_charge_state=50,
                 relative_minimum_final_charge_state=0.5,
@@ -360,8 +360,8 @@ class TestMultiPeriod:
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow(bus='Elec', flow_id='charge', size=200),
-                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=200),
+                charging=fx.Flow(bus='Elec', size=200),
+                discharging=fx.Flow(bus='Elec', size=200),
                 capacity_in_flow_hours=100,
                 initial_charge_state=80,
                 relative_maximum_final_charge_state=0.2,

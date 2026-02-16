@@ -90,7 +90,7 @@ Use for **purchasing** energy or materials from outside:
 # Grid electricity with time-varying price
 grid = fx.Source(
     'Grid',
-    outputs=[fx.Flow(bus='Electricity', flow_id='Elec', size=1000, effects_per_flow_hour=price_profile)]
+    outputs=[fx.Flow(bus='Electricity', size=1000, effects_per_flow_hour=price_profile)]
 )
 
 # Natural gas with fixed price
@@ -114,7 +114,7 @@ building = fx.Sink(
 # Optional export (can sell but not required)
 export = fx.Sink(
     'Export',
-    inputs=[fx.Flow(bus='Electricity', flow_id='Elec', size=100, effects_per_flow_hour=-0.15)]  # Negative = revenue
+    inputs=[fx.Flow(bus='Electricity', size=100, effects_per_flow_hour=-0.15)]  # Negative = revenue
 )
 ```
 
@@ -134,9 +134,9 @@ boiler = fx.LinearConverter(
 # Heat pump: Electricity → Heat
 heat_pump = fx.LinearConverter(
     'HeatPump',
-    inputs=[fx.Flow(bus='Electricity', flow_id='Elec', size=100)],
+    inputs=[fx.Flow(bus='Electricity', size=100)],
     outputs=[fx.Flow(bus='Heat', size=350)],
-    conversion_factors=[{'Elec': 1, 'Heat': 3.5}],  # COP = 3.5
+    conversion_factors=[{'Electricity': 1, 'Heat': 3.5}],  # COP = 3.5
 )
 
 # CHP: Gas → Electricity + Heat (multiple outputs)
@@ -144,10 +144,10 @@ chp = fx.LinearConverter(
     'CHP',
     inputs=[fx.Flow(bus='Gas', size=300)],
     outputs=[
-        fx.Flow(bus='Electricity', flow_id='Elec', size=100),
+        fx.Flow(bus='Electricity', size=100),
         fx.Flow(bus='Heat', size=150),
     ],
-    conversion_factors=[{'Gas': 1, 'Elec': 0.35, 'Heat': 0.50}],
+    conversion_factors=[{'Gas': 1, 'Electricity': 0.35, 'Heat': 0.50}],
 )
 ```
 
@@ -159,8 +159,8 @@ Use for **storing** energy or materials:
 # Thermal storage
 tank = fx.Storage(
     'ThermalTank',
-    charging=fx.Flow(bus='Heat', flow_id='charge', size=200),
-    discharging=fx.Flow(bus='Heat', flow_id='discharge', size=200),
+    charging=fx.Flow(bus='Heat', size=200),
+    discharging=fx.Flow(bus='Heat', size=200),
     capacity_in_flow_hours=10,  # 10 hours at full charge/discharge rate
     eta_charge=0.95,
     eta_discharge=0.95,
@@ -177,8 +177,8 @@ Use for **connecting** different locations:
 # District heating pipe
 pipe = fx.Transmission(
     'HeatPipe',
-    in1=fx.Flow(bus='Heat_A', flow_id='from_A', size=200),
-    out1=fx.Flow(bus='Heat_B', flow_id='to_B', size=200),
+    in1=fx.Flow(bus='Heat_A', size=200),
+    out1=fx.Flow(bus='Heat_B', size=200),
     relative_losses=0.05,  # 5% loss
 )
 ```
@@ -255,14 +255,14 @@ Gas → Boiler → Heat
 flow_system.add_elements(
     fx.Bus('Heat'),
     fx.Effect('costs', '€', is_standard=True, is_objective=True),
-    fx.Source('Gas', outputs=[fx.Flow(flow_id='gas', size=500, effects_per_flow_hour=0.05)]),
+    fx.Source('Gas', outputs=[fx.Flow(bus='Gas', size=500, effects_per_flow_hour=0.05)]),
     fx.LinearConverter(
         'Boiler',
-        inputs=[fx.Flow(flow_id='gas', size=500)],  # Inline source
-        outputs=[fx.Flow(bus='Heat', flow_id='heat', size=450)],
-        conversion_factors=[{'gas': 1, 'heat': 0.9}],
+        inputs=[fx.Flow(bus='Gas', size=500)],
+        outputs=[fx.Flow(bus='Heat', size=450)],
+        conversion_factors=[{'Gas': 1, 'Heat': 0.9}],
     ),
-    fx.Sink('Demand', inputs=[fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=demand)]),
+    fx.Sink('Demand', inputs=[fx.Flow(bus='Heat', size=1, fixed_relative_profile=demand)]),
 )
 ```
 

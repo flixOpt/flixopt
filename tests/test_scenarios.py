@@ -76,8 +76,8 @@ def test_system():
     generator = Source('Generator', outputs=[power_gen])
 
     # Create a storage for electricity
-    storage_charge = Flow(electricity_bus.label_full, flow_id='Charge', size=10)
-    storage_discharge = Flow(electricity_bus.label_full, flow_id='Discharge', size=10)
+    storage_charge = Flow(electricity_bus.label_full, size=10)
+    storage_discharge = Flow(electricity_bus.label_full, size=10)
     storage = Storage(
         'Battery',
         charging=storage_charge,

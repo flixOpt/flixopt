@@ -216,6 +216,10 @@ class Component(Element):
             inputs = list(self.inputs.values())
         if outputs is None:
             outputs = list(self.outputs.values())
+        # Default flow_id to bus name if not explicitly set
+        for flow in inputs + outputs:
+            if flow.flow_id is None:
+                flow.flow_id = valid_id(flow.bus if isinstance(flow.bus, str) else str(flow.bus))
         # Inputs
         for flow in inputs:
             if flow.component not in ('UnknownComponent', self.id):
@@ -436,7 +440,6 @@ class Flow(Element):
         ```python
         generator_output = Flow(
             bus='electricity_grid',
-            flow_id='electricity_out',
             size=100,  # 100 MW capacity
             relative_minimum=0.4,  # Cannot operate below 40 MW
             effects_per_flow_hour={'fuel_cost': 45, 'co2_emissions': 0.8},
@@ -461,7 +464,6 @@ class Flow(Element):
         ```python
         heat_pump = Flow(
             bus='heating_network',
-            flow_id='heat_output',
             size=50,  # 50 kW thermal
             relative_minimum=0.3,  # Minimum 15 kW output when active
             effects_per_flow_hour={'electricity_cost': 25, 'maintenance': 2},
@@ -479,7 +481,6 @@ class Flow(Element):
         ```python
         solar_generation = Flow(
             bus='electricity_grid',
-            flow_id='solar_power',
             size=25,  # 25 MW installed capacity
             fixed_relative_profile=np.array([0, 0.1, 0.4, 0.8, 0.9, 0.7, 0.3, 0.1, 0]),
             effects_per_flow_hour={'maintenance_costs': 5},  # €5/MWh maintenance
@@ -491,7 +492,6 @@ class Flow(Element):
         ```python
         production_line = Flow(
             bus='product_market',
-            flow_id='product_output',
             size=1000,  # 1000 units/hour capacity
             load_factor_min=0.6,  # Must achieve 60% annual utilization
             load_factor_max=0.85,  # Cannot exceed 85% for maintenance
@@ -543,16 +543,13 @@ class Flow(Element):
     is_input_in_component: bool | None = field(default=None, init=False)
 
     def __post_init__(self):
-        # Default flow_id to bus name
-        if self.flow_id is None:
-            self.flow_id = self.bus if isinstance(self.bus, str) else str(self.bus)
-        self.flow_id = valid_id(self.flow_id)
-
         if isinstance(self.bus, Bus):
             raise TypeError(
-                f'Bus {self.bus.id} is passed as a Bus object to Flow {self.flow_id}. '
+                f'Bus {self.bus.id} is passed as a Bus object to Flow {self.flow_id or self.bus}. '
                 f'This is no longer supported. Add the Bus to the FlowSystem and pass its id (string) to the Flow.'
             )
+        if self.flow_id is not None:
+            self.flow_id = valid_id(self.flow_id)
 
     @property
     def id(self) -> str:

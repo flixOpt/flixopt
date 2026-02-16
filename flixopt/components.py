@@ -333,8 +333,8 @@ class Storage(Component):
 
     _io_exclude: ClassVar[set[str]] = {'inputs', 'outputs', 'prevent_simultaneous_flows'}
 
-    charging: Flow | None = None
-    discharging: Flow | None = None
+    charging: Flow = None  # type: ignore[assignment]  # Required, but None default needed for dataclass ordering
+    discharging: Flow = None  # type: ignore[assignment]  # Required, but None default needed for dataclass ordering
     capacity_in_flow_hours: Numeric_PS | InvestParameters | None = None
     relative_minimum_charge_state: Numeric_TPS = 0
     relative_maximum_charge_state: Numeric_TPS = 1
@@ -351,6 +351,9 @@ class Storage(Component):
     cluster_mode: Literal['independent', 'cyclic', 'intercluster', 'intercluster_cyclic'] = 'intercluster_cyclic'
 
     def __post_init__(self):
+        # Default flow_ids to 'charging'/'discharging' when not explicitly set
+        self.charging.flow_id = self.charging.flow_id or 'charging'
+        self.discharging.flow_id = self.discharging.flow_id or 'discharging'
         # Set Component fields from Storage-specific fields
         self.inputs = [self.charging]
         self.outputs = [self.discharging]

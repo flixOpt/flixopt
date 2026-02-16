@@ -361,8 +361,8 @@ def create_large_system(
                 eta_charge=0.95,
                 eta_discharge=0.95,
                 relative_loss_per_hour=0.001,
-                charging=fx.Flow(bus='Heat', flow_id='Charge', size=100),
-                discharging=fx.Flow(bus='Heat', flow_id='Discharge', size=100),
+                charging=fx.Flow(bus='Heat', size=100),
+                discharging=fx.Flow(bus='Heat', size=100),
             )
         )
 

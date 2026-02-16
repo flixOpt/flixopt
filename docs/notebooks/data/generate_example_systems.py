@@ -134,8 +134,8 @@ def create_simple_system() -> fx.FlowSystem:
             eta_charge=0.98,
             eta_discharge=0.98,
             relative_loss_per_hour=0.005,
-            charging=fx.Flow(bus='Heat', flow_id='Charge', size=100),
-            discharging=fx.Flow(bus='Heat', flow_id='Discharge', size=100),
+            charging=fx.Flow(bus='Heat', size=100),
+            discharging=fx.Flow(bus='Heat', size=100),
         ),
         fx.Sink('Office', inputs=[fx.Flow(bus='Heat', size=1, fixed_relative_profile=heat_demand)]),
     )
@@ -205,7 +205,6 @@ def create_complex_system() -> fx.FlowSystem:
             outputs=[
                 fx.Flow(
                     bus='Electricity',
-                    flow_id='El',
                     size=100,
                     effects_per_flow_hour={'costs': electricity_price, 'CO2': electricity_co2},
                 )
@@ -213,17 +212,13 @@ def create_complex_system() -> fx.FlowSystem:
         ),
         fx.Sink(
             'ElectricityExport',
-            inputs=[
-                fx.Flow(
-                    bus='Electricity', flow_id='El', size=50, effects_per_flow_hour={'costs': -electricity_price * 0.8}
-                )
-            ],
+            inputs=[fx.Flow(bus='Electricity', size=50, effects_per_flow_hour={'costs': -electricity_price * 0.8})],
         ),
         # CHP with piecewise efficiency (efficiency varies with load)
         fx.LinearConverter(
             'CHP',
             inputs=[fx.Flow(bus='Gas', size=200)],
-            outputs=[fx.Flow(bus='Electricity', flow_id='El', size=80), fx.Flow(bus='Heat', size=85)],
+            outputs=[fx.Flow(bus='Electricity', size=80), fx.Flow(bus='Heat', size=85)],
             piecewise_conversion=fx.PiecewiseConversion(
                 {
                     'Gas': fx.Piecewise(
@@ -232,7 +227,7 @@ def create_complex_system() -> fx.FlowSystem:
                             fx.Piece(start=160, end=200),  # Full load
                         ]
                     ),
-                    'El': fx.Piecewise(
+                    'Electricity': fx.Piecewise(
                         [
                             fx.Piece(start=25, end=60),  # ~31-38% electrical efficiency
                             fx.Piece(start=60, end=80),  # ~38-40% electrical efficiency
@@ -259,7 +254,7 @@ def create_complex_system() -> fx.FlowSystem:
                     maximum_size=60,
                 ),
             ),
-            electrical_flow=fx.Flow(bus='Electricity', flow_id='El'),
+            electrical_flow=fx.Flow(bus='Electricity'),
             cop=3.5,
         ),
         # Backup boiler
@@ -279,14 +274,14 @@ def create_complex_system() -> fx.FlowSystem:
             ),
             eta_charge=0.95,
             eta_discharge=0.95,
-            charging=fx.Flow(bus='Heat', flow_id='Charge', size=50),
-            discharging=fx.Flow(bus='Heat', flow_id='Discharge', size=50),
+            charging=fx.Flow(bus='Heat', size=50),
+            discharging=fx.Flow(bus='Heat', size=50),
         ),
         # Demands
         fx.Sink('HeatDemand', inputs=[fx.Flow(bus='Heat', size=1, fixed_relative_profile=heat_demand)]),
         fx.Sink(
             'ElDemand',
-            inputs=[fx.Flow(bus='Electricity', flow_id='El', size=1, fixed_relative_profile=electricity_demand)],
+            inputs=[fx.Flow(bus='Electricity', size=1, fixed_relative_profile=electricity_demand)],
         ),
     )
     return fs
@@ -337,10 +332,9 @@ def create_district_heating_system() -> fx.FlowSystem:
             'CHP',
             thermal_efficiency=0.58,
             electrical_efficiency=0.22,
-            electrical_flow=fx.Flow(bus='Electricity', flow_id='P_el', size=200),
+            electrical_flow=fx.Flow(bus='Electricity', size=200),
             thermal_flow=fx.Flow(
                 bus='Heat',
-                flow_id='Q_th',
                 size=fx.InvestParameters(
                     minimum_size=100,
                     maximum_size=300,
@@ -349,7 +343,7 @@ def create_district_heating_system() -> fx.FlowSystem:
                 relative_minimum=0.3,
                 status_parameters=fx.StatusParameters(),
             ),
-            fuel_flow=fx.Flow(bus='Coal', flow_id='Q_fu'),
+            fuel_flow=fx.Flow(bus='Coal'),
         ),
         # Gas Boiler with investment
         fx.linear_converters.Boiler(
@@ -357,7 +351,6 @@ def create_district_heating_system() -> fx.FlowSystem:
             thermal_efficiency=0.85,
             thermal_flow=fx.Flow(
                 bus='Heat',
-                flow_id='Q_th',
                 size=fx.InvestParameters(
                     minimum_size=0,
                     maximum_size=150,
@@ -366,7 +359,7 @@ def create_district_heating_system() -> fx.FlowSystem:
                 relative_minimum=0.1,
                 status_parameters=fx.StatusParameters(),
             ),
-            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
+            fuel_flow=fx.Flow(bus='Gas'),
         ),
         # Thermal Storage with investment
         fx.Storage(
@@ -380,21 +373,17 @@ def create_district_heating_system() -> fx.FlowSystem:
             eta_charge=1,
             eta_discharge=1,
             relative_loss_per_hour=0.001,
-            charging=fx.Flow(bus='Heat', flow_id='Charge', size=137),
-            discharging=fx.Flow(bus='Heat', flow_id='Discharge', size=158),
+            charging=fx.Flow(bus='Heat', size=137),
+            discharging=fx.Flow(bus='Heat', size=158),
         ),
         # Fuel sources
         fx.Source(
             'GasGrid',
-            outputs=[
-                fx.Flow(bus='Gas', flow_id='Q_Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3})
-            ],
+            outputs=[fx.Flow(bus='Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3})],
         ),
         fx.Source(
             'CoalSupply',
-            outputs=[
-                fx.Flow(bus='Coal', flow_id='Q_Coal', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3})
-            ],
+            outputs=[fx.Flow(bus='Coal', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3})],
         ),
         # Electricity grid
         fx.Source(
@@ -402,7 +391,6 @@ def create_district_heating_system() -> fx.FlowSystem:
             outputs=[
                 fx.Flow(
                     bus='Electricity',
-                    flow_id='P_el',
                     size=1000,
                     effects_per_flow_hour={'costs': electricity_price + 0.5, 'CO2': 0.3},
                 )
@@ -410,15 +398,13 @@ def create_district_heating_system() -> fx.FlowSystem:
         ),
         fx.Sink(
             'GridSell',
-            inputs=[
-                fx.Flow(bus='Electricity', flow_id='P_el', size=1000, effects_per_flow_hour=-(electricity_price - 0.5))
-            ],
+            inputs=[fx.Flow(bus='Electricity', size=1000, effects_per_flow_hour=-(electricity_price - 0.5))],
         ),
         # Demands
-        fx.Sink('HeatDemand', inputs=[fx.Flow(bus='Heat', flow_id='Q_th', size=1, fixed_relative_profile=heat_demand)]),
+        fx.Sink('HeatDemand', inputs=[fx.Flow(bus='Heat', size=1, fixed_relative_profile=heat_demand)]),
         fx.Sink(
             'ElecDemand',
-            inputs=[fx.Flow(bus='Electricity', flow_id='P_el', size=1, fixed_relative_profile=electricity_demand)],
+            inputs=[fx.Flow(bus='Electricity', size=1, fixed_relative_profile=electricity_demand)],
         ),
     )
     return fs
@@ -469,18 +455,17 @@ def create_operational_system() -> fx.FlowSystem:
             thermal_efficiency=0.58,
             electrical_efficiency=0.22,
             status_parameters=fx.StatusParameters(effects_per_startup=24000),
-            electrical_flow=fx.Flow(bus='Electricity', flow_id='P_el', size=200),
-            thermal_flow=fx.Flow(bus='Heat', flow_id='Q_th', size=200),
-            fuel_flow=fx.Flow(bus='Coal', flow_id='Q_fu', size=288, relative_minimum=87 / 288, previous_flow_rate=100),
+            electrical_flow=fx.Flow(bus='Electricity', size=200),
+            thermal_flow=fx.Flow(bus='Heat', size=200),
+            fuel_flow=fx.Flow(bus='Coal', size=288, relative_minimum=87 / 288, previous_flow_rate=100),
         ),
         # Boiler with startup costs
         fx.linear_converters.Boiler(
             'Boiler',
             thermal_efficiency=0.85,
-            thermal_flow=fx.Flow(bus='Heat', flow_id='Q_th'),
+            thermal_flow=fx.Flow(bus='Heat'),
             fuel_flow=fx.Flow(
                 bus='Gas',
-                flow_id='Q_fu',
                 size=95,
                 relative_minimum=12 / 95,
                 previous_flow_rate=20,
@@ -498,27 +483,22 @@ def create_operational_system() -> fx.FlowSystem:
             eta_discharge=1,
             relative_loss_per_hour=0.001,
             prevent_simultaneous_charge_and_discharge=True,
-            charging=fx.Flow(bus='Heat', flow_id='Charge', size=137),
-            discharging=fx.Flow(bus='Heat', flow_id='Discharge', size=158),
+            charging=fx.Flow(bus='Heat', size=137),
+            discharging=fx.Flow(bus='Heat', size=158),
         ),
         fx.Source(
             'GasGrid',
-            outputs=[
-                fx.Flow(bus='Gas', flow_id='Q_Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3})
-            ],
+            outputs=[fx.Flow(bus='Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3})],
         ),
         fx.Source(
             'CoalSupply',
-            outputs=[
-                fx.Flow(bus='Coal', flow_id='Q_Coal', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3})
-            ],
+            outputs=[fx.Flow(bus='Coal', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3})],
         ),
         fx.Source(
             'GridBuy',
             outputs=[
                 fx.Flow(
                     bus='Electricity',
-                    flow_id='P_el',
                     size=1000,
                     effects_per_flow_hour={'costs': electricity_price + 0.5, 'CO2': 0.3},
                 )
@@ -526,14 +506,12 @@ def create_operational_system() -> fx.FlowSystem:
         ),
         fx.Sink(
             'GridSell',
-            inputs=[
-                fx.Flow(bus='Electricity', flow_id='P_el', size=1000, effects_per_flow_hour=-(electricity_price - 0.5))
-            ],
+            inputs=[fx.Flow(bus='Electricity', size=1000, effects_per_flow_hour=-(electricity_price - 0.5))],
         ),
-        fx.Sink('HeatDemand', inputs=[fx.Flow(bus='Heat', flow_id='Q_th', size=1, fixed_relative_profile=heat_demand)]),
+        fx.Sink('HeatDemand', inputs=[fx.Flow(bus='Heat', size=1, fixed_relative_profile=heat_demand)]),
         fx.Sink(
             'ElecDemand',
-            inputs=[fx.Flow(bus='Electricity', flow_id='P_el', size=1, fixed_relative_profile=electricity_demand)],
+            inputs=[fx.Flow(bus='Electricity', size=1, fixed_relative_profile=electricity_demand)],
         ),
     )
     return fs
@@ -597,7 +575,6 @@ def create_seasonal_storage_system() -> fx.FlowSystem:
             outputs=[
                 fx.Flow(
                     bus='Heat',
-                    flow_id='Q_th',
                     size=fx.InvestParameters(
                         minimum_size=0,
                         maximum_size=20,  # MW peak
@@ -613,14 +590,13 @@ def create_seasonal_storage_system() -> fx.FlowSystem:
             thermal_efficiency=0.90,
             thermal_flow=fx.Flow(
                 bus='Heat',
-                flow_id='Q_th',
                 size=fx.InvestParameters(
                     minimum_size=0,
                     maximum_size=8,  # MW
                     effects_of_investment_per_size={'costs': 20000},  # €/MW (annualized)
                 ),
             ),
-            fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
+            fuel_flow=fx.Flow(bus='Gas'),
         ),
         # Gas supply (higher price makes solar+storage more attractive)
         fx.Source(
@@ -628,7 +604,6 @@ def create_seasonal_storage_system() -> fx.FlowSystem:
             outputs=[
                 fx.Flow(
                     bus='Gas',
-                    flow_id='Q_gas',
                     size=20,
                     effects_per_flow_hour={'costs': gas_price * 1.5, 'CO2': 0.2},  # €/MWh
                 )
@@ -648,19 +623,17 @@ def create_seasonal_storage_system() -> fx.FlowSystem:
             relative_loss_per_hour=0.0001,  # Very low losses for pit storage
             charging=fx.Flow(
                 bus='Heat',
-                flow_id='Charge',
                 size=fx.InvestParameters(maximum_size=10, effects_of_investment_per_size={'costs': 5000}),
             ),
             discharging=fx.Flow(
                 bus='Heat',
-                flow_id='Discharge',
                 size=fx.InvestParameters(maximum_size=10, effects_of_investment_per_size={'costs': 5000}),
             ),
         ),
         # Heat demand
         fx.Sink(
             'HeatDemand',
-            inputs=[fx.Flow(bus='Heat', flow_id='Q_th', size=1, fixed_relative_profile=heat_demand)],
+            inputs=[fx.Flow(bus='Heat', size=1, fixed_relative_profile=heat_demand)],
         ),
     )
     return fs
@@ -748,8 +721,8 @@ def create_multiperiod_system() -> fx.FlowSystem:
             ),
             eta_charge=0.98,
             eta_discharge=0.98,
-            charging=fx.Flow(bus='Heat', flow_id='Charge', size=80),
-            discharging=fx.Flow(bus='Heat', flow_id='Discharge', size=80),
+            charging=fx.Flow(bus='Heat', size=80),
+            discharging=fx.Flow(bus='Heat', size=80),
         ),
         fx.Sink('Building', inputs=[fx.Flow(bus='Heat', size=1, fixed_relative_profile=heat_demand)]),
     )

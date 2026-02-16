@@ -34,8 +34,8 @@ class TestStorage:
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow(bus='Elec', flow_id='charge', size=100),
-                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=100),
+                charging=fx.Flow(bus='Elec', size=100),
+                discharging=fx.Flow(bus='Elec', size=100),
                 capacity_in_flow_hours=100,
                 initial_charge_state=0,
                 eta_charge=1,
@@ -71,8 +71,8 @@ class TestStorage:
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow(bus='Elec', flow_id='charge', size=200),
-                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=200),
+                charging=fx.Flow(bus='Elec', size=200),
+                discharging=fx.Flow(bus='Elec', size=200),
                 capacity_in_flow_hours=200,
                 initial_charge_state=0,
                 eta_charge=1,
@@ -110,8 +110,8 @@ class TestStorage:
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow(bus='Elec', flow_id='charge', size=200),
-                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=200),
+                charging=fx.Flow(bus='Elec', size=200),
+                discharging=fx.Flow(bus='Elec', size=200),
                 capacity_in_flow_hours=200,
                 initial_charge_state=0,
                 eta_charge=0.9,
@@ -152,8 +152,8 @@ class TestStorage:
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow(bus='Elec', flow_id='charge', size=200),
-                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=200),
+                charging=fx.Flow(bus='Elec', size=200),
+                discharging=fx.Flow(bus='Elec', size=200),
                 capacity_in_flow_hours=100,
                 initial_charge_state=0,
                 relative_maximum_charge_state=0.5,
@@ -195,8 +195,8 @@ class TestStorage:
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow(bus='Elec', flow_id='charge', size=200),
-                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=200),
+                charging=fx.Flow(bus='Elec', size=200),
+                discharging=fx.Flow(bus='Elec', size=200),
                 capacity_in_flow_hours=100,
                 initial_charge_state='equals_final',
                 eta_charge=1,
@@ -237,8 +237,8 @@ class TestStorage:
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow(bus='Elec', flow_id='charge', size=200),
-                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=200),
+                charging=fx.Flow(bus='Elec', size=200),
+                discharging=fx.Flow(bus='Elec', size=200),
                 capacity_in_flow_hours=100,
                 initial_charge_state=0,
                 minimal_final_charge_state=60,
@@ -279,8 +279,8 @@ class TestStorage:
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow(bus='Elec', flow_id='charge', size=200),
-                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=200),
+                charging=fx.Flow(bus='Elec', size=200),
+                discharging=fx.Flow(bus='Elec', size=200),
                 capacity_in_flow_hours=fx.InvestParameters(
                     maximum_size=200,
                     effects_of_investment_per_size=1,
@@ -331,8 +331,8 @@ class TestStorage:
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow(bus='Elec', flow_id='charge', size=100),
-                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=100),
+                charging=fx.Flow(bus='Elec', size=100),
+                discharging=fx.Flow(bus='Elec', size=100),
                 capacity_in_flow_hours=100,
                 initial_charge_state=0,
                 eta_charge=0.9,
@@ -342,8 +342,8 @@ class TestStorage:
             ),
         )
         fs = optimize(fs)
-        charge = fs.solution['Battery(charge)|flow_rate'].values[:-1]
-        discharge = fs.solution['Battery(discharge)|flow_rate'].values[:-1]
+        charge = fs.solution['Battery(charging)|flow_rate'].values[:-1]
+        discharge = fs.solution['Battery(discharging)|flow_rate'].values[:-1]
         # At no timestep should both be > 0
         for t in range(len(charge)):
             assert not (charge[t] > 1e-5 and discharge[t] > 1e-5), (
@@ -380,8 +380,8 @@ class TestStorage:
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow(bus='Elec', flow_id='charge', size=200),
-                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=200),
+                charging=fx.Flow(bus='Elec', size=200),
+                discharging=fx.Flow(bus='Elec', size=200),
                 capacity_in_flow_hours=100,
                 initial_charge_state=50,
                 relative_minimum_charge_state=0.3,
@@ -425,8 +425,8 @@ class TestStorage:
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow(bus='Elec', flow_id='charge', size=200),
-                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=200),
+                charging=fx.Flow(bus='Elec', size=200),
+                discharging=fx.Flow(bus='Elec', size=200),
                 capacity_in_flow_hours=100,
                 initial_charge_state=80,
                 maximal_final_charge_state=20,
@@ -469,8 +469,8 @@ class TestStorage:
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow(bus='Elec', flow_id='charge', size=200),
-                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=200),
+                charging=fx.Flow(bus='Elec', size=200),
+                discharging=fx.Flow(bus='Elec', size=200),
                 capacity_in_flow_hours=100,
                 initial_charge_state=50,
                 relative_minimum_charge_state=np.array([0, 0]),
@@ -516,8 +516,8 @@ class TestStorage:
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow(bus='Elec', flow_id='charge', size=200),
-                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=200),
+                charging=fx.Flow(bus='Elec', size=200),
+                discharging=fx.Flow(bus='Elec', size=200),
                 capacity_in_flow_hours=100,
                 initial_charge_state=80,
                 relative_maximum_charge_state=np.array([1.0, 1.0]),
@@ -557,8 +557,8 @@ class TestStorage:
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow(bus='Elec', flow_id='charge', size=200),
-                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=200),
+                charging=fx.Flow(bus='Elec', size=200),
+                discharging=fx.Flow(bus='Elec', size=200),
                 capacity_in_flow_hours=100,
                 initial_charge_state=50,
                 relative_minimum_final_charge_state=0.5,
@@ -596,8 +596,8 @@ class TestStorage:
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow(bus='Elec', flow_id='charge', size=200),
-                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=200),
+                charging=fx.Flow(bus='Elec', size=200),
+                discharging=fx.Flow(bus='Elec', size=200),
                 capacity_in_flow_hours=100,
                 initial_charge_state=80,
                 relative_maximum_final_charge_state=0.2,
@@ -640,12 +640,10 @@ class TestStorage:
                 'Battery',
                 charging=fx.Flow(
                     bus='Elec',
-                    flow_id='charge',
                     size=InvestParameters(maximum_size=200, effects_of_investment_per_size=1),
                 ),
                 discharging=fx.Flow(
                     bus='Elec',
-                    flow_id='discharge',
                     size=InvestParameters(maximum_size=200, effects_of_investment_per_size=1),
                 ),
                 capacity_in_flow_hours=200,
@@ -664,8 +662,8 @@ class TestStorage:
         # Invest: charge_size=160 @1€ = 160€. discharge_size=160 @1€ = 160€. Total invest=320€.
         # Ops: 160 @1€ = 160€. Total = 480€.
         # Without balanced: charge_size=160, discharge_size=80 → invest 240, ops 160 → 400€.
-        charge_size = fs.solution['Battery(charge)|size'].item()
-        discharge_size = fs.solution['Battery(discharge)|size'].item()
+        charge_size = fs.solution['Battery(charging)|size'].item()
+        discharge_size = fs.solution['Battery(discharging)|size'].item()
         assert_allclose(charge_size, discharge_size, rtol=1e-5)
         # With balanced, total cost is higher than without
         assert fs.solution['costs'].item() > 400.0 - 1e-5

@@ -122,8 +122,8 @@ class TestLegacySolutionAccess:
             fx.Source('Grid', outputs=[fx.Flow(bus='Elec', flow_id='elec', size=100, effects_per_flow_hour=1)]),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow(bus='Elec', flow_id='charge', size=10),
-                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=10),
+                charging=fx.Flow(bus='Elec', size=10),
+                discharging=fx.Flow(bus='Elec', size=10),
                 capacity_in_flow_hours=50,
                 initial_charge_state=25,
             ),

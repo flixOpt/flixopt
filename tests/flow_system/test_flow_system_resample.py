@@ -44,8 +44,8 @@ def complex_fs():
     fs.add_elements(
         fx.Storage(
             'battery',
-            charging=fx.Flow(bus='elec', flow_id='charge', size=10),
-            discharging=fx.Flow(bus='elec', flow_id='discharge', size=10),
+            charging=fx.Flow(bus='elec', size=10),
+            discharging=fx.Flow(bus='elec', size=10),
             capacity_in_flow_hours=fx.InvestParameters(fixed_size=100),
         )
     )
@@ -161,8 +161,8 @@ def test_storage_resample(complex_fs):
     fs_r = complex_fs.resample('4h', method='mean')
     assert 'battery' in fs_r.components
     storage = fs_r.components['battery']
-    assert storage.charging.label == 'charge'
-    assert storage.discharging.label == 'discharge'
+    assert storage.charging.flow_id == 'charging'
+    assert storage.discharging.flow_id == 'discharging'
 
 
 def test_converter_resample(complex_fs):

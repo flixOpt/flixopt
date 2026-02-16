@@ -108,8 +108,8 @@ class TestClustering:
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow(bus='Elec', flow_id='charge', size=100),
-                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=100),
+                charging=fx.Flow(bus='Elec', size=100),
+                discharging=fx.Flow(bus='Elec', size=100),
                 capacity_in_flow_hours=100,
                 initial_charge_state=0,
                 eta_charge=1,
@@ -148,8 +148,8 @@ class TestClustering:
                 ),
                 fx.Storage(
                     'Battery',
-                    charging=fx.Flow(bus='Elec', flow_id='charge', size=100),
-                    discharging=fx.Flow(bus='Elec', flow_id='discharge', size=100),
+                    charging=fx.Flow(bus='Elec', size=100),
+                    discharging=fx.Flow(bus='Elec', size=100),
                     capacity_in_flow_hours=100,
                     initial_charge_state=0,
                     eta_charge=1,
@@ -315,8 +315,8 @@ class TestClusteringExact:
             ),
             fx.Storage(
                 'Battery',
-                charging=fx.Flow(bus='Elec', flow_id='charge', size=100),
-                discharging=fx.Flow(bus='Elec', flow_id='discharge', size=100),
+                charging=fx.Flow(bus='Elec', size=100),
+                discharging=fx.Flow(bus='Elec', size=100),
                 capacity_in_flow_hours=100,
                 initial_charge_state=0,
                 eta_charge=1,
@@ -333,7 +333,7 @@ class TestClusteringExact:
         assert_allclose(grid_fr.sum(axis=1), 50.0, atol=1e-5)  # Total purchase per cluster = 50
 
         # Discharge at expensive timesteps (indices 1, 3)
-        discharge_fr = fs.solution['Battery(discharge)|flow_rate'].values[:, :4]
+        discharge_fr = fs.solution['Battery(discharging)|flow_rate'].values[:, :4]
         assert_allclose(discharge_fr[:, [1, 3]], [[50, 50], [50, 50]], atol=1e-5)
 
         # Charge state: dims=(cluster, time), 5 entries per cluster (incl. final)

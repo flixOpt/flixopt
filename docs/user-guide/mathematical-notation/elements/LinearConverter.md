@@ -121,15 +121,15 @@ chp = fx.linear_converters.CHP(
     ```python
     chp = fx.LinearConverter(
         label='CHP',
-        inputs=[fx.Flow(bus=gas_bus, flow_id='fuel')],
+        inputs=[fx.Flow(bus='Gas')],
         outputs=[
-            fx.Flow(bus=elec_bus, flow_id='el', size=60),
-            fx.Flow(bus=heat_bus, flow_id='heat'),
+            fx.Flow(bus='Electricity', size=60),
+            fx.Flow(bus='Heat'),
         ],
         piecewise_conversion=fx.PiecewiseConversion({
-            'el':   fx.Piecewise([fx.Piece(5, 30), fx.Piece(40, 60)]),
-            'heat': fx.Piecewise([fx.Piece(6, 35), fx.Piece(45, 100)]),
-            'fuel': fx.Piecewise([fx.Piece(12, 70), fx.Piece(90, 200)]),
+            'Electricity': fx.Piecewise([fx.Piece(5, 30), fx.Piece(40, 60)]),
+            'Heat':        fx.Piecewise([fx.Piece(6, 35), fx.Piece(45, 100)]),
+            'Gas':         fx.Piecewise([fx.Piece(12, 70), fx.Piece(90, 200)]),
         }),
     )
     ```

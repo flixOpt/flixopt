@@ -396,8 +396,8 @@ def create_system_with_storage(
         fx.Sink('Load', inputs=[fx.Flow(bus='Elec', flow_id='P', fixed_relative_profile=demand, size=1)]),
         fx.Storage(
             'Battery',
-            charging=fx.Flow(bus='Elec', flow_id='charge', size=30),
-            discharging=fx.Flow(bus='Elec', flow_id='discharge', size=30),
+            charging=fx.Flow(bus='Elec', size=30),
+            discharging=fx.Flow(bus='Elec', size=30),
             capacity_in_flow_hours=100,
             relative_loss_per_hour=relative_loss_per_hour,
             cluster_mode=cluster_mode,
