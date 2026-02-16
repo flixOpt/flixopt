@@ -939,18 +939,19 @@ class FlowsModel(TypeModel):
         if size_var is None:
             return
 
-        inv = self.data._investment_data
-        if inv is None or not inv.piecewise_element_ids:
+        element_ids = self.data.piecewise_element_ids
+        if not element_ids:
             return
 
-        element_ids = inv.piecewise_element_ids
-        segment_mask = inv.piecewise_segment_mask
-        origin_starts = inv.piecewise_origin_starts
-        origin_ends = inv.piecewise_origin_ends
-        effect_starts = inv.piecewise_effect_starts
-        effect_ends = inv.piecewise_effect_ends
-        effect_names = inv.piecewise_effect_names
-        max_segments = inv.piecewise_max_segments
+        ds = self.data.ds
+        # Piecewise arrays are auto-aligned to all flows in the Dataset — select back to subset
+        segment_mask = ds['piecewise_segment_mask'].sel(flow=element_ids)
+        origin_starts = ds['piecewise_origin_starts'].sel(flow=element_ids)
+        origin_ends = ds['piecewise_origin_ends'].sel(flow=element_ids)
+        effect_starts = ds['piecewise_effect_starts'].sel(flow=element_ids)
+        effect_ends = ds['piecewise_effect_ends'].sel(flow=element_ids)
+        effect_names = self.data.piecewise_effect_names
+        max_segments = self.data.piecewise_max_segments
 
         # Create batched piecewise variables
         base_coords = self.model.get_coords(['period', 'scenario'])
@@ -1063,31 +1064,42 @@ class FlowsModel(TypeModel):
                 effects_model.add_temporal_contribution(startup_subset * factor, contributor_dim=dim)
 
         # === Periodic: size * effects_per_size ===
-        inv = self.data._investment_data
-        if inv is not None and inv.effects_per_size is not None:
-            factors = inv.effects_per_size
+        ds = self.data.ds
+
+        def _get_subset(name):
+            """Get investment effect array from ds, dropping auto-aligned NaN rows."""
+            arr = ds.get(name)
+            if arr is None:
+                return None
+            return arr.dropna(dim=dim, how='all')
+
+        factors = _get_subset('invest_effects_per_size')
+        if factors is not None:
             flow_ids = factors.coords[dim].values
             size_subset = self.size.sel({dim: flow_ids})
             effects_model.add_periodic_contribution(size_subset * factors, contributor_dim=dim)
 
         # === Investment/retirement effects (optional investments) ===
-        if inv is not None and self.invested is not None:
-            if (ff := inv.effects_of_investment) is not None:
+        if self.invested is not None:
+            ff = _get_subset('invest_effects_of_investment')
+            if ff is not None:
                 flow_ids = ff.coords[dim].values
                 invested_subset = self.invested.sel({dim: flow_ids})
                 effects_model.add_periodic_contribution(invested_subset * ff, contributor_dim=dim)
 
-            if (ff := inv.effects_of_retirement) is not None:
+            ff = _get_subset('invest_effects_of_retirement')
+            if ff is not None:
                 flow_ids = ff.coords[dim].values
                 invested_subset = self.invested.sel({dim: flow_ids})
                 effects_model.add_periodic_contribution(invested_subset * (-ff), contributor_dim=dim)
 
         # === Constants: mandatory fixed + retirement ===
-        if inv is not None:
-            if inv.effects_of_investment_mandatory is not None:
-                effects_model.add_periodic_contribution(inv.effects_of_investment_mandatory, contributor_dim=dim)
-            if inv.effects_of_retirement_constant is not None:
-                effects_model.add_periodic_contribution(inv.effects_of_retirement_constant, contributor_dim=dim)
+        ff = _get_subset('invest_effects_of_investment_mandatory')
+        if ff is not None:
+            effects_model.add_periodic_contribution(ff, contributor_dim=dim)
+        ff = _get_subset('invest_effects_of_retirement_constant')
+        if ff is not None:
+            effects_model.add_periodic_contribution(ff, contributor_dim=dim)
 
     # === Status Variables (cached_property) ===
 

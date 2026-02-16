@@ -755,6 +755,10 @@ def _extract_recursive(
     arrays: dict[str, xr.DataArray] = {}
 
     if isinstance(obj, xr.DataArray):
+        # Align DataArrays with generic dims (dim_0, dim_1, ...) to model coords
+        # so they are stored with proper dimension names in the dataset.
+        if coords is not None and any(d.startswith('dim_') for d in obj.dims):
+            obj = align_to_coords(obj, coords, name=path)
         arrays[path] = obj.rename(path)
         return f':::{path}', arrays
 

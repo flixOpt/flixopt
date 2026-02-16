@@ -955,12 +955,12 @@ class StoragesData:
 
 
 class FlowsData:
-    """Batched data container for all flows with indexed access.
+    """Thin wrapper around flows xr.Dataset.
 
     Provides:
     - Element lookup by id: `flows['Boiler(gas_in)']` or `flows.get('id')`
     - Categorizations as list[str]: `flows.with_status`, `flows.with_investment`
-    - Batched parameters as xr.DataArray with flow dimension
+    - Dataset access via `flows.ds['variable_name']`
 
     This separates data access from mathematical modeling (FlowsModel).
     No FlowSystem reference — takes explicit params only.
@@ -974,20 +974,19 @@ class FlowsData:
         timestep_duration: xr.DataArray | float | None = None,
         normalize_effects: Any = None,
     ):
-        """Initialize FlowsData.
+        from .datasets import build_flows_dataset
 
-        Args:
-            flows: List of all Flow elements.
-            coords: Model coordinate indexes (time, period, scenario).
-            effect_ids: List of effect IDs for building effect arrays.
-            timestep_duration: Duration per timestep (for previous duration computation).
-            normalize_effects: Callable to normalize raw effect values.
-        """
         self.elements: IdList = element_id_list(flows)
-        self._coords = coords
-        self._effect_ids = effect_ids
-        self._timestep_duration = timestep_duration
-        self._normalize_effects = normalize_effects
+        self.ds: xr.Dataset = build_flows_dataset(flows, coords, effect_ids, timestep_duration, normalize_effects)
+
+        # Non-Dataset attributes (raw Python objects needed by features)
+        self.invest_params: dict[str, InvestParameters] = {
+            f.id: f.size for f in flows if isinstance(f.size, InvestParameters)
+        }
+        self.status_params: dict[str, StatusParameters] = {
+            f.id: f.status_parameters for f in flows if f.status_parameters is not None
+        }
+        self.previous_states: dict[str, xr.DataArray] = _build_previous_states(flows)
 
     @classmethod
     def from_elements(
@@ -998,768 +997,371 @@ class FlowsData:
         timestep_duration: xr.DataArray | float | None = None,
         normalize_effects: Any = None,
     ) -> FlowsData:
-        """Construct FlowsData from a list of Flow elements.
-
-        Args:
-            flows: List of all Flow elements.
-            coords: Model coordinate indexes (time, period, scenario).
-            effect_ids: List of effect IDs for building effect arrays.
-            timestep_duration: Duration per timestep (for previous duration computation).
-            normalize_effects: Callable to normalize raw effect values.
-        """
         return cls(flows, coords, effect_ids, timestep_duration, normalize_effects)
 
+    # === Element access ===
+
     def __getitem__(self, label: str) -> Flow:
-        """Get a flow by its id."""
         return self.elements[label]
 
     def get(self, label: str, default: Flow | None = None) -> Flow | None:
-        """Get a flow by id, returning default if not found."""
         return self.elements.get(label, default)
 
     def __len__(self) -> int:
         return len(self.elements)
 
     def __iter__(self):
-        """Iterate over flow IDs."""
         return iter(self.elements)
+
+    # === TypeModel protocol ===
 
     @property
     def ids(self) -> list[str]:
-        """List of all flow IDs."""
         return list(self.elements.keys())
 
     @property
     def element_ids(self) -> list[str]:
-        """List of all flow IDs (alias for ids)."""
         return self.ids
 
-    @cached_property
-    def _ids_index(self) -> pd.Index:
-        """Cached pd.Index of flow IDs for fast DataArray creation."""
-        return pd.Index(self.ids)
+    @property
+    def dim_name(self) -> str:
+        return 'flow'
 
-    def _categorize(self, condition) -> list[str]:
-        """Return IDs of flows matching condition(flow) -> bool."""
-        return [f.id for f in self.elements.values() if condition(f)]
-
-    def _mask(self, condition) -> xr.DataArray:
-        """Return boolean DataArray mask for condition(flow) -> bool."""
-        return xr.DataArray(
-            [condition(f) for f in self.elements.values()],
-            dims=['flow'],
-            coords={'flow': self._ids_index},
-        )
-
-    # === Flow Categorizations ===
-    # All return list[str] of element IDs.
-
-    @cached_property
-    def with_status(self) -> list[str]:
-        """IDs of flows with status parameters."""
-        return self._categorize(lambda f: f.status_parameters is not None)
-
-    # === Boolean Masks (PyPSA-style) ===
-    # These enable efficient batched constraint creation using linopy's mask= parameter.
+    # === Dataset variable access (properties for backward compat) ===
 
     @cached_property
     def has_status(self) -> xr.DataArray:
-        """(flow,) - boolean mask for flows with status parameters."""
-        return self._mask(lambda f: f.status_parameters is not None)
+        return self.ds['has_status']
 
     @cached_property
     def has_investment(self) -> xr.DataArray:
-        """(flow,) - boolean mask for flows with investment parameters."""
-        return self._mask(lambda f: isinstance(f.size, InvestParameters))
+        return self.ds['has_investment']
 
     @cached_property
     def has_optional_investment(self) -> xr.DataArray:
-        """(flow,) - boolean mask for flows with optional (non-mandatory) investment."""
-        return self._mask(lambda f: isinstance(f.size, InvestParameters) and not f.size.mandatory)
+        return self.ds['has_optional_investment']
 
     @cached_property
     def has_mandatory_investment(self) -> xr.DataArray:
-        """(flow,) - boolean mask for flows with mandatory investment."""
-        return self._mask(lambda f: isinstance(f.size, InvestParameters) and f.size.mandatory)
+        return self.ds['has_mandatory_investment']
 
     @cached_property
     def has_fixed_size(self) -> xr.DataArray:
-        """(flow,) - boolean mask for flows with fixed (non-investment) size."""
-        return self._mask(lambda f: f.size is not None and not isinstance(f.size, InvestParameters))
+        return self.ds['has_fixed_size']
 
     @cached_property
     def has_size(self) -> xr.DataArray:
-        """(flow,) - boolean mask for flows with any size (fixed or investment)."""
-        return self._mask(lambda f: f.size is not None)
+        return self.ds['has_size']
 
     @cached_property
     def has_effects(self) -> xr.DataArray:
-        """(flow,) - boolean mask for flows with effects_per_flow_hour."""
-        return self._mask(lambda f: f.effects_per_flow_hour is not None)
+        return self.ds['has_effects']
 
     @cached_property
     def has_flow_hours_min(self) -> xr.DataArray:
-        """(flow,) - boolean mask for flows with flow_hours_min constraint."""
-        return self._mask(lambda f: f.flow_hours_min is not None)
+        return self.ds['has_flow_hours_min']
 
     @cached_property
     def has_flow_hours_max(self) -> xr.DataArray:
-        """(flow,) - boolean mask for flows with flow_hours_max constraint."""
-        return self._mask(lambda f: f.flow_hours_max is not None)
+        return self.ds['has_flow_hours_max']
 
     @cached_property
     def has_load_factor_min(self) -> xr.DataArray:
-        """(flow,) - boolean mask for flows with load_factor_min constraint."""
-        return self._mask(lambda f: f.load_factor_min is not None)
+        return self.ds['has_load_factor_min']
 
     @cached_property
     def has_load_factor_max(self) -> xr.DataArray:
-        """(flow,) - boolean mask for flows with load_factor_max constraint."""
-        return self._mask(lambda f: f.load_factor_max is not None)
+        return self.ds['has_load_factor_max']
 
     @cached_property
     def has_startup_tracking(self) -> xr.DataArray:
-        """(flow,) - boolean mask for flows needing startup/shutdown tracking."""
-        mask = np.zeros(len(self.ids), dtype=bool)
-        if self._status_data:
-            for i, fid in enumerate(self.ids):
-                mask[i] = fid in self._status_data.with_startup_tracking
-        return xr.DataArray(mask, dims=['flow'], coords={'flow': self._ids_index})
+        return self.ds['has_startup_tracking']
 
     @cached_property
     def has_uptime_tracking(self) -> xr.DataArray:
-        """(flow,) - boolean mask for flows needing uptime duration tracking."""
-        mask = np.zeros(len(self.ids), dtype=bool)
-        if self._status_data:
-            for i, fid in enumerate(self.ids):
-                mask[i] = fid in self._status_data.with_uptime_tracking
-        return xr.DataArray(mask, dims=['flow'], coords={'flow': self._ids_index})
+        return self.ds['has_uptime_tracking']
 
     @cached_property
     def has_downtime_tracking(self) -> xr.DataArray:
-        """(flow,) - boolean mask for flows needing downtime tracking."""
-        mask = np.zeros(len(self.ids), dtype=bool)
-        if self._status_data:
-            for i, fid in enumerate(self.ids):
-                mask[i] = fid in self._status_data.with_downtime_tracking
-        return xr.DataArray(mask, dims=['flow'], coords={'flow': self._ids_index})
+        return self.ds['has_downtime_tracking']
 
     @cached_property
     def has_startup_limit(self) -> xr.DataArray:
-        """(flow,) - boolean mask for flows with startup limit."""
-        mask = np.zeros(len(self.ids), dtype=bool)
-        if self._status_data:
-            for i, fid in enumerate(self.ids):
-                mask[i] = fid in self._status_data.with_startup_limit
-        return xr.DataArray(mask, dims=['flow'], coords={'flow': self._ids_index})
+        return self.ds['has_startup_limit']
 
-    @property
-    def with_startup_tracking(self) -> list[str]:
-        """IDs of flows that need startup/shutdown tracking."""
-        return self._status_data.with_startup_tracking if self._status_data else []
-
-    @property
-    def with_downtime_tracking(self) -> list[str]:
-        """IDs of flows that need downtime (inactive) tracking."""
-        return self._status_data.with_downtime_tracking if self._status_data else []
-
-    @property
-    def with_uptime_tracking(self) -> list[str]:
-        """IDs of flows that need uptime duration tracking."""
-        return self._status_data.with_uptime_tracking if self._status_data else []
-
-    @property
-    def with_startup_limit(self) -> list[str]:
-        """IDs of flows with startup limit."""
-        return self._status_data.with_startup_limit if self._status_data else []
+    # === Numeric arrays from Dataset ===
 
     @cached_property
-    def without_size(self) -> list[str]:
-        """IDs of flows without size."""
-        return self._categorize(lambda f: f.size is None)
+    def relative_minimum(self) -> xr.DataArray:
+        return self.ds['relative_minimum']
+
+    @cached_property
+    def relative_maximum(self) -> xr.DataArray:
+        return self.ds['relative_maximum']
+
+    @cached_property
+    def fixed_relative_profile(self) -> xr.DataArray:
+        return self.ds['fixed_relative_profile']
+
+    @cached_property
+    def effective_relative_minimum(self) -> xr.DataArray:
+        return self.ds['effective_relative_minimum']
+
+    @cached_property
+    def effective_relative_maximum(self) -> xr.DataArray:
+        return self.ds['effective_relative_maximum']
+
+    @cached_property
+    def fixed_size(self) -> xr.DataArray:
+        return self.ds['fixed_size']
+
+    @cached_property
+    def effective_size_lower(self) -> xr.DataArray:
+        return self.ds['effective_size_lower']
+
+    @cached_property
+    def effective_size_upper(self) -> xr.DataArray:
+        return self.ds['effective_size_upper']
+
+    @cached_property
+    def size_minimum_all(self) -> xr.DataArray:
+        return self.ds['size_minimum_all']
+
+    @cached_property
+    def size_maximum_all(self) -> xr.DataArray:
+        return self.ds['size_maximum_all']
+
+    @cached_property
+    def absolute_lower_bounds(self) -> xr.DataArray:
+        """(flow, cluster, time, period, scenario) - absolute lower bounds for flow rate."""
+        from .datasets import _ensure_canonical_order
+
+        base = self.effective_relative_minimum * self.effective_size_lower
+        is_zero = self.has_status | self.has_optional_investment | fast_isnull(self.effective_size_lower)
+        result = base.where(~is_zero, 0.0).fillna(0.0)
+        return _ensure_canonical_order(result)
+
+    @cached_property
+    def absolute_upper_bounds(self) -> xr.DataArray:
+        """(flow, cluster, time, period, scenario) - absolute upper bounds for flow rate."""
+        from .datasets import _ensure_canonical_order
+
+        base = self.effective_relative_maximum * self.effective_size_upper
+        result = base.where(fast_notnull(self.effective_size_upper), np.inf)
+        return _ensure_canonical_order(result)
+
+    # === Optional arrays (may not exist in ds) ===
+    # Subset arrays: these were originally built only for applicable flows.
+    # The Dataset auto-aligns them to all flows (NaN fill), so we sel back to the subset.
+
+    def _subset_var(self, name: str, subset_ids: list[str]) -> xr.DataArray | None:
+        """Get a Dataset variable subsetted to the given flow IDs, or None if absent/empty."""
+        arr = self.ds.get(name)
+        if arr is None:
+            return None
+        if not subset_ids:
+            return None
+        return arr.sel(flow=subset_ids)
+
+    @cached_property
+    def flow_hours_minimum(self) -> xr.DataArray | None:
+        return self._subset_var('flow_hours_minimum', self.with_flow_hours_min)
+
+    @cached_property
+    def flow_hours_maximum(self) -> xr.DataArray | None:
+        return self._subset_var('flow_hours_maximum', self.with_flow_hours_max)
+
+    @cached_property
+    def flow_hours_minimum_over_periods(self) -> xr.DataArray | None:
+        return self._subset_var('flow_hours_minimum_over_periods', self.with_flow_hours_over_periods_min)
+
+    @cached_property
+    def flow_hours_maximum_over_periods(self) -> xr.DataArray | None:
+        return self._subset_var('flow_hours_maximum_over_periods', self.with_flow_hours_over_periods_max)
+
+    @cached_property
+    def load_factor_minimum(self) -> xr.DataArray | None:
+        return self._subset_var('load_factor_minimum', self.with_load_factor_min)
+
+    @cached_property
+    def load_factor_maximum(self) -> xr.DataArray | None:
+        return self._subset_var('load_factor_maximum', self.with_load_factor_max)
+
+    @cached_property
+    def effects_per_flow_hour(self) -> xr.DataArray | None:
+        return self._subset_var('effects_per_flow_hour', self.with_effects)
+
+    @cached_property
+    def linked_periods(self) -> xr.DataArray | None:
+        return self.ds.get('linked_periods')
+
+    @cached_property
+    def effects_per_active_hour(self) -> xr.DataArray | None:
+        arr = self.ds.get('effects_per_active_hour')
+        if arr is None:
+            return None
+        # Subset to flows that actually have the effect (non-NaN along non-flow dims)
+        return arr.dropna(dim='flow', how='all')
+
+    @cached_property
+    def effects_per_startup(self) -> xr.DataArray | None:
+        arr = self.ds.get('effects_per_startup')
+        if arr is None:
+            return None
+        return arr.dropna(dim='flow', how='all')
+
+    @cached_property
+    def min_uptime(self) -> xr.DataArray | None:
+        return self._subset_var('min_uptime', self.with_uptime_tracking)
+
+    @cached_property
+    def max_uptime(self) -> xr.DataArray | None:
+        return self._subset_var('max_uptime', self.with_uptime_tracking)
+
+    @cached_property
+    def min_downtime(self) -> xr.DataArray | None:
+        return self._subset_var('min_downtime', self.with_downtime_tracking)
+
+    @cached_property
+    def max_downtime(self) -> xr.DataArray | None:
+        return self._subset_var('max_downtime', self.with_downtime_tracking)
+
+    @cached_property
+    def startup_limit_values(self) -> xr.DataArray | None:
+        return self._subset_var('startup_limit', self.with_startup_limit)
+
+    @cached_property
+    def previous_uptime(self) -> xr.DataArray | None:
+        return self._subset_var('previous_uptime', self.with_uptime_tracking)
+
+    @cached_property
+    def previous_downtime(self) -> xr.DataArray | None:
+        return self._subset_var('previous_downtime', self.with_downtime_tracking)
+
+    # === Investment data from Dataset ===
+
+    @cached_property
+    def optional_investment_size_minimum(self) -> xr.DataArray | None:
+        return self.ds.get('optional_investment_size_minimum')
+
+    @cached_property
+    def optional_investment_size_maximum(self) -> xr.DataArray | None:
+        return self.ds.get('optional_investment_size_maximum')
+
+    # === Piecewise metadata (from ds.attrs) ===
+
+    @property
+    def piecewise_element_ids(self) -> list[str]:
+        return self.ds.attrs.get('piecewise_element_ids', [])
+
+    @property
+    def piecewise_max_segments(self) -> int:
+        return self.ds.attrs.get('piecewise_max_segments', 0)
+
+    @property
+    def piecewise_effect_names(self) -> list[str]:
+        return self.ds.attrs.get('piecewise_effect_names', [])
+
+    # === Categorization helpers (from Dataset masks) ===
+
+    def _ids_where(self, mask_name: str) -> list[str]:
+        return list(self.ds['flow'].values[self.ds[mask_name].values])
+
+    @cached_property
+    def with_status(self) -> list[str]:
+        return self._ids_where('has_status')
 
     @cached_property
     def with_investment(self) -> list[str]:
-        """IDs of flows with investment parameters."""
-        return self._categorize(lambda f: isinstance(f.size, InvestParameters))
+        return self._ids_where('has_investment')
 
-    @property
+    @cached_property
     def with_optional_investment(self) -> list[str]:
-        """IDs of flows with optional (non-mandatory) investment."""
-        return self._investment_data.with_optional if self._investment_data else []
+        return self._ids_where('has_optional_investment')
 
-    @property
+    @cached_property
     def with_mandatory_investment(self) -> list[str]:
-        """IDs of flows with mandatory investment."""
-        return self._investment_data.with_mandatory if self._investment_data else []
+        return self._ids_where('has_mandatory_investment')
+
+    @cached_property
+    def without_size(self) -> list[str]:
+        return [fid for fid, has in zip(self.ids, self.ds['has_size'].values, strict=False) if not has]
 
     @cached_property
     def with_status_only(self) -> list[str]:
-        """IDs of flows with status but no investment and a fixed size."""
         return sorted(set(self.with_status) - set(self.with_investment) - set(self.without_size))
 
     @cached_property
     def with_investment_only(self) -> list[str]:
-        """IDs of flows with investment but no status."""
         return sorted(set(self.with_investment) - set(self.with_status))
 
     @cached_property
     def with_status_and_investment(self) -> list[str]:
-        """IDs of flows with both status and investment."""
         return sorted(set(self.with_status) & set(self.with_investment))
 
     @cached_property
     def with_flow_hours_min(self) -> list[str]:
-        """IDs of flows with explicit flow_hours_min constraint."""
-        return self._categorize(lambda f: f.flow_hours_min is not None)
+        return self._ids_where('has_flow_hours_min')
 
     @cached_property
     def with_flow_hours_max(self) -> list[str]:
-        """IDs of flows with explicit flow_hours_max constraint."""
-        return self._categorize(lambda f: f.flow_hours_max is not None)
+        return self._ids_where('has_flow_hours_max')
 
     @cached_property
     def with_flow_hours_over_periods_min(self) -> list[str]:
-        """IDs of flows with explicit flow_hours_min_over_periods constraint."""
-        return self._categorize(lambda f: f.flow_hours_min_over_periods is not None)
+        return [f.id for f in self.elements.values() if f.flow_hours_min_over_periods is not None]
 
     @cached_property
     def with_flow_hours_over_periods_max(self) -> list[str]:
-        """IDs of flows with explicit flow_hours_max_over_periods constraint."""
-        return self._categorize(lambda f: f.flow_hours_max_over_periods is not None)
+        return [f.id for f in self.elements.values() if f.flow_hours_max_over_periods is not None]
 
     @cached_property
     def with_load_factor_min(self) -> list[str]:
-        """IDs of flows with explicit load_factor_min constraint."""
-        return self._categorize(lambda f: f.load_factor_min is not None)
+        return self._ids_where('has_load_factor_min')
 
     @cached_property
     def with_load_factor_max(self) -> list[str]:
-        """IDs of flows with explicit load_factor_max constraint."""
-        return self._categorize(lambda f: f.load_factor_max is not None)
+        return self._ids_where('has_load_factor_max')
 
     @cached_property
     def with_effects(self) -> list[str]:
-        """IDs of flows with effects_per_flow_hour defined."""
-        return self._categorize(lambda f: f.effects_per_flow_hour is not None)
+        return self._ids_where('has_effects')
 
     @cached_property
     def with_previous_flow_rate(self) -> list[str]:
-        """IDs of flows with previous_flow_rate defined (for startup/shutdown tracking)."""
-        return self._categorize(lambda f: f.previous_flow_rate is not None)
-
-    # === Parameter Dicts ===
+        return [f.id for f in self.elements.values() if f.previous_flow_rate is not None]
 
     @cached_property
-    def invest_params(self) -> dict[str, InvestParameters]:
-        """Investment parameters for flows with investment, keyed by id."""
-        return {fid: self[fid].size for fid in self.with_investment}
+    def with_startup_tracking(self) -> list[str]:
+        return self._ids_where('has_startup_tracking')
 
     @cached_property
-    def status_params(self) -> dict[str, StatusParameters]:
-        """Status parameters for flows with status, keyed by id."""
-        return {fid: self[fid].status_parameters for fid in self.with_status}
+    def with_downtime_tracking(self) -> list[str]:
+        return self._ids_where('has_downtime_tracking')
 
     @cached_property
-    def _status_data(self) -> StatusData | None:
-        """Batched status data for flows with status."""
-        if not self.with_status:
-            return None
-        return StatusData(
-            params=self.status_params,
-            dim_name='flow',
-            effect_ids=self._effect_ids,
-            timestep_duration=self._timestep_duration,
-            previous_states=self.previous_states,
-            coords=self._coords,
-            normalize_effects=self._normalize_effects,
-        )
+    def with_uptime_tracking(self) -> list[str]:
+        return self._ids_where('has_uptime_tracking')
 
     @cached_property
-    def _investment_data(self) -> InvestmentData | None:
-        """Batched investment data for flows with investment."""
-        if not self.with_investment:
-            return None
-        return InvestmentData(
-            params=self.invest_params,
-            dim_name='flow',
-            effect_ids=self._effect_ids,
-            coords=self._coords,
-            normalize_effects=self._normalize_effects,
-        )
-
-    # === Batched Parameters ===
-    # Properties return xr.DataArray only for relevant flows (based on categorizations).
-
-    @cached_property
-    def flow_hours_minimum(self) -> xr.DataArray | None:
-        """(flow, period, scenario) - minimum total flow hours for flows with explicit min."""
-        return self._batched_parameter(self.with_flow_hours_min, 'flow_hours_min', ['period', 'scenario'])
-
-    @cached_property
-    def flow_hours_maximum(self) -> xr.DataArray | None:
-        """(flow, period, scenario) - maximum total flow hours for flows with explicit max."""
-        return self._batched_parameter(self.with_flow_hours_max, 'flow_hours_max', ['period', 'scenario'])
-
-    @cached_property
-    def flow_hours_minimum_over_periods(self) -> xr.DataArray | None:
-        """(flow, scenario) - minimum flow hours over all periods for flows with explicit min."""
-        return self._batched_parameter(
-            self.with_flow_hours_over_periods_min, 'flow_hours_min_over_periods', ['scenario']
-        )
-
-    @cached_property
-    def flow_hours_maximum_over_periods(self) -> xr.DataArray | None:
-        """(flow, scenario) - maximum flow hours over all periods for flows with explicit max."""
-        return self._batched_parameter(
-            self.with_flow_hours_over_periods_max, 'flow_hours_max_over_periods', ['scenario']
-        )
-
-    @cached_property
-    def load_factor_minimum(self) -> xr.DataArray | None:
-        """(flow, period, scenario) - minimum load factor for flows with explicit min."""
-        return self._batched_parameter(self.with_load_factor_min, 'load_factor_min', ['period', 'scenario'])
-
-    @cached_property
-    def load_factor_maximum(self) -> xr.DataArray | None:
-        """(flow, period, scenario) - maximum load factor for flows with explicit max."""
-        return self._batched_parameter(self.with_load_factor_max, 'load_factor_max', ['period', 'scenario'])
-
-    @cached_property
-    def relative_minimum(self) -> xr.DataArray:
-        """(flow, time, period, scenario) - relative lower bound on flow rate."""
-        values = [self._align(fid, 'relative_minimum') for fid in self.ids]
-        arr = stack_along_dim(values, 'flow', self.ids, self._model_coords(None))
-        return self._ensure_canonical_order(arr)
-
-    @cached_property
-    def relative_maximum(self) -> xr.DataArray:
-        """(flow, time, period, scenario) - relative upper bound on flow rate."""
-        values = [self._align(fid, 'relative_maximum') for fid in self.ids]
-        arr = stack_along_dim(values, 'flow', self.ids, self._model_coords(None))
-        return self._ensure_canonical_order(arr)
-
-    @cached_property
-    def fixed_relative_profile(self) -> xr.DataArray:
-        """(flow, time, period, scenario) - fixed profile. NaN = not fixed."""
-        values = [
-            self._align(fid, 'fixed_relative_profile') if self[fid].fixed_relative_profile is not None else np.nan
-            for fid in self.ids
-        ]
-        arr = stack_along_dim(values, 'flow', self.ids, self._model_coords(None))
-        return self._ensure_canonical_order(arr)
-
-    @cached_property
-    def effective_relative_minimum(self) -> xr.DataArray:
-        """(flow, time, period, scenario) - effective lower bound (uses fixed_profile if set)."""
-        fixed = self.fixed_relative_profile
-        rel_min = self.relative_minimum
-        # Use DataArray.where with fast_isnull (faster than xr.where)
-        return rel_min.where(fast_isnull(fixed), fixed)
-
-    @cached_property
-    def effective_relative_maximum(self) -> xr.DataArray:
-        """(flow, time, period, scenario) - effective upper bound (uses fixed_profile if set)."""
-        fixed = self.fixed_relative_profile
-        rel_max = self.relative_maximum
-        # Use DataArray.where with fast_isnull (faster than xr.where)
-        return rel_max.where(fast_isnull(fixed), fixed)
-
-    @cached_property
-    def fixed_size(self) -> xr.DataArray:
-        """(flow, period, scenario) - fixed size for non-investment flows. NaN for investment/no-size flows."""
-        values = []
-        for fid in self.ids:
-            f = self[fid]
-            if f.size is None or isinstance(f.size, InvestParameters):
-                values.append(np.nan)
-            else:
-                values.append(self._align(fid, 'size', ['period', 'scenario']))
-        arr = stack_along_dim(values, 'flow', self.ids, self._model_coords(['period', 'scenario']))
-        return self._ensure_canonical_order(arr)
-
-    @cached_property
-    def effective_size_lower(self) -> xr.DataArray:
-        """(flow, period, scenario) - effective lower size for bounds.
-
-        - Fixed size flows: the size value
-        - Investment flows: minimum_or_fixed_size
-        - No size: NaN
-        """
-        values = []
-        for fid in self.ids:
-            f = self[fid]
-            if f.size is None:
-                values.append(np.nan)
-            elif isinstance(f.size, InvestParameters):
-                values.append(f.size.minimum_or_fixed_size)
-            else:
-                values.append(self._align(fid, 'size', ['period', 'scenario']))
-        arr = stack_along_dim(values, 'flow', self.ids, self._model_coords(['period', 'scenario']))
-        return self._ensure_canonical_order(arr)
-
-    @cached_property
-    def effective_size_upper(self) -> xr.DataArray:
-        """(flow, period, scenario) - effective upper size for bounds.
-
-        - Fixed size flows: the size value
-        - Investment flows: maximum_or_fixed_size
-        - No size: NaN
-        """
-        values = []
-        for fid in self.ids:
-            f = self[fid]
-            if f.size is None:
-                values.append(np.nan)
-            elif isinstance(f.size, InvestParameters):
-                values.append(f.size.maximum_or_fixed_size)
-            else:
-                values.append(self._align(fid, 'size', ['period', 'scenario']))
-        arr = stack_along_dim(values, 'flow', self.ids, self._model_coords(['period', 'scenario']))
-        return self._ensure_canonical_order(arr)
-
-    @cached_property
-    def absolute_lower_bounds(self) -> xr.DataArray:
-        """(flow, cluster, time, period, scenario) - absolute lower bounds for flow rate.
-
-        Logic:
-        - Status flows → 0 (status variable controls activation)
-        - Optional investment → 0 (invested variable controls)
-        - Mandatory investment → relative_min * effective_size_lower
-        - Fixed size → relative_min * effective_size_lower
-        - No size → 0
-        """
-        # Base: relative_min * size_lower
-        base = self.effective_relative_minimum * self.effective_size_lower
-
-        # Build mask for flows that should have lb=0 (use pre-computed boolean masks)
-        is_zero = self.has_status | self.has_optional_investment | fast_isnull(self.effective_size_lower)
-        # Use DataArray.where (faster than xr.where)
-        result = base.where(~is_zero, 0.0).fillna(0.0)
-        return self._ensure_canonical_order(result)
-
-    @cached_property
-    def absolute_upper_bounds(self) -> xr.DataArray:
-        """(flow, cluster, time, period, scenario) - absolute upper bounds for flow rate.
-
-        Logic:
-        - Investment flows → relative_max * effective_size_upper
-        - Fixed size → relative_max * effective_size_upper
-        - No size → inf
-        """
-        # Base: relative_max * size_upper
-        base = self.effective_relative_maximum * self.effective_size_upper
-
-        # Inf for flows without size (use DataArray.where, faster than xr.where)
-        result = base.where(fast_notnull(self.effective_size_upper), np.inf)
-        return self._ensure_canonical_order(result)
-
-    # --- Investment Bounds (delegated to InvestmentData) ---
-
-    @property
-    def investment_size_minimum(self) -> xr.DataArray | None:
-        """(flow, period, scenario) - minimum size for flows with investment."""
-        if not self._investment_data:
-            return None
-        # InvestmentData.size_minimum already has flow dim via stack_along_dim
-        raw = self._investment_data.size_minimum
-        return self._broadcast_existing(raw, dims=['period', 'scenario'])
-
-    @property
-    def investment_size_maximum(self) -> xr.DataArray | None:
-        """(flow, period, scenario) - maximum size for flows with investment."""
-        if not self._investment_data:
-            return None
-        raw = self._investment_data.size_maximum
-        return self._broadcast_existing(raw, dims=['period', 'scenario'])
-
-    @property
-    def optional_investment_size_minimum(self) -> xr.DataArray | None:
-        """(flow, period, scenario) - minimum size for optional investment flows."""
-        if not self._investment_data:
-            return None
-        raw = self._investment_data.optional_size_minimum
-        if raw is None:
-            return None
-        return self._broadcast_existing(raw, dims=['period', 'scenario'])
-
-    @property
-    def optional_investment_size_maximum(self) -> xr.DataArray | None:
-        """(flow, period, scenario) - maximum size for optional investment flows."""
-        if not self._investment_data:
-            return None
-        raw = self._investment_data.optional_size_maximum
-        if raw is None:
-            return None
-        return self._broadcast_existing(raw, dims=['period', 'scenario'])
-
-    # --- All-Flows Bounds (for mask-based variable creation) ---
-
-    @cached_property
-    def size_minimum_all(self) -> xr.DataArray:
-        """(flow, period, scenario) - size minimum for ALL flows. NaN for non-investment flows."""
-        if self.investment_size_minimum is not None:
-            return self.investment_size_minimum.reindex({self.dim_name: self._ids_index})
-        return xr.DataArray(
-            np.nan,
-            dims=[self.dim_name],
-            coords={self.dim_name: self._ids_index},
-        )
-
-    @cached_property
-    def size_maximum_all(self) -> xr.DataArray:
-        """(flow, period, scenario) - size maximum for ALL flows. NaN for non-investment flows."""
-        if self.investment_size_maximum is not None:
-            return self.investment_size_maximum.reindex({self.dim_name: self._ids_index})
-        return xr.DataArray(
-            np.nan,
-            dims=[self.dim_name],
-            coords={self.dim_name: self._ids_index},
-        )
-
-    @property
-    def dim_name(self) -> str:
-        """Dimension name for this data container."""
-        return 'flow'
-
-    @cached_property
-    def effects_per_flow_hour(self) -> xr.DataArray | None:
-        """(flow, effect, ...) - effect factors per flow hour.
-
-        Missing (flow, effect) combinations are 0 (pre-filled for efficient computation).
-        """
-        if not self.with_effects:
-            return None
-
-        if not self._effect_ids:
-            return None
-
-        norm = self._normalize_effects or (lambda x: x)
-        dicts = {}
-        for fid in self.with_effects:
-            raw = self[fid].effects_per_flow_hour
-            normalized = norm(raw) or {}
-            aligned = align_effects_to_coords(
-                normalized,
-                self._coords,
-                prefix=fid,
-                suffix='per_flow_hour',
-            )
-            dicts[fid] = aligned or {}
-        return build_effects_array(dicts, self._effect_ids, 'flow')
-
-    # --- Investment Parameters ---
-
-    @cached_property
-    def linked_periods(self) -> xr.DataArray | None:
-        """(flow, period) - period linking mask. 1=linked, 0=not linked, NaN=no linking."""
-        has_linking = any(
-            isinstance(f.size, InvestParameters) and f.size.linked_periods is not None for f in self.elements.values()
-        )
-        if not has_linking:
-            return None
-
-        values = []
-        for f in self.elements.values():
-            if not isinstance(f.size, InvestParameters) or f.size.linked_periods is None:
-                values.append(np.nan)
-            else:
-                values.append(f.size.linked_periods)
-        arr = stack_along_dim(values, 'flow', self.ids, self._model_coords(['period']))
-        return self._ensure_canonical_order(arr)
-
-    # --- Status Effects (delegated to StatusData) ---
-
-    @property
-    def effects_per_active_hour(self) -> xr.DataArray | None:
-        """(flow, effect, ...) - effect factors per active hour for flows with status."""
-        return self._status_data.effects_per_active_hour if self._status_data else None
-
-    @property
-    def effects_per_startup(self) -> xr.DataArray | None:
-        """(flow, effect, ...) - effect factors per startup for flows with status."""
-        return self._status_data.effects_per_startup if self._status_data else None
-
-    # --- Previous Status ---
-
-    @cached_property
-    def previous_states(self) -> dict[str, xr.DataArray]:
-        """Previous status for flows with previous_flow_rate, keyed by id.
-
-        Returns:
-            Dict mapping flow_id -> binary DataArray (time dimension).
-        """
-        from .config import CONFIG
-        from .modeling import ModelingUtilitiesAbstract
-
-        result = {}
-        for fid in self.with_previous_flow_rate:
-            flow = self[fid]
-            if flow.previous_flow_rate is not None:
-                result[fid] = ModelingUtilitiesAbstract.to_binary(
-                    values=xr.DataArray(
-                        [flow.previous_flow_rate] if np.isscalar(flow.previous_flow_rate) else flow.previous_flow_rate,
-                        dims='time',
-                    ),
-                    epsilon=CONFIG.Modeling.epsilon,
-                    dims='time',
-                )
-        return result
-
-    # --- Status Bounds (delegated to StatusData) ---
-
-    @property
-    def min_uptime(self) -> xr.DataArray | None:
-        """(flow,) - minimum uptime for flows with uptime tracking. NaN = no constraint."""
-        return self._status_data.min_uptime if self._status_data else None
-
-    @property
-    def max_uptime(self) -> xr.DataArray | None:
-        """(flow,) - maximum uptime for flows with uptime tracking. NaN = no constraint."""
-        return self._status_data.max_uptime if self._status_data else None
-
-    @property
-    def min_downtime(self) -> xr.DataArray | None:
-        """(flow,) - minimum downtime for flows with downtime tracking. NaN = no constraint."""
-        return self._status_data.min_downtime if self._status_data else None
-
-    @property
-    def max_downtime(self) -> xr.DataArray | None:
-        """(flow,) - maximum downtime for flows with downtime tracking. NaN = no constraint."""
-        return self._status_data.max_downtime if self._status_data else None
-
-    @property
-    def startup_limit_values(self) -> xr.DataArray | None:
-        """(flow,) - startup limit for flows with startup limit."""
-        return self._status_data.startup_limit if self._status_data else None
-
-    @property
-    def previous_uptime(self) -> xr.DataArray | None:
-        """(flow,) - previous uptime duration for flows with uptime tracking."""
-        return self._status_data.previous_uptime if self._status_data else None
-
-    @property
-    def previous_downtime(self) -> xr.DataArray | None:
-        """(flow,) - previous downtime duration for flows with downtime tracking."""
-        return self._status_data.previous_downtime if self._status_data else None
-
-    # === Helper Methods ===
-
-    def _align(self, flow_id: str, attr: str, dims: list[str] | None = None) -> xr.DataArray | None:
-        """Align a single flow attribute value to model coords."""
-        raw = getattr(self[flow_id], attr)
-        return align_to_coords(raw, self._coords, name=f'{flow_id}|{attr}', dims=dims)
-
-    def _batched_parameter(
-        self,
-        ids: list[str],
-        attr: str,
-        dims: list[str] | None,
-    ) -> xr.DataArray | None:
-        """Build a batched parameter array from per-flow attributes.
-
-        Args:
-            ids: Flow IDs to include (typically from a with_* property).
-            attr: Attribute name to extract from each Flow.
-            dims: Model dimensions to broadcast to (e.g., ['period', 'scenario']).
-
-        Returns:
-            DataArray with (flow, *dims) or None if ids is empty.
-        """
-        if not ids:
-            return None
-        values = [self._align(fid, attr, dims) for fid in ids]
-        arr = stack_along_dim(values, 'flow', ids, self._model_coords(dims))
-        return self._ensure_canonical_order(arr)
-
-    def _model_coords(self, dims: list[str] | None = None) -> dict[str, pd.Index | np.ndarray]:
-        """Get model coordinates for broadcasting.
-
-        Args:
-            dims: Dimensions to include. None = all (time, period, scenario).
-
-        Returns:
-            Dict of dim name -> coordinate values.
-        """
-        if dims is None:
-            dims = ['time', 'period', 'scenario']
-        return {dim: self._coords[dim] for dim in dims if dim in self._coords}
-
-    def _ensure_canonical_order(self, arr: xr.DataArray) -> xr.DataArray:
-        """Ensure array has canonical dimension order and coord dict order.
-
-        Args:
-            arr: Input DataArray.
-
-        Returns:
-            DataArray with dims in order (flow, cluster, time, period, scenario, ...) and
-            coords dict matching dims order. Additional dims are appended at the end.
-        """
-        # Note: cluster comes before time to match FlowSystem.dims ordering
-        canonical_order = ['flow', 'cluster', 'time', 'period', 'scenario']
-        # Start with canonical dims that exist in arr
-        actual_dims = [d for d in canonical_order if d in arr.dims]
-        # Append any additional dims not in canonical order
-        for d in arr.dims:
-            if d not in actual_dims:
-                actual_dims.append(d)
-
-        if list(arr.dims) != actual_dims:
-            arr = arr.transpose(*actual_dims)
-
-        # Ensure coords dict order matches dims order (linopy uses coords order)
-        if list(arr.coords.keys()) != list(arr.dims):
-            ordered_coords = {d: arr.coords[d] for d in arr.dims}
-            arr = xr.DataArray(arr.values, dims=arr.dims, coords=ordered_coords)
-
-        return arr
-
-    def _broadcast_existing(self, arr: xr.DataArray, dims: list[str] | None = None) -> xr.DataArray:
-        """Broadcast an existing DataArray (with element dim) to model coordinates.
-
-        Use this for arrays that already have the flow dimension (e.g., from InvestmentData).
-
-        Args:
-            arr: DataArray with flow dimension.
-            dims: Model dimensions to add. None = all (time, period, scenario).
-
-        Returns:
-            DataArray with dimensions in canonical order: (flow, time, period, scenario)
-        """
-        coords_to_add = self._model_coords(dims)
-
-        if not coords_to_add:
-            return self._ensure_canonical_order(arr)
-
-        # Broadcast to include new dimensions
-        for dim_name, coord in coords_to_add.items():
-            if dim_name not in arr.dims:
-                arr = arr.expand_dims({dim_name: coord})
-
-        return self._ensure_canonical_order(arr)
+    def with_startup_limit(self) -> list[str]:
+        return self._ids_where('has_startup_limit')
 
     # === Validation ===
 
     def _any_per_flow(self, arr: xr.DataArray) -> xr.DataArray:
-        """Reduce to (flow,) by collapsing all non-flow dims with .any()."""
         non_flow_dims = [d for d in arr.dims if d != self.dim_name]
         return arr.any(dim=non_flow_dims) if non_flow_dims else arr
 
     def _flagged_ids(self, mask: xr.DataArray) -> list[str]:
-        """Return flow IDs where mask is True."""
         return [fid for fid, flag in zip(self.ids, mask.values, strict=False) if flag]
 
     def validate(self) -> None:
-        """Validate all flows (config + DataArray checks).
-
-        Raises:
-            PlausibilityError: If any validation check fails.
-        """
+        """Validate all flows (config + DataArray checks)."""
         if not self.elements:
             return
 
         for flow in self.elements.values():
-            # Size is required when using StatusParameters (for big-M constraints)
             if flow.status_parameters is not None and flow.size is None:
                 raise PlausibilityError(
                     f'Flow "{flow.id}" has status_parameters but no size defined. '
@@ -1772,7 +1374,6 @@ class FlowsData:
                     f'A size is required because flow_rate = size * fixed_relative_profile.'
                 )
 
-            # Size is required for load factor constraints (total_flow_hours / size)
             if flow.size is None and flow.load_factor_min is not None:
                 raise PlausibilityError(
                     f'Flow "{flow.id}" has load_factor_min but no size defined. '
@@ -1785,7 +1386,6 @@ class FlowsData:
                     f'A size is required because the constraint is total_flow_hours <= size * load_factor_max * hours.'
                 )
 
-            # Validate previous_flow_rate type
             if flow.previous_flow_rate is not None:
                 if not any(
                     [
@@ -1799,7 +1399,6 @@ class FlowsData:
                         f'Different values in different periods or scenarios are not yet supported.'
                     )
 
-            # Warning: fixed_relative_profile + status_parameters is unusual
             if flow.fixed_relative_profile is not None and flow.status_parameters is not None:
                 logger.warning(
                     f'Flow {flow.id} has both a fixed_relative_profile and status_parameters. '
@@ -1809,12 +1408,10 @@ class FlowsData:
 
         errors: list[str] = []
 
-        # Batched checks: relative_minimum <= relative_maximum
         invalid_bounds = self._any_per_flow(self.relative_minimum > self.relative_maximum)
         if invalid_bounds.any():
             errors.append(f'relative_minimum > relative_maximum for flows: {self._flagged_ids(invalid_bounds)}')
 
-        # Check: size required when relative_minimum > 0
         has_nonzero_min = self._any_per_flow(self.relative_minimum > 0)
         if (has_nonzero_min & ~self.has_size).any():
             errors.append(
@@ -1823,7 +1420,6 @@ class FlowsData:
                 f'A size is required because the lower bound is size * relative_minimum.'
             )
 
-        # Check: size required when relative_maximum < 1
         has_nondefault_max = self._any_per_flow(self.relative_maximum < 1)
         if (has_nondefault_max & ~self.has_size).any():
             errors.append(
@@ -1832,7 +1428,6 @@ class FlowsData:
                 f'A size is required because the upper bound is size * relative_maximum.'
             )
 
-        # Warning: relative_minimum > 0 without status_parameters prevents switching inactive
         has_nonzero_min_no_status = has_nonzero_min & ~self.has_status
         if has_nonzero_min_no_status.any():
             logger.warning(
@@ -1841,7 +1436,6 @@ class FlowsData:
                 f'Consider using status_parameters to allow switching active and inactive.'
             )
 
-        # Warning: status_parameters with relative_minimum=0 allows status=1 with flow=0
         has_zero_min_with_status = ~has_nonzero_min & self.has_status
         if has_zero_min_with_status.any():
             logger.warning(
@@ -1852,6 +1446,25 @@ class FlowsData:
 
         if errors:
             raise PlausibilityError('\n'.join(errors))
+
+
+def _build_previous_states(flows: list) -> dict[str, xr.DataArray]:
+    """Build previous_states dict from flows with previous_flow_rate."""
+    from .config import CONFIG
+    from .modeling import ModelingUtilitiesAbstract
+
+    result = {}
+    for f in flows:
+        if f.previous_flow_rate is not None:
+            result[f.id] = ModelingUtilitiesAbstract.to_binary(
+                values=xr.DataArray(
+                    [f.previous_flow_rate] if np.isscalar(f.previous_flow_rate) else f.previous_flow_rate,
+                    dims='time',
+                ),
+                epsilon=CONFIG.Modeling.epsilon,
+                dims='time',
+            )
+    return result
 
 
 class EffectsData:
