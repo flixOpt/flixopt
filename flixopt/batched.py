@@ -963,17 +963,51 @@ class FlowsData:
     - Batched parameters as xr.DataArray with flow dimension
 
     This separates data access from mathematical modeling (FlowsModel).
+    No FlowSystem reference — takes explicit params only.
     """
 
-    def __init__(self, flows: list[Flow], flow_system: FlowSystem):
+    def __init__(
+        self,
+        flows: list[Flow],
+        coords: dict[str, pd.Index],
+        effect_ids: list[str],
+        timestep_duration: xr.DataArray | float | None = None,
+        normalize_effects: Any = None,
+    ):
         """Initialize FlowsData.
 
         Args:
             flows: List of all Flow elements.
-            flow_system: Parent FlowSystem for model coordinates.
+            coords: Model coordinate indexes (time, period, scenario).
+            effect_ids: List of effect IDs for building effect arrays.
+            timestep_duration: Duration per timestep (for previous duration computation).
+            normalize_effects: Callable to normalize raw effect values.
         """
         self.elements: IdList = element_id_list(flows)
-        self._fs = flow_system
+        self._coords = coords
+        self._effect_ids = effect_ids
+        self._timestep_duration = timestep_duration
+        self._normalize_effects = normalize_effects
+
+    @classmethod
+    def from_elements(
+        cls,
+        flows: list[Flow],
+        coords: dict[str, pd.Index],
+        effect_ids: list[str],
+        timestep_duration: xr.DataArray | float | None = None,
+        normalize_effects: Any = None,
+    ) -> FlowsData:
+        """Construct FlowsData from a list of Flow elements.
+
+        Args:
+            flows: List of all Flow elements.
+            coords: Model coordinate indexes (time, period, scenario).
+            effect_ids: List of effect IDs for building effect arrays.
+            timestep_duration: Duration per timestep (for previous duration computation).
+            normalize_effects: Callable to normalize raw effect values.
+        """
+        return cls(flows, coords, effect_ids, timestep_duration, normalize_effects)
 
     def __getitem__(self, label: str) -> Flow:
         """Get a flow by its id."""
@@ -1234,11 +1268,11 @@ class FlowsData:
         return StatusData(
             params=self.status_params,
             dim_name='flow',
-            effect_ids=list(self._fs.effects.keys()),
-            timestep_duration=self._fs.timestep_duration,
+            effect_ids=self._effect_ids,
+            timestep_duration=self._timestep_duration,
             previous_states=self.previous_states,
-            coords=self._fs.indexes,
-            normalize_effects=self._fs.effects.create_effect_values_dict,
+            coords=self._coords,
+            normalize_effects=self._normalize_effects,
         )
 
     @cached_property
@@ -1249,9 +1283,9 @@ class FlowsData:
         return InvestmentData(
             params=self.invest_params,
             dim_name='flow',
-            effect_ids=list(self._fs.effects.keys()),
-            coords=self._fs.indexes,
-            normalize_effects=self._fs.effects.create_effect_values_dict,
+            effect_ids=self._effect_ids,
+            coords=self._coords,
+            normalize_effects=self._normalize_effects,
         )
 
     # === Batched Parameters ===
@@ -1497,23 +1531,22 @@ class FlowsData:
         if not self.with_effects:
             return None
 
-        effect_ids = list(self._fs.effects.keys())
-        if not effect_ids:
+        if not self._effect_ids:
             return None
 
-        norm = self._fs.effects.create_effect_values_dict
+        norm = self._normalize_effects or (lambda x: x)
         dicts = {}
         for fid in self.with_effects:
             raw = self[fid].effects_per_flow_hour
             normalized = norm(raw) or {}
             aligned = align_effects_to_coords(
                 normalized,
-                self._fs.indexes,
+                self._coords,
                 prefix=fid,
                 suffix='per_flow_hour',
             )
             dicts[fid] = aligned or {}
-        return build_effects_array(dicts, effect_ids, 'flow')
+        return build_effects_array(dicts, self._effect_ids, 'flow')
 
     # --- Investment Parameters ---
 
@@ -1615,7 +1648,7 @@ class FlowsData:
     def _align(self, flow_id: str, attr: str, dims: list[str] | None = None) -> xr.DataArray | None:
         """Align a single flow attribute value to model coords."""
         raw = getattr(self[flow_id], attr)
-        return align_to_coords(raw, self._fs.indexes, name=f'{flow_id}|{attr}', dims=dims)
+        return align_to_coords(raw, self._coords, name=f'{flow_id}|{attr}', dims=dims)
 
     def _batched_parameter(
         self,
@@ -1650,8 +1683,7 @@ class FlowsData:
         """
         if dims is None:
             dims = ['time', 'period', 'scenario']
-        indexes = self._fs.indexes
-        return {dim: indexes[dim] for dim in dims if dim in indexes}
+        return {dim: self._coords[dim] for dim in dims if dim in self._coords}
 
     def _ensure_canonical_order(self, arr: xr.DataArray) -> xr.DataArray:
         """Ensure array has canonical dimension order and coord dict order.
@@ -2794,7 +2826,13 @@ class BatchedAccessor:
         """Get or create FlowsData for all flows in the system."""
         if self._flows is None:
             all_flows = list(self._fs.flows.values())
-            self._flows = FlowsData(all_flows, self._fs)
+            self._flows = FlowsData.from_elements(
+                all_flows,
+                coords=self._fs.indexes,
+                effect_ids=list(self._fs.effects.keys()),
+                timestep_duration=self._fs.timestep_duration,
+                normalize_effects=self._fs.effects.create_effect_values_dict,
+            )
         return self._flows
 
     @property
