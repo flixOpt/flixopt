@@ -420,7 +420,7 @@ class FlowSystem(CompositeContainerMixin[Element]):
         # Extract from components with path prefix
         components_structure = {}
         for comp_id, component in self.components.items():
-            comp_structure, comp_arrays = create_reference_structure(component, f'components.{comp_id}', coords=coords)
+            comp_structure, comp_arrays = create_reference_structure(component, f'components|{comp_id}', coords=coords)
             all_extracted_arrays.update(comp_arrays)
             components_structure[comp_id] = comp_structure
         reference_structure['components'] = components_structure
@@ -428,7 +428,7 @@ class FlowSystem(CompositeContainerMixin[Element]):
         # Extract from buses with path prefix
         buses_structure = {}
         for bus_id, bus in self.buses.items():
-            bus_structure, bus_arrays = create_reference_structure(bus, f'buses.{bus_id}', coords=coords)
+            bus_structure, bus_arrays = create_reference_structure(bus, f'buses|{bus_id}', coords=coords)
             all_extracted_arrays.update(bus_arrays)
             buses_structure[bus_id] = bus_structure
         reference_structure['buses'] = buses_structure
@@ -436,7 +436,7 @@ class FlowSystem(CompositeContainerMixin[Element]):
         # Extract from effects with path prefix
         effects_structure = {}
         for effect in self.effects.values():
-            effect_structure, effect_arrays = create_reference_structure(effect, f'effects.{effect.id}', coords=coords)
+            effect_structure, effect_arrays = create_reference_structure(effect, f'effects|{effect.id}', coords=coords)
             all_extracted_arrays.update(effect_arrays)
             effects_structure[effect.id] = effect_structure
         reference_structure['effects'] = effects_structure
