@@ -680,19 +680,20 @@ def register_class_for_io(cls):
 # =============================================================================
 
 
-def _is_numeric_array(obj: Any) -> bool:
-    """Check if an object is a numeric array that should be stored as a DataArray.
+def _is_numeric(obj: Any) -> bool:
+    """Check if an object is a numeric value that should be stored as a DataArray.
 
-    Only matches array-like types (np.ndarray, pd.Series, pd.DataFrame) — not
-    plain Python scalars (int, float) or numpy scalars, which survive JSON
-    round-trip fine via ``_to_basic_type``.
+    Matches arrays (np.ndarray, pd.Series, pd.DataFrame) and scalars
+    (int, float, np.integer, np.floating). Excludes bool (subclass of int).
 
-    Storing arrays as DataArrays is essential because:
-    - They participate in dataset operations (resampling, selection, etc.)
-    - They get efficient binary storage in NetCDF
-    - They preserve dtype information
+    Storing numerics as DataArrays enables:
+    - Dataset operations (resampling, selection, etc.)
+    - Efficient binary storage in NetCDF
+    - Dtype preservation
     """
-    return isinstance(obj, (np.ndarray, pd.Series, pd.DataFrame))
+    if isinstance(obj, bool):
+        return False
+    return isinstance(obj, (np.ndarray, pd.Series, pd.DataFrame, int, float, np.integer, np.floating))
 
 
 def create_reference_structure(
@@ -757,9 +758,8 @@ def _extract_recursive(
         arrays[path] = obj.rename(path)
         return f':::{path}', arrays
 
-    # Numeric arrays → DataArray for dataset operations and binary NetCDF storage.
-    # Only when coords is available so arrays get proper dimension names.
-    if coords is not None and _is_numeric_array(obj):
+    # Numeric values → DataArray for dataset operations and binary NetCDF storage.
+    if coords is not None and _is_numeric(obj):
         da = align_to_coords(obj, coords, name=path)
         arrays[path] = da.rename(path)
         return f':::{path}', arrays
@@ -781,8 +781,8 @@ def _extract_recursive(
 
     if isinstance(obj, IdList):
         processed_list: list[Any] = []
-        for i, item in enumerate(obj.values()):
-            p, a = _extract_recursive(item, f'{path}.{i}', coords)
+        for key, item in obj.items():
+            p, a = _extract_recursive(item, f'{path}.{key}', coords)
             arrays.update(a)
             processed_list.append(p)
         return processed_list, arrays
@@ -986,6 +986,10 @@ def _resolve_dataarray_reference(reference: str, arrays_dict: dict[str, xr.DataA
 
     if TimeSeriesData.is_timeseries_data(array):
         return TimeSeriesData.from_dataarray(array)
+
+    # Unwrap 0-d DataArrays back to Python scalars
+    if array.ndim == 0:
+        return array.item()
 
     return array
 

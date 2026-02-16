@@ -155,14 +155,14 @@ class Component(Element):
         _inputs = self.inputs or []
         _outputs = self.outputs or []
 
-        # Check uniqueness on raw lists (before connecting)
+        # Connect flows (sets component name, defaults flow_id to bus name)
+        self._connect_flows(_inputs, _outputs)
+
+        # Check uniqueness after flow_ids are resolved
         all_flow_ids = [flow.flow_id for flow in _inputs + _outputs]
         if len(set(all_flow_ids)) != len(all_flow_ids):
             duplicates = {fid for fid in all_flow_ids if all_flow_ids.count(fid) > 1}
             raise ValueError(f'Flow names must be unique! "{self.id}" got 2 or more of: {duplicates}')
-
-        # Connect flows (sets component name) before creating IdLists
-        self._connect_flows(_inputs, _outputs)
 
         # Now flow.id is qualified, so IdList can key by it
         self.inputs: IdList = flow_id_list(_inputs, display_name='inputs')

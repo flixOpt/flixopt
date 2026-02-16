@@ -1743,6 +1743,13 @@ class FlowSystemDatasetIO:
         """Create FlowSystem instance with constructor parameters."""
         _resolve_da = _get_resolve_dataarray_reference()
 
+        def _resolve(key, default=None):
+            """Resolve a reference_structure value, unwrapping ::: refs via _resolve_da."""
+            val = reference_structure.get(key, default)
+            if isinstance(val, str) and val.startswith(':::'):
+                val = _resolve_da(val, arrays_dict)
+            return val
+
         # Extract cluster index if present (clustered FlowSystem)
         clusters = ds.indexes.get('cluster')
 
@@ -1758,13 +1765,6 @@ class FlowSystemDatasetIO:
         if ds.indexes.get('scenario') is not None and 'scenario_weights' in reference_structure:
             scenario_weights = _resolve_da(reference_structure['scenario_weights'], arrays_dict)
 
-        # Resolve timestep_duration if present as DataArray reference
-        timestep_duration = None
-        if 'timestep_duration' in reference_structure:
-            ref_value = reference_structure['timestep_duration']
-            if isinstance(ref_value, str) and ref_value.startswith(':::'):
-                timestep_duration = _resolve_da(ref_value, arrays_dict)
-
         # Get timesteps - convert integer index to RangeIndex for segmented systems
         time_index = ds.indexes['time']
         if not isinstance(time_index, pd.DatetimeIndex):
@@ -1775,15 +1775,15 @@ class FlowSystemDatasetIO:
             periods=ds.indexes.get('period'),
             scenarios=ds.indexes.get('scenario'),
             clusters=clusters,
-            hours_of_last_timestep=reference_structure.get('hours_of_last_timestep'),
-            hours_of_previous_timesteps=reference_structure.get('hours_of_previous_timesteps'),
-            weight_of_last_period=reference_structure.get('weight_of_last_period'),
+            hours_of_last_timestep=_resolve('hours_of_last_timestep'),
+            hours_of_previous_timesteps=_resolve('hours_of_previous_timesteps'),
+            weight_of_last_period=_resolve('weight_of_last_period'),
             scenario_weights=scenario_weights,
             cluster_weight=cluster_weight_for_constructor,
-            scenario_independent_sizes=reference_structure.get('scenario_independent_sizes', True),
-            scenario_independent_flow_rates=reference_structure.get('scenario_independent_flow_rates', False),
-            name=reference_structure.get('name'),
-            timestep_duration=timestep_duration,
+            scenario_independent_sizes=_resolve('scenario_independent_sizes', True),
+            scenario_independent_flow_rates=_resolve('scenario_independent_flow_rates', False),
+            name=_resolve('name'),
+            timestep_duration=_resolve('timestep_duration'),
         )
 
     @staticmethod
