@@ -141,7 +141,7 @@ class Component(Element):
 
     """
 
-    id: str = ''
+    id: str
     inputs: list[Flow] | dict[str, Flow] = field(default_factory=list)
     outputs: list[Flow] | dict[str, Flow] = field(default_factory=list)
     status_parameters: StatusParameters | None = None
@@ -521,7 +521,7 @@ class Flow(Element):
 
     """
 
-    bus: str = ''
+    bus: str
     flow_id: str | None = None
     size: Numeric_PS | InvestParameters | None = None
     relative_minimum: Numeric_TPS = 0
