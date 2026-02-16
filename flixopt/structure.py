@@ -731,7 +731,7 @@ def create_reference_structure(
             logger.debug(f'Skipping {name=} because it is an Index')
             continue
 
-        param_path = f'{path_prefix}.{name}' if path_prefix else name
+        param_path = f'{path_prefix}|{name}' if path_prefix else name
         processed, arrays = _extract_recursive(value, param_path, coords)
         all_arrays.update(arrays)
         if processed is not None and not _is_empty(processed):
@@ -773,7 +773,7 @@ def _extract_recursive(
             value = getattr(obj, field.name)
             if value is None:
                 continue
-            processed, field_arrays = _extract_recursive(value, f'{path}.{field.name}', coords)
+            processed, field_arrays = _extract_recursive(value, f'{path}|{field.name}', coords)
             arrays.update(field_arrays)
             if processed is not None and not _is_empty(processed):
                 structure[field.name] = processed
@@ -782,7 +782,7 @@ def _extract_recursive(
     if isinstance(obj, IdList):
         processed_list: list[Any] = []
         for key, item in obj.items():
-            p, a = _extract_recursive(item, f'{path}.{key}', coords)
+            p, a = _extract_recursive(item, f'{path}|{key}', coords)
             arrays.update(a)
             processed_list.append(p)
         return processed_list, arrays
@@ -790,7 +790,7 @@ def _extract_recursive(
     if isinstance(obj, dict):
         processed_dict = {}
         for key, value in obj.items():
-            p, a = _extract_recursive(value, f'{path}.{key}', coords)
+            p, a = _extract_recursive(value, f'{path}|{key}', coords)
             arrays.update(a)
             processed_dict[key] = p
         return processed_dict, arrays
@@ -798,7 +798,7 @@ def _extract_recursive(
     if isinstance(obj, (list, tuple)):
         processed_list: list[Any] = []
         for i, item in enumerate(obj):
-            p, a = _extract_recursive(item, f'{path}.{i}', coords)
+            p, a = _extract_recursive(item, f'{path}|{i}', coords)
             arrays.update(a)
             processed_list.append(p)
         return processed_list, arrays
@@ -806,7 +806,7 @@ def _extract_recursive(
     if isinstance(obj, set):
         processed_list = []
         for i, item in enumerate(obj):
-            p, a = _extract_recursive(item, f'{path}.{i}', coords)
+            p, a = _extract_recursive(item, f'{path}|{i}', coords)
             arrays.update(a)
             processed_list.append(p)
         return processed_list, arrays
