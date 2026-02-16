@@ -681,15 +681,18 @@ def register_class_for_io(cls):
 # =============================================================================
 
 
-def _is_alignable_numeric(obj: Any) -> bool:
-    """Check if an object is a numeric array type that should be aligned to coords.
+def _is_numeric_array(obj: Any) -> bool:
+    """Check if an object is a numeric array that should be stored as a DataArray.
 
-    Only converts types that would lose structure through JSON serialization
-    (numpy arrays, pandas Series/DataFrame). Plain Python scalars (int, float)
-    and numpy scalars survive JSON round-trip fine via ``_to_basic_type``.
+    Only matches array-like types (np.ndarray, pd.Series, pd.DataFrame) — not
+    plain Python scalars (int, float) or numpy scalars, which survive JSON
+    round-trip fine via ``_to_basic_type``.
+
+    Storing arrays as DataArrays is essential because:
+    - They participate in dataset operations (resampling, selection, etc.)
+    - They get efficient binary storage in NetCDF
+    - They preserve dtype information
     """
-    if isinstance(obj, (bool, np.bool_)):
-        return False
     return isinstance(obj, (np.ndarray, pd.Series, pd.DataFrame))
 
 
@@ -708,9 +711,10 @@ def create_reference_structure(
     Args:
         obj: Object to serialize.
         path_prefix: Path prefix for DataArray keys (e.g., ``'components.Boiler'``).
-        coords: Model coordinates. When provided, alignable numeric values
-            (int, float, np.ndarray, pd.Series, ...) are converted to DataArrays
-            via ``align_to_coords`` and stored as dataset variables.
+        coords: Model coordinates for aligning numeric arrays. When provided,
+            numpy arrays / pandas objects are converted to properly-dimensioned
+            DataArrays via ``align_to_coords``, ensuring they participate in
+            dataset operations (resampling, selection) and avoid dimension conflicts.
 
     Returns:
         Tuple of (reference_structure dict, extracted_arrays dict).
@@ -728,7 +732,7 @@ def create_reference_structure(
             continue
 
         param_path = f'{path_prefix}.{name}' if path_prefix else name
-        processed, arrays = _extract_recursive(value, param_path, coords=coords)
+        processed, arrays = _extract_recursive(value, param_path, coords)
         all_arrays.update(arrays)
         if processed is not None and not _is_empty(processed):
             structure[name] = processed
@@ -747,12 +751,12 @@ def _extract_recursive(
 ) -> tuple[Any, dict[str, xr.DataArray]]:
     """Recursively extract DataArrays, using *path* as the array key.
 
-    Handles DataArrays, registered classes, plain dataclasses, dicts, lists,
-    tuples, sets, IdList, and scalar/basic types.
+    Handles DataArrays, numeric arrays (np.ndarray, pd.Series, pd.DataFrame),
+    registered classes, plain dataclasses, dicts, lists, tuples, sets, IdList,
+    and scalar/basic types.
 
-    When *coords* is provided, alignable numeric values (int, float, np.ndarray,
-    pd.Series, pd.DataFrame) are converted to DataArrays via ``align_to_coords``
-    and stored as dataset variables instead of going through ``_to_basic_type``.
+    When *coords* is provided, numeric arrays are aligned to model dimensions
+    via ``align_to_coords`` to get proper dimension names.
     """
     arrays: dict[str, xr.DataArray] = {}
 
@@ -760,14 +764,14 @@ def _extract_recursive(
         arrays[path] = obj.rename(path)
         return f':::{path}', arrays
 
-    # Coords-aware numeric conversion: promote raw numerics to DataArray
-    if coords is not None and _is_alignable_numeric(obj):
+    # Numeric arrays → DataArray for dataset operations and binary NetCDF storage.
+    # Only when coords is available so arrays get proper dimension names.
+    if coords is not None and _is_numeric_array(obj):
         da = align_to_coords(obj, coords, name=path)
         arrays[path] = da.rename(path)
         return f':::{path}', arrays
 
     if obj.__class__.__name__ in CLASS_REGISTRY:
-        # Registered class — recurse with path prefix
         return create_reference_structure(obj, path_prefix=path, coords=coords)
 
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
@@ -776,7 +780,7 @@ def _extract_recursive(
             value = getattr(obj, field.name)
             if value is None:
                 continue
-            processed, field_arrays = _extract_recursive(value, f'{path}.{field.name}', coords=coords)
+            processed, field_arrays = _extract_recursive(value, f'{path}.{field.name}', coords)
             arrays.update(field_arrays)
             if processed is not None and not _is_empty(processed):
                 structure[field.name] = processed
@@ -785,7 +789,7 @@ def _extract_recursive(
     if isinstance(obj, IdList):
         processed_dict: dict[str, Any] = {}
         for key, value in obj.items():
-            p, a = _extract_recursive(value, f'{path}.{key}', coords=coords)
+            p, a = _extract_recursive(value, f'{path}.{key}', coords)
             arrays.update(a)
             processed_dict[key] = p
         return processed_dict, arrays
@@ -793,7 +797,7 @@ def _extract_recursive(
     if isinstance(obj, dict):
         processed_dict = {}
         for key, value in obj.items():
-            p, a = _extract_recursive(value, f'{path}.{key}', coords=coords)
+            p, a = _extract_recursive(value, f'{path}.{key}', coords)
             arrays.update(a)
             processed_dict[key] = p
         return processed_dict, arrays
@@ -801,7 +805,7 @@ def _extract_recursive(
     if isinstance(obj, (list, tuple)):
         processed_list: list[Any] = []
         for i, item in enumerate(obj):
-            p, a = _extract_recursive(item, f'{path}.{i}', coords=coords)
+            p, a = _extract_recursive(item, f'{path}.{i}', coords)
             arrays.update(a)
             processed_list.append(p)
         return processed_list, arrays
@@ -809,7 +813,7 @@ def _extract_recursive(
     if isinstance(obj, set):
         processed_list = []
         for i, item in enumerate(obj):
-            p, a = _extract_recursive(item, f'{path}.{i}', coords=coords)
+            p, a = _extract_recursive(item, f'{path}.{i}', coords)
             arrays.update(a)
             processed_list.append(p)
         return processed_list, arrays
