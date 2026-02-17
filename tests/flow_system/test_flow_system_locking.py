@@ -47,7 +47,7 @@ class TestAddElementsLocking:
     def test_add_elements_before_optimization(self, simple_flow_system):
         """Should be able to add elements before optimization."""
         new_bus = fx.Bus('NewBus')
-        simple_flow_system.add_elements(new_bus)
+        simple_flow_system.add(new_bus)
         assert 'NewBus' in simple_flow_system.buses
 
     def test_add_elements_raises_when_locked(self, simple_flow_system, highs_solver):
@@ -56,7 +56,7 @@ class TestAddElementsLocking:
 
         new_bus = fx.Bus('NewBus')
         with pytest.raises(RuntimeError, match='Cannot add elements.*reset\\(\\)'):
-            simple_flow_system.add_elements(new_bus)
+            simple_flow_system.add(new_bus)
 
     def test_add_elements_after_reset(self, simple_flow_system, highs_solver):
         """Should be able to add elements after reset."""
@@ -64,7 +64,7 @@ class TestAddElementsLocking:
         simple_flow_system.reset()
 
         new_bus = fx.Bus('NewBus')
-        simple_flow_system.add_elements(new_bus)
+        simple_flow_system.add(new_bus)
         assert 'NewBus' in simple_flow_system.buses
 
     def test_add_elements_invalidates_model(self, simple_flow_system):
@@ -75,7 +75,7 @@ class TestAddElementsLocking:
         new_bus = fx.Bus('NewBus')
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter('always')
-            simple_flow_system.add_elements(new_bus)
+            simple_flow_system.add(new_bus)
             assert len(w) == 1
             assert 'model will be invalidated' in str(w[0].message)
 
@@ -222,7 +222,7 @@ class TestCopy:
         """Copy should be modifiable even if original is locked."""
         copy_fs = optimized_flow_system.copy()
         new_bus = fx.Bus('NewBus')
-        copy_fs.add_elements(new_bus)  # Should not raise
+        copy_fs.add(new_bus)  # Should not raise
         assert 'NewBus' in copy_fs.buses
 
     def test_copy_can_be_optimized_independently(self, optimized_flow_system):
@@ -276,7 +276,7 @@ class TestLoadedFlowSystem:
 
         assert loaded_fs.is_locked is False
         new_bus = fx.Bus('NewBus')
-        loaded_fs.add_elements(new_bus)  # Should not raise
+        loaded_fs.add(new_bus)  # Should not raise
 
 
 class TestInvalidate:
@@ -334,9 +334,9 @@ class TestInvalidate:
 
         # Modify an element attribute (increase gas price, which should increase costs)
         gas_tariff = simple_flow_system.components['Gastarif']
-        original_effects = gas_tariff.outputs[0].effects_per_flow_hour
+        original_effects = gas_tariff.imports[0].effects_per_flow_hour
         # Double the cost effect
-        gas_tariff.outputs[0].effects_per_flow_hour = {effect: value * 2 for effect, value in original_effects.items()}
+        gas_tariff.imports[0].effects_per_flow_hour = {effect: value * 2 for effect, value in original_effects.items()}
 
         # Invalidate to trigger re-transformation
         simple_flow_system.invalidate()
@@ -355,8 +355,8 @@ class TestInvalidate:
 
         # Modify an attribute - double the gas costs
         gas_tariff = simple_flow_system.components['Gastarif']
-        original_effects = gas_tariff.outputs[0].effects_per_flow_hour
-        gas_tariff.outputs[0].effects_per_flow_hour = {effect: value * 2 for effect, value in original_effects.items()}
+        original_effects = gas_tariff.imports[0].effects_per_flow_hour
+        gas_tariff.imports[0].effects_per_flow_hour = {effect: value * 2 for effect, value in original_effects.items()}
 
         # Call invalidate to ensure re-transformation
         simple_flow_system.invalidate()
@@ -368,8 +368,8 @@ class TestInvalidate:
 
         # Reset and use original values
         simple_flow_system.reset()
-        gas_tariff.outputs[0].effects_per_flow_hour = {
-            effect: value / 2 for effect, value in gas_tariff.outputs[0].effects_per_flow_hour.items()
+        gas_tariff.imports[0].effects_per_flow_hour = {
+            effect: value / 2 for effect, value in gas_tariff.imports[0].effects_per_flow_hour.items()
         }
         simple_flow_system.optimize(highs_solver)
         cost_with_original = simple_flow_system.solution['effect|total'].sel(effect='costs').item()
@@ -389,8 +389,8 @@ class TestInvalidate:
 
         # Modify an element attribute
         gas_tariff = simple_flow_system.components['Gastarif']
-        original_effects = gas_tariff.outputs[0].effects_per_flow_hour
-        gas_tariff.outputs[0].effects_per_flow_hour = {effect: value * 2 for effect, value in original_effects.items()}
+        original_effects = gas_tariff.imports[0].effects_per_flow_hour
+        gas_tariff.imports[0].effects_per_flow_hour = {effect: value * 2 for effect, value in original_effects.items()}
 
         # Re-optimize - changes take effect because reset already invalidated
         simple_flow_system.optimize(highs_solver)

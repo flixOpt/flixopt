@@ -15,23 +15,23 @@ class TestConversionEfficiency:
         Sensitivity: If eta were ignored (treated as 1.0), cost would be 40 instead of 50.
         """
         fs = make_flow_system(3)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 20, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'Boiler',
                 thermal_efficiency=0.8,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -49,23 +49,23 @@ class TestConversionEfficiency:
         value (0.5) were broadcast, cost=40. Only per-timestep application yields 30.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'Boiler',
                 thermal_efficiency=np.array([0.5, 1.0]),
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -84,30 +84,30 @@ class TestConversionEfficiency:
         If eta_th were wrong (e.g. 1.0), fuel=100 and cost changes to −60.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Elec'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'HeatDemand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([50, 50])),
                 ],
             ),
-            fx.Sink(
+            fx.Port(
                 'ElecGrid',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=-2),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.linear_converters.CHP(
+            fx.Converter.chp(
                 'CHP',
                 thermal_efficiency=0.5,
                 electrical_efficiency=0.4,

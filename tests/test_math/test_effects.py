@@ -22,19 +22,19 @@ class TestEffects:
         fs = make_flow_system(2)
         co2 = fx.Effect('CO2', 'kg')
         costs = fx.Effect('costs', '€', is_standard=True, is_objective=True)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             costs,
             co2,
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 20])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'HeatSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 2, 'CO2': 0.5}),
                 ],
             ),
@@ -57,19 +57,19 @@ class TestEffects:
         fs = make_flow_system(2)
         co2 = fx.Effect('CO2', 'kg')
         costs = fx.Effect('costs', '€', is_standard=True, is_objective=True, share_from_temporal={'CO2': 0.5})
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             costs,
             co2,
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'HeatSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 1, 'CO2': 10}),
                 ],
             ),
@@ -94,25 +94,25 @@ class TestEffects:
         fs = make_flow_system(2)
         co2 = fx.Effect('CO2', 'kg', maximum_total=15)
         costs = fx.Effect('costs', '€', is_standard=True, is_objective=True)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             costs,
             co2,
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Dirty',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Clean',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 10, 'CO2': 0}),
                 ],
             ),
@@ -140,25 +140,25 @@ class TestEffects:
         fs = make_flow_system(2)
         co2 = fx.Effect('CO2', 'kg', minimum_total=25)
         costs = fx.Effect('costs', '€', is_standard=True, is_objective=True)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat', imbalance_penalty_per_flow_hour=0),
             costs,
             co2,
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Dirty',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Clean',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 1, 'CO2': 0}),
                 ],
             ),
@@ -184,25 +184,25 @@ class TestEffects:
         fs = make_flow_system(2)
         co2 = fx.Effect('CO2', 'kg', maximum_per_hour=8)
         costs = fx.Effect('costs', '€', is_standard=True, is_objective=True)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             costs,
             co2,
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([15, 5])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Dirty',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Clean',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 5, 'CO2': 0}),
                 ],
             ),
@@ -225,19 +225,19 @@ class TestEffects:
         fs = make_flow_system(2)
         co2 = fx.Effect('CO2', 'kg', minimum_per_hour=10)
         costs = fx.Effect('costs', '€', is_standard=True, is_objective=True)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat', imbalance_penalty_per_flow_hour=0),
             costs,
             co2,
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([5, 5])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Dirty',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
                 ],
             ),
@@ -260,25 +260,25 @@ class TestEffects:
         fs = make_flow_system(2)
         co2 = fx.Effect('CO2', 'kg', maximum_temporal=12)
         costs = fx.Effect('costs', '€', is_standard=True, is_objective=True)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             costs,
             co2,
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Dirty',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Clean',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 5, 'CO2': 0}),
                 ],
             ),
@@ -302,19 +302,19 @@ class TestEffects:
         fs = make_flow_system(2)
         co2 = fx.Effect('CO2', 'kg', minimum_temporal=25)
         costs = fx.Effect('costs', '€', is_standard=True, is_objective=True)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat', imbalance_penalty_per_flow_hour=0),
             costs,
             co2,
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Dirty',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
                 ],
             ),
@@ -336,24 +336,24 @@ class TestEffects:
         fs = make_flow_system(2)
         co2 = fx.Effect('CO2', 'kg')
         costs = fx.Effect('costs', '€', is_standard=True, is_objective=True, share_from_periodic={'CO2': 10})
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             costs,
             co2,
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'Boiler',
                 thermal_efficiency=1.0,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -389,24 +389,24 @@ class TestEffects:
         fs = make_flow_system(2)
         co2 = fx.Effect('CO2', 'kg', maximum_periodic=50)
         costs = fx.Effect('costs', '€', is_standard=True, is_objective=True)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             costs,
             co2,
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'CheapBoiler',
                 thermal_efficiency=1.0,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -419,7 +419,7 @@ class TestEffects:
                     ),
                 ),
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'ExpensiveBoiler',
                 thermal_efficiency=1.0,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -453,24 +453,24 @@ class TestEffects:
         fs = make_flow_system(2)
         co2 = fx.Effect('CO2', 'kg', minimum_periodic=40)
         costs = fx.Effect('costs', '€', is_standard=True, is_objective=True)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             costs,
             co2,
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'InvestBoiler',
                 thermal_efficiency=1.0,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -483,7 +483,7 @@ class TestEffects:
                     ),
                 ),
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'Backup',
                 thermal_efficiency=0.5,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),

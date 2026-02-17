@@ -224,6 +224,7 @@ filterwarnings = [
     "ignore:Source is deprecated:DeprecationWarning",
     "ignore:Sink is deprecated:DeprecationWarning",
     "ignore:SourceAndSink is deprecated:DeprecationWarning",
+    "ignore:add_elements\\(\\) is deprecated:DeprecationWarning",
     "ignore:.*network visualization is still experimental.*:UserWarning:flixopt",
 ]
 

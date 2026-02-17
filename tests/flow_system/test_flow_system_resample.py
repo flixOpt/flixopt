@@ -13,17 +13,13 @@ def simple_fs():
     """Simple FlowSystem with basic components."""
     timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
     fs = fx.FlowSystem(timesteps)
-    fs.add_elements(
-        fx.Bus('heat'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True)
-    )
-    fs.add_elements(
-        fx.Sink(
+    fs.add(fx.Bus('heat'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
+    fs.add(
+        fx.Port(
             'demand',
-            inputs=[fx.Flow(bus='heat', flow_id='in', fixed_relative_profile=np.linspace(10, 20, 24), size=1)],
+            exports=[fx.Flow(bus='heat', flow_id='in', fixed_relative_profile=np.linspace(10, 20, 24), size=1)],
         ),
-        fx.Source(
-            'source', outputs=[fx.Flow(bus='heat', flow_id='out', size=50, effects_per_flow_hour={'costs': 0.05})]
-        ),
+        fx.Port('source', imports=[fx.Flow(bus='heat', flow_id='out', size=50, effects_per_flow_hour={'costs': 0.05})]),
     )
     return fs
 
@@ -34,14 +30,14 @@ def complex_fs():
     timesteps = pd.date_range('2023-01-01', periods=48, freq='h')
     fs = fx.FlowSystem(timesteps)
 
-    fs.add_elements(
+    fs.add(
         fx.Bus('heat'),
         fx.Bus('elec'),
         fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True),
     )
 
     # Storage
-    fs.add_elements(
+    fs.add(
         fx.Storage(
             'battery',
             charging=fx.Flow(bus='elec', size=10),
@@ -51,17 +47,19 @@ def complex_fs():
     )
 
     # Piecewise converter
-    converter = fx.linear_converters.Boiler(
-        'boiler', thermal_efficiency=0.9, fuel_flow=fx.Flow(bus='elec', flow_id='gas'), thermal_flow=fx.Flow(bus='heat')
+    converter = fx.Converter.boiler(
+        'boiler',
+        thermal_efficiency=0.9,
+        fuel_flow=fx.Flow(bus='elec', flow_id='gas'),
+        thermal_flow=fx.Flow(bus='heat', size=100),
     )
-    converter.thermal_flow.size = 100
-    fs.add_elements(converter)
+    fs.add(converter)
 
     # Component with investment
-    fs.add_elements(
-        fx.Source(
+    fs.add(
+        fx.Port(
             'pv',
-            outputs=[
+            imports=[
                 fx.Flow(
                     bus='elec',
                     flow_id='gen',
@@ -99,11 +97,11 @@ def test_resample_methods(method, expected):
     """Test different resampling methods."""
     ts = pd.date_range('2023-01-01', periods=4, freq='h')
     fs = fx.FlowSystem(ts)
-    fs.add_elements(fx.Bus('b'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
-    fs.add_elements(
-        fx.Sink(
+    fs.add(fx.Bus('b'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
+    fs.add(
+        fx.Port(
             's',
-            inputs=[fx.Flow(bus='b', flow_id='in', fixed_relative_profile=np.array([10.0, 20.0, 30.0, 40.0]), size=1)],
+            exports=[fx.Flow(bus='b', flow_id='in', fixed_relative_profile=np.array([10.0, 20.0, 30.0, 40.0]), size=1)],
         )
     )
 
@@ -145,8 +143,8 @@ def test_time_metadata_updated(simple_fs):
 def test_with_dimensions(simple_fs, dim_name, dim_value):
     """Test resampling preserves period/scenario dimensions."""
     fs = fx.FlowSystem(simple_fs.timesteps, **{dim_name: dim_value})
-    fs.add_elements(fx.Bus('h'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
-    fs.add_elements(fx.Sink('d', inputs=[fx.Flow(bus='h', flow_id='in', fixed_relative_profile=np.ones(24), size=1)]))
+    fs.add(fx.Bus('h'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
+    fs.add(fx.Port('d', exports=[fx.Flow(bus='h', flow_id='in', fixed_relative_profile=np.ones(24), size=1)]))
 
     fs_r = fs.resample('2h', method='mean')
     assert getattr(fs_r, dim_name) is not None
@@ -170,7 +168,7 @@ def test_converter_resample(complex_fs):
     fs_r = complex_fs.resample('4h', method='mean')
     assert 'boiler' in fs_r.components
     boiler = fs_r.components['boiler']
-    assert hasattr(boiler, 'thermal_efficiency')
+    assert hasattr(boiler, 'conversion_factors')
 
 
 def test_invest_resample(complex_fs):
@@ -195,10 +193,10 @@ def test_modeling(with_dim):
         kwargs['scenarios'] = pd.Index(['base', 'high'], name='scenario')
 
     fs = fx.FlowSystem(ts, **kwargs)
-    fs.add_elements(fx.Bus('h'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
-    fs.add_elements(
-        fx.Sink('d', inputs=[fx.Flow(bus='h', flow_id='in', fixed_relative_profile=np.linspace(10, 30, 48), size=1)]),
-        fx.Source('s', outputs=[fx.Flow(bus='h', flow_id='out', size=100, effects_per_flow_hour={'costs': 0.05})]),
+    fs.add(fx.Bus('h'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
+    fs.add(
+        fx.Port('d', exports=[fx.Flow(bus='h', flow_id='in', fixed_relative_profile=np.linspace(10, 30, 48), size=1)]),
+        fx.Port('s', imports=[fx.Flow(bus='h', flow_id='out', size=100, effects_per_flow_hour={'costs': 0.05})]),
     )
 
     fs_r = fs.resample('4h', method='mean')
@@ -212,10 +210,10 @@ def test_model_structure_preserved():
     """Test model structure (var/constraint types) preserved."""
     ts = pd.date_range('2023-01-01', periods=48, freq='h')
     fs = fx.FlowSystem(ts)
-    fs.add_elements(fx.Bus('h'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
-    fs.add_elements(
-        fx.Sink('d', inputs=[fx.Flow(bus='h', flow_id='in', fixed_relative_profile=np.linspace(10, 30, 48), size=1)]),
-        fx.Source('s', outputs=[fx.Flow(bus='h', flow_id='out', size=100, effects_per_flow_hour={'costs': 0.05})]),
+    fs.add(fx.Bus('h'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
+    fs.add(
+        fx.Port('d', exports=[fx.Flow(bus='h', flow_id='in', fixed_relative_profile=np.linspace(10, 30, 48), size=1)]),
+        fx.Port('s', imports=[fx.Flow(bus='h', flow_id='out', size=100, effects_per_flow_hour={'costs': 0.05})]),
     )
 
     fs.build_model()
@@ -257,8 +255,8 @@ def test_frequencies(freq, exp_len):
     """Test various frequencies."""
     ts = pd.date_range('2023-01-01', periods=168, freq='h')
     fs = fx.FlowSystem(ts)
-    fs.add_elements(fx.Bus('b'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
-    fs.add_elements(fx.Sink('s', inputs=[fx.Flow(bus='b', flow_id='in', fixed_relative_profile=np.ones(168), size=1)]))
+    fs.add(fx.Bus('b'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
+    fs.add(fx.Port('s', exports=[fx.Flow(bus='b', flow_id='in', fixed_relative_profile=np.ones(168), size=1)]))
 
     assert len(fs.resample(freq, method='mean').timesteps) == exp_len
 
@@ -267,8 +265,8 @@ def test_irregular_timesteps_error():
     """Test that resampling irregular timesteps to finer resolution raises error without fill_gaps."""
     ts = pd.DatetimeIndex(['2023-01-01 00:00', '2023-01-01 01:00', '2023-01-01 03:00'], name='time')
     fs = fx.FlowSystem(ts)
-    fs.add_elements(fx.Bus('b'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
-    fs.add_elements(fx.Sink('s', inputs=[fx.Flow(bus='b', flow_id='in', fixed_relative_profile=np.ones(3), size=1)]))
+    fs.add(fx.Bus('b'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
+    fs.add(fx.Port('s', exports=[fx.Flow(bus='b', flow_id='in', fixed_relative_profile=np.ones(3), size=1)]))
 
     with pytest.raises(ValueError, match='Resampling created gaps'):
         fs.transform.resample('1h', method='mean')
@@ -278,9 +276,9 @@ def test_irregular_timesteps_with_fill_gaps():
     """Test that resampling irregular timesteps works with explicit fill_gaps strategy."""
     ts = pd.DatetimeIndex(['2023-01-01 00:00', '2023-01-01 01:00', '2023-01-01 03:00'], name='time')
     fs = fx.FlowSystem(ts)
-    fs.add_elements(fx.Bus('b'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
-    fs.add_elements(
-        fx.Sink('s', inputs=[fx.Flow(bus='b', flow_id='in', fixed_relative_profile=np.array([1.0, 2.0, 4.0]), size=1)])
+    fs.add(fx.Bus('b'), fx.Effect('costs', unit='€', description='costs', is_objective=True, is_standard=True))
+    fs.add(
+        fx.Port('s', exports=[fx.Flow(bus='b', flow_id='in', fixed_relative_profile=np.array([1.0, 2.0, 4.0]), size=1)])
     )
 
     # Test with ffill

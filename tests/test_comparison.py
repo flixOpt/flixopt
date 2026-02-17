@@ -25,27 +25,27 @@ _TIMESTEPS = pd.date_range('2020-01-01', periods=24, freq='h', name='time')
 def _build_base_flow_system():
     """Factory: base flow system with boiler and storage."""
     fs = fx.FlowSystem(_TIMESTEPS, name='Base')
-    fs.add_elements(
+    fs.add(
         fx.Effect('costs', '€', 'Costs', is_standard=True, is_objective=True),
         fx.Effect('CO2', 'kg', 'CO2 Emissions'),
         fx.Bus('Electricity'),
         fx.Bus('Heat'),
         fx.Bus('Gas'),
     )
-    fs.add_elements(
-        fx.Source(
+    fs.add(
+        fx.Port(
             'Grid',
-            outputs=[fx.Flow(bus='Electricity', flow_id='P_el', size=100, effects_per_flow_hour={'costs': 0.3})],
+            imports=[fx.Flow(bus='Electricity', flow_id='P_el', size=100, effects_per_flow_hour={'costs': 0.3})],
         ),
-        fx.Source(
+        fx.Port(
             'GasSupply',
-            outputs=[fx.Flow(bus='Gas', flow_id='Q_gas', size=200, effects_per_flow_hour={'costs': 0.05, 'CO2': 0.2})],
+            imports=[fx.Flow(bus='Gas', flow_id='Q_gas', size=200, effects_per_flow_hour={'costs': 0.05, 'CO2': 0.2})],
         ),
-        fx.Sink(
+        fx.Port(
             'HeatDemand',
-            inputs=[fx.Flow(bus='Heat', flow_id='Q_demand', size=50, fixed_relative_profile=0.6)],
+            exports=[fx.Flow(bus='Heat', flow_id='Q_demand', size=50, fixed_relative_profile=0.6)],
         ),
-        fx.linear_converters.Boiler(
+        fx.Converter.boiler(
             'Boiler',
             thermal_efficiency=0.9,
             thermal_flow=fx.Flow(bus='Heat', flow_id='Q_th', size=60),
@@ -65,37 +65,37 @@ def _build_base_flow_system():
 def _build_flow_system_with_chp():
     """Factory: flow system with additional CHP component."""
     fs = fx.FlowSystem(_TIMESTEPS, name='WithCHP')
-    fs.add_elements(
+    fs.add(
         fx.Effect('costs', '€', 'Costs', is_standard=True, is_objective=True),
         fx.Effect('CO2', 'kg', 'CO2 Emissions'),
         fx.Bus('Electricity'),
         fx.Bus('Heat'),
         fx.Bus('Gas'),
     )
-    fs.add_elements(
-        fx.Source(
+    fs.add(
+        fx.Port(
             'Grid',
-            outputs=[fx.Flow(bus='Electricity', flow_id='P_el', size=100, effects_per_flow_hour={'costs': 0.3})],
+            imports=[fx.Flow(bus='Electricity', flow_id='P_el', size=100, effects_per_flow_hour={'costs': 0.3})],
         ),
-        fx.Source(
+        fx.Port(
             'GasSupply',
-            outputs=[fx.Flow(bus='Gas', flow_id='Q_gas', size=200, effects_per_flow_hour={'costs': 0.05, 'CO2': 0.2})],
+            imports=[fx.Flow(bus='Gas', flow_id='Q_gas', size=200, effects_per_flow_hour={'costs': 0.05, 'CO2': 0.2})],
         ),
-        fx.Sink(
+        fx.Port(
             'HeatDemand',
-            inputs=[fx.Flow(bus='Heat', flow_id='Q_demand', size=50, fixed_relative_profile=0.6)],
+            exports=[fx.Flow(bus='Heat', flow_id='Q_demand', size=50, fixed_relative_profile=0.6)],
         ),
-        fx.Sink(
+        fx.Port(
             'ElectricitySink',
-            inputs=[fx.Flow(bus='Electricity', flow_id='P_sink', size=100)],
+            exports=[fx.Flow(bus='Electricity', flow_id='P_sink', size=100)],
         ),
-        fx.linear_converters.Boiler(
+        fx.Converter.boiler(
             'Boiler',
             thermal_efficiency=0.9,
             thermal_flow=fx.Flow(bus='Heat', flow_id='Q_th', size=60),
             fuel_flow=fx.Flow(bus='Gas', flow_id='Q_fu'),
         ),
-        fx.linear_converters.CHP(
+        fx.Converter.chp(
             'CHP',
             thermal_efficiency=0.5,
             electrical_efficiency=0.3,

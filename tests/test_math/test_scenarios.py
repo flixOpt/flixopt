@@ -39,16 +39,16 @@ class TestScenarios:
             scenario_weights=[0.3, 0.7],
         )
         demand = _scenario_demand(fs, [10, 10], [30, 30])
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=demand)],
+                exports=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=demand)],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
+                imports=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
         )
         fs = optimize(fs)
@@ -71,16 +71,16 @@ class TestScenarios:
             scenario_weights=[0.5, 0.5],
         )
         demand = _scenario_demand(fs, [10, 10], [30, 30])
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=demand)],
+                exports=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=demand)],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(
                         bus='Elec',
                         flow_id='elec',
@@ -118,20 +118,20 @@ class TestScenarios:
         )
         fs.scenario_independent_flow_rates = ['Grid(elec)']
         demand = _scenario_demand(fs, [10, 10], [30, 30])
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=demand)],
+                exports=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=demand)],
             ),
-            fx.Sink(
+            fx.Port(
                 'Dump',
-                inputs=[fx.Flow(bus='Elec', flow_id='elec')],
+                exports=[fx.Flow(bus='Elec', flow_id='elec')],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
+                imports=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
         )
         fs = optimize(fs)
@@ -156,18 +156,18 @@ class TestScenarios:
             scenarios=['low', 'high'],
             scenario_weights=[0.5, 0.5],
         )
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0, 0, 80])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 1, 100])),
                 ],
             ),
@@ -203,18 +203,18 @@ class TestScenarios:
             scenarios=['low', 'high'],
             scenario_weights=[0.5, 0.5],
         )
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec', imbalance_penalty_per_flow_hour=5),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([50, 0, 0])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([100, 1, 1])),
                 ],
             ),

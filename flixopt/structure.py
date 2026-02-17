@@ -734,7 +734,7 @@ def create_reference_structure(
         param_path = f'{path_prefix}|{name}' if path_prefix else name
         processed, arrays = _extract_recursive(value, param_path, coords)
         all_arrays.update(arrays)
-        if processed is not None and not _is_empty(processed):
+        if processed is not None:
             structure[name] = processed
 
     return structure, all_arrays

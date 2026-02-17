@@ -20,23 +20,23 @@ class TestFlowConstraints:
         → cost=60. With relative_minimum=0.4, must produce 40 → cost=80.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat', imbalance_penalty_per_flow_hour=0),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([30, 30])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'Boiler',
                 thermal_efficiency=1.0,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -62,24 +62,24 @@ class TestFlowConstraints:
         ExpensiveSrc covers 10 each timestep (2×10×5=100) → total cost=200.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([60, 60])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'CheapSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=100, relative_maximum=0.5, effects_per_flow_hour=1),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'ExpensiveSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=5),
                 ],
             ),
@@ -103,24 +103,24 @@ class TestFlowConstraints:
         With flow_hours_max=30, CheapSrc limited to 30, ExpensiveSrc covers 30 → cost=180.
         """
         fs = make_flow_system(3)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([20, 20, 20])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'CheapSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', flow_hours_max=30, effects_per_flow_hour=1),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'ExpensiveSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=5),
                 ],
             ),
@@ -144,24 +144,24 @@ class TestFlowConstraints:
         With flow_hours_min=40, ExpensiveSrc forced to produce 40 → cost=220.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),  # Strict balance (no imbalance penalty = must balance)
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([30, 30])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'CheapSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=1),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'ExpensiveSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', flow_hours_min=40, effects_per_flow_hour=5),
                 ],
             ),
@@ -185,24 +185,24 @@ class TestFlowConstraints:
         With load_factor_max=0.5, CheapSrc limited to 50, ExpensiveSrc covers 30 → cost=200.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([40, 40])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'CheapSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=50, load_factor_max=0.5, effects_per_flow_hour=1),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'ExpensiveSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=5),
                 ],
             ),
@@ -224,24 +224,24 @@ class TestFlowConstraints:
         With load_factor_min=0.3, ExpensiveSrc forced to produce 60 → cost=300.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat', imbalance_penalty_per_flow_hour=0),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([30, 30])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'CheapSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=1),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'ExpensiveSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=100, load_factor_min=0.3, effects_per_flow_hour=5),
                 ],
             ),

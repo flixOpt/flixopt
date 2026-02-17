@@ -22,23 +22,23 @@ class TestFlowInvest:
         Only size=50 (peak demand) minimizes the sum of invest + fuel cost.
         """
         fs = make_flow_system(3)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 50, 20])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'Boiler',
                 thermal_efficiency=1.0,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -71,23 +71,23 @@ class TestFlowInvest:
         vs 20) proves the investment mechanism is working.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'InvestBoiler',
                 thermal_efficiency=1.0,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -100,7 +100,7 @@ class TestFlowInvest:
                     ),
                 ),
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'CheapBoiler',
                 thermal_efficiency=0.5,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -124,23 +124,23 @@ class TestFlowInvest:
         proves the constraint is active.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'Boiler',
                 thermal_efficiency=1.0,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -175,23 +175,23 @@ class TestFlowInvest:
         invested size is exactly 80, not 30.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([30, 30])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'FixedBoiler',
                 thermal_efficiency=1.0,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -204,7 +204,7 @@ class TestFlowInvest:
                     ),
                 ),
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'Backup',
                 thermal_efficiency=0.5,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -232,23 +232,23 @@ class TestFlowInvest:
         With piecewise (economies of scale), invest=130 → total=210.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([80, 80])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=0.5),
                 ],
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'Boiler',
                 thermal_efficiency=1.0,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -286,23 +286,23 @@ class TestFlowInvest:
         mandatory is enforced.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'ExpensiveBoiler',
                 thermal_efficiency=1.0,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -318,7 +318,7 @@ class TestFlowInvest:
                     ),
                 ),
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'CheapBoiler',
                 thermal_efficiency=0.5,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -346,23 +346,23 @@ class TestFlowInvest:
         cost=40 here vs cost=1030 with mandatory=True proves the flag works.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'ExpensiveBoiler',
                 thermal_efficiency=1.0,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -377,7 +377,7 @@ class TestFlowInvest:
                     ),
                 ),
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'CheapBoiler',
                 thermal_efficiency=0.5,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -403,23 +403,23 @@ class TestFlowInvest:
         With retirement=500, investing becomes cheaper. Cost difference proves feature.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'NewBoiler',
                 thermal_efficiency=1.0,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -434,7 +434,7 @@ class TestFlowInvest:
                     ),
                 ),
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'Backup',
                 thermal_efficiency=0.5,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -461,23 +461,23 @@ class TestFlowInvest:
         The 50€ difference proves retirement cost is applied.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'ExpensiveBoiler',
                 thermal_efficiency=1.0,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -492,7 +492,7 @@ class TestFlowInvest:
                     ),
                 ),
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'Backup',
                 thermal_efficiency=0.5,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -520,23 +520,23 @@ class TestFlowInvestWithStatus:
         With startup_cost=50 × 2, cost increases by 100.
         """
         fs = make_flow_system(4)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([0, 20, 0, 20])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'Boiler',
                 thermal_efficiency=1.0,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -571,23 +571,23 @@ class TestFlowInvestWithStatus:
         Sensitivity: The cost changes due to min_uptime forcing operation patterns.
         """
         fs = make_flow_system(3)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),  # Strict balance (demand must be met)
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([20, 10, 20])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'InvestBoiler',
                 thermal_efficiency=1.0,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -602,7 +602,7 @@ class TestFlowInvestWithStatus:
                     status_parameters=fx.StatusParameters(min_uptime=2),
                 ),
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'Backup',
                 thermal_efficiency=0.5,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -631,23 +631,23 @@ class TestFlowInvestWithStatus:
         With active_hours_max=2, InvestBoiler runs 2 hours, backup runs 2 → cost higher.
         """
         fs = make_flow_system(4)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10, 10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'InvestBoiler',
                 thermal_efficiency=1.0,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -661,7 +661,7 @@ class TestFlowInvestWithStatus:
                     status_parameters=fx.StatusParameters(active_hours_max=2),
                 ),
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'Backup',
                 thermal_efficiency=0.5,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),

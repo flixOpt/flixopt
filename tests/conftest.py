@@ -147,7 +147,7 @@ class Converters:
         @staticmethod
         def simple():
             """Simple boiler from simple_flow_system"""
-            return fx.linear_converters.Boiler(
+            return fx.Converter.boiler(
                 'Boiler',
                 thermal_efficiency=0.5,
                 thermal_flow=fx.Flow(
@@ -164,7 +164,7 @@ class Converters:
         @staticmethod
         def complex():
             """Complex boiler with investment parameters from flow_system_complex"""
-            return fx.linear_converters.Boiler(
+            return fx.Converter.boiler(
                 'Kessel',
                 thermal_efficiency=0.5,
                 status_parameters=fx.StatusParameters(effects_per_active_hour={'costs': 0, 'CO2': 1000}),
@@ -200,7 +200,7 @@ class Converters:
         @staticmethod
         def simple():
             """Simple CHP from simple_flow_system"""
-            return fx.linear_converters.CHP(
+            return fx.Converter.chp(
                 'CHP_unit',
                 thermal_efficiency=0.5,
                 electrical_efficiency=0.4,
@@ -218,7 +218,7 @@ class Converters:
         @staticmethod
         def base():
             """CHP from flow_system_base"""
-            return fx.linear_converters.CHP(
+            return fx.Converter.chp(
                 'KWK',
                 thermal_efficiency=0.5,
                 electrical_efficiency=0.4,
@@ -234,7 +234,7 @@ class Converters:
         @staticmethod
         def piecewise():
             """Piecewise converter from flow_system_piecewise_conversion"""
-            return fx.LinearConverter(
+            return fx.Converter(
                 'KWK',
                 inputs=[fx.Flow(bus='Gas', flow_id='Q_fu', size=200)],
                 outputs=[
@@ -254,7 +254,7 @@ class Converters:
         @staticmethod
         def segments(timesteps_length):
             """Segments converter with time-varying piecewise conversion"""
-            return fx.LinearConverter(
+            return fx.Converter(
                 'KWK',
                 inputs=[fx.Flow(bus='Gas', flow_id='Q_fu', size=200)],
                 outputs=[
@@ -381,25 +381,25 @@ class Sinks:
     @staticmethod
     def heat_load(thermal_profile):
         """Create thermal heat load sink"""
-        return fx.Sink(
+        return fx.Port(
             'Wärmelast',
-            inputs=[fx.Flow(bus='Fernwärme', flow_id='Q_th_Last', size=1, fixed_relative_profile=thermal_profile)],
+            exports=[fx.Flow(bus='Fernwärme', flow_id='Q_th_Last', size=1, fixed_relative_profile=thermal_profile)],
         )
 
     @staticmethod
     def electricity_feed_in(electrical_price_profile):
         """Create electricity feed-in sink"""
-        return fx.Sink(
+        return fx.Port(
             'Einspeisung',
-            inputs=[fx.Flow(bus='Strom', flow_id='P_el', effects_per_flow_hour=-1 * electrical_price_profile)],
+            exports=[fx.Flow(bus='Strom', flow_id='P_el', effects_per_flow_hour=-1 * electrical_price_profile)],
         )
 
     @staticmethod
     def electricity_load(electrical_profile):
         """Create electrical load sink (for flow_system_long)"""
-        return fx.Sink(
+        return fx.Port(
             'Stromlast',
-            inputs=[fx.Flow(bus='Strom', flow_id='P_el_Last', size=1, fixed_relative_profile=electrical_profile)],
+            exports=[fx.Flow(bus='Strom', flow_id='P_el_Last', size=1, fixed_relative_profile=electrical_profile)],
         )
 
 
@@ -410,14 +410,14 @@ class Sources:
     def gas_with_costs_and_co2():
         """Standard gas tariff with CO2 emissions"""
         source = Sources.gas_with_costs()
-        source.outputs[0].effects_per_flow_hour = {'costs': 0.04, 'CO2': 0.3}
+        source.imports[0].effects_per_flow_hour = {'costs': 0.04, 'CO2': 0.3}
         return source
 
     @staticmethod
     def gas_with_costs():
         """Simple gas tariff without CO2"""
-        return fx.Source(
-            'Gastarif', outputs=[fx.Flow(bus='Gas', flow_id='Q_Gas', size=1000, effects_per_flow_hour={'costs': 0.04})]
+        return fx.Port(
+            'Gastarif', imports=[fx.Flow(bus='Gas', flow_id='Q_Gas', size=1000, effects_per_flow_hour={'costs': 0.04})]
         )
 
 
@@ -448,8 +448,8 @@ def build_simple_flow_system() -> fx.FlowSystem:
 
     # Create flow system
     flow_system = fx.FlowSystem(base_timesteps)
-    flow_system.add_elements(*Buses.defaults())
-    flow_system.add_elements(storage, costs, co2, boiler, heat_load, gas_tariff, electricity_feed_in, chp)
+    flow_system.add(*Buses.defaults())
+    flow_system.add(storage, costs, co2, boiler, heat_load, gas_tariff, electricity_feed_in, chp)
 
     return flow_system
 
@@ -487,8 +487,8 @@ def simple_flow_system_scenarios() -> fx.FlowSystem:
     flow_system = fx.FlowSystem(
         base_timesteps, scenarios=pd.Index(['A', 'B', 'C']), scenario_weights=np.array([0.5, 0.25, 0.25])
     )
-    flow_system.add_elements(*Buses.defaults())
-    flow_system.add_elements(storage, costs, co2, boiler, heat_load, gas_tariff, electricity_feed_in, chp)
+    flow_system.add(*Buses.defaults())
+    flow_system.add(storage, costs, co2, boiler, heat_load, gas_tariff, electricity_feed_in, chp)
 
     return flow_system
 
@@ -506,8 +506,8 @@ def basic_flow_system() -> fx.FlowSystem:
     gas_source = Sources.gas_with_costs()
     electricity_sink = Sinks.electricity_feed_in(p_el)
 
-    flow_system.add_elements(*Buses.defaults())
-    flow_system.add_elements(costs, heat_load, gas_source, electricity_sink)
+    flow_system.add(*Buses.defaults())
+    flow_system.add(costs, heat_load, gas_source, electricity_sink)
 
     return flow_system
 
@@ -532,13 +532,13 @@ def flow_system_complex() -> fx.FlowSystem:
     gas_tariff = Sources.gas_with_costs_and_co2()
     electricity_feed_in = Sinks.electricity_feed_in(electrical_load)
 
-    flow_system.add_elements(*Buses.defaults())
-    flow_system.add_elements(costs, co2, pe, heat_load, gas_tariff, electricity_feed_in)
+    flow_system.add(*Buses.defaults())
+    flow_system.add(costs, co2, pe, heat_load, gas_tariff, electricity_feed_in)
 
     boiler = Converters.Boilers.complex()
     speicher = Storage.complex()
 
-    flow_system.add_elements(boiler, speicher)
+    flow_system.add(boiler, speicher)
 
     return flow_system
 
@@ -550,7 +550,7 @@ def flow_system_base(flow_system_complex) -> fx.FlowSystem:
     """
     flow_system = flow_system_complex
     chp = Converters.CHPs.base()
-    flow_system.add_elements(chp)
+    flow_system.add(chp)
     return flow_system
 
 
@@ -558,7 +558,7 @@ def flow_system_base(flow_system_complex) -> fx.FlowSystem:
 def flow_system_piecewise_conversion(flow_system_complex) -> fx.FlowSystem:
     flow_system = flow_system_complex
     converter = Converters.LinearConverters.piecewise()
-    flow_system.add_elements(converter)
+    flow_system.add(converter)
     return flow_system
 
 
@@ -569,7 +569,7 @@ def flow_system_segments_of_flows_2(flow_system_complex) -> fx.FlowSystem:
     """
     flow_system = flow_system_complex
     converter = Converters.LinearConverters.segments(len(flow_system.timesteps))
-    flow_system.add_elements(converter)
+    flow_system.add(converter)
     return flow_system
 
 
@@ -600,45 +600,45 @@ def flow_system_long():
     )
 
     flow_system = fx.FlowSystem(pd.DatetimeIndex(data.index))
-    flow_system.add_elements(
+    flow_system.add(
         *Buses.defaults(),
         Buses.coal(),
         Effects.costs(),
         Effects.co2(),
         Effects.primary_energy(),
-        fx.Sink(
+        fx.Port(
             'Wärmelast',
-            inputs=[fx.Flow(bus='Fernwärme', flow_id='Q_th_Last', size=1, fixed_relative_profile=thermal_load_ts)],
+            exports=[fx.Flow(bus='Fernwärme', flow_id='Q_th_Last', size=1, fixed_relative_profile=thermal_load_ts)],
         ),
-        fx.Sink(
+        fx.Port(
             'Stromlast',
-            inputs=[fx.Flow(bus='Strom', flow_id='P_el_Last', size=1, fixed_relative_profile=electrical_load_ts)],
+            exports=[fx.Flow(bus='Strom', flow_id='P_el_Last', size=1, fixed_relative_profile=electrical_load_ts)],
         ),
-        fx.Source(
+        fx.Port(
             'Kohletarif',
-            outputs=[
+            imports=[
                 fx.Flow(bus='Kohle', flow_id='Q_Kohle', size=1000, effects_per_flow_hour={'costs': 4.6, 'CO2': 0.3})
             ],
         ),
-        fx.Source(
+        fx.Port(
             'Gastarif',
-            outputs=[
+            imports=[
                 fx.Flow(bus='Gas', flow_id='Q_Gas', size=1000, effects_per_flow_hour={'costs': gas_price, 'CO2': 0.3})
             ],
         ),
-        fx.Sink(
-            'Einspeisung', inputs=[fx.Flow(bus='Strom', flow_id='P_el', size=1000, effects_per_flow_hour=p_feed_in)]
+        fx.Port(
+            'Einspeisung', exports=[fx.Flow(bus='Strom', flow_id='P_el', size=1000, effects_per_flow_hour=p_feed_in)]
         ),
-        fx.Source(
+        fx.Port(
             'Stromtarif',
-            outputs=[
+            imports=[
                 fx.Flow(bus='Strom', flow_id='P_el', size=1000, effects_per_flow_hour={'costs': p_sell, 'CO2': 0.3})
             ],
         ),
     )
 
-    flow_system.add_elements(
-        fx.linear_converters.Boiler(
+    flow_system.add(
+        fx.Converter.boiler(
             'Kessel',
             thermal_efficiency=0.85,
             thermal_flow=fx.Flow(bus='Fernwärme', flow_id='Q_th'),
@@ -651,7 +651,7 @@ def flow_system_long():
                 status_parameters=fx.StatusParameters(effects_per_startup=1000),
             ),
         ),
-        fx.linear_converters.CHP(
+        fx.Converter.chp(
             'BHKW2',
             thermal_efficiency=(eta_th := 0.58),
             electrical_efficiency=(eta_el := 0.22),
@@ -701,8 +701,8 @@ def basic_flow_system_linopy(timesteps_linopy) -> fx.FlowSystem:
     gas_source = Sources.gas_with_costs()
     electricity_sink = Sinks.electricity_feed_in(p_el)
 
-    flow_system.add_elements(*Buses.defaults())
-    flow_system.add_elements(costs, heat_load, gas_source, electricity_sink)
+    flow_system.add(*Buses.defaults())
+    flow_system.add(costs, heat_load, gas_source, electricity_sink)
 
     return flow_system
 
@@ -720,8 +720,8 @@ def basic_flow_system_linopy_coords(coords_config) -> fx.FlowSystem:
     gas_source = Sources.gas_with_costs()
     electricity_sink = Sinks.electricity_feed_in(p_el)
 
-    flow_system.add_elements(*Buses.defaults())
-    flow_system.add_elements(costs, heat_load, gas_source, electricity_sink)
+    flow_system.add(*Buses.defaults())
+    flow_system.add(costs, heat_load, gas_source, electricity_sink)
 
     return flow_system
 

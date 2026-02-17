@@ -21,24 +21,24 @@ class TestBusBalance:
         with merit order yields cost=80 and the exact flow split [20,10].
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat', imbalance_penalty_per_flow_hour=None),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([30, 30])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Src1',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=1, size=20),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Src2',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=2, size=20),
                 ],
             ),
@@ -64,18 +64,18 @@ class TestBusBalance:
         tracked in a separate 'Penalty' effect, not in 'costs'.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat', imbalance_penalty_per_flow_hour=100),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Src',
-                outputs=[
+                imports=[
                     fx.Flow(
                         bus='Heat',
                         flow_id='heat',
@@ -106,39 +106,39 @@ class TestBusBalance:
         Sensitivity: Without prevent_simultaneous, cost=40. With it, cost=2*(10+50)=120.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat1'),
             fx.Bus('Heat2'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand1',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat1', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
-            fx.Sink(
+            fx.Port(
                 'Demand2',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat2', flow_id='heat', size=1, fixed_relative_profile=np.array([10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'DualSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat1', flow_id='heat1', effects_per_flow_hour=1, size=100),
                     fx.Flow(bus='Heat2', flow_id='heat2', effects_per_flow_hour=1, size=100),
                 ],
                 prevent_simultaneous_flow_rates=True,
             ),
-            fx.Source(
+            fx.Port(
                 'Backup1',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat1', flow_id='heat', effects_per_flow_hour=5),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Backup2',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat2', flow_id='heat', effects_per_flow_hour=5),
                 ],
             ),

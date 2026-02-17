@@ -36,16 +36,16 @@ class TestClustering:
 
         # Full model
         fs_full = fx.FlowSystem(ts)
-        fs_full.add_elements(
+        fs_full.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=demand)],
+                exports=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=demand)],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
+                imports=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
         )
         fs_full.optimize(_SOLVER)
@@ -65,16 +65,16 @@ class TestClustering:
         demand_day1 = demand[:24]
         demand_day2 = demand[24:]
         demand_avg = (demand_day1 + demand_day2) / 2
-        fs_clust.add_elements(
+        fs_clust.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=demand_avg)],
+                exports=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=demand_avg)],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
+                imports=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
         )
         fs_clust.optimize(_SOLVER)
@@ -95,16 +95,18 @@ class TestClustering:
         ts = pd.date_range('2020-01-01', periods=4, freq='h')
         clusters = pd.Index([0, 1], name='cluster')
         fs = fx.FlowSystem(ts, clusters=clusters, cluster_weight=np.array([1.0, 1.0]))
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 20, 30, 10]))],
+                exports=[
+                    fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 20, 30, 10]))
+                ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 10, 1, 10]))],
+                imports=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 10, 1, 10]))],
             ),
             fx.Storage(
                 'Battery',
@@ -133,18 +135,18 @@ class TestClustering:
 
         def _build(mode):
             fs = fx.FlowSystem(ts, clusters=clusters, cluster_weight=np.array([1.0, 1.0]))
-            fs.add_elements(
+            fs.add(
                 fx.Bus('Elec'),
                 fx.Effect('costs', '€', is_standard=True, is_objective=True),
-                fx.Sink(
+                fx.Port(
                     'Demand',
-                    inputs=[
+                    exports=[
                         fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 20, 30, 10]))
                     ],
                 ),
-                fx.Source(
+                fx.Port(
                     'Grid',
-                    outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 10, 1, 10]))],
+                    imports=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 10, 1, 10]))],
                 ),
                 fx.Storage(
                     'Battery',
@@ -178,13 +180,13 @@ class TestClustering:
         ts = pd.date_range('2020-01-01', periods=4, freq='h')
         clusters = pd.Index([0, 1], name='cluster')
         fs = fx.FlowSystem(ts, clusters=clusters, cluster_weight=np.array([1.0, 1.0]))
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(
                         bus='Heat',
                         flow_id='heat',
@@ -193,11 +195,11 @@ class TestClustering:
                     ),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1)],
+                imports=[fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1)],
             ),
-            fx.linear_converters.Boiler(
+            fx.Converter.boiler(
                 'Boiler',
                 thermal_efficiency=1.0,
                 fuel_flow=fx.Flow(bus='Gas', flow_id='fuel'),
@@ -239,16 +241,18 @@ class TestClusteringExact:
         objective = (10+20+30+40) × (1+2) = 300.
         """
         fs = _make_clustered_flow_system(4, [1.0, 2.0])
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 20, 30, 40]))],
+                exports=[
+                    fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 20, 30, 40]))
+                ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
+                imports=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
         )
         fs = optimize(fs)
@@ -266,16 +270,18 @@ class TestClusteringExact:
         objective = (10+20+30+40) × (1+3) = 400.
         """
         fs = _make_clustered_flow_system(4, [1.0, 3.0])
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 10, 10, 10]))],
+                exports=[
+                    fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 10, 10, 10]))
+                ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 2, 3, 4]))],
+                imports=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 2, 3, 4]))],
             ),
         )
         fs = optimize(fs)
@@ -302,16 +308,16 @@ class TestClusteringExact:
         objective = 50 × 1 × 2 clusters = 100.
         """
         fs = _make_clustered_flow_system(4, [1.0, 1.0])
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0, 50, 0, 50]))],
+                exports=[fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0, 50, 0, 50]))],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 100, 1, 100]))],
+                imports=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 100, 1, 100]))],
             ),
             fx.Storage(
                 'Battery',

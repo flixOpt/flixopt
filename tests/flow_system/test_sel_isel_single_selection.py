@@ -15,15 +15,13 @@ def fs_with_scenarios():
     scenario_weights = np.array([0.5, 0.3, 0.2])
 
     fs = fx.FlowSystem(timesteps, scenarios=scenarios, scenario_weights=scenario_weights)
-    fs.add_elements(
+    fs.add(
         fx.Bus('heat'),
         fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
     )
-    fs.add_elements(
-        fx.Sink('demand', inputs=[fx.Flow(bus='heat', flow_id='in', fixed_relative_profile=np.ones(24), size=10)]),
-        fx.Source(
-            'source', outputs=[fx.Flow(bus='heat', flow_id='out', size=50, effects_per_flow_hour={'costs': 0.05})]
-        ),
+    fs.add(
+        fx.Port('demand', exports=[fx.Flow(bus='heat', flow_id='in', fixed_relative_profile=np.ones(24), size=10)]),
+        fx.Port('source', imports=[fx.Flow(bus='heat', flow_id='out', size=50, effects_per_flow_hour={'costs': 0.05})]),
     )
     return fs
 
@@ -35,15 +33,13 @@ def fs_with_periods():
     periods = pd.Index([2020, 2030, 2040], name='period')
 
     fs = fx.FlowSystem(timesteps, periods=periods, weight_of_last_period=10)
-    fs.add_elements(
+    fs.add(
         fx.Bus('heat'),
         fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
     )
-    fs.add_elements(
-        fx.Sink('demand', inputs=[fx.Flow(bus='heat', flow_id='in', fixed_relative_profile=np.ones(24), size=10)]),
-        fx.Source(
-            'source', outputs=[fx.Flow(bus='heat', flow_id='out', size=50, effects_per_flow_hour={'costs': 0.05})]
-        ),
+    fs.add(
+        fx.Port('demand', exports=[fx.Flow(bus='heat', flow_id='in', fixed_relative_profile=np.ones(24), size=10)]),
+        fx.Port('source', imports=[fx.Flow(bus='heat', flow_id='out', size=50, effects_per_flow_hour={'costs': 0.05})]),
     )
     return fs
 
@@ -56,15 +52,13 @@ def fs_with_periods_and_scenarios():
     scenarios = pd.Index(['Low', 'High'], name='scenario')
 
     fs = fx.FlowSystem(timesteps, periods=periods, scenarios=scenarios, weight_of_last_period=10)
-    fs.add_elements(
+    fs.add(
         fx.Bus('heat'),
         fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
     )
-    fs.add_elements(
-        fx.Sink('demand', inputs=[fx.Flow(bus='heat', flow_id='in', fixed_relative_profile=np.ones(24), size=10)]),
-        fx.Source(
-            'source', outputs=[fx.Flow(bus='heat', flow_id='out', size=50, effects_per_flow_hour={'costs': 0.05})]
-        ),
+    fs.add(
+        fx.Port('demand', exports=[fx.Flow(bus='heat', flow_id='in', fixed_relative_profile=np.ones(24), size=10)]),
+        fx.Port('source', imports=[fx.Flow(bus='heat', flow_id='out', size=50, effects_per_flow_hour={'costs': 0.05})]),
     )
     return fs
 

@@ -19,12 +19,12 @@ class TestLegacySolutionAccess:
     def test_effect_access(self, optimize):
         """Test legacy effect access: solution['costs'] -> solution['effect|total'].sel(effect='costs')."""
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Source('Src', outputs=[fx.Flow(bus='Heat', flow_id='heat', size=10, effects_per_flow_hour=1)]),
-            fx.Sink(
-                'Snk', inputs=[fx.Flow(bus='Heat', flow_id='heat', size=10, fixed_relative_profile=np.array([1, 1]))]
+            fx.Port('Src', imports=[fx.Flow(bus='Heat', flow_id='heat', size=10, effects_per_flow_hour=1)]),
+            fx.Port(
+                'Snk', exports=[fx.Flow(bus='Heat', flow_id='heat', size=10, fixed_relative_profile=np.array([1, 1]))]
             ),
         )
         fs = optimize(fs)
@@ -40,12 +40,12 @@ class TestLegacySolutionAccess:
     def test_flow_rate_access(self, optimize):
         """Test legacy flow rate access: solution['Src(heat)|flow_rate'] -> solution['flow|rate'].sel(flow='Src(heat)')."""
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Source('Src', outputs=[fx.Flow(bus='Heat', flow_id='heat', size=10)]),
-            fx.Sink(
-                'Snk', inputs=[fx.Flow(bus='Heat', flow_id='heat', size=10, fixed_relative_profile=np.array([1, 1]))]
+            fx.Port('Src', imports=[fx.Flow(bus='Heat', flow_id='heat', size=10)]),
+            fx.Port(
+                'Snk', exports=[fx.Flow(bus='Heat', flow_id='heat', size=10, fixed_relative_profile=np.array([1, 1]))]
             ),
         )
         fs = optimize(fs)
@@ -61,19 +61,19 @@ class TestLegacySolutionAccess:
     def test_flow_size_access(self, optimize):
         """Test legacy flow size access: solution['Src(heat)|size'] -> solution['flow|size'].sel(flow='Src(heat)')."""
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Source(
+            fx.Port(
                 'Src',
-                outputs=[
+                imports=[
                     fx.Flow(
                         bus='Heat', flow_id='heat', size=fx.InvestParameters(fixed_size=50), effects_per_flow_hour=1
                     )
                 ],
             ),
-            fx.Sink(
-                'Snk', inputs=[fx.Flow(bus='Heat', flow_id='heat', size=10, fixed_relative_profile=np.array([5, 5]))]
+            fx.Port(
+                'Snk', exports=[fx.Flow(bus='Heat', flow_id='heat', size=10, fixed_relative_profile=np.array([5, 5]))]
             ),
         )
         fs = optimize(fs)
@@ -89,10 +89,10 @@ class TestLegacySolutionAccess:
     def test_storage_charge_state_access(self, optimize):
         """Test legacy storage charge state access: solution['Battery|charge_state'] -> solution['storage|charge'].sel(storage='Battery')."""
         fs = make_flow_system(3)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Source('Grid', outputs=[fx.Flow(bus='Elec', flow_id='elec', size=100, effects_per_flow_hour=1)]),
+            fx.Port('Grid', imports=[fx.Flow(bus='Elec', flow_id='elec', size=100, effects_per_flow_hour=1)]),
             fx.Storage(
                 'Battery',
                 charging=fx.Flow(bus='Elec', size=10),
@@ -100,9 +100,9 @@ class TestLegacySolutionAccess:
                 capacity_in_flow_hours=50,
                 initial_charge_state=25,
             ),
-            fx.Sink(
+            fx.Port(
                 'Load',
-                inputs=[fx.Flow(bus='Elec', flow_id='elec', size=10, fixed_relative_profile=np.array([1, 1, 1]))],
+                exports=[fx.Flow(bus='Elec', flow_id='elec', size=10, fixed_relative_profile=np.array([1, 1, 1]))],
             ),
         )
         fs = optimize(fs)
@@ -126,13 +126,13 @@ class TestLegacySolutionAccess:
             fx.CONFIG.Legacy.solution_access = False
 
             fs = make_flow_system(2)
-            fs.add_elements(
+            fs.add(
                 fx.Bus('Heat'),
                 fx.Effect('costs', '€', is_standard=True, is_objective=True),
-                fx.Source('Src', outputs=[fx.Flow(bus='Heat', flow_id='heat', size=10, effects_per_flow_hour=1)]),
-                fx.Sink(
+                fx.Port('Src', imports=[fx.Flow(bus='Heat', flow_id='heat', size=10, effects_per_flow_hour=1)]),
+                fx.Port(
                     'Snk',
-                    inputs=[fx.Flow(bus='Heat', flow_id='heat', size=10, fixed_relative_profile=np.array([1, 1]))],
+                    exports=[fx.Flow(bus='Heat', flow_id='heat', size=10, fixed_relative_profile=np.array([1, 1]))],
                 ),
             )
             solver = fx.solvers.HighsSolver(log_to_console=False)
@@ -153,12 +153,12 @@ class TestLegacySolutionAccess:
     def test_legacy_access_emits_deprecation_warning(self, optimize):
         """Test that legacy access emits DeprecationWarning."""
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Source('Src', outputs=[fx.Flow(bus='Heat', flow_id='heat', size=10, effects_per_flow_hour=1)]),
-            fx.Sink(
-                'Snk', inputs=[fx.Flow(bus='Heat', flow_id='heat', size=10, fixed_relative_profile=np.array([1, 1]))]
+            fx.Port('Src', imports=[fx.Flow(bus='Heat', flow_id='heat', size=10, effects_per_flow_hour=1)]),
+            fx.Port(
+                'Snk', exports=[fx.Flow(bus='Heat', flow_id='heat', size=10, fixed_relative_profile=np.array([1, 1]))]
             ),
         )
         fs = optimize(fs)

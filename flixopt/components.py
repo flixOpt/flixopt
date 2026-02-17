@@ -724,117 +724,26 @@ class Storage(Element):
 
 
 @register_class_for_io
-class Transmission(Component):
-    """
-    Models transmission infrastructure that transports flows between two locations with losses.
-
-    Transmission components represent physical infrastructure like pipes, cables,
-    transmission lines, or conveyor systems that transport energy or materials between
-    two points. They can model both unidirectional and bidirectional flow with
-    configurable loss mechanisms and operational constraints.
-
-    The component supports complex transmission scenarios including relative losses
-    (proportional to flow), absolute losses (fixed when active), and bidirectional
-    operation with flow direction constraints.
+class Transmission(Element):
+    """Models transmission infrastructure that transports flows between two locations with losses.
 
     Args:
         id: The id of the Element. Used to identify it in the FlowSystem.
         in1: The primary inflow (side A). Pass InvestParameters here for capacity optimization.
         out1: The primary outflow (side B).
         in2: Optional secondary inflow (side B) for bidirectional operation.
-            If in1 has InvestParameters, in2 will automatically have matching capacity.
         out2: Optional secondary outflow (side A) for bidirectional operation.
         relative_losses: Proportional losses as fraction of throughput (e.g., 0.02 for 2% loss).
-            Applied as: output = input × (1 - relative_losses)
         absolute_losses: Fixed losses that occur when transmission is active.
-            Automatically creates binary variables for active/inactive states.
         status_parameters: Parameters defining binary operation constraints and costs.
         prevent_simultaneous_flows_in_both_directions: If True, prevents simultaneous
-            flow in both directions. Increases binary variables but reflects physical
-            reality for most transmission systems. Default is True.
-        balanced: Whether to equate the size of the in1 and in2 Flow. Needs InvestParameters in both Flows.
-        meta_data: Used to store additional information. Not used internally but saved
-            in results. Only use Python native types.
-
-    Examples:
-        Simple electrical transmission line:
-
-        ```python
-        power_line = Transmission(
-            id='110kv_line',
-            in1=substation_a_out,
-            out1=substation_b_in,
-            relative_losses=0.03,  # 3% line losses
-        )
-        ```
-
-        Bidirectional natural gas pipeline:
-
-        ```python
-        gas_pipeline = Transmission(
-            id='interstate_pipeline',
-            in1=compressor_station_a,
-            out1=distribution_hub_b,
-            in2=compressor_station_b,
-            out2=distribution_hub_a,
-            relative_losses=0.005,  # 0.5% friction losses
-            absolute_losses=50,  # 50 kW compressor power when active
-            prevent_simultaneous_flows_in_both_directions=True,
-        )
-        ```
-
-        District heating network with investment optimization:
-
-        ```python
-        heating_network = Transmission(
-            id='dh_main_line',
-            in1=Flow(
-                label='heat_supply',
-                bus=central_plant_bus,
-                size=InvestParameters(
-                    minimum_size=1000,  # Minimum 1 MW capacity
-                    maximum_size=10000,  # Maximum 10 MW capacity
-                    specific_effects={'cost': 200},  # €200/kW capacity
-                    fix_effects={'cost': 500000},  # €500k fixed installation
-                ),
-            ),
-            out1=district_heat_demand,
-            relative_losses=0.15,  # 15% thermal losses in distribution
-        )
-        ```
-
-        Material conveyor with active/inactive status:
-
-        ```python
-        conveyor_belt = Transmission(
-            id='material_transport',
-            in1=loading_station,
-            out1=unloading_station,
-            absolute_losses=25,  # 25 kW motor power when running
-            status_parameters=StatusParameters(
-                effects_per_startup={'maintenance': 0.1},
-                min_uptime=2,  # Minimum 2-hour operation
-                startup_limit=10,  # Maximum 10 starts per period
-            ),
-        )
-        ```
-
-    Note:
-        The transmission equation balances flows with losses:
-        output_flow = input_flow × (1 - relative_losses) - absolute_losses
-
-        For bidirectional transmission, each direction has independent loss calculations.
-
-        When using InvestParameters on in1, the capacity automatically applies to in2
-        to maintain consistent bidirectional capacity without additional investment variables.
-
-        Absolute losses force the creation of binary on/inactive variables, which increases
-        computational complexity but enables realistic modeling of equipment with
-        standby power consumption.
-
+            flow in both directions. Default is True.
+        balanced: Whether to equate the size of the in1 and in2 Flow.
+        meta_data: Additional metadata stored in results.
+        color: Visualization color.
     """
 
-    _io_exclude: ClassVar[set[str]] = {'inputs', 'outputs', 'prevent_simultaneous_flows'}
+    _io_exclude: ClassVar[set[str]] = {'prevent_simultaneous_flows'}
 
     def __init__(
         self,
@@ -851,37 +760,46 @@ class Transmission(Component):
         meta_data: dict | None = None,
         color: str | None = None,
     ):
+        self.id = valid_id(id)
         self.in1 = in1
         self.out1 = out1
         self.in2 = in2
         self.out2 = out2
         self.relative_losses = relative_losses
         self.absolute_losses = absolute_losses
+        self.status_parameters = status_parameters
         self.prevent_simultaneous_flows_in_both_directions = prevent_simultaneous_flows_in_both_directions
         self.balanced = balanced
+        self.meta_data = meta_data or {}
+        self.color = color
 
         inputs = [f for f in (self.in1, self.in2) if f is not None]
         outputs = [f for f in (self.out1, self.out2) if f is not None]
-        prevent_simultaneous_flows = (
+        self.prevent_simultaneous_flows = (
             [self.in1, self.in2] if self.in2 is not None and prevent_simultaneous_flows_in_both_directions else []
         )
-        super().__init__(
-            id=id,
-            inputs=inputs,
-            outputs=outputs,
-            status_parameters=status_parameters,
-            prevent_simultaneous_flows=prevent_simultaneous_flows,
-            meta_data=meta_data or {},
-            color=color,
-        )
+        _connect_and_validate_flows(self.id, inputs, outputs, self.prevent_simultaneous_flows)
+        self.inputs: IdList = flow_id_list(inputs, display_name='inputs')
+        self.outputs: IdList = flow_id_list(outputs, display_name='outputs')
+
+    @cached_property
+    def flows(self) -> IdList:
+        """All flows (inputs and outputs) as an IdList."""
+        return self.inputs + self.outputs
 
     def _propagate_status_parameters(self) -> None:
-        super()._propagate_status_parameters()
+        if self.status_parameters:
+            for flow in self.flows.values():
+                if flow.status_parameters is None:
+                    flow.status_parameters = StatusParameters()
+        if self.prevent_simultaneous_flows:
+            for flow in self.prevent_simultaneous_flows:
+                if flow.status_parameters is None:
+                    flow.status_parameters = StatusParameters()
         # Transmissions with absolute_losses need status variables on input flows
         # Also need relative_minimum > 0 to link status to flow rate properly
         if self.absolute_losses is not None and np.any(self.absolute_losses != 0):
             from .config import CONFIG
-            from .interface import StatusParameters
 
             input_flows = [self.in1]
             if self.in2 is not None:
@@ -897,6 +815,17 @@ class Transmission(Component):
                 )
                 if needs_update:
                     flow.relative_minimum = CONFIG.Modeling.epsilon
+
+    def _check_unique_flow_ids(self, inputs: list = None, outputs: list = None):
+        all_flow_ids = [flow.flow_id for flow in self.flows.values()]
+        if len(set(all_flow_ids)) != len(all_flow_ids):
+            duplicates = {fid for fid in all_flow_ids if all_flow_ids.count(fid) > 1}
+            raise ValueError(f'Flow names must be unique! "{self.id}" got 2 or more of: {duplicates}')
+
+    def __repr__(self) -> str:
+        return fx_io.build_repr_from_init(
+            self, excluded_params={'self', 'id', 'in1', 'out1', 'in2', 'out2', 'kwargs'}, skip_default_size=True
+        ) + fx_io.format_flow_details(self)
 
 
 class StoragesModel(TypeModel):

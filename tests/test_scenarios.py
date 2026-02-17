@@ -6,7 +6,7 @@ import pytest
 import xarray as xr
 
 import flixopt as fx
-from flixopt import Effect, InvestParameters, Sink, Source, Storage
+from flixopt import Effect, InvestParameters, Port, Storage
 from flixopt.elements import Bus, Flow
 from flixopt.flow_system import FlowSystem
 
@@ -60,7 +60,7 @@ def test_system():
 
     # Create a demand sink with scenario-dependent profiles
     demand = Flow(electricity_bus.label_full, flow_id='Demand', fixed_relative_profile=demand_profiles)
-    demand_sink = Sink('Demand', inputs=[demand])
+    demand_sink = Port('Demand', exports=[demand])
 
     # Create a power source with investment option
     power_gen = Flow(
@@ -73,7 +73,7 @@ def test_system():
         ),
         effects_per_flow_hour={'costs': 20},  # €/MWh
     )
-    generator = Source('Generator', outputs=[power_gen])
+    generator = Port('Generator', imports=[power_gen])
 
     # Create a storage for electricity
     storage_charge = Flow(electricity_bus.label_full, size=10)
@@ -96,7 +96,7 @@ def test_system():
     cost_effect = Effect('costs', unit='€', description='Total costs', is_standard=True, is_objective=True)
 
     # Add all elements to the flow system
-    flow_system.add_elements(electricity_bus, generator, demand_sink, storage, cost_effect)
+    flow_system.add(electricity_bus, generator, demand_sink, storage, cost_effect)
 
     # Return the created system and its components
     return {
@@ -127,27 +127,27 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
         scenarios=pd.Index(['A', 'B', 'C'], name='scenario'),
     )
     # Define the components and flow_system
-    flow_system.add_elements(
+    flow_system.add(
         fx.Effect('costs', '€', 'Kosten', is_standard=True, is_objective=True, share_from_temporal={'CO2': 0.2}),
         fx.Effect('CO2', 'kg', 'CO2_e-Emissionen'),
         fx.Effect('PE', 'kWh_PE', 'Primärenergie', maximum_total=3.5e3),
         fx.Bus('Strom'),
         fx.Bus('Fernwärme'),
         fx.Bus('Gas'),
-        fx.Sink(
+        fx.Port(
             'Wärmelast',
-            inputs=[fx.Flow(bus='Fernwärme', flow_id='Q_th_Last', size=1, fixed_relative_profile=thermal_load)],
+            exports=[fx.Flow(bus='Fernwärme', flow_id='Q_th_Last', size=1, fixed_relative_profile=thermal_load)],
         ),
-        fx.Source(
+        fx.Port(
             'Gastarif',
-            outputs=[fx.Flow(bus='Gas', flow_id='Q_Gas', size=1000, effects_per_flow_hour={'costs': 0.04, 'CO2': 0.3})],
+            imports=[fx.Flow(bus='Gas', flow_id='Q_Gas', size=1000, effects_per_flow_hour={'costs': 0.04, 'CO2': 0.3})],
         ),
-        fx.Sink(
-            'Einspeisung', inputs=[fx.Flow(bus='Strom', flow_id='P_el', effects_per_flow_hour=-1 * electrical_load)]
+        fx.Port(
+            'Einspeisung', exports=[fx.Flow(bus='Strom', flow_id='P_el', effects_per_flow_hour=-1 * electrical_load)]
         ),
     )
 
-    boiler = fx.linear_converters.Boiler(
+    boiler = fx.Converter.boiler(
         'Kessel',
         thermal_efficiency=0.5,
         status_parameters=fx.StatusParameters(effects_per_active_hour={'costs': 0, 'CO2': 1000}),
@@ -206,7 +206,7 @@ def flow_system_complex_scenarios() -> fx.FlowSystem:
         prevent_simultaneous_charge_and_discharge=True,
     )
 
-    flow_system.add_elements(boiler, speicher)
+    flow_system.add(boiler, speicher)
 
     return flow_system
 
@@ -218,8 +218,8 @@ def flow_system_piecewise_conversion_scenarios(flow_system_complex_scenarios) ->
     """
     flow_system = flow_system_complex_scenarios
 
-    flow_system.add_elements(
-        fx.LinearConverter(
+    flow_system.add(
+        fx.Converter(
             'KWK',
             inputs=[fx.Flow(bus='Gas', flow_id='Q_fu', size=200)],
             outputs=[
@@ -511,9 +511,9 @@ def test_size_equality_constraints():
     )
 
     bus = fx.Bus('grid')
-    source = fx.Source(
+    source = fx.Port(
         'solar',
-        outputs=[
+        imports=[
             fx.Flow(
                 bus='grid',
                 flow_id='out',
@@ -526,7 +526,7 @@ def test_size_equality_constraints():
         ],
     )
 
-    fs.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+    fs.add(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
 
     fs.build_model()
 
@@ -550,9 +550,9 @@ def test_flow_rate_equality_constraints():
     )
 
     bus = fx.Bus('grid')
-    source = fx.Source(
+    source = fx.Port(
         'solar',
-        outputs=[
+        imports=[
             fx.Flow(
                 bus='grid',
                 flow_id='out',
@@ -565,7 +565,7 @@ def test_flow_rate_equality_constraints():
         ],
     )
 
-    fs.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+    fs.add(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
 
     fs.build_model()
 
@@ -589,9 +589,9 @@ def test_selective_scenario_independence():
     )
 
     bus = fx.Bus('grid')
-    source = fx.Source(
+    source = fx.Port(
         'solar',
-        outputs=[
+        imports=[
             fx.Flow(
                 bus='grid',
                 flow_id='out',
@@ -601,12 +601,12 @@ def test_selective_scenario_independence():
             )
         ],
     )
-    sink = fx.Sink(
+    sink = fx.Port(
         'demand',
-        inputs=[fx.Flow(bus='grid', flow_id='in', size=50)],
+        exports=[fx.Flow(bus='grid', flow_id='in', size=50)],
     )
 
-    fs.add_elements(bus, source, sink, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+    fs.add(bus, source, sink, fx.Effect('cost', 'Total cost', '€', is_objective=True))
 
     fs.build_model()
 
@@ -648,9 +648,9 @@ def test_scenario_parameters_io_persistence():
     )
 
     bus = fx.Bus('grid')
-    source = fx.Source(
+    source = fx.Port(
         'solar',
-        outputs=[
+        imports=[
             fx.Flow(
                 bus='grid',
                 flow_id='out',
@@ -661,7 +661,7 @@ def test_scenario_parameters_io_persistence():
         ],
     )
 
-    fs_original.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+    fs_original.add(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
 
     # Save to dataset
     fs_original.connect_and_transform()
@@ -688,9 +688,9 @@ def test_scenario_parameters_io_with_calculation(tmp_path):
     )
 
     bus = fx.Bus('grid')
-    source = fx.Source(
+    source = fx.Port(
         'solar',
-        outputs=[
+        imports=[
             fx.Flow(
                 bus='grid',
                 flow_id='out',
@@ -700,12 +700,12 @@ def test_scenario_parameters_io_with_calculation(tmp_path):
             )
         ],
     )
-    sink = fx.Sink(
+    sink = fx.Port(
         'demand',
-        inputs=[fx.Flow(bus='grid', flow_id='in', size=50)],
+        exports=[fx.Flow(bus='grid', flow_id='in', size=50)],
     )
 
-    fs.add_elements(bus, source, sink, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+    fs.add(bus, source, sink, fx.Effect('cost', 'Total cost', '€', is_objective=True))
 
     # Solve using new API
     fs.optimize(fx.solvers.HighsSolver(mip_gap=0.01, time_limit_seconds=60))
@@ -746,9 +746,9 @@ def test_weights_io_persistence():
     )
 
     bus = fx.Bus('grid')
-    source = fx.Source(
+    source = fx.Port(
         'solar',
-        outputs=[
+        imports=[
             fx.Flow(
                 bus='grid',
                 flow_id='out',
@@ -759,7 +759,7 @@ def test_weights_io_persistence():
         ],
     )
 
-    fs_original.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+    fs_original.add(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
 
     # Save to dataset
     fs_original.connect_and_transform()
@@ -787,9 +787,9 @@ def test_weights_selection():
     )
 
     bus = fx.Bus('grid')
-    source = fx.Source(
+    source = fx.Port(
         'solar',
-        outputs=[
+        imports=[
             fx.Flow(
                 bus='grid',
                 flow_id='out',
@@ -798,7 +798,7 @@ def test_weights_selection():
         ],
     )
 
-    fs_full.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
+    fs_full.add(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
 
     # Select a subset of scenarios
     fs_subset = fs_full.sel(scenario=['base', 'high'])

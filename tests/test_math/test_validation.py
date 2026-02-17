@@ -23,19 +23,19 @@ class TestValidation:
         should raise PlausibilityError during model building.
         """
         fs = make_flow_system(3)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0.1, 0.1, 0.1])),
                 ],
             ),
-            fx.SourceAndSink(
+            fx.Port(
                 'GridConnection',
-                outputs=[fx.Flow(bus='Elec', flow_id='buy', effects_per_flow_hour=5)],
-                inputs=[fx.Flow(bus='Elec', flow_id='sell', effects_per_flow_hour=-1)],
+                imports=[fx.Flow(bus='Elec', flow_id='buy', effects_per_flow_hour=5)],
+                exports=[fx.Flow(bus='Elec', flow_id='sell', effects_per_flow_hour=-1)],
                 prevent_simultaneous_flow_rates=True,
             ),
         )

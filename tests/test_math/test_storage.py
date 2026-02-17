@@ -17,18 +17,18 @@ class TestStorage:
         With working storage, buy at t=1 for 1€/kWh → cost=20. A 10× difference.
         """
         fs = make_flow_system(3)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0, 0, 20])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([10, 1, 10])),
                 ],
             ),
@@ -54,18 +54,18 @@ class TestStorage:
         With 10% loss, must charge 100 to have 90 after 1h → cost=100.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0, 90])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 1000])),
                 ],
             ),
@@ -93,18 +93,18 @@ class TestStorage:
         cost=80. If both broken, cost=72. Only both correct yields cost=100.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0, 72])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 1000])),
                 ],
             ),
@@ -135,18 +135,18 @@ class TestStorage:
         With the bound enforced, cost=1050 (50×1 + 10×100).
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0, 60])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 100])),
                 ],
             ),
@@ -178,18 +178,18 @@ class TestStorage:
         With cyclic, must buy 50 at some point to replenish → cost=50.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0, 50])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 100])),
                 ],
             ),
@@ -220,18 +220,18 @@ class TestStorage:
         With minimal_final=60, charge 80 → cost=80.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0, 20])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 100])),
                 ],
             ),
@@ -262,18 +262,18 @@ class TestStorage:
         At 1€/kWh, storage built → cost=50*1 (buy) + 50*1 (invest) = 100.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0, 50])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 10])),
                 ],
             ),
@@ -314,18 +314,18 @@ class TestStorage:
         could charge and discharge simultaneously, which is physically nonsensical.
         """
         fs = make_flow_system(3)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 20, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 10, 1])),
                 ],
             ),
@@ -363,18 +363,18 @@ class TestStorage:
         With min SOC=0.3, max discharge=70 → grid covers 10 @100€ → cost=1050.
         """
         fs = make_flow_system(3)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0, 80, 0])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 100, 1])),
                 ],
             ),
@@ -408,18 +408,18 @@ class TestStorage:
         Sensitivity: Without max final, objective=0. With max final=20, objective=50.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec', imbalance_penalty_per_flow_hour=5),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([50, 0])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([100, 1])),
                 ],
             ),
@@ -452,18 +452,18 @@ class TestStorage:
         Sensitivity: Without constraint, cost=30. With min final=0.5, cost=3050.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0, 80])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 100])),
                 ],
             ),
@@ -499,18 +499,18 @@ class TestStorage:
         With relative_max_final=0.2 (=20 abs), must discharge 60 → excess 10 * 5€ = 50€.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec', imbalance_penalty_per_flow_hour=5),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([50, 0])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([100, 1])),
                 ],
             ),
@@ -540,18 +540,18 @@ class TestStorage:
         branch ignored the final override entirely.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0, 80])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 100])),
                 ],
             ),
@@ -579,18 +579,18 @@ class TestStorage:
         branch ignored the final override entirely.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec', imbalance_penalty_per_flow_hour=5),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([50, 0])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([100, 1])),
                 ],
             ),
@@ -621,18 +621,18 @@ class TestStorage:
         With balanced, invest=160+160=320, ops=160.
         """
         fs = make_flow_system(3)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0, 80, 80])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 100, 100])),
                 ],
             ),

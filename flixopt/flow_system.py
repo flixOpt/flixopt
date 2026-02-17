@@ -250,7 +250,7 @@ class FlowSystem(CompositeContainerMixin[Element]):
         >>> boiler = fx.Component('Boiler', inputs=[heat_flow], status_parameters=...)
         >>> heat_bus = fx.Bus('Heat', imbalance_penalty_per_flow_hour=1e4)
         >>> costs = fx.Effect('costs', is_objective=True, is_standard=True)
-        >>> flow_system.add_elements(boiler, heat_bus, costs)
+        >>> flow_system.add(boiler, heat_bus, costs)
 
         Unified dict-like access (recommended for most cases):
 
@@ -754,12 +754,12 @@ class FlowSystem(CompositeContainerMixin[Element]):
 
         Examples:
             >>> original = FlowSystem(timesteps)
-            >>> original.add_elements(boiler, bus)
+            >>> original.add(boiler, bus)
             >>> original.optimize(solver)  # Original now has solution
             >>>
             >>> # Create a copy to try different parameters
             >>> variant = original.copy()  # No solution, can be modified
-            >>> variant.add_elements(new_component)
+            >>> variant.add(new_component)
             >>> variant.optimize(solver)
         """
         ds = self.to_dataset(include_solution=False)
@@ -968,13 +968,11 @@ class FlowSystem(CompositeContainerMixin[Element]):
             self.components[element_id].color = color
             logger.debug(f"Auto-assigned color '{color}' to component '{element_id}'")
 
-    def add_elements(self, *elements: Element) -> None:
-        """
-        Add Components(Storages, Boilers, Heatpumps, ...), Buses or Effects to the FlowSystem
+    def add(self, *elements: Element) -> None:
+        """Add elements (Converters, Ports, Storages, Buses, Effects, ...) to the FlowSystem.
 
         Args:
-            *elements: childs of  Element like Boiler, HeatPump, Bus,...
-                modeling Elements
+            *elements: Element instances to add (Converter, Port, Storage, Bus, Effect, ...).
 
         Raises:
             RuntimeError: If the FlowSystem is locked (has a solution).
@@ -997,7 +995,7 @@ class FlowSystem(CompositeContainerMixin[Element]):
 
         for new_element in list(elements):
             # Validate element type first
-            if not isinstance(new_element, (Component, Converter, Port, Storage, Effect, Bus)):
+            if not isinstance(new_element, (Converter, Port, Storage, Transmission, Component, Effect, Bus)):
                 raise TypeError(
                     f'Tried to add incompatible object to FlowSystem: {type(new_element)=}: {new_element=} '
                 )
@@ -1007,7 +1005,7 @@ class FlowSystem(CompositeContainerMixin[Element]):
             self._check_if_element_is_unique(new_element)
 
             # Dispatch to type-specific handlers
-            if isinstance(new_element, (Component, Converter, Port, Storage)):
+            if isinstance(new_element, (Converter, Port, Storage, Transmission, Component)):
                 self._add_components(new_element)
             elif isinstance(new_element, Effect):
                 self._add_effects(new_element)
@@ -1017,6 +1015,15 @@ class FlowSystem(CompositeContainerMixin[Element]):
             # Log registration
             element_type = type(new_element).__name__
             logger.info(f'Registered new {element_type}: {new_element.id}')
+
+    def add_elements(self, *elements: Element) -> None:
+        """Deprecated. Use :meth:`add` instead."""
+        warnings.warn(
+            'add_elements() is deprecated. Use add() instead.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.add(*elements)
 
     def add_carriers(self, *carriers: Carrier) -> None:
         """Register a custom carrier for this FlowSystem.
@@ -1043,7 +1050,7 @@ class FlowSystem(CompositeContainerMixin[Element]):
 
             # Now buses can reference this carrier by name
             bus = fx.Bus('BioGasNetwork', carrier='biogas')
-            fs.add_elements(bus)
+            fs.add(bus)
 
             # The carrier color will be used in plots automatically
             ```
@@ -1317,7 +1324,7 @@ class FlowSystem(CompositeContainerMixin[Element]):
             >>> fs = FlowSystem(timesteps)
             >>> fs.status
             <FlowSystemStatus.INITIALIZED: 1>
-            >>> fs.add_elements(bus, component)
+            >>> fs.add(bus, component)
             >>> fs.connect_and_transform()
             >>> fs.status
             <FlowSystemStatus.CONNECTED: 2>
@@ -1391,9 +1398,9 @@ class FlowSystem(CompositeContainerMixin[Element]):
 
         Examples:
             >>> flow_system.optimize(solver)  # FlowSystem is now locked
-            >>> flow_system.add_elements(new_bus)  # Raises RuntimeError
+            >>> flow_system.add(new_bus)  # Raises RuntimeError
             >>> flow_system.reset()  # Unlock the FlowSystem
-            >>> flow_system.add_elements(new_bus)  # Now works
+            >>> flow_system.add(new_bus)  # Now works
         """
         self.solution = None  # Also clears _statistics via setter
         self._invalidate_model()
@@ -1768,7 +1775,7 @@ class FlowSystem(CompositeContainerMixin[Element]):
                 raise ValueError(
                     f'Flow "{flow.id}" references bus "{flow.bus}" which does not exist in FlowSystem. '
                     f'Available buses: {available_buses}. '
-                    f'Did you forget to add the bus using flow_system.add_elements(Bus("{flow.bus}"))?'
+                    f'Did you forget to add the bus using flow_system.add(Bus("{flow.bus}"))?'
                 )
 
     def _add_effects(self, *args: Effect) -> None:
@@ -1807,28 +1814,20 @@ class FlowSystem(CompositeContainerMixin[Element]):
             self._flows_cache = None
 
     def _connect_network(self):
-        """Connects the network of components and buses. Can be rerun without changes if no elements were added"""
-        for component in self.components.values():
-            for flow in component.flows.values():
-                flow.component = component.id
-                flow.is_input_in_component = flow.id in component.inputs
+        """Connect flows to their buses. Flow ownership is already set in each component's __init__."""
+        for flow in self.flows.values():
+            bus = self.buses.get(flow.bus)
+            if bus is None:
+                raise KeyError(
+                    f'Bus {flow.bus} not found in the FlowSystem, but used by "{flow.id}". Please add it first.'
+                )
+            if flow.is_input_in_component and flow.id not in bus.outputs:
+                bus.outputs.add(flow)
+            elif not flow.is_input_in_component and flow.id not in bus.inputs:
+                bus.inputs.add(flow)
 
-                # Connect Buses
-                bus = self.buses.get(flow.bus)
-                if bus is None:
-                    raise KeyError(
-                        f'Bus {flow.bus} not found in the FlowSystem, but used by "{flow.id}". Please add it first.'
-                    )
-                if flow.is_input_in_component and flow.id not in bus.outputs:
-                    bus.outputs.add(flow)
-                elif not flow.is_input_in_component and flow.id not in bus.inputs:
-                    bus.inputs.add(flow)
-
-        # Count flows manually to avoid triggering cache rebuild
-        flow_count = sum(len(list(c.flows)) for c in self.components.values())
         logger.debug(
-            f'Connected {len(self.buses)} Buses and {len(self.components)} '
-            f'via {flow_count} Flows inside the FlowSystem.'
+            f'Connected {len(self.buses)} Buses and {len(self.components)} Components via {len(self.flows)} Flows.'
         )
 
     def __repr__(self) -> str:

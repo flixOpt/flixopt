@@ -22,23 +22,23 @@ class TestPiecewise:
         If the wrong segment were selected, the interpolation would be incorrect.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([45, 45])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.LinearConverter(
+            fx.Converter(
                 'Converter',
                 inputs=[fx.Flow(bus='Gas', flow_id='fuel')],
                 outputs=[fx.Flow(bus='Heat', flow_id='heat')],
@@ -67,23 +67,23 @@ class TestPiecewise:
         error or infeasibility at the boundary).
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([15, 15])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.LinearConverter(
+            fx.Converter(
                 'Converter',
                 inputs=[fx.Flow(bus='Gas', flow_id='fuel')],
                 outputs=[fx.Flow(bus='Heat', flow_id='heat')],
@@ -114,29 +114,29 @@ class TestPiecewise:
         50 is valid (within 40-100 range). Verify the piecewise constraint is active.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([50, 50])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'CheapSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=10),  # More expensive backup
                 ],
             ),
-            fx.LinearConverter(
+            fx.Converter(
                 'Converter',
                 inputs=[fx.Flow(bus='Gas', flow_id='fuel')],
                 outputs=[fx.Flow(bus='Heat', flow_id='heat')],
@@ -173,29 +173,29 @@ class TestPiecewise:
         The optimizer should choose backup (off state for converter).
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([20, 20])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=10),  # Expensive gas
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Backup',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Heat', flow_id='heat', effects_per_flow_hour=1),  # Cheap backup
                 ],
             ),
-            fx.LinearConverter(
+            fx.Converter(
                 'Converter',
                 inputs=[fx.Flow(bus='Gas', flow_id='fuel')],
                 outputs=[fx.Flow(bus='Heat', flow_id='heat')],
@@ -229,23 +229,23 @@ class TestPiecewise:
         If constant efficiency 1.33:1 from seg1 end were used, fuel≈46.67.
         """
         fs = make_flow_system(2)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Heat'),
             fx.Bus('Gas'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Heat', flow_id='heat', size=1, fixed_relative_profile=np.array([35, 35])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'GasSrc',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Gas', flow_id='gas', effects_per_flow_hour=1),
                 ],
             ),
-            fx.LinearConverter(
+            fx.Converter(
                 'Converter',
                 inputs=[fx.Flow(bus='Gas', flow_id='fuel')],
                 outputs=[fx.Flow(bus='Heat', flow_id='heat')],

@@ -25,18 +25,18 @@ class TestMultiPeriod:
         With weights [5, 5], objective=300.
         """
         fs = make_multi_period_flow_system(n_timesteps=3, periods=[2020, 2025], weight_of_last_period=5)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
+                imports=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
         )
         fs = optimize(fs)
@@ -56,18 +56,18 @@ class TestMultiPeriod:
         With constraint, objective > 300.
         """
         fs = make_multi_period_flow_system(n_timesteps=3, periods=[2020, 2025], weight_of_last_period=5)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'DirtySource',
-                outputs=[
+                imports=[
                     fx.Flow(
                         bus='Elec',
                         flow_id='elec',
@@ -76,9 +76,9 @@ class TestMultiPeriod:
                     ),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'CleanSource',
-                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=10)],
+                imports=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=10)],
             ),
         )
         fs = optimize(fs)
@@ -98,22 +98,22 @@ class TestMultiPeriod:
         With constraint, must use expensive → objective > 300.
         """
         fs = make_multi_period_flow_system(n_timesteps=3, periods=[2020, 2025], weight_of_last_period=5)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'CheapSource',
-                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
+                imports=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
-            fx.Source(
+            fx.Port(
                 'ExpensiveSource',
-                outputs=[
+                imports=[
                     fx.Flow(
                         bus='Elec',
                         flow_id='elec',
@@ -139,25 +139,25 @@ class TestMultiPeriod:
         """
         fs = make_multi_period_flow_system(n_timesteps=3, periods=[2020, 2025], weight_of_last_period=5)
         co2 = fx.Effect('CO2', 'kg', maximum_over_periods=50)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
             co2,
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'DirtySource',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'CleanSource',
-                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=10)],
+                imports=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=10)],
             ),
         )
         fs = optimize(fs)
@@ -177,25 +177,25 @@ class TestMultiPeriod:
         """
         fs = make_multi_period_flow_system(n_timesteps=3, periods=[2020, 2025], weight_of_last_period=5)
         co2 = fx.Effect('CO2', 'kg', minimum_over_periods=100)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec', imbalance_penalty_per_flow_hour=0),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
             co2,
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([2, 2, 2])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'DirtySource',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour={'costs': 1, 'CO2': 1}),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'CheapSource',
-                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
+                imports=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
         )
         fs = optimize(fs)
@@ -216,18 +216,18 @@ class TestMultiPeriod:
             periods=[2020, 2025],
             weight_of_last_period=5,
         )
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(
                         bus='Elec',
                         flow_id='elec',
@@ -261,7 +261,7 @@ class TestMultiPeriod:
         With custom [1, 10], objective=330.
         """
         fs = make_multi_period_flow_system(n_timesteps=3, periods=[2020, 2025], weight_of_last_period=5)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect(
                 'costs',
@@ -270,15 +270,15 @@ class TestMultiPeriod:
                 is_objective=True,
                 period_weights=xr.DataArray([1, 10], dims='period', coords={'period': [2020, 2025]}),
             ),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([10, 10, 10])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
+                imports=[fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=1)],
             ),
         )
         fs = optimize(fs)
@@ -299,18 +299,18 @@ class TestMultiPeriod:
         Per-period cost=3050. Objective = 5*3050 + 5*3050 = 30500.
         """
         fs = make_multi_period_flow_system(n_timesteps=3, periods=[2020, 2025], weight_of_last_period=5)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec'),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([0, 0, 80])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([1, 1, 100])),
                 ],
             ),
@@ -343,18 +343,18 @@ class TestMultiPeriod:
         Total objective = 5*50 + 5*50 = 500.
         """
         fs = make_multi_period_flow_system(n_timesteps=3, periods=[2020, 2025], weight_of_last_period=5)
-        fs.add_elements(
+        fs.add(
             fx.Bus('Elec', imbalance_penalty_per_flow_hour=5),
             fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink(
+            fx.Port(
                 'Demand',
-                inputs=[
+                exports=[
                     fx.Flow(bus='Elec', flow_id='elec', size=1, fixed_relative_profile=np.array([50, 0, 0])),
                 ],
             ),
-            fx.Source(
+            fx.Port(
                 'Grid',
-                outputs=[
+                imports=[
                     fx.Flow(bus='Elec', flow_id='elec', effects_per_flow_hour=np.array([100, 1, 1])),
                 ],
             ),
