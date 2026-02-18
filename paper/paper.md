@@ -91,7 +91,7 @@ Flixopt introduces a freely definable system of evaluation metrics called *Effec
 
 ## Scenarios and Periods 
 
-todo! Idealerweise kurz und kleines Bild dazu.
+Periods typically refer to multi-year time segments within a long-term planning horizon. They are used to structure the model over several years (e.g., investment or transformation stages), allowing the representation of system evolution over time—such as capacity expansion, technology diffusion, or changing boundary conditions—while keeping the optimization problem tractable. Scenarios, in contrast, describe alternative assumptions about external developments or system configurations. They enable the structured comparison of different futures, such as varying fuel prices, policy settings, technology costs, or demand trajectories within a consistent modeling framework.
 
 ## Acknowledgements
 
