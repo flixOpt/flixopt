@@ -51,7 +51,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@v7
         with:
-          version: "0.9.30"
+          version: "0.10.4"
           enable-cache: true
 
       - uses: actions/setup-python@v6
@@ -115,7 +115,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@v7
         with:
-          version: "0.9.30"
+          version: "0.10.4"
           enable-cache: true
 
       - uses: actions/setup-python@v6
