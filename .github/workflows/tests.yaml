@@ -3,8 +3,19 @@ name: Tests
 on:
   push:
     branches: [main]
+    paths:
+      - 'flixopt/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - '.github/workflows/**'
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: ["**"]
+    paths:
+      - 'flixopt/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - '.github/workflows/**'
   workflow_dispatch:
   workflow_call:  # Allow release.yaml to call this workflow.
 
@@ -62,7 +73,14 @@ jobs:
         run: uv pip install --system .[dev]
 
       - name: Run tests
-        run: pytest -v --numprocesses=auto
+        run: |
+          if [[ "${{ github.event.pull_request.draft }}" == "true" ]]; then
+            # Draft PR: skip examples, slow, and deprecated_api
+            pytest -v --numprocesses=auto -m "not examples and not slow and not deprecated_api"
+          else
+            # Ready PR & main push: examples excluded via addopts
+            pytest -v --numprocesses=auto
+          fi
 
   test-examples:
     runs-on: ubuntu-24.04

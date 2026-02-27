@@ -7,10 +7,14 @@ on:
       - 'docs/**'
       - 'mkdocs.yml'
       - 'flixopt/**'
+      - '.github/workflows/**'
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
+      - 'flixopt/**'
+      - '.github/workflows/**'
   workflow_dispatch:
     inputs:
       deploy:
@@ -88,6 +92,14 @@ jobs:
           # Execute fast notebooks in parallel (4 at a time), excluding slow ones
           cd docs/notebooks && find . -name '*.ipynb' | \
             grep -vFf slow_notebooks.txt | \
+            xargs -P 4 -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
+
+      - name: Execute slow notebooks
+        if: steps.notebook-cache.outputs.cache-hit != 'true' && github.event.pull_request.draft != 'true'
+        run: |
+          set -eo pipefail
+          # Execute slow notebooks in parallel (skip on draft PRs)
+          cd docs/notebooks && cat slow_notebooks.txt | \
             xargs -P 4 -I {} sh -c 'jupyter execute --inplace "$1" || exit 255' _ {}
 
       - name: Build docs
