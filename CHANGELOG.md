@@ -71,6 +71,10 @@ Until here -->
 
 - **Clustering IO**: `cluster_weight` is now preserved during NetCDF roundtrip for manually constructed clustered FlowSystems (i.e. `FlowSystem(..., clusters=..., cluster_weight=...)`). Previously, `cluster_weight` was silently dropped to `None` during `save->reload->solve`, causing incorrect objective values. Systems created via `.transform.cluster()` were not affected.
 
+### 📦 Dependencies
+
+- **tsam**: Updated bounds to `>= 3.1.1, < 4` (was `>= 3.0.0, < 4, != 3.1.0`). tsam 3.0.0 and 3.1.0 were yanked from PyPI. Dev pin updated from `3.0.0` to `3.1.2`.
+
 ### 👷 Development
 
 - **New `test_math/` test suite**: Comprehensive mathematical correctness tests with exact, hand-calculated assertions. Each test runs in 3 IO modes (solve, save→reload→solve, solve→save→reload) via the `optimize` fixture:
