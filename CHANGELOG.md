@@ -52,7 +52,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
-## [6.1.0] - Upcoming
+## [6.1.0] - 2026-03-17
 
 **Summary**: Adds solver log capture through the Python logging system, exposes `progress` and `log_fn` parameters on solve/optimize, and fixes `cluster_weight` loss during NetCDF roundtrip.
 
@@ -73,7 +73,7 @@ Until here -->
 
 ### 📦 Dependencies
 
-- **tsam**: Updated bounds to `>= 3.1.1, < 4` (was `>= 3.0.0, < 4, != 3.1.0`). tsam 3.0.0 and 3.1.0 were yanked from PyPI. Dev pin updated from `3.0.0` to `3.1.2`.
+- **tsam**: Updated bounds to `>= 3.1.2, < 4` (was `>= 3.0.0, < 4, != 3.1.0`). tsam 3.0.0 and 3.1.0 were yanked from PyPI. Dev pin updated from `3.0.0` to `3.1.2`.
 
 ### 👷 Development
 
