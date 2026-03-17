@@ -52,24 +52,17 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Until here -->
 
-## [6.1.0] - Upcoming
+## [6.0.3] - Upcoming
 
-**Summary**: Adds solver log capture through the Python logging system, exposes `progress` and `log_fn` parameters on solve/optimize, and fixes `cluster_weight` loss during NetCDF roundtrip.
-
-### ✨ Added
-
-- **Solver log capture**: New `CONFIG.Solving.capture_solver_log` option routes solver output (HiGHS, Gurobi, etc.) through the `flixopt.solver` Python logger at INFO level. This allows capturing solver output in any Python log handler (console, file, or both) and filtering it independently from flixopt application logs. Enabled automatically by `CONFIG.debug()`, `CONFIG.exploring()`, `CONFIG.production()`, and `CONFIG.notebook()` presets. ([#606](https://github.com/flixOpt/flixopt/pull/606))
-- **`progress` parameter**: `solve()`, `optimize()`, and `rolling_horizon()` now accept a `progress` parameter (default `True`) to control the tqdm progress bar independently of CONFIG settings.
-- **`log_fn` parameter**: `solve()` now accepts a `log_fn` parameter to persist the solver log to a file.
-
-### ♻️ Changed
-
-- **Presets**: `CONFIG.debug()` and `CONFIG.exploring()` now set `log_to_console=False` (solver output is routed through the Python logger instead of native console output).
-- **`CONFIG.Solving.log_to_console`** now exclusively controls the solver's native console output. It no longer affects the tqdm progress bar (use the `progress` parameter instead).
+**Summary**: Bugfix release fixing `cluster_weight` loss during NetCDF roundtrip for manually constructed clustered FlowSystems, and updating tsam dependency bounds after yanked releases.
 
 ### 🐛 Fixed
 
 - **Clustering IO**: `cluster_weight` is now preserved during NetCDF roundtrip for manually constructed clustered FlowSystems (i.e. `FlowSystem(..., clusters=..., cluster_weight=...)`). Previously, `cluster_weight` was silently dropped to `None` during `save->reload->solve`, causing incorrect objective values. Systems created via `.transform.cluster()` were not affected.
+
+### 📦 Dependencies
+
+- **tsam**: Updated bounds to `>= 3.1.1, < 4` (was `>= 3.0.0, < 4, != 3.1.0`). tsam 3.0.0 and 3.1.0 were yanked from PyPI. Dev pin updated from `3.0.0` to `3.1.2`.
 
 ### 👷 Development
 
@@ -87,16 +80,6 @@ Until here -->
     - `test_scenarios.py` — scenario weights, scenario-independent flows
     - `test_clustering.py` — exact per-timestep flow_rates, effects, and charge_state in clustered systems (incl. non-equal cluster weights to cover IO roundtrip)
     - `test_validation.py` — plausibility checks and error messages
-
----
-
-## [6.0.3] - 2026-03-17
-
-**Summary**: Patch release updating tsam dependency bounds after yanked releases on PyPI.
-
-### 📦 Dependencies
-
-- **tsam**: Updated bounds to `>= 3.1.1, < 4` (was `>= 3.0.0, < 4, != 3.1.0`). tsam 3.0.0 and 3.1.0 were yanked from PyPI. Dev pin updated from `3.0.0` to `3.1.2`.
 
 ---
 
