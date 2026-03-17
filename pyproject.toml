@@ -113,7 +113,7 @@ docs = [
     "notebook>=7.5.0",
     # Realistic profile generation for examples
     "demandlib >= 0.2.2, < 0.3",
-    "pvlib >= 0.10.0, < 0.14",
+    "pvlib >=0.10.0, <0.16",
     "holidays >= 0.40, < 1",
 ]
 
