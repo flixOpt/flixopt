@@ -71,6 +71,10 @@ Until here -->
 
 - **Clustering IO**: `cluster_weight` is now preserved during NetCDF roundtrip for manually constructed clustered FlowSystems (i.e. `FlowSystem(..., clusters=..., cluster_weight=...)`). Previously, `cluster_weight` was silently dropped to `None` during `save->reload->solve`, causing incorrect objective values. Systems created via `.transform.cluster()` were not affected.
 
+### 📦 Dependencies
+
+- **tsam**: Updated bounds to `>= 3.1.1, < 4` (was `>= 3.0.0, < 4, != 3.1.0`). tsam 3.0.0 and 3.1.0 were yanked from PyPI. Dev pin updated from `3.0.0` to `3.1.2`.
+
 ### 👷 Development
 
 - **New `test_math/` test suite**: Comprehensive mathematical correctness tests with exact, hand-calculated assertions. Each test runs in 3 IO modes (solve, save→reload→solve, solve→save→reload) via the `optimize` fixture:
@@ -87,16 +91,6 @@ Until here -->
     - `test_scenarios.py` — scenario weights, scenario-independent flows
     - `test_clustering.py` — exact per-timestep flow_rates, effects, and charge_state in clustered systems (incl. non-equal cluster weights to cover IO roundtrip)
     - `test_validation.py` — plausibility checks and error messages
-
----
-
-## [6.0.3] - 2026-03-17
-
-**Summary**: Patch release updating tsam dependency bounds after yanked releases on PyPI.
-
-### 📦 Dependencies
-
-- **tsam**: Updated bounds to `>= 3.1.1, < 4` (was `>= 3.0.0, < 4, != 3.1.0`). tsam 3.0.0 and 3.1.0 were yanked from PyPI. Dev pin updated from `3.0.0` to `3.1.2`.
 
 ---
 
