@@ -22,6 +22,8 @@ import xarray as xr
 import yaml
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
+
     import linopy
 
     from .flow_system import FlowSystem
@@ -1511,7 +1513,7 @@ def suppress_output():
 
 
 @contextmanager
-def stream_solver_log(log_fn: pathlib.Path | None = None):
+def stream_solver_log(log_fn: pathlib.Path | None = None) -> Generator[pathlib.Path, None, None]:
     """Stream solver log file contents to the ``flixopt.solver`` Python logger.
 
     Tails a solver log file in a background thread, forwarding each line to
