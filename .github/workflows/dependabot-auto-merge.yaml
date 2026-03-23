@@ -1,0 +1,23 @@
+name: Dependabot auto-merge
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Auto-merge minor/patch
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: dependabot/fetch-metadata@v2
+        id: metadata
+
+      - if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        run: gh pr merge "$PR" --auto --squash
+        env:
+          PR: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ github.token }}

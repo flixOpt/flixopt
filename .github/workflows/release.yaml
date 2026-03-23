@@ -2,41 +2,23 @@ name: Release
 
 on:
   push:
-    tags:
-      - v*.*.*
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
 
 env:
   PYTHON_VERSION: "3.11"
-  PREPARATION_COMMIT: '[ci] prepare release ${{ github.ref_name }}'
 
 jobs:
-  check-preparation:
-    name: Check if release is prepared
+  release-please:
+    name: Release Please
     runs-on: ubuntu-24.04
     outputs:
-      prepared: ${{ steps.validate.outputs.prepared }}
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Validate commit message
-        id: validate
-        run: |
-          COMMIT_MESSAGE=$(git log -1 --pretty=%B)
-          echo "Expected: '${{ env.PREPARATION_COMMIT }}'"
-          echo "Received: '$COMMIT_MESSAGE'"
-
-          prepared="false"
-          if [[ "$COMMIT_MESSAGE" == "${{ env.PREPARATION_COMMIT }}" ]]; then
-            prepared="true"
-          fi
-
-          echo "prepared=$prepared" >> $GITHUB_OUTPUT
-
-  prepare-release:
-    name: Prepare release
-    needs: [check-preparation]
-    if: needs.check-preparation.outputs.prepared == 'false'
-    runs-on: ubuntu-24.04
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
     steps:
       - name: Generate token for Release Bot
         id: generate-token
@@ -45,50 +27,28 @@ jobs:
           app-id: ${{ vars.RELEASE_BOT_APP_ID }}
           private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v6
+      - uses: googleapis/release-please-action@v4
+        id: release
         with:
-          fetch-depth: 0
-          ref: main
           token: ${{ steps.generate-token.outputs.token }}
-
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Update CITATION.cff
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          DATE=$(date +%Y-%m-%d)
-          sed -i "s/^version: .*/version: $VERSION/" CITATION.cff
-          sed -i "s/^date-released: .*/date-released: $DATE/" CITATION.cff
-
-      - name: Remove previous tag
-        run: |
-          git tag -d ${{ github.ref_name }}
-          git push origin --delete ${{ github.ref_name }}
-
-      - name: Commit and re-tag
-        run: |
-          git add CITATION.cff
-          git commit -m "${{ env.PREPARATION_COMMIT }}"
-          git push origin main
-          git tag -a ${{ github.ref_name }} -m "${{ github.ref_name }}"
-          git push origin ${{ github.ref_name }}
+          config-file: .release-please-config.json
+          manifest-file: .release-please-manifest.json
 
   test:
     name: Run tests
-    needs: [check-preparation]
-    if: needs.check-preparation.outputs.prepared == 'true'
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
     uses: ./.github/workflows/tests.yaml
 
   build:
     name: Build package
-    needs: [check-preparation, test]
-    if: needs.check-preparation.outputs.prepared == 'true'
+    needs: [release-please, test]
+    if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
 
       - uses: astral-sh/setup-uv@v7
         with:
@@ -110,7 +70,7 @@ jobs:
 
   publish-pypi:
     name: Publish to PyPI
-    needs: [build]
+    needs: build
     runs-on: ubuntu-24.04
     environment:
       name: pypi
@@ -130,7 +90,7 @@ jobs:
 
   verify-pypi:
     name: Verify PyPI installation
-    needs: [publish-pypi]
+    needs: [release-please, publish-pypi]
     runs-on: ubuntu-24.04
     steps:
       - uses: astral-sh/setup-uv@v7
@@ -143,7 +103,7 @@ jobs:
 
       - name: Verify installation
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
+          VERSION=${{ needs.release-please.outputs.version }}
 
           for delay in 10 20 40 60 90 120 180 300; do
             sleep $delay
@@ -159,35 +119,40 @@ jobs:
           echo "Failed to verify PyPI installation"
           exit 1
 
-  create-release:
-    name: Create GitHub release
-    needs: [verify-pypi]
+  update-citation-date:
+    name: Update CITATION.cff date
+    needs: [release-please, publish-pypi]
+    if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-24.04
-    permissions:
-      contents: write
     steps:
+      - name: Generate token for Release Bot
+        id: generate-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
       - uses: actions/checkout@v6
-
-      - uses: actions/setup-python@v6
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          ref: main
+          token: ${{ steps.generate-token.outputs.token }}
 
-      - name: Extract release notes
+      - name: Update date-released
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          python scripts/extract_release_notes.py $VERSION > current_release_notes.md
+          DATE=$(date +%Y-%m-%d)
+          sed -i "s/^date-released: .*/date-released: $DATE/" CITATION.cff
 
-      - uses: softprops/action-gh-release@v2
-        with:
-          body_path: current_release_notes.md
-          draft: false
-          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
-          generate_release_notes: true
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CITATION.cff
+          git diff --staged --quiet || git commit -m "chore: update CITATION.cff date-released" && git push origin main
 
   deploy-docs:
     name: Deploy documentation
-    needs: [create-release]
+    needs: [release-please, verify-pypi]
     uses: ./.github/workflows/docs.yaml
     with:
       deploy: true
-      version: ${{ github.ref_name }}
+      version: ${{ needs.release-please.outputs.tag_name }}
