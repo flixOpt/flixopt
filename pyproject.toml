@@ -130,7 +130,7 @@ exclude = ["tests*", "docs*"]
 include-package-data = true
 
 [tool.setuptools.exclude-package-data]
-"*" = ["*.md", ".git*", "*.ipynb", "renovate.json"]
+"*" = ["*.md", ".git*", "*.ipynb"]
 
 [tool.setuptools_scm]
 version_scheme = "post-release"
