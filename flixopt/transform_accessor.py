@@ -898,31 +898,42 @@ class TransformAccessor:
     def _build_cluster_config_with_weights(
         cluster: ClusterConfig | None,
         auto_weights: dict[str, float],
+        available_columns: set[str] | None = None,
     ) -> ClusterConfig:
         """Merge auto-calculated weights into ClusterConfig.
 
         Args:
             cluster: Optional user-provided ClusterConfig.
             auto_weights: Automatically calculated weights based on data variance.
+            available_columns: Column names present in the clustering DataFrame.
+                If provided, weights are filtered to only include these columns.
+                This prevents tsam errors when some time series are dropped
+                (e.g., constant arrays removed before clustering).
 
         Returns:
             ClusterConfig with weights set (either user-provided or auto-calculated).
         """
         from tsam import ClusterConfig
 
-        # User provided ClusterConfig with weights - use as-is
+        # Determine weights: user-provided take priority over auto-calculated
         if cluster is not None and cluster.weights is not None:
-            return cluster
+            weights = dict(cluster.weights)
+        else:
+            weights = auto_weights
 
-        # No ClusterConfig provided - use defaults with auto-calculated weights
+        # Filter weights to only include columns present in the clustering data
+        if available_columns is not None:
+            weights = {name: w for name, w in weights.items() if name in available_columns}
+
+        # No ClusterConfig provided - use defaults with weights
         if cluster is None:
-            return ClusterConfig(weights=auto_weights)
+            return ClusterConfig(weights=weights)
 
-        # ClusterConfig provided without weights - add auto-calculated weights
+        # ClusterConfig provided - use its settings with (possibly filtered) weights
         return ClusterConfig(
             method=cluster.method,
             representation=cluster.representation,
-            weights=auto_weights,
+            weights=weights,
             normalize_column_means=cluster.normalize_column_means,
             use_duration_curves=cluster.use_duration_curves,
             include_period_sums=cluster.include_period_sums,
@@ -1762,12 +1773,11 @@ class TransformAccessor:
                 with warnings.catch_warnings():
                     warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
 
-                    # Build ClusterConfig with auto-calculated weights
+                    # Build ClusterConfig with auto-calculated weights, filtered to available columns
                     clustering_weights = self._calculate_clustering_weights(ds_slice)
-                    filtered_weights = {
-                        name: w for name, w in clustering_weights.items() if name in df_for_clustering.columns
-                    }
-                    cluster_config = self._build_cluster_config_with_weights(cluster, filtered_weights)
+                    cluster_config = self._build_cluster_config_with_weights(
+                        cluster, clustering_weights, available_columns=set(df_for_clustering.columns)
+                    )
 
                     # Perform clustering based on selected data_vars (or all if not specified)
                     aggregation_results[key] = tsam.aggregate(
