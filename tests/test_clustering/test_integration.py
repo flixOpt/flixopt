@@ -396,9 +396,12 @@ class TestClusterAdvancedOptions:
         constant_sink = Sink('constant_load', inputs=[constant_flow])
         fs.add_elements(source, sink, constant_sink, bus)
 
-        # The constant column name (find it from clustering_data)
-        all_data = fs.transform.clustering_data()
+        # Use to_dataset() to get ALL columns including the constant one
+        # (clustering_data() already strips constants, so it wouldn't test the path)
+        all_data = fs.to_dataset(include_solution=False)
         all_columns = set(all_data.data_vars)
+        clustering_columns = set(fs.transform.clustering_data().data_vars)
+        assert all_columns > clustering_columns, 'Test requires at least one constant column to be meaningful'
 
         # Build weights that reference ALL columns including the constant one
         # that will be dropped — these are valid variables, just constant over time
