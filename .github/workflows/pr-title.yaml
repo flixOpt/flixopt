@@ -1,0 +1,32 @@
+name: PR Title
+
+on:
+  push:
+    branches: ["release-please--**"]
+  pull_request:
+    types: [opened, edited, reopened]
+
+jobs:
+  validate:
+    name: Validate conventional commit
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: amannn/action-semantic-pull-request@v6
+        with:
+          types: |
+            feat
+            fix
+            refactor
+            test
+            docs
+            chore
+            ci
+            build
+            perf
+            revert
+            style
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
