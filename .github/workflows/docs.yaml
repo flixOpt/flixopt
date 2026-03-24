@@ -95,7 +95,7 @@ jobs:
           MKDOCS_JUPYTER_EXECUTE: "false"
         run: mkdocs build --strict
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: docs
           path: site/
