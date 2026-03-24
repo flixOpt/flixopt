@@ -30,20 +30,10 @@ jobs:
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  publish:
-    name: Publish
-    needs: release-please
-    if: needs.release-please.outputs.release_created
-    permissions:
-      id-token: write
-      contents: write
-    uses: ./.github/workflows/publish.yaml
-    with:
-      tag: ${{ needs.release-please.outputs.tag_name }}
-
   update-citation-date:
     name: Update CITATION.cff date
-    needs: publish
+    needs: release-please
+    if: needs.release-please.outputs.release_created
     runs-on: ubuntu-24.04
     steps:
       - name: Generate token for Release Bot
@@ -72,7 +62,8 @@ jobs:
 
   deploy-docs:
     name: Deploy documentation
-    needs: [release-please, publish]
+    needs: release-please
+    if: needs.release-please.outputs.release_created
     uses: ./.github/workflows/docs.yaml
     with:
       deploy: true
