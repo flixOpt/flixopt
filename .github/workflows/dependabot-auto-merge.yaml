@@ -16,7 +16,23 @@ jobs:
       - uses: dependabot/fetch-metadata@v2
         id: metadata
 
-      - if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+      - name: Generate token for Release Bot
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        id: generate-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
+      - name: Approve PR
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        run: gh pr review "$PR" --approve
+        env:
+          PR: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+
+      - name: Enable auto-merge
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
         run: gh pr merge "$PR" --auto --squash
         env:
           PR: ${{ github.event.pull_request.html_url }}
