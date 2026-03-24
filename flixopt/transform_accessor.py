@@ -1698,6 +1698,16 @@ class TransformAccessor:
         # This ensures all slices have the same variables for consistent metrics
         ds_for_clustering = drop_constant_arrays(ds_for_clustering, dim='time')
 
+        # Validate user-provided weight keys against available variables
+        if cluster is not None and cluster.weights is not None:
+            all_vars = set(ds.data_vars)
+            unknown = sorted(set(cluster.weights) - all_vars)
+            if unknown:
+                raise ValueError(
+                    f'ClusterConfig weights reference unknown variables: {unknown}. '
+                    f'Available variables can be found via transform.clustering_data().'
+                )
+
         # Guard against empty dataset after removing constant arrays
         if not ds_for_clustering.data_vars:
             filter_info = f'data_vars={data_vars}' if data_vars else 'all variables'

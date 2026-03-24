@@ -335,13 +335,12 @@ class TestClusterAdvancedOptions:
         )
         assert len(fs_clustered.clusters) == 2
 
-    def test_extra_weight_keys_filtered(self, basic_flow_system):
-        """Test that extra keys in ClusterConfig.weights are filtered out.
+    def test_unknown_weight_keys_raise(self, basic_flow_system):
+        """Test that unknown keys in ClusterConfig.weights raise ValueError.
 
-        Regression test: tsam raises errors when weights contain keys not present
-        in the clustering DataFrame. Extra keys can arise when constant columns
-        are dropped before clustering, or when the user specifies weights for
-        variables not in the FlowSystem.
+        Regression test: weight keys that don't match any variable in the
+        FlowSystem are likely typos and should be caught early with a clear
+        error message.
         """
         from tsam import ClusterConfig
 
@@ -354,13 +353,12 @@ class TestClusterAdvancedOptions:
         weights['nonexistent_variable'] = 0.5
         weights['another_missing_col'] = 0.3
 
-        # Must not raise despite extra weight keys
-        fs_clustered = basic_flow_system.transform.cluster(
-            n_clusters=2,
-            cluster_duration='1D',
-            cluster=ClusterConfig(weights=weights),
-        )
-        assert len(fs_clustered.clusters) == 2
+        with pytest.raises(ValueError, match='unknown variables'):
+            basic_flow_system.transform.cluster(
+                n_clusters=2,
+                cluster_duration='1D',
+                cluster=ClusterConfig(weights=weights),
+            )
 
     def test_extra_weight_keys_filtered_with_constant_column(self):
         """Test that weights for constant (dropped) columns are filtered out.
@@ -402,12 +400,11 @@ class TestClusterAdvancedOptions:
         all_data = fs.transform.clustering_data()
         all_columns = set(all_data.data_vars)
 
-        # Build weights that reference ALL columns (including the constant one
-        # that will be dropped) plus an extra nonexistent one
+        # Build weights that reference ALL columns including the constant one
+        # that will be dropped — these are valid variables, just constant over time
         weights = {col: 1.0 for col in all_columns}
-        weights['totally_fake_column'] = 0.5
 
-        # Before the fix, this would raise in tsam due to extra weight keys
+        # Must not raise: constant columns are silently filtered, not rejected
         fs_clustered = fs.transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
@@ -415,11 +412,49 @@ class TestClusterAdvancedOptions:
         )
         assert len(fs_clustered.clusters) == 2
 
-    def test_extra_weight_keys_filtered_multiperiod(self):
-        """Test that extra weight keys are filtered in multi-period clustering.
+    def test_unknown_weight_keys_raise_multiperiod(self):
+        """Test that unknown weight keys raise ValueError in multi-period clustering."""
+        pytest.importorskip('tsam')
+        from tsam import ClusterConfig
 
-        Each period is clustered independently; weights must be filtered per
-        slice so no extra keys leak through to tsam.
+        from flixopt import Bus, Flow, Sink, Source
+        from flixopt.core import TimeSeriesData
+
+        n_hours = 168  # 7 days
+        fs = FlowSystem(
+            timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'),
+            periods=pd.Index([2025, 2030], name='period'),
+        )
+
+        demand_data = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2
+        bus = Bus('electricity')
+        grid_flow = Flow('grid_in', bus='electricity', size=100)
+        demand_flow = Flow(
+            'demand_out',
+            bus='electricity',
+            size=100,
+            fixed_relative_profile=TimeSeriesData(demand_data / 100),
+        )
+        source = Source('grid', outputs=[grid_flow])
+        sink = Sink('demand', inputs=[demand_flow])
+        fs.add_elements(source, sink, bus)
+
+        clustering_data = fs.transform.clustering_data()
+        weights = {col: 1.0 for col in clustering_data.data_vars}
+        weights['nonexistent_period_var'] = 0.7
+
+        with pytest.raises(ValueError, match='unknown variables'):
+            fs.transform.cluster(
+                n_clusters=2,
+                cluster_duration='1D',
+                cluster=ClusterConfig(weights=weights),
+            )
+
+    def test_valid_weight_keys_multiperiod(self):
+        """Test that valid weight keys work in multi-period clustering.
+
+        Each period is clustered independently; weights for valid columns
+        must be filtered per slice so no extra keys leak through to tsam.
         """
         pytest.importorskip('tsam')
         from tsam import ClusterConfig
@@ -446,10 +481,8 @@ class TestClusterAdvancedOptions:
         sink = Sink('demand', inputs=[demand_flow])
         fs.add_elements(source, sink, bus)
 
-        # Weights with extra keys that don't exist in any period slice
         clustering_data = fs.transform.clustering_data()
         weights = {col: 1.0 for col in clustering_data.data_vars}
-        weights['nonexistent_period_var'] = 0.7
 
         fs_clustered = fs.transform.cluster(
             n_clusters=2,
