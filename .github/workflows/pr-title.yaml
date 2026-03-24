@@ -4,7 +4,7 @@ on:
   push:
     branches: ["release-please--**"]
   pull_request:
-    types: [opened, edited, synchronize, reopened]
+    types: [opened, edited, reopened]
 
 jobs:
   validate:
@@ -26,5 +26,7 @@ jobs:
             ci
             build
             perf
+            revert
+            style
         env:
           GITHUB_TOKEN: ${{ github.token }}

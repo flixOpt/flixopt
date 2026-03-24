@@ -3,6 +3,8 @@ name: Release
 on:
   push:
     branches: [main]
+    tags:
+      - "v*.*.*"
 
 permissions:
   contents: write
@@ -14,6 +16,7 @@ env:
 jobs:
   release-please:
     name: Release Please
+    if: github.ref_type == 'branch'
     runs-on: ubuntu-24.04
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
@@ -34,21 +37,55 @@ jobs:
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
 
+  release-info:
+    name: Release info
+    runs-on: ubuntu-24.04
+    needs: release-please
+    if: always()
+    outputs:
+      should_release: ${{ steps.info.outputs.should_release }}
+      tag_name: ${{ steps.info.outputs.tag_name }}
+      version: ${{ steps.info.outputs.version }}
+      is_prerelease: ${{ steps.info.outputs.is_prerelease }}
+    steps:
+      - name: Determine release info
+        id: info
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            TAG="${{ github.ref_name }}"
+            VERSION="${TAG#v}"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "tag_name=$TAG" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            if [[ "$VERSION" =~ (rc|alpha|beta) ]]; then
+              echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+            fi
+          elif [[ "${{ needs.release-please.outputs.release_created }}" == "true" ]]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "tag_name=${{ needs.release-please.outputs.tag_name }}" >> "$GITHUB_OUTPUT"
+            echo "version=${{ needs.release-please.outputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
     name: Run tests
-    needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    needs: release-info
+    if: needs.release-info.outputs.should_release == 'true'
     uses: ./.github/workflows/tests.yaml
 
   build:
     name: Build package
-    needs: [release-please, test]
-    if: needs.release-please.outputs.release_created == 'true'
+    needs: [release-info, test]
+    if: needs.release-info.outputs.should_release == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ needs.release-info.outputs.tag_name }}
 
       - uses: astral-sh/setup-uv@v7
         with:
@@ -90,7 +127,7 @@ jobs:
 
   verify-pypi:
     name: Verify PyPI installation
-    needs: [release-please, publish-pypi]
+    needs: [release-info, publish-pypi]
     runs-on: ubuntu-24.04
     steps:
       - uses: astral-sh/setup-uv@v7
@@ -103,7 +140,7 @@ jobs:
 
       - name: Verify installation
         run: |
-          VERSION=${{ needs.release-please.outputs.version }}
+          VERSION=${{ needs.release-info.outputs.version }}
 
           for delay in 10 20 40 60 90 120 180 300; do
             sleep $delay
@@ -119,10 +156,24 @@ jobs:
           echo "Failed to verify PyPI installation"
           exit 1
 
+  create-prerelease:
+    name: Create GitHub prerelease
+    needs: [release-info, verify-pypi]
+    if: needs.release-info.outputs.is_prerelease == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.release-info.outputs.tag_name }}
+          prerelease: true
+          generate_release_notes: true
+
   update-citation-date:
     name: Update CITATION.cff date
-    needs: [release-please, publish-pypi]
-    if: needs.release-please.outputs.release_created == 'true'
+    needs: [release-info, publish-pypi]
+    if: needs.release-info.outputs.is_prerelease == 'false'
     runs-on: ubuntu-24.04
     steps:
       - name: Generate token for Release Bot
@@ -151,8 +202,9 @@ jobs:
 
   deploy-docs:
     name: Deploy documentation
-    needs: [release-please, verify-pypi]
+    needs: [release-info, verify-pypi]
+    if: needs.release-info.outputs.is_prerelease == 'false'
     uses: ./.github/workflows/docs.yaml
     with:
       deploy: true
-      version: ${{ needs.release-please.outputs.tag_name }}
+      version: ${{ needs.release-info.outputs.tag_name }}

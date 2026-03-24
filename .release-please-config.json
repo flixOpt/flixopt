@@ -3,7 +3,7 @@
   "include-component-in-tag": false,
   "packages": {
     ".": {
-      "release-type": "python",
+      "release-type": "simple",
       "package-name": "flixopt",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
