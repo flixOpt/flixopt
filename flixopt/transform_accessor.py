@@ -801,19 +801,20 @@ class _Expander:
 
         # 2. Expand solution (with segment total correction for segmented systems)
         reduced_solution = self._fs.solution
-        sol_coord_cache = {k: v for k, v in reduced_solution.coords.items()}
-        sol_coord_names = set(sol_coord_cache)
-        expanded_sol_vars = {}
-        for name in reduced_solution.variables:
-            if name in sol_coord_names:
-                continue
-            da = self._fast_get_da(reduced_solution, name, sol_coord_cache)
-            expanded_sol_vars[name] = self.expand_dataarray(da, name, is_solution=True)
-        expanded_fs._solution = xr.Dataset(expanded_sol_vars, attrs=reduced_solution.attrs)
-        expanded_fs._solution = expanded_fs._solution.reindex(time=self._original_timesteps_extra)
+        if reduced_solution is not None:
+            sol_coord_cache = {k: v for k, v in reduced_solution.coords.items()}
+            sol_coord_names = set(sol_coord_cache)
+            expanded_sol_vars = {}
+            for name in reduced_solution.variables:
+                if name in sol_coord_names:
+                    continue
+                da = self._fast_get_da(reduced_solution, name, sol_coord_cache)
+                expanded_sol_vars[name] = self.expand_dataarray(da, name, is_solution=True)
+            expanded_fs._solution = xr.Dataset(expanded_sol_vars, attrs=reduced_solution.attrs)
+            expanded_fs._solution = expanded_fs._solution.reindex(time=self._original_timesteps_extra)
 
-        # 3. Combine charge_state with SOC_boundary for intercluster storages
-        self._combine_intercluster_charge_states(expanded_fs, reduced_solution)
+            # 3. Combine charge_state with SOC_boundary for intercluster storages
+            self._combine_intercluster_charge_states(expanded_fs, reduced_solution)
 
         # Log expansion info
         has_periods = self._fs.periods is not None
@@ -1899,15 +1900,13 @@ class TransformAccessor:
             The Clustering object.
 
         Raises:
-            ValueError: If FlowSystem wasn't created with cluster() or has no solution.
+            ValueError: If FlowSystem wasn't created with cluster().
         """
 
         if self._fs.clustering is None:
             raise ValueError(
                 'expand() requires a FlowSystem created with cluster(). This FlowSystem has no aggregation info.'
             )
-        if self._fs.solution is None:
-            raise ValueError('FlowSystem has no solution. Run optimize() or solve() first.')
 
         return self._fs.clustering
 
