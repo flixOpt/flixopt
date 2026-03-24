@@ -211,8 +211,8 @@ def test_expand_withoutclustering_raises(solver_fixture, timesteps_2_days):
         fs.transform.expand()
 
 
-def test_expand_without_solution_raises(timesteps_8_days):
-    """Test that expand raises error if no solution."""
+def test_expand_without_solution(timesteps_8_days):
+    """Test that expand works without a solution (e.g. for inspecting clustering_data)."""
     fs = create_simple_system(timesteps_8_days)
 
     fs_reduced = fs.transform.cluster(
@@ -221,8 +221,9 @@ def test_expand_without_solution_raises(timesteps_8_days):
     )
     # Don't optimize - no solution
 
-    with pytest.raises(ValueError, match='no solution'):
-        fs_reduced.transform.expand()
+    fs_expanded = fs_reduced.transform.expand()
+    assert fs_expanded.solution is None
+    assert len(fs_expanded.timesteps) == len(timesteps_8_days)
 
 
 # ==================== Multi-dimensional Tests ====================
