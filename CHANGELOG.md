@@ -20,6 +20,14 @@ Please remove all irrelevant sections before releasing.
 Please keep the format of the changelog consistent: ## [VERSION] - YYYY-MM-DD
 ---
 
+## [6.1.1](https://github.com/flixOpt/flixopt/compare/v6.1.0...v6.1.1) (2026-03-24)
+
+
+### Bug Fixes
+
+* filter user-provided clustering weights to available columns ([#625](https://github.com/flixOpt/flixopt/issues/625)) ([ae6b099](https://github.com/flixOpt/flixopt/commit/ae6b099dcbc579656525548c96a6110bd9cda477))
+* validate user-provided clustering weight keys ([#627](https://github.com/flixOpt/flixopt/issues/627)) ([4cba143](https://github.com/flixOpt/flixopt/commit/4cba1438b58b8b0e89b11b0ca5120f4484686983))
+
 ## [Template] - ????-??-??
 
 **Summary**:
