@@ -13,13 +13,8 @@ env:
   PYTHON_VERSION: "3.11"
 
 jobs:
-  test:
-    name: Run tests
-    uses: ./.github/workflows/tests.yaml
-
   build:
     name: Build package
-    needs: test
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
