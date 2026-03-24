@@ -360,6 +360,30 @@ class TestClusterAdvancedOptions:
                 cluster=ClusterConfig(weights=weights),
             )
 
+    def test_weight_keys_excluded_by_data_vars_raise(self, basic_flow_system):
+        """Test that weight keys excluded by the data_vars allow-list raise ValueError.
+
+        A variable may exist on the FlowSystem but be intentionally omitted from
+        the clustering input via data_vars. Weights referencing such excluded
+        variables should be rejected.
+        """
+        from tsam import ClusterConfig
+
+        ds = basic_flow_system.to_dataset(include_solution=False)
+        clustering_columns = list(basic_flow_system.transform.clustering_data().data_vars)
+        excluded_var = sorted(set(ds.data_vars) - set(clustering_columns))[0]
+
+        # Weight references both a selected var and an excluded var
+        weights = {clustering_columns[0]: 1.0, excluded_var: 0.5}
+
+        with pytest.raises(ValueError, match='unknown variables'):
+            basic_flow_system.transform.cluster(
+                n_clusters=2,
+                cluster_duration='1D',
+                data_vars=clustering_columns,
+                cluster=ClusterConfig(weights=weights),
+            )
+
     def test_extra_weight_keys_filtered_with_constant_column(self):
         """Test that weights for constant (dropped) columns are filtered out.
 
@@ -401,7 +425,18 @@ class TestClusterAdvancedOptions:
         all_data = fs.to_dataset(include_solution=False)
         all_columns = set(all_data.data_vars)
         clustering_columns = set(fs.transform.clustering_data().data_vars)
-        assert all_columns > clustering_columns, 'Test requires at least one constant column to be meaningful'
+
+        # Identify constant columns: variables with a single unique value across time
+        constant_columns = set()
+        for name in all_data.data_vars:
+            var = all_data[name]
+            if 'time' not in var.dims or np.nanmax(var.values) - np.nanmin(var.values) < 1e-10:
+                constant_columns.add(name)
+
+        assert len(constant_columns) > 0, 'Test requires at least one constant column'
+        assert constant_columns <= all_columns, 'Constant columns must be in the full dataset'
+        for col in constant_columns:
+            assert col not in clustering_columns, f'Constant column {col!r} should not be in clustering_data()'
 
         # Build weights that reference ALL columns including the constant one
         # that will be dropped — these are valid variables, just constant over time
