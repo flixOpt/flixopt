@@ -1,0 +1,120 @@
+name: Publish
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  test:
+    name: Run tests
+    uses: ./.github/workflows/tests.yaml
+
+  build:
+    name: Build package
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.10.9"
+          enable-cache: true
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Build package
+        run: uv build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: pypi
+      url: https://pypi.org/p/flixopt
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+
+  verify-pypi:
+    name: Verify PyPI installation
+    needs: publish-pypi
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.10.9"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Verify installation
+        run: |
+          VERSION="${TAG#v}"
+
+          for delay in 10 20 40 60 90 120 180 300; do
+            sleep $delay
+            echo "Attempting installation (waited ${delay}s)..."
+
+            if uv pip install --system --index-url https://pypi.org/simple/ "flixopt==$VERSION" && \
+               python -c "from importlib.metadata import version; assert version('flixopt') == '$VERSION'"; then
+              echo "PyPI installation successful!"
+              exit 0
+            fi
+          done
+
+          echo "Failed to verify PyPI installation"
+          exit 1
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+
+  github-release:
+    name: Create GitHub release
+    if: github.event_name == 'push'
+    needs: verify-pypi
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Create GitHub release
+        run: |
+          if [[ "$TAG" =~ (rc|alpha|beta) ]]; then
+            gh release create "$TAG" --generate-notes --prerelease
+          else
+            gh release create "$TAG" --generate-notes
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}

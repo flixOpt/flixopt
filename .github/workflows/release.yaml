@@ -3,25 +3,18 @@ name: Release
 on:
   push:
     branches: [main]
-    tags:
-      - "v*.*.*"
 
 permissions:
   contents: write
   pull-requests: write
 
-env:
-  PYTHON_VERSION: "3.11"
-
 jobs:
   release-please:
     name: Release Please
-    if: github.ref_type == 'branch'
     runs-on: ubuntu-24.04
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
-      version: ${{ steps.release.outputs.version }}
     steps:
       - name: Generate token for Release Bot
         id: generate-token
@@ -37,143 +30,20 @@ jobs:
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  release-info:
-    name: Release info
-    runs-on: ubuntu-24.04
+  publish:
+    name: Publish
     needs: release-please
-    if: always()
-    outputs:
-      should_release: ${{ steps.info.outputs.should_release }}
-      tag_name: ${{ steps.info.outputs.tag_name }}
-      version: ${{ steps.info.outputs.version }}
-      is_prerelease: ${{ steps.info.outputs.is_prerelease }}
-    steps:
-      - name: Determine release info
-        id: info
-        run: |
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            TAG="${{ github.ref_name }}"
-            VERSION="${TAG#v}"
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
-            echo "tag_name=$TAG" >> "$GITHUB_OUTPUT"
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-            if [[ "$VERSION" =~ (rc|alpha|beta) ]]; then
-              echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
-            fi
-          elif [[ "${{ needs.release-please.outputs.release_created }}" == "true" ]]; then
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
-            echo "tag_name=${{ needs.release-please.outputs.tag_name }}" >> "$GITHUB_OUTPUT"
-            echo "version=${{ needs.release-please.outputs.version }}" >> "$GITHUB_OUTPUT"
-            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
-          fi
-
-  test:
-    name: Run tests
-    needs: release-info
-    if: needs.release-info.outputs.should_release == 'true'
-    uses: ./.github/workflows/tests.yaml
-
-  build:
-    name: Build package
-    needs: [release-info, test]
-    if: needs.release-info.outputs.should_release == 'true'
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.release-info.outputs.tag_name }}
-
-      - uses: astral-sh/setup-uv@v7
-        with:
-          version: "0.10.9"
-          enable-cache: true
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Build package
-        run: uv build
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
-          retention-days: 7
-
-  publish-pypi:
-    name: Publish to PyPI
-    needs: build
-    runs-on: ubuntu-24.04
-    environment:
-      name: pypi
-      url: https://pypi.org/p/flixopt
+    if: needs.release-please.outputs.release_created
     permissions:
       id-token: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          skip-existing: true
-
-  verify-pypi:
-    name: Verify PyPI installation
-    needs: [release-info, publish-pypi]
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: astral-sh/setup-uv@v7
-        with:
-          version: "0.10.9"
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Verify installation
-        run: |
-          VERSION=${{ needs.release-info.outputs.version }}
-
-          for delay in 10 20 40 60 90 120 180 300; do
-            sleep $delay
-            echo "Attempting installation (waited ${delay}s)..."
-
-            if uv pip install --system --index-url https://pypi.org/simple/ "flixopt==$VERSION" && \
-               python -c "from importlib.metadata import version; assert version('flixopt') == '$VERSION'"; then
-              echo "PyPI installation successful!"
-              exit 0
-            fi
-          done
-
-          echo "Failed to verify PyPI installation"
-          exit 1
-
-  create-prerelease:
-    name: Create GitHub prerelease
-    needs: [release-info, verify-pypi]
-    if: needs.release-info.outputs.is_prerelease == 'true'
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.release-info.outputs.tag_name }}
-          prerelease: true
-          generate_release_notes: true
+      contents: write
+    uses: ./.github/workflows/publish.yaml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
 
   update-citation-date:
     name: Update CITATION.cff date
-    needs: [release-info, publish-pypi]
-    if: needs.release-info.outputs.is_prerelease == 'false'
+    needs: publish
     runs-on: ubuntu-24.04
     steps:
       - name: Generate token for Release Bot
@@ -202,9 +72,8 @@ jobs:
 
   deploy-docs:
     name: Deploy documentation
-    needs: [release-info, verify-pypi]
-    if: needs.release-info.outputs.is_prerelease == 'false'
+    needs: [release-please, publish]
     uses: ./.github/workflows/docs.yaml
     with:
       deploy: true
-      version: ${{ needs.release-info.outputs.tag_name }}
+      version: ${{ needs.release-please.outputs.tag_name }}
