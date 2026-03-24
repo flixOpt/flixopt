@@ -82,7 +82,7 @@ jobs:
         run: |
           VERSION="${TAG#v}"
 
-          for delay in 10 20 40 60 90 120 180 300; do
+          for delay in 30 60 90 120 180 300; do
             sleep $delay
             echo "Attempting installation (waited ${delay}s)..."
 
@@ -100,6 +100,7 @@ jobs:
 
   github-release:
     name: Create GitHub release
+    # Only on tag push — release-please creates its own release via workflow_call
     if: github.event_name == 'push'
     needs: verify-pypi
     runs-on: ubuntu-24.04
