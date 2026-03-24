@@ -1,7 +1,7 @@
 # Changelog
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-Formatting is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) & [Gitmoji](https://gitmoji.dev).
+Formatting is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) & [Conventional Commits](https://www.conventionalcommits.org/).
 For more details regarding the individual PRs and contributors, please refer to our [GitHub releases](https://github.com/flixOpt/flixopt/releases).
 
 !!! tip
@@ -9,15 +9,6 @@ For more details regarding the individual PRs and contributors, please refer to 
     If upgrading from v5.x, see the [Migration Guide v6](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v6/).
     If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide v3](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
----
-
-<!-- This text won't be rendered
-Note: The CI will automatically append a "What's Changed" section to the changelog for github releases.
-This contains all commits, PRs, and contributors.
-Therefore, the Changelog should focus on the user-facing changes.
-
-Please remove all irrelevant sections before releasing.
-Please keep the format of the changelog consistent: ## [VERSION] - YYYY-MM-DD
 ---
 
 ## [6.1.1](https://github.com/flixOpt/flixopt/compare/v6.1.0...v6.1.1) (2026-03-24)
@@ -28,62 +19,32 @@ Please keep the format of the changelog consistent: ## [VERSION] - YYYY-MM-DD
 * filter user-provided clustering weights to available columns ([#625](https://github.com/flixOpt/flixopt/issues/625)) ([ae6b099](https://github.com/flixOpt/flixopt/commit/ae6b099dcbc579656525548c96a6110bd9cda477))
 * validate user-provided clustering weight keys ([#627](https://github.com/flixOpt/flixopt/issues/627)) ([4cba143](https://github.com/flixOpt/flixopt/commit/4cba1438b58b8b0e89b11b0ca5120f4484686983))
 
-## [Template] - ????-??-??
-
-**Summary**:
-
-If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
-
-### ✨ Added
-
-### 💥 Breaking Changes
-
-### ♻️ Changed
-
-### 🗑️ Deprecated
-
-### 🔥 Removed
-
-### 🐛 Fixed
-
-### 🔒 Security
-
-### 📦 Dependencies
-
-### 📝 Docs
-
-### 👷 Development
-
-### 🚧 Known Issues
-
 ---
 
-Until here -->
-
-## [6.1.0] - 2026-03-17
+## [6.1.0](https://github.com/flixOpt/flixopt/compare/v6.0.2...v6.1.0) - 2026-03-17
 
 **Summary**: Adds solver log capture through the Python logging system, exposes `progress` and `log_fn` parameters on solve/optimize, and fixes `cluster_weight` loss during NetCDF roundtrip.
 
-### ✨ Added
+### Added
 
 - **Solver log capture**: New `CONFIG.Solving.capture_solver_log` option routes solver output (HiGHS, Gurobi, etc.) through the `flixopt.solver` Python logger at INFO level. This allows capturing solver output in any Python log handler (console, file, or both) and filtering it independently from flixopt application logs. Enabled automatically by `CONFIG.debug()`, `CONFIG.exploring()`, `CONFIG.production()`, and `CONFIG.notebook()` presets. ([#606](https://github.com/flixOpt/flixopt/pull/606))
 - **`progress` parameter**: `solve()`, `optimize()`, and `rolling_horizon()` now accept a `progress` parameter (default `True`) to control the tqdm progress bar independently of CONFIG settings.
 - **`log_fn` parameter**: `solve()` now accepts a `log_fn` parameter to persist the solver log to a file.
 
-### ♻️ Changed
+### Changed
 
 - **Presets**: `CONFIG.debug()` and `CONFIG.exploring()` now set `log_to_console=False` (solver output is routed through the Python logger instead of native console output).
 - **`CONFIG.Solving.log_to_console`** now exclusively controls the solver's native console output. It no longer affects the tqdm progress bar (use the `progress` parameter instead).
 
-### 🐛 Fixed
+### Bug Fixes
 
 - **Clustering IO**: `cluster_weight` is now preserved during NetCDF roundtrip for manually constructed clustered FlowSystems (i.e. `FlowSystem(..., clusters=..., cluster_weight=...)`). Previously, `cluster_weight` was silently dropped to `None` during `save->reload->solve`, causing incorrect objective values. Systems created via `.transform.cluster()` were not affected.
 
-### 📦 Dependencies
+### Dependencies
 
 - **tsam**: Updated bounds to `>= 3.1.2, < 4` (was `>= 3.0.0, < 4, != 3.1.0`). tsam 3.0.0 and 3.1.0 were yanked from PyPI. Dev pin updated from `3.0.0` to `3.1.2`.
 
-### 👷 Development
+### Development
 
 - **New `test_math/` test suite**: Comprehensive mathematical correctness tests with exact, hand-calculated assertions. Each test runs in 3 IO modes (solve, save→reload→solve, solve→save→reload) via the `optimize` fixture:
     - `test_flow.py` — flow bounds, merit order, relative min/max, on/off hours
@@ -102,43 +63,43 @@ Until here -->
 
 ---
 
-## [6.0.2] - 2026-02-05
+## [6.0.2](https://github.com/flixOpt/flixopt/compare/v6.0.1...v6.0.2) - 2026-02-05
 
 **Summary**: Patch release which improves `Comparison` coordinate handling.
 
-### 🐛 Fixed
+### Bug Fixes
 
 - **Comparison Coordinates**: Fixed `component` coordinate becoming `(case, contributor)` shaped after concatenation in `Comparison` class. Non-index coordinates are now properly merged before concat in `solution`, `inputs`, and all statistics properties. Added warning when coordinate mappings conflict (#599)
 
-### 📝 Docs
+### Documentation
 
 - **Docs Workflow**: Added `workflow_dispatch` inputs for manual docs deployment with version selection (#599)
 
-### 👷 Development
+### Development
 
 - Updated dev dependencies to newer versions
 ---
 
-## [6.0.1] - 2026-02-04
+## [6.0.1](https://github.com/flixOpt/flixopt/compare/v6.0.0...v6.0.1) - 2026-02-04
 
 **Summary**: Bugfix release addressing clustering issues with multi-period systems and ExtremeConfig.
 
-### 🐛 Fixed
+### Bug Fixes
 
 - **Multi-period clustering with ExtremeConfig** - Fixed `ValueError: cannot reshape array` when clustering multi-period or multi-scenario systems with `ExtremeConfig`. The fix uses pandas `.unstack()` instead of manual reshape for robustness.
 - **Consistent cluster count validation** - Added validation to detect inconsistent cluster counts across periods/scenarios, providing clear error messages.
 
-### 💥 Breaking Changes
+### Breaking Changes
 
 - **ExtremeConfig method restriction for multi-period systems** - When using `ExtremeConfig` with multi-period or multi-scenario systems, only `method='replace'` is now allowed. Using `method='new_cluster'` or `method='append'` will raise a `ValueError`. This works around a tsam bug where these methods can produce inconsistent cluster counts across slices.
 
-### 📦 Dependencies
+### Dependencies
 
 - Excluded tsam 3.1.0 from compatible versions due to clustering bug.
 
 ---
 
-## [6.0.0] - 2026-02-03
+## [6.0.0](https://github.com/flixOpt/flixopt/compare/v5.0.4...v6.0.0) - 2026-02-03
 
 **Summary**: Major release featuring tsam v3 migration, complete rewrite of the clustering/aggregation system, 2-3x faster I/O for large systems, new `plotly` plotting accessor, FlowSystem comparison tools, and removal of deprecated v5.0 classes.
 
@@ -156,7 +117,7 @@ Until here -->
 - **Comparison Module** (#550) - Compare multiple FlowSystems side-by-side
 - **Improved Notebooks** (#542, #551) - Better tutorial data and faster CI execution
 
-### ✨ Added
+### Added
 
 #### Time-Series Clustering (#549, #552, #584)
 
@@ -400,7 +361,7 @@ New method for loading datasets saved with older flixopt versions:
 fs = fx.FlowSystem.from_old_dataset(old_dataset)
 ```
 
-### 💥 Breaking Changes
+### Breaking Changes
 
 #### tsam v3 Migration
 
@@ -440,14 +401,14 @@ fs.transform.cluster(
 - `FlowSystem.scenario_weights` are now always normalized to sum to 1 when set (including after `.sel()` subsetting)
 - `Component.inputs`/`outputs` and `Bus.inputs`/`outputs` are now `FlowContainer` (dict-like). Use `.values()` to iterate flows.
 
-### ♻️ Changed
+### Changed
 
 - `FlowSystem.weights` returns `dict[str, xr.DataArray]` (unit weights instead of `1.0` float fallback)
 - `FlowSystemDimensions` type now includes `'cluster'`
 - `stats.plot.balance()`, `carrier_balance()`, and `storage()` now use `xarray_plotly.fast_bar()` internally (styled stacked areas for better performance)
 - `stats.plot.carrier_balance()` now combines inputs and outputs to show net flow per component, and aggregates per component by default
 
-### 🗑️ Deprecated
+### Deprecated
 
 The following items are deprecated and will be removed in **v7.0.0**:
 
@@ -487,7 +448,7 @@ The following items are deprecated and will be removed in **v7.0.0**:
 
 Note: `topology.plot()` now renders a Sankey diagram. The old PyVis visualization is available via `topology.plot_legacy()`.
 
-### 🔥 Removed
+### Removed
 
 **Clustering classes removed** (deprecated in v5.0.0):
 
@@ -523,12 +484,12 @@ Note: `topology.plot()` now renders a Sankey diagram. The old PyVis visualizatio
     fs_expanded = fs_clustered.transform.expand()
     ```
 
-### 🐛 Fixed
+### Bug Fixes
 
 - `temporal_weight` and `sum_temporal()` now use consistent implementation
 - `FlowSystem.from_old_results()` now sets `previous_flow_rate=0` for flows of components with `status_parameters`, fixing startup cost calculation mismatch when re-optimizing migrated v4 results
 
-### 📝 Docs
+### Documentation
 
 **New Documentation Pages:**
 
@@ -547,7 +508,7 @@ Note: `topology.plot()` now renders a Sankey diagram. The old PyVis visualizatio
 - Added `tutorial_data.py` helper module for cleaner notebook examples
 - Updated all existing notebooks to use new clustering and plotting APIs
 
-### 👷 Development
+### Development
 
 **CI Improvements** (#551):
 
@@ -571,11 +532,11 @@ Note: `topology.plot()` now renders a Sankey diagram. The old PyVis visualizatio
 
 **Summary**: Dependency updates.
 
-### 🐛 Fixed
+### Bug Fixes
 
 - Fixed netcdf dependency
 
-### 📦 Dependencies
+### Dependencies
 
 - **tsam**: Updated from `>= 2.3.1, < 3` to `>= 3.0.0, < 4` (#584)
 - Updated `mkdocs-material` to v9.7.1
@@ -584,7 +545,7 @@ Note: `topology.plot()` now renders a Sankey diagram. The old PyVis visualizatio
 - Updated `pymdown-extensions` to v10.19.1
 - Updated `werkzeug` to v3.1.4
 
-### 👷 Development
+### Development
 
 - Updated `actions/checkout` action to v6
 
@@ -594,16 +555,16 @@ Note: `topology.plot()` now renders a Sankey diagram. The old PyVis visualizatio
 
 **Summary**: Cleaner notebook outputs and improved `CONFIG.notebook()` preset.
 
-### ♻️ Changed
+### Changed
 
 - `CONFIG.notebook()` now suppresses linopy progress bars via `progress=False` in solve calls
 - Downgraded "FlowSystem not connected" message from WARNING to INFO (auto-connects anyway)
 
-### 🐛 Fixed
+### Bug Fixes
 
 - Fixed notebooks triggering unnecessary warnings (removed `relative_minimum` without `status_parameters`)
 
-### 📝 Docs
+### Documentation
 
 - Consolidated verbose print statements into concise single-line summaries across all tutorial notebooks
 - Added output suppression (`;`) to `optimize()` calls for cleaner cell output
@@ -613,7 +574,7 @@ Note: `topology.plot()` now renders a Sankey diagram. The old PyVis visualizatio
 
 ## [5.0.2] - 2025-12-17
 
-### ♻️ Changed
+### Changed
 
 - `statistics.plot.effects()` now defaults to `by=None` for aggregated totals; use `by='component'` for the previous behavior
 
@@ -621,7 +582,7 @@ Note: `topology.plot()` now renders a Sankey diagram. The old PyVis visualizatio
 
 ## [5.0.1] - 2025-12-17
 
-### 👷 Development
+### Development
 
 - Fixed docs deployment in CI workflow
 
@@ -635,7 +596,7 @@ Note: `topology.plot()` now renders a Sankey diagram. The old PyVis visualizatio
 
     See the [Migration Guide v5](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v5/) for step-by-step upgrade instructions.
 
-### ✨ Added
+### Added
 
 **FlowSystem-Centric Architecture**: The FlowSystem is now the central hub for all operations:
 
@@ -807,7 +768,7 @@ flow_system.add_elements(new_component)  # Now works
 
 **Component color parameter**: Components now accept a `color` parameter for consistent visualization styling.
 
-### 💥 Breaking Changes
+### Breaking Changes
 
 **Renamed `OnOffParameters` → `StatusParameters`**: Complete terminology update to align with industry standards (PyPSA, unit commitment). Old NetCDF files with `OnOffParameters` are automatically converted on load.
 
@@ -850,13 +811,13 @@ flow_system.add_elements(new_component)  # Now works
 
 **Validation**: Component with `status_parameters` now validates that all flows have sizes (required for big-M constraints).
 
-### ♻️ Changed
+### Changed
 
 - Renamed `BusModel.excess_input` → `virtual_supply` and `BusModel.excess_output` → `virtual_demand` for clearer semantics
 - Renamed `Bus.excess_penalty_per_flow_hour` → `imbalance_penalty_per_flow_hour`
 - Renamed `Bus.with_excess` → `allows_imbalance`
 
-### 🗑️ Deprecated
+### Deprecated
 
 All deprecated items will be removed in v6.0.0.
 
@@ -905,7 +866,7 @@ costs = flow_system.solution['costs'].item()
 - `heatmap_timesteps_per_frame` parameter → Use `reshape_time=(timeframes, timesteps_per_frame)` instead
 - `color_map` parameter → Use `colors` instead
 
-### 🔥 Removed
+### Removed
 
 **Python version changes:**
 - Dropped Python 3.10 support
@@ -933,7 +894,7 @@ costs = flow_system.solution['costs'].item()
 - `FlowSystem.all_elements` → Use dict-like interface (`flow_system['label']`, `.keys()`, `.values()`, `.items()`)
 - `FlowSystem.weights` → Use `scenario_weights`
 
-### 📝 Docs
+### Documentation
 
 **Comprehensive Tutorial Notebooks** - 12 new Jupyter notebooks covering all major use cases:
 
@@ -957,7 +918,7 @@ costs = flow_system.solution['costs'].item()
 - FAQ - Common questions and answers
 - Troubleshooting - Problem diagnosis and solutions
 
-### 👷 Development
+### Development
 
 **New Test Suites:**
 - `test_flow_system_locking.py` - FlowSystem locking behavior
@@ -1026,10 +987,10 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
-### 📝 Docs
+### Documentation
 - Added Zenodo DOI badge to README.md (placeholder, to be updated after first Zenodo release)
 
-### 👷 Development
+### Development
 - Added Zenodo integration for automatic archival and citation
   - Created `.zenodo.json` file for Zenodo metadata configuration
   - Repository now ready for DOI assignment upon next release
@@ -1042,7 +1003,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
-### ✨ Added
+### Added
 
 - **Penalty as first-class Effect**: Users can now add Penalty contributions anywhere effects are used:
   ```python
@@ -1055,18 +1016,18 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
   flow_system.add_elements(penalty)
   ```
 
-### ♻️ Changed
+### Changed
 
 - Penalty is now a standard Effect with temporal/periodic dimensions, and periodic weights in the objective
 - **Results structure**: Penalty now has same structure as other effects in solution Dataset
   - Use `results.solution['Penalty']` for total penalty value (same as before, but now it's an effect variable)
   - Access components via `results.solution['Penalty(temporal)']` and `results.solution['Penalty(periodic)']` if needed
 
-### 📝 Docs
+### Documentation
 
 - Updated mathematical notation for Penalty as Effect
 
-### 👷 Development
+### Development
 
 - Unified interface: Penalty uses same `add_share_to_effects()` as other effects (internal only)
 
@@ -1078,14 +1039,14 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
-### ✨ Added
+### Added
 - `overwrite` parameter when saving results to file. If True, overwrite existing files.
 
-### ♻️ Changed
+### Changed
 
 - Now creates the Results folder even if parents didnt exist
 
-### 🗑️ Deprecated
+### Deprecated
 
 **Class and module renaming:**
 - `FullCalculation` → `Optimization`
@@ -1101,11 +1062,11 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 Old names remain available with deprecation warnings (removed in v5.0.0).
 
-### 🐛 Fixed
+### Bug Fixes
 
 - Fixed `fix_sizes()` docstring/implementation inconsistency for optional `ds` parameter
 
-### 👷 Development
+### Development
 - Fixed `active_timesteps` type annotation to include `None`
 - Fixed xarray truth-value ambiguity in `main_results` buses with excess filter
 - Added validation for `nr_of_previous_values` in `SegmentedOptimization` to prevent silent indexing bugs
@@ -1118,7 +1079,7 @@ Old names remain available with deprecation warnings (removed in v5.0.0).
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
-### 🐛 Fixed
+### Bug Fixes
 - Issues with windows file system when logging to file due to non ASCII characters
 
 ---
@@ -1129,7 +1090,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
-### 🐛 Fixed
+### Bug Fixes
 - Re-added `CONFIG.load_from_file()` method that was accidentally removed
 
 ---
@@ -1140,14 +1101,14 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
-### ✨ Added
+### Added
 - Exported SUCCESS log level (`SUCCESS_LEVEL`) for use with `logger.log(SUCCESS_LEVEL, ...)`
 - Added proper deprecation tests
 
-### ♻️ Changed
+### Changed
 - logger coloring improved
 
-### 👷 Development
+### Development
 - Fixed Deprecation warnings in tests
 
 ---
@@ -1156,11 +1117,11 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 **Summary**: Finalize preparations for removal of all deprecated parameters in v5.0.0
 
-### ✨ Added
+### Added
 
 - Added missing infos about removal to remaining deprecated parameters and methods
 
-### 🐛 Fixed
+### Bug Fixes
 
 - Missing release notes of v4.1.0
 
@@ -1177,7 +1138,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
-### ✨ Added
+### Added
 
 **New logging presets**:
 ```python
@@ -1195,7 +1156,7 @@ CONFIG.production('app.log')    # File-only, no console/plots
 - Exception tracebacks with proper indentation
 - Timestamps: `2025-11-21 14:30:45.123`
 
-### 💥 Breaking Changes
+### Breaking Changes
 
 **Logging migration** (edge cases only):
 
@@ -1216,7 +1177,7 @@ CONFIG.apply()
 CONFIG.Logging.enable_console('INFO')  # or CONFIG.exploring()
 ```
 
-### ♻️ Changed
+### Changed
 
 - Replaced loguru with Python `logging` + optional `colorlog` for colors
 - Configuration immediate (no `CONFIG.apply()` needed)
@@ -1225,11 +1186,11 @@ CONFIG.Logging.enable_console('INFO')  # or CONFIG.exploring()
 - SUCCESS level preserved (green, level 25)
 - Performance: Expensive operations guarded with `logger.isEnabledFor()` checks
 
-### 🗑️ Deprecated
+### Deprecated
 
 - `change_logging_level(level)` → Use `CONFIG.Logging.enable_console(level)`. Removal in v5.0.0.
 
-### 🔥 Removed
+### Removed
 
 **CONFIG methods/attributes**:
 - `CONFIG.apply()` → Use helper methods directly
@@ -1237,22 +1198,22 @@ CONFIG.Logging.enable_console('INFO')  # or CONFIG.exploring()
 - `CONFIG.Logging.verbose_tracebacks`, `.rich`, `.Colors`, `.date_format`, `.format`, `.console_width`, `.show_path`, `.show_logger_name` → Use standard logging
 - loguru features (`logger.opt()`, etc.)
 
-### 🐛 Fixed
+### Bug Fixes
 
 - `TypeError` in `check_bounds()` with loguru-style formatting
 - Exception tracebacks not appearing in custom formatters
 - Inconsistent formatting between console and file logs
 
-### 🔒 Security
+### Security
 
 - Removed loguru dependency for reduced supply chain risk
 
-### 📦 Dependencies
+### Dependencies
 
 - **Removed:** `loguru >= 0.7.0`
 - **Added:** `colorlog >= 6.8.0, < 7` (optional)
 
-### 📝 Docs
+### Documentation
 
 - Preset comparison table in `CONFIG.Logging` docstring
 - Color customization examples
@@ -1266,7 +1227,7 @@ CONFIG.Logging.enable_console('INFO')  # or CONFIG.exploring()
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
-### ✨ Key Features
+### Key Features
 
 **Sum-over-all-periods constraints:**
 New constraint parameters enable limiting weighted totals across all periods:
@@ -1290,7 +1251,7 @@ effect = fx.Effect('costs', maximum_over_periods=25000)  # 10×costs₂₀₂₀
 **Simplified workflow:**
 - `Calculation.solve()` now automatically calls `do_modeling()` if needed
 
-### 💥 Breaking Changes
+### Breaking Changes
 
 **FlowSystem weights parameter renamed:**
 ```python
@@ -1306,7 +1267,7 @@ Period weights are now always computed from the period index.
   1. Pass only scenario weights to `scenario_weights`
   2. Period weights will be computed automatically from your `periods` index
 
-### 🗑️ Deprecated Parameters
+### Deprecated Parameters
 
 **Linear converters** (`Boiler`, `CHP`, `HeatPump`, etc.) - descriptive names replace abbreviations:
 - Flow: `Q_fu` → `fuel_flow`, `P_el` → `electrical_flow`, `Q_th` → `thermal_flow`, `Q_ab` → `heat_source_flow`
@@ -1326,10 +1287,10 @@ All deprecated names continue working with warnings. **They will be removed in v
 - `OnOffParameters`: `on_hours_total_min`, `on_hours_total_max`, `switch_on_total_max`
 - `Flow`: `flow_hours_total_min`, `flow_hours_total_max`
 
-### 🐛 Fixed
+### Bug Fixes
 - Fixed inconsistent boundary checks in linear converters with array-like inputs
 
-### 👷 Development
+### Development
 - Eliminated circular dependencies with two-phase modeling pattern
 - Enhanced validation for cross-element references and FlowSystem assignment
 - Added helper methods for cleaner data transformation code
@@ -1344,11 +1305,11 @@ All deprecated names continue working with warnings. **They will be removed in v
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
-### 📦 Dependencies
+### Dependencies
 - Updated `astral-sh/uv` to v0.9.8
 - Updated `mkdocs-git-revision-date-localized-plugin` to v1.5.0
 
-### 📝 Docs
+### Documentation
 - Improved type specifications in `flixopt/types.py` for better documentation generation
 - Fixed minor mkdocs warnings in `flixopt/io.py` and `mkdocs.yml`
 
@@ -1360,7 +1321,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
-### ✨ Added
+### Added
 - **New type system** (`flixopt/types.py`):
     - Introduced dimension-aware type aliases using suffix notation (`_TPS`, `_PS`, `_S`) to clearly indicate which dimensions data can have
     - Added `Numeric_TPS`, `Numeric_PS`, `Numeric_S` for numeric data with Time/Period/Scenario dimensions
@@ -1372,24 +1333,24 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - Lazy logging evaluation - expensive log operations only execute when log level is active
 - `CONFIG.Logging.verbose_tracebacks` option for detailed debugging with variable values
 
-### 💥 Breaking Changes
+### Breaking Changes
 - **Logging framework**: Migrated to [loguru](https://loguru.readthedocs.io/)
     - Removed `CONFIG.Logging` parameters: `rich`, `Colors`, `date_format`, `format`, `console_width`, `show_path`, `show_logger_name`
     - For advanced formatting, use loguru's API directly after `CONFIG.apply()`
 
-### ♻️ Changed
+### Changed
 - **Code structure**: Removed `commons.py` module and moved all imports directly to `__init__.py` for cleaner code organization (no public API changes)
 - **Type handling improvements**: Updated internal data handling to work seamlessly with the new type system
 
-### 🐛 Fixed
+### Bug Fixes
 - Fixed `ShareAllocationModel` inconsistency where None/inf conversion happened in `__init__` instead of during modeling, which could cause issues with parameter validation
 - Fixed numerous type hint inconsistencies across the codebase
 
-### 📦 Dependencies
+### Dependencies
 - Updated `mkdocs-material` to v9.6.23
 - Replaced `rich >= 13.0.0` with `loguru >= 0.7.0` for logging
 
-### 📝 Docs
+### Documentation
 - Enhanced documentation in `flixopt/types.py` with comprehensive examples and dimension explanation table
 - Clarified Effect type docstrings - Effect types are dicts, but single numeric values work through union types
 - Added clarifying comments in `effects.py` explaining parameter handling and transformation
@@ -1397,7 +1358,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - Updated getting-started guide with loguru examples
 - Updated `config.py` docstrings for loguru integration
 
-### 👷 Development
+### Development
 - Added test for FlowSystem resampling
 
 ---
@@ -1408,12 +1369,12 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
-### ✨ Added
+### Added
 - Added options to resample and select subsets of flowsystems without converting to and from Dataset each time. Use the new methods `FlowSystem.__dataset_resample()`, `FlowSystem.__dataset_sel()` and `FlowSystem.__dataset_isel()`. All of them expect and return a dataset.
 
-### 💥 Breaking Changes
+### Breaking Changes
 
-### ♻️ Changed
+### Changed
 - Truncate repr of FlowSystem and CalculationResults to only show the first 10 items of each category
 - Greatly sped up the resampling of a FlowSystem again
 
@@ -1425,7 +1386,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
-### ♻️ Changed
+### Changed
 - Greatly sped up the resampling of a FlowSystem (x20 - x40) by converting to dataarray internally
 
 ---
@@ -1436,7 +1397,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
-### ✨ Added
+### Added
 
 **Solver configuration:**
 - **New `CONFIG.Solving` configuration section** for centralized solver parameter management:
@@ -1448,16 +1409,16 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - Solver parameters can still be explicitly overridden when creating solver instances
 - New `log_to_console` parameter in all Solver classes
 
-### ♻️ Changed
+### Changed
 - Individual solver output is now hidden in **SegmentedCalculation**. To return to the prior behaviour, set `show_individual_solves=True` in `do_modeling_and_solve()`.
 
-### 🐛 Fixed
+### Bug Fixes
 -  New compacted list representation for periods and scenarios also in results log and console print
 
-### 📝 Docs
+### Documentation
 - Unified contributing guides in docs and on github
 
-### 👷 Development
+### Development
 - Added type hints for submodel in all Interface classes
 
 ---
@@ -1468,13 +1429,13 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
-### ♻️ Changed
+### Changed
 - Improved `summary.yaml` to use a compacted list representation for periods and scenarios
 
-### 🐛 Fixed
+### Bug Fixes
 - Using `switch_on_total_max` with periods or scenarios failed
 
-### 📝 Docs
+### Documentation
 - Add more comprehensive `CONTRIBUTE.md`
 - Improve logical structure in User Guide
 
@@ -1486,7 +1447,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
-### ♻️ Changed
+### Changed
 **Improved repr methods:**
 - **Results classes** (`ComponentResults`, `BusResults`, `FlowResults`, `EffectResults`) now show concise header with key metadata followed by xarray Dataset repr
 - **Element classes** (`Component`, `Bus`, `Flow`, `Effect`, `Storage`) now show one-line summaries with essential information (connections, sizes, capacities, constraints)
@@ -1496,7 +1457,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - Use `flow_system['element_label']`, `flow_system.keys()`, `flow_system.values()`, and `flow_system.items()` for unified element access
 - Specialized containers (`components`, `buses`, `effects`, `flows`) offer type-specific access with helpful error messages
 
-### 🗑️ Deprecated
+### Deprecated
 - **`FlowSystem.all_elements`** property is deprecated in favor of dict-like interface (`flow_system['label']`, `.keys()`, `.values()`, `.items()`). Will be removed in v4.0.0.
 
 ---
@@ -1507,10 +1468,10 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
-### 🐛 Fixed
+### Bug Fixes
 - Fixed resampling of FlowSystem to reset `hours_of_last_timestep` and `hours_of_previous_timesteps` properly
 
-### 👷 Development
+### Development
 - Improved issue templates
 
 ---
@@ -1521,7 +1482,7 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
-### ✨ Added
+### Added
 
 **Color management:**
 - **`setup_colors()` method** for `CalculationResults` and `SegmentedCalculationResults` to configure consistent colors across all plots
@@ -1546,24 +1507,24 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 - Enhanced NetCDF handling with consistent engine usage
 - Better numeric formatting in YAML exports
 
-### ♻️ Changed
+### Changed
 - **Default colorscale**: Changed from 'viridis' to 'turbo' for better perceptual uniformity
 - **Color terminology**: Standardized from "colormap" to "colorscale" throughout for Plotly consistency
 - **Plotting internals**: Now use `xr.Dataset` as primary data type (DataFrames automatically converted)
 - **NetCDF engine**: Switched back to netcdf4 engine following xarray updates and performance benchmarks
 
-### 🔥 Removed
+### Removed
 - Removed unused `plotting.pie_with_plotly()` method
 
-### 🐛 Fixed
+### Bug Fixes
 - Improved error messages when using `engine='matplotlib'` with multidimensional data
 - Better dimension validation in `results.plot_heatmap()`
 
-### 📝 Docs
+### Documentation
 - Enhanced examples demonstrating `setup_colors()` usage
 - Updated terminology from "colormap" to "colorscale" in docstrings
 
-### 👷 Development
+### Development
 - Fixed concurrency issue in CI
 - Centralized color processing logic into dedicated module
 - Refactored to function-based color handling for simpler API
@@ -1575,10 +1536,10 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
-### 🐛 Fixed
+### Bug Fixes
 - Fixed ValueError in effects_per_component when all periodic effects are scalars/NaN by explicitly creating mode-specific templates (via _create_template_for_mode) with correct dimensions
 
-### 👷 Development
+### Development
 - Converted all remaining numpy style docstrings to google style
 
 ---
@@ -1589,31 +1550,31 @@ If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOp
 
 If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/) and [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0).
 
-### ✨ Added
+### Added
 - **Faceting and animation for multidimensional plots**: All plotting methods now support `facet_by` and `animate_by` parameters to create subplot grids and animations from multidimensional data (scenarios, periods, etc.). *Plotly only.*
 - **Flexible data selection with `select` parameter**: Select data using single values, lists, slices, or index arrays for precise control over what gets plotted
 - **Heatmap fill control**: New `fill` parameter in heatmap methods controls how missing values are filled after reshaping (`'ffill'` or `'bfill'`)
 - **Smart line styling for mixed variables**: Area plots now automatically style variables containing both positive and negative values with dashed lines, while stacking purely positive or negative variables
 
-### ♻️ Changed
+### Changed
 - **Breaking: Selection behavior**: Plotting methods no longer automatically select the first value for non-time dimensions. Use the `select` parameter for explicit selection of scenarios, periods, or other dimensions
 - **Better error messages**: Enhanced error messages when using Matplotlib with multidimensional data, with clearer guidance on dimension requirements and suggestions to use Plotly
 - **Improved examples**: Enhanced `scenario_example.py` with better demonstration of new features
 - **Robust validation**: Improved dimension validation in `plot_heatmap()` with clearer error messages
 
-### 🗑️ Deprecated
+### Deprecated
 - **`indexer` parameter**: Use the new `select` parameter instead. The `indexer` parameter will be removed in v4.0.0
 - **`heatmap_timeframes` and `heatmap_timesteps_per_frame` parameters**: Use the new `reshape_time=(timeframes, timesteps_per_frame)` parameter instead in heatmap plotting methods
 - **`color_map` parameter**: Use the new `colors` parameter instead in heatmap plotting methods
 
-### 🐛 Fixed
+### Bug Fixes
 - Fixed cryptic errors when working with empty buses by adding proper validation
 - Added early validation for non-existent periods when using linked periods with tuples
 
-### 📝 Documentation
+### Documentation
 - **Redesigned documentation website** with custom css
 
-### 👷 Development
+### Development
 - Renamed internal `_apply_indexer_to_data()` to `_apply_selection_to_data()` for consistency with new API naming
 
 ---
@@ -1623,11 +1584,11 @@ If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flix
 
 **Note**: If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/) and [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0).
 
-### 🐛 Fixed
+### Bug Fixes
 - Reverted breaking change from v3.0.0: continue to use `mode parameter in plotting instead of new `style`
 - Renamed new `mode` parameter in plotting methods to `unit_type`
 
-### 📝 Docs
+### Documentation
 - Updated Migration Guide and added missing entries.
 - Improved Changelog of v3.0.0
 
@@ -1638,7 +1599,7 @@ If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flix
 
 **Note**: If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/) and [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0).
 
-### 📝 Docs
+### Documentation
 - Update the Readme
 - Add a project roadmap to the docs
 - Change Development status to "Production/Stable"
@@ -1651,11 +1612,11 @@ If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flix
 
 **Note**: If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/) and [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0).
 
-### 📝 Docs
+### Documentation
 - Fixed deployed docs
 - Added Migration Guide for flixopt 3
 
-### 👷 Development
+### Development
 - Added missing type hints
 
 ---
@@ -1665,7 +1626,7 @@ If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flix
 
 **Note**: If upgrading from v2.x, see the [Migration Guide](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/) and [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0).
 
-### ✨ Added
+### Added
 
 **New model dimensions:**
 
@@ -1701,7 +1662,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 - Improved filter methods in results
 - Example for 2-stage investment decisions leveraging FlowSystem resampling
 
-### 💥 Breaking Changes
+### Breaking Changes
 
 **API and Behavior Changes:**
 
@@ -1738,7 +1699,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 - `relative_minimum_charge_state` and `relative_maximum_charge_state` don't have an extra timestep anymore. Use the new `relative_minimum_final_charge_state` and `relative_maximum_final_charge_state` parameters for final state control
 
-### ♻️ Changed
+### Changed
 
 - Type system overhaul - added clear separation between temporal and non-temporal data throughout codebase for better clarity
 - Enhanced FlowSystem interface with improved `__repr__()` and `__str__()` methods
@@ -1750,7 +1711,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 - Enhanced console output to support both `stdout` and `stderr` stream selection
 - Added `show_logger_name` parameter to `CONFIG.Logging` for displaying logger names in messages
 
-### 🗑️ Deprecated
+### Deprecated
 
 - The `agg_group` and `agg_weight` parameters of `TimeSeriesData` are deprecated and will be removed in a future version. Use `aggregation_group` and `aggregation_weight` instead.
 - The `active_timesteps` parameter of `Calculation` is deprecated and will be removed in a future version. Use the new `sel(time=...)` method on the FlowSystem instead.
@@ -1773,20 +1734,20 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
     - `SourceAndSink.sink` → `SourceAndSink.inputs`
     - `SourceAndSink.prevent_simultaneous_sink_and_source` → `SourceAndSink.prevent_simultaneous_flow_rates`
 
-### 🔥 Removed
+### Removed
 
 - **Effect share parameters**: The old `specific_share_to_other_effects_*` parameters were replaced WITHOUT DEPRECATION
     - `specific_share_to_other_effects_operation` → `share_from_temporal` (with inverted direction)
     - `specific_share_to_other_effects_invest` → `share_from_periodic` (with inverted direction)
 
-### 🐛 Fixed
+### Bug Fixes
 
 - Enhanced NetCDF I/O with proper attribute preservation for DataArrays
 - Improved error handling and validation in serialization processes
 - Better type consistency across all framework components
 - Added extra validation in `config.py` to improve error handling
 
-### 📝 Docs
+### Documentation
 
 - Reorganized mathematical notation docs: moved to lowercase `mathematical-notation/` with subdirectories (`elements/`, `features/`, `modeling-patterns/`)
 - Added comprehensive documentation pages: `dimensions.md` (time/period/scenario), `effects-penalty-objective.md`, modeling patterns
@@ -1796,11 +1757,11 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 - Tightened docstrings in core modules with better cross-referencing
 - Added recipes section to docs
 
-### 🚧 Known Issues
+### Known Issues
 
 - IO for single Interfaces/Elements to Datasets might not work properly if the Interface/Element is not part of a fully transformed and connected FlowSystem. This arises from Numeric Data not being stored as xr.DataArray by the user. To avoid this, always use the `to_dataset()` on Elements inside a FlowSystem that's connected and transformed.
 
-### 👷 Development
+### Development
 
 - **Centralized deprecation pattern**: Added `_handle_deprecated_kwarg()` helper method to `Interface` base class that provides reusable deprecation handling with consistent warnings, conflict detection, and optional value transformation. Applied across 5 classes (InvestParameters, Source, Sink, SourceAndSink, Effect) reducing deprecation boilerplate by 72%.
 - FlowSystem data management simplified - removed `time_series_collection` pattern in favor of direct timestep properties
@@ -1826,7 +1787,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 ## [2.2.0] - 2025-10-11
 **Summary:** This release is a Configuration and Logging management release.
 
-### ✨ Added
+### Added
 - Added `CONFIG.reset()` method to restore configuration to default values
 - Added configurable log file rotation settings: `CONFIG.Logging.max_file_size` and `CONFIG.Logging.backup_count`
 - Added configurable log format settings: `CONFIG.Logging.date_format` and `CONFIG.Logging.format`
@@ -1835,21 +1796,21 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 - All examples now enable console logging to demonstrate proper logging usage
 - Console logging now outputs to `sys.stdout` instead of `sys.stderr` for better compatibility with output redirection
 
-### 💥 Breaking Changes
+### Breaking Changes
 - Console logging is now disabled by default (`CONFIG.Logging.console = False`). Enable it explicitly in your scripts with `CONFIG.Logging.console = True` and `CONFIG.apply()`
 - File logging is now disabled by default (`CONFIG.Logging.file = None`). Set a file path to enable file logging
 
-### ♻️ Changed
+### Changed
 - Logging and Configuration management changed
 - Improved default logging colors: DEBUG is now gray (`\033[90m`) for de-emphasized messages, INFO uses terminal default color (`\033[0m`) for clean output
 
-### 🗑️ Deprecated
+### Deprecated
 - `change_logging_level()` function is now deprecated in favor of `CONFIG.Logging.level` and `CONFIG.apply()`. Will be removed in version 3.0.0.
 
-### 🔥 Removed
+### Removed
 - Removed unused `config.merge_configs` function from configuration module
 
-### 👷 Development
+### Development
 - Greatly expanded test coverage for `config.py` module
 - Added `@pytest.mark.xdist_group` to `TestConfigModule` tests to prevent global config interference
 
@@ -1858,13 +1819,13 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 ## [2.1.11] - 2025-10-05
 **Summary:** Important bugfix in `Storage` leading to wrong results due to incorrect discharge losses.
 
-### ♻️ Changed
+### Changed
 - Using `h5netcdf` instead of `netCDF4` for dataset I/O operations. This follows the update in `xarray==2025.09.01`
 
-### 🐛 Fixed
+### Bug Fixes
 - Fix `charge_state` Constraint in `Storage` leading to incorrect losses in discharge and therefore incorrect charge states and discharge values.
 
-### 📦 Dependencies
+### Dependencies
 - Updated `renovate.config` to treat CalVer packages (xarray and dask) with more care
 - Updated packaging configuration
 
@@ -1873,11 +1834,11 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 ## [2.1.10] - 2025-09-29
 **Summary:** This release is a Documentation and Development release.
 
-### 📝 Docs
+### Documentation
 - Improved CHANGELOG.md formatting by adding better categories and formating by Gitmoji.
 - Added a script to extract the release notes from the CHANGELOG.md file for better organized documentation.
 
-### 👷 Development
+### Development
 - Improved `renovate.config`
 - Sped up CI by not running examples in every run and using `pytest-xdist`
 
@@ -1887,7 +1848,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 **Summary:** Small bugfix release addressing network visualization error handling.
 
-### 🐛 Fixed
+### Bug Fixes
 - Fix error handling in network visualization if `networkx` is not installed
 
 ---
@@ -1896,12 +1857,12 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 **Summary:** Code quality improvements, enhanced documentation, and bug fixes for heat pump components and visualization features.
 
-### ✨ Added
+### Added
 - Extra Check for HeatPumpWithSource.COP to be strictly > 1 to avoid division by zero
 - Apply deterministic color assignment by using sorted() in `plotting.py`
 - Add missing args in docstrings in `plotting.py`, `solvers.py`, and `core.py`.
 
-### ♻️ Changed
+### Changed
 - Greatly improved docstrings and documentation of all public classes
 - Make path handling to be gentle about missing .html suffix in `plotting.py`
 - Default for `relative_losses` in `Transmission` is now 0 instead of None
@@ -1909,7 +1870,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 - Fix some docstrings in plotting.py
 - Change assertions to raise Exceptions in `plotting.py`
 
-### 🐛 Fixed
+### Bug Fixes
 
 **Core Components:**
 - Fix COP getter and setter of `HeatPumpWithSource` returning and setting wrong conversion factors
@@ -1919,11 +1880,11 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 **Visualization:**
 - Fix color scheme selection in network_app; color pickers now update when a scheme is selected
 
-### 📝 Docs
+### Documentation
 - Fix broken links in docs
 - Fix some docstrings in plotting.py
 
-### 👷 Development
+### Development
 - Pin dev dependencies to specific versions
 - Improve CI workflows to run faster and smarter
 
@@ -1933,10 +1894,10 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 **Summary:** Maintenance release to improve Code Quality, CI and update the dependencies. There are no changes or new features.
 
-### ✨ Added
+### Added
 - Added `__version__` to flixopt
 
-### 👷 Development
+### Development
 - ruff format the whole Codebase
 - Added renovate config
 - Added pre-commit
@@ -1951,82 +1912,82 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 **Summary:** Enhanced Sink/Source components with multi-flow support and new interactive network visualization.
 
-### ✨ Added
+### Added
 - **Network Visualization**: Added `FlowSystem.start_network_app()` and `FlowSystem.stop_network_app()` to easily visualize the network structure of a flow system in an interactive Dash web app
     - *Note: This is still experimental and might change in the future*
 
-### ♻️ Changed
+### Changed
 - **Multi-Flow Support**: `Sink`, `Source`, and `SourceAndSink` now accept multiple `flows` as `inputs` and `outputs` instead of just one. This enables modeling more use cases with these classes
 - **Flow Control**: Both `Sink` and `Source` now have a `prevent_simultaneous_flow_rates` argument to prevent simultaneous flow rates of more than one of their flows
 
-### 🗑️ Deprecated
+### Deprecated
 - For the classes `Sink`, `Source` and `SourceAndSink`: `.sink`, `.source` and `.prevent_simultaneous_sink_and_source` are deprecated in favor of the new arguments `inputs`, `outputs` and `prevent_simultaneous_flow_rates`
 
-### 🐛 Fixed
+### Bug Fixes
 - Fixed testing issue with new `linopy` version 0.5.6
 
-### 👷 Development
+### Development
 - Added dependency "nbformat>=4.2.0" to dev dependencies to resolve issue with plotly CI
 
 ---
 
 ## [2.1.5] - 2025-07-08
 
-### 🐛 Fixed
+### Bug Fixes
 - Fixed Docs deployment
 
 ---
 
 ## [2.1.4] - 2025-07-08
 
-### 🐛 Fixed
+### Bug Fixes
 - Fixing release notes of 2.1.3, as well as documentation build.
 
 ---
 
 ## [2.1.3] - 2025-07-08
 
-### 🐛 Fixed
+### Bug Fixes
 - Using `Effect.maximum_operation_per_hour` raised an error, needing an extra timestep. This has been fixed thanks to @PRse4.
 
 ---
 
 ## [2.1.2] - 2025-06-14
 
-### 🐛 Fixed
+### Bug Fixes
 - Storage losses per hour were not calculated correctly, as mentioned by @brokenwings01. This might have led to issues when modeling large losses and long timesteps.
     - Old implementation:     $c(\text{t}_{i}) \cdot (1-\dot{\text{c}}_\text{rel,loss}(\text{t}_i)) \cdot \Delta \text{t}_{i}$
     - Correct implementation: $c(\text{t}_{i}) \cdot (1-\dot{\text{c}}_\text{rel,loss}(\text{t}_i)) ^{\Delta \text{t}_{i}}$
 
-### 🚧 Known Issues
+### Known Issues
 - Just to mention: Plotly >= 6 may raise errors if "nbformat" is not installed. We pinned plotly to <6, but this may be fixed in the future.
 
 ---
 
 ## [2.1.1] - 2025-05-08
 
-### ♻️ Changed
+### Changed
 - Improved docstring and tests
 
-### 🐛 Fixed
+### Bug Fixes
 - Fixed bug in the `_ElementResults.constraints` not returning the constraints but rather the variables
 
 ---
 ## [2.1.0] - 2025-04-11
 
-### ✨ Added
+### Added
 - Python 3.13 support added
 - Logger warning if relative_minimum is used without on_off_parameters in Flow
 - Greatly improved internal testing infrastructure by leveraging linopy's testing framework
 
-### 💥 Breaking Changes
+### Breaking Changes
 - Restructured the modeling of the On/Off state of Flows or Components
     - Variable renaming: `...|consecutive_on_hours` → `...|ConsecutiveOn|hours`
     - Variable renaming: `...|consecutive_off_hours` → `...|ConsecutiveOff|hours`
     - Constraint renaming: `...|consecutive_on_hours_con1` → `...|ConsecutiveOn|con1`
     - Similar pattern for all consecutive on/off constraints
 
-### 🐛 Fixed
+### Bug Fixes
 - Fixed the lower bound of `flow_rate` when using optional investments without OnOffParameters
 - Fixed bug that prevented divest effects from working
 - Added lower bounds of 0 to two unbounded vars (numerical improvement)
@@ -2035,10 +1996,10 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 ## [2.0.1] - 2025-04-10
 
-### ✨ Added
+### Added
 - Logger warning if relative_minimum is used without on_off_parameters in Flow
 
-### 🐛 Fixed
+### Bug Fixes
 - Replace "|" with "__" in filenames when saving figures (Windows compatibility)
 - Fixed bug that prevented the load factor from working without InvestmentParameters
 
@@ -2046,7 +2007,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 
 **Summary:** 💥 **MAJOR RELEASE** - Complete framework migration from Pyomo to Linopy with redesigned architecture.
 
-### ✨ Added
+### Added
 
 **Model Capabilities:**
 - Full model serialization support - save and restore unsolved Models
@@ -2060,7 +2021,7 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
 - `to_netcdf/from_netcdf` methods for FlowSystem and core components
 - xarray integration for TimeSeries with improved datatypes support
 
-### 💥 Breaking Changes
+### Breaking Changes
 
 **Framework Migration:**
 - **Optimization Engine**: Complete migration from Pyomo to Linopy optimization framework
@@ -2075,14 +2036,14 @@ This replaces `specific_share_to_other_effects_*` parameters and inverts the dir
     - Constraint renaming: `...|consecutive_on_hours_con1` → `...|ConsecutiveOn|con1`
     - Similar pattern for all consecutive on/off constraints
 
-### 🔥 Removed
+### Removed
 - **Pyomo dependency** (replaced by linopy)
 - **Period concepts** in time management (simplified to timesteps)
 
-### 🐛 Fixed
+### Bug Fixes
 - Improved infeasible model detection and reporting
 - Enhanced time series management and serialization
 - Reduced file size through improved compression
 
-### 📝 Docs
+### Documentation
 - Google Style Docstrings throughout the codebase
