@@ -1931,7 +1931,6 @@ class TransformAccessor:
 
         Raises:
             ValueError: If the FlowSystem was not created with ``cluster()``.
-            ValueError: If the FlowSystem has no solution.
 
         Examples:
             Two-stage optimization with expansion:
