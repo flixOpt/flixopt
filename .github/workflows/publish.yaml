@@ -3,11 +3,6 @@ name: Publish
 on:
   push:
     tags: ["v*"]
-  workflow_call:
-    inputs:
-      tag:
-        required: true
-        type: string
 
 env:
   PYTHON_VERSION: "3.11"
@@ -19,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.tag || github.ref_name }}
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
 
       - uses: astral-sh/setup-uv@v7
@@ -91,12 +86,10 @@ jobs:
           echo "Failed to verify PyPI installation"
           exit 1
         env:
-          TAG: ${{ inputs.tag || github.ref_name }}
+          TAG: ${{ github.ref_name }}
 
   github-release:
     name: Create GitHub release
-    # Only on tag push — release-please creates its own release via workflow_call
-    if: github.event_name == 'push'
     needs: verify-pypi
     runs-on: ubuntu-24.04
     permissions:
