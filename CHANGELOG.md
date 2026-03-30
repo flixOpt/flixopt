@@ -11,6 +11,13 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ---
 
+## [6.1.2](https://github.com/flixOpt/flixopt/compare/v6.1.1...v6.1.2) (2026-03-30)
+
+
+### Bug Fixes
+
+* allow expand() on clustered FlowSystem without a solution ([#646](https://github.com/flixOpt/flixopt/issues/646)) ([2d4a507](https://github.com/flixOpt/flixopt/commit/2d4a507265413f5a10c917fb67fab650e8b97132))
+
 ## [6.1.1](https://github.com/flixOpt/flixopt/compare/v6.1.0...v6.1.1) (2026-03-24)
 
 
