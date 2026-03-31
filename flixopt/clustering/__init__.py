@@ -1,9 +1,8 @@
 """
 Time Series Aggregation Module for flixopt.
 
-This module provides wrapper classes around tsam's clustering functionality:
-- Clustering: Top-level class stored on FlowSystem after clustering
-- ClusteringResults: Manages collection of tsam ClusteringResult objects (for IO)
+This module provides the Clustering class stored on FlowSystem after clustering,
+wrapping tsam_xarray's ClusteringInfo.
 
 Example usage:
 
@@ -37,10 +36,8 @@ Example usage:
     fs_expanded = fs_clustered.transform.expand()
 """
 
-from .base import AggregationResults, Clustering, ClusteringResults
+from .base import Clustering
 
 __all__ = [
-    'ClusteringResults',
-    'AggregationResults',
     'Clustering',
 ]

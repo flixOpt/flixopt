@@ -406,9 +406,9 @@ class _Expander:
         clustering = self._clustering
 
         # Get multi-dimensional properties from Clustering
-        segment_assignments = clustering.results.segment_assignments
-        segment_durations = clustering.results.segment_durations
-        position_within_segment = clustering.results.position_within_segment
+        segment_assignments = clustering.segment_assignments
+        segment_durations = clustering.segment_durations
+        position_within_segment = clustering.position_within_segment
         cluster_assignments = clustering.cluster_assignments
 
         # Compute original period index and position within period
@@ -465,7 +465,7 @@ class _Expander:
         expanded = clustering.expand_data(da, original_time=self._original_timesteps)
 
         # Build mask: True only at first timestep of each segment
-        position_within_segment = clustering.results.position_within_segment
+        position_within_segment = clustering.position_within_segment
         cluster_assignments = clustering.cluster_assignments
 
         # Compute original period index and position within period
@@ -1800,14 +1800,14 @@ class TransformAccessor:
             # Get clustering info with correct dim names for the renamed data
             from tsam_xarray import ClusteringInfo as ClusteringInfoClass
 
-            results = clustering.results
+            info = clustering.clustering_info
             # Map dim names to renamed versions (e.g., period → _period)
-            slice_dims = [rename_map.get(d, d) for d in results.dim_names]
+            slice_dims = [rename_map.get(d, d) for d in clustering.dim_names]
             info = ClusteringInfoClass(
                 time_dim='time',
                 cluster_dim=['variable'],
                 slice_dims=slice_dims,
-                clusterings=dict(results._results),
+                clusterings=dict(info.clusterings),
             )
             # Clear weight dict to avoid tsam 3.2 KeyError
             for cr in info.clusterings.values():
