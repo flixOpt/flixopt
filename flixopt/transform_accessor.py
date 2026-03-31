@@ -112,7 +112,7 @@ class _ReducedFlowSystemBuilder:
         for var_name in representatives.coords[variable_dim].values:
             da = representatives.sel({variable_dim: var_name}, drop=True)
             # Rename timestep -> time and assign our coordinates
-            da = da.rename({'cluster': 'cluster', 'timestep': 'time'})
+            da = da.rename({'timestep': 'time'})
             da = da.assign_coords(cluster=self._cluster_coords, time=self._time_coords)
             # Ensure cluster and time are first two dims
             other_dims = [d for d in da.dims if d not in ('cluster', 'time')]

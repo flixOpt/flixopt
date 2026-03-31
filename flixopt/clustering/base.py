@@ -1,7 +1,7 @@
 """
 Clustering classes for time series aggregation.
 
-This module provides wrapper classes around tsam's clustering functionality:
+This module provides wrapper classes around tsam/tsam_xarray clustering:
 - `ClusteringResults`: Collection of tsam ClusteringResult objects for multi-dim (period, scenario) data
 - `Clustering`: Top-level class stored on FlowSystem after clustering
 """
@@ -551,13 +551,10 @@ class ClusteringResults:
 class Clustering:
     """Clustering information for a FlowSystem.
 
-    Thin wrapper around tsam 3.0's AggregationResult objects, providing:
-    1. Multi-dimensional access for (period, scenario) combinations
-    2. Structure properties (n_clusters, dims, coords, cluster_assignments)
-    3. JSON persistence via ClusteringResults
-
-    Use ``sel()`` to access individual tsam AggregationResult objects for
-    detailed analysis (cluster_representatives, accuracy, plotting).
+    Thin wrapper around tsam_xarray's AggregationResult, providing:
+    1. Structure properties (n_clusters, dims, coords, cluster_assignments)
+    2. JSON persistence via ClusteringResults
+    3. Access to full tsam_xarray AggregationResult before serialization
 
     Attributes:
         results: ClusteringResults for structure access (works after JSON load).
@@ -572,11 +569,9 @@ class Clustering:
         >>> clustering.dims
         ('period',)
 
-        # Access tsam AggregationResult for detailed analysis
-        >>> result = clustering.sel(period=2024)
-        >>> result.cluster_representatives  # DataFrame
-        >>> result.accuracy  # AccuracyMetrics
-        >>> result.plot.compare()  # tsam's built-in plotting
+        # Access tsam_xarray AggregationResult for detailed analysis
+        >>> clustering.aggregation_result.cluster_representatives  # DataArray
+        >>> clustering.aggregation_result.accuracy  # AccuracyMetrics
     """
 
     # ==========================================================================
@@ -625,41 +620,6 @@ class Clustering:
             {'period': [2024, 2025], 'scenario': ['low', 'high']}
         """
         return self.results.coords
-
-    def sel(
-        self,
-        period: int | str | None = None,
-        scenario: str | None = None,
-    ) -> TsamXarrayAggregationResult:
-        """Select a slice of the AggregationResult by period and/or scenario.
-
-        Access tsam_xarray AggregationResult for detailed analysis.
-
-        Note:
-            This method is only available before saving/loading the FlowSystem.
-            After IO (to_dataset/from_dataset or to_json), the full AggregationResult
-            data is not preserved. Use `results.sel()` for structure-only access
-            after loading.
-
-        Args:
-            period: Period value (e.g., 2024). Required if clustering has periods.
-            scenario: Scenario name (e.g., 'high'). Required if clustering has scenarios.
-
-        Returns:
-            The tsam_xarray AggregationResult (or slice) for the specified combination.
-            Access its properties like `cluster_representatives`, `accuracy`, etc.
-
-        Raises:
-            KeyError: If no result found for the specified combination.
-            ValueError: If accessed on a Clustering loaded from JSON/NetCDF.
-
-        Example:
-            >>> result = clustering.sel(period=2024, scenario='high')
-            >>> result.cluster_representatives  # DataArray with aggregated data
-            >>> result.accuracy  # AccuracyMetrics
-        """
-        self._require_full_data('sel()')
-        return self._aggregation_result
 
     @property
     def is_segmented(self) -> bool:
@@ -953,7 +913,7 @@ class Clustering:
         """Load a clustering from JSON.
 
         The loaded Clustering has full apply() support because ClusteringResult
-        is fully preserved via tsam's serialization.
+        is fully preserved via tsam's ClusteringResult serialization.
 
         Args:
             path: Path to the JSON file.
@@ -1188,32 +1148,6 @@ class Clustering:
             cluster_dim=['variable'],
             slice_dims=slice_dims,
             clusterings=dict(results._results),
-        )
-
-    @classmethod
-    def _from_aggregation_result(
-        cls,
-        aggregation_result: TsamXarrayAggregationResult,
-        original_timesteps: pd.DatetimeIndex | None = None,
-        original_data: xr.Dataset | None = None,
-    ) -> Clustering:
-        """Create Clustering from tsam_xarray AggregationResult.
-
-        This is the primary way to create a Clustering with full data access.
-        Called by TransformAccessor.
-
-        Args:
-            aggregation_result: tsam_xarray AggregationResult.
-            original_timesteps: Original timesteps (optional, for expand).
-            original_data: Original dataset (optional, for plotting).
-
-        Returns:
-            Clustering with full AggregationResult access.
-        """
-        return cls(
-            original_timesteps=original_timesteps,
-            original_data=original_data,
-            _aggregation_result=aggregation_result,
         )
 
     # ==========================================================================
