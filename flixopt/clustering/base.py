@@ -20,8 +20,9 @@ import xarray as xr
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from tsam import AggregationResult
     from tsam import ClusteringResult as TsamClusteringResult
+    from tsam_xarray import AggregationResult as TsamXarrayAggregationResult
+    from tsam_xarray import ClusteringInfo
 
     from ..color_processing import ColorType
     from ..plot_result import PlotResult
@@ -527,39 +528,24 @@ class ClusteringResults:
         coords_str = ', '.join(f'{k}: {len(v)}' for k, v in self.coords.items())
         return f'ClusteringResults(dims={self.dims}, coords=({coords_str}), n_clusters={self.n_clusters})'
 
-    def apply(self, data: xr.Dataset) -> AggregationResults:
-        """Apply clustering to dataset for all (period, scenario) combinations.
+    def apply(self, data: xr.DataArray) -> TsamXarrayAggregationResult:
+        """Apply clustering to data using tsam_xarray.
 
         Args:
-            data: Dataset with time-varying data. Must have 'time' dimension.
-                May have 'period' and/or 'scenario' dimensions matching this object.
+            data: DataArray with time-varying data. Must have 'time' dimension.
 
         Returns:
-            AggregationResults with full access to aggregated data.
-            Use `.clustering` on the result to get ClusteringResults for IO.
-
-        Example:
-            >>> agg_results = clustering_results.apply(dataset)
-            >>> agg_results.clustering  # Get ClusteringResults for IO
-            >>> for key, result in agg_results:
-            ...     print(result.cluster_representatives)
+            tsam_xarray AggregationResult with the clustering applied.
         """
-        from ..core import drop_constant_arrays
+        from tsam_xarray import ClusteringInfo as ClusteringInfoClass
 
-        results = {}
-        for key, cr in self._results.items():
-            # Build selector from key based on dim_names
-            selector = {dim_name: key[i] for i, dim_name in enumerate(self._dim_names)}
-            data_slice = data.sel(**selector, drop=True) if selector else data
-
-            # Drop constant arrays and convert to DataFrame
-            time_varying = drop_constant_arrays(data_slice, dim='time')
-            df = time_varying.to_dataframe()
-
-            # Apply clustering
-            results[key] = cr.apply(df)
-
-        return Clustering._from_aggregation_results(results, self._dim_names)
+        info = ClusteringInfoClass(
+            time_dim='time',
+            cluster_dim=['variable'],
+            slice_dims=list(self._dim_names),
+            clusterings=dict(self._results),
+        )
+        return info.apply(data)
 
 
 class Clustering:
@@ -644,10 +630,10 @@ class Clustering:
         self,
         period: int | str | None = None,
         scenario: str | None = None,
-    ) -> AggregationResult:
-        """Select AggregationResult by period and/or scenario.
+    ) -> TsamXarrayAggregationResult:
+        """Select a slice of the AggregationResult by period and/or scenario.
 
-        Access individual tsam AggregationResult objects for detailed analysis.
+        Access tsam_xarray AggregationResult for detailed analysis.
 
         Note:
             This method is only available before saving/loading the FlowSystem.
@@ -660,7 +646,7 @@ class Clustering:
             scenario: Scenario name (e.g., 'high'). Required if clustering has scenarios.
 
         Returns:
-            The tsam AggregationResult for the specified combination.
+            The tsam_xarray AggregationResult (or slice) for the specified combination.
             Access its properties like `cluster_representatives`, `accuracy`, etc.
 
         Raises:
@@ -669,25 +655,11 @@ class Clustering:
 
         Example:
             >>> result = clustering.sel(period=2024, scenario='high')
-            >>> result.cluster_representatives  # DataFrame with aggregated data
+            >>> result.cluster_representatives  # DataArray with aggregated data
             >>> result.accuracy  # AccuracyMetrics
-            >>> result.plot.compare()  # tsam's built-in comparison plot
         """
         self._require_full_data('sel()')
-        # Build key from provided args in dim order
-        key_parts = []
-        if 'period' in self._dim_names:
-            if period is None:
-                raise KeyError(f"'period' is required. Available: {self.coords.get('period', [])}")
-            key_parts.append(period)
-        if 'scenario' in self._dim_names:
-            if scenario is None:
-                raise KeyError(f"'scenario' is required. Available: {self.coords.get('scenario', [])}")
-            key_parts.append(scenario)
-        key = tuple(key_parts)
-        if key not in self._aggregation_results:
-            raise KeyError(f'No result found for period={period}, scenario={scenario}')
-        return self._aggregation_results[key]
+        return self._aggregation_result
 
     @property
     def is_segmented(self) -> bool:
@@ -846,6 +818,13 @@ class Clustering:
 
         timestep_mapping = self.timestep_mapping  # Already multi-dimensional DataArray
 
+        # Align timestep_mapping coordinates with aggregated data to prevent
+        # coordinate conflicts during isel (tsam_xarray may sort coords differently)
+        shared_dims = set(timestep_mapping.dims) & set(aggregated.dims)
+        for dim in shared_dims:
+            if dim in timestep_mapping.coords and dim in aggregated.coords:
+                timestep_mapping = timestep_mapping.reindex({dim: aggregated.coords[dim]})
+
         if 'cluster' not in aggregated.dims:
             # No cluster dimension: use mapping directly as time index
             expanded = aggregated.isel(time=timestep_mapping)
@@ -935,21 +914,17 @@ class Clustering:
 
     def apply(
         self,
-        data: pd.DataFrame,
-        period: Any = None,
-        scenario: Any = None,
-    ) -> AggregationResult:
+        data: xr.DataArray,
+    ) -> TsamXarrayAggregationResult:
         """Apply the saved clustering to new data.
 
         Args:
-            data: DataFrame with time series data to cluster.
-            period: Period label (if applicable).
-            scenario: Scenario label (if applicable).
+            data: DataArray with time series data to cluster.
 
         Returns:
-            tsam AggregationResult with the clustering applied.
+            tsam_xarray AggregationResult with the clustering applied.
         """
-        return self.results.sel(period=period, scenario=scenario).apply(data)
+        return self.clustering_info.apply(data)
 
     def to_json(self, path: str | Path) -> None:
         """Save the clustering for reuse.
@@ -1095,15 +1070,16 @@ class Clustering:
         # These are for reconstruction from serialization
         _original_data_refs: list[str] | None = None,
         _metrics_refs: list[str] | None = None,
-        # Internal: AggregationResult dict for full data access
-        _aggregation_results: dict[tuple, AggregationResult] | None = None,
-        _dim_names: list[str] | None = None,
+        # Internal: tsam_xarray AggregationResult for full data access
+        _aggregation_result: TsamXarrayAggregationResult | None = None,
+        # Internal: mapping from renamed dims back to originals (e.g., _period -> period)
+        _unrename_map: dict[str, str] | None = None,
     ):
         """Initialize Clustering object.
 
         Args:
             results: ClusteringResults instance, or dict from to_dict() (for deserialization).
-                Not needed if _aggregation_results is provided.
+                Not needed if _aggregation_result is provided.
             original_timesteps: Original timesteps before clustering.
             original_data: Original dataset before clustering (for expand/plotting).
             aggregated_data: Aggregated dataset after clustering (for plotting).
@@ -1111,8 +1087,8 @@ class Clustering:
             _metrics: Pre-computed metrics dataset.
             _original_data_refs: Internal: resolved DataArrays from serialization.
             _metrics_refs: Internal: resolved DataArrays from serialization.
-            _aggregation_results: Internal: dict of AggregationResult for full data access.
-            _dim_names: Internal: dimension names when using _aggregation_results.
+            _aggregation_result: Internal: tsam_xarray AggregationResult for full data access.
+            _unrename_map: Internal: mapping from renamed dims to originals.
         """
         # Handle ISO timestamp strings from serialization
         if (
@@ -1122,9 +1098,9 @@ class Clustering:
         ):
             original_timesteps = pd.DatetimeIndex([pd.Timestamp(ts) for ts in original_timesteps])
 
-        # Store AggregationResults if provided (full data access)
-        self._aggregation_results = _aggregation_results
-        self._dim_names = _dim_names or []
+        # Store tsam_xarray AggregationResult if provided (full data access)
+        self._aggregation_result = _aggregation_result
+        self._unrename_map = _unrename_map or {}
 
         # Handle results - only needed for serialization path
         if results is not None:
@@ -1135,7 +1111,7 @@ class Clustering:
             self._results_cache = None
 
         # Flag indicating this was loaded from serialization (missing full AggregationResult data)
-        self._from_serialization = _aggregation_results is None and results is not None
+        self._from_serialization = _aggregation_result is None and results is not None
 
         self.original_timesteps = original_timesteps if original_timesteps is not None else pd.DatetimeIndex([])
         self._metrics = _metrics
@@ -1175,34 +1151,59 @@ class Clustering:
 
     @property
     def results(self) -> ClusteringResults:
-        """ClusteringResults for structure access (derived from AggregationResults or cached)."""
+        """ClusteringResults for structure access (derived from AggregationResult or cached)."""
         if self._results_cache is not None:
             return self._results_cache
-        if self._aggregation_results is not None:
-            # Derive from AggregationResults (cached on first access)
+        if self._aggregation_result is not None:
+            # Derive from tsam_xarray AggregationResult (cached on first access)
+            info = self._aggregation_result.clustering
+            # Map tsam_xarray slice dim names back to original (e.g., _period -> period)
+            dim_names = [self._unrename_map.get(d, d) for d in info.slice_dims]
             self._results_cache = ClusteringResults(
-                {k: r.clustering for k, r in self._aggregation_results.items()},
-                self._dim_names,
+                info.clusterings,
+                dim_names,
             )
             return self._results_cache
-        raise ValueError('No results available - neither AggregationResults nor ClusteringResults set')
+        raise ValueError('No results available - neither AggregationResult nor ClusteringResults set')
+
+    @property
+    def clustering_info(self) -> ClusteringInfo:
+        """tsam_xarray ClusteringInfo for reuse with apply_clustering().
+
+        Available both before and after serialization.
+        """
+        if self._aggregation_result is not None:
+            return self._aggregation_result.clustering
+        # Reconstruct from ClusteringResults (for deserialization path)
+        from tsam_xarray import ClusteringInfo as ClusteringInfoClass
+
+        results = self.results
+        # For deserialization, slice_dims use original names (e.g., 'period')
+        # which need to be mapped to the renamed versions (e.g., '_period')
+        # that tsam_xarray expects (since the data will be renamed before apply)
+        rename_map = {v: k for k, v in self._unrename_map.items()}
+        slice_dims = [rename_map.get(d, d) for d in results.dim_names]
+        return ClusteringInfoClass(
+            time_dim='time',
+            cluster_dim=['variable'],
+            slice_dims=slice_dims,
+            clusterings=dict(results._results),
+        )
 
     @classmethod
-    def _from_aggregation_results(
+    def _from_aggregation_result(
         cls,
-        aggregation_results: dict[tuple, AggregationResult],
-        dim_names: list[str],
+        aggregation_result: TsamXarrayAggregationResult,
         original_timesteps: pd.DatetimeIndex | None = None,
         original_data: xr.Dataset | None = None,
     ) -> Clustering:
-        """Create Clustering from AggregationResult dict.
+        """Create Clustering from tsam_xarray AggregationResult.
 
         This is the primary way to create a Clustering with full data access.
-        Called by ClusteringResults.apply() and TransformAccessor.
+        Called by TransformAccessor.
 
         Args:
-            aggregation_results: Dict mapping (period, scenario) tuples to AggregationResult.
-            dim_names: Dimension names, e.g., ['period', 'scenario'].
+            aggregation_result: tsam_xarray AggregationResult.
             original_timesteps: Original timesteps (optional, for expand).
             original_data: Original dataset (optional, for plotting).
 
@@ -1212,65 +1213,33 @@ class Clustering:
         return cls(
             original_timesteps=original_timesteps,
             original_data=original_data,
-            _aggregation_results=aggregation_results,
-            _dim_names=dim_names,
+            _aggregation_result=aggregation_result,
         )
 
     # ==========================================================================
-    # Iteration over AggregationResults (for direct access to tsam results)
+    # Access to tsam_xarray AggregationResult
     # ==========================================================================
 
-    def __iter__(self):
-        """Iterate over (key, AggregationResult) pairs.
+    @property
+    def aggregation_result(self) -> TsamXarrayAggregationResult:
+        """The tsam_xarray AggregationResult for full data access.
+
+        Only available before serialization. After loading from file,
+        use results for structure-only access.
 
         Raises:
-            ValueError: If accessed on a Clustering loaded from JSON.
+            ValueError: If accessed on a Clustering loaded from JSON/NetCDF.
         """
-        self._require_full_data('iteration')
-        return iter(self._aggregation_results.items())
+        self._require_full_data('aggregation_result')
+        return self._aggregation_result
 
     def __len__(self) -> int:
         """Number of (period, scenario) combinations."""
-        if self._aggregation_results is not None:
-            return len(self._aggregation_results)
         return len(list(self.results.keys()))
-
-    def __getitem__(self, key: tuple) -> AggregationResult:
-        """Get AggregationResult by (period, scenario) key.
-
-        Raises:
-            ValueError: If accessed on a Clustering loaded from JSON.
-        """
-        self._require_full_data('item access')
-        return self._aggregation_results[key]
-
-    def items(self):
-        """Iterate over (key, AggregationResult) pairs.
-
-        Raises:
-            ValueError: If accessed on a Clustering loaded from JSON.
-        """
-        self._require_full_data('items()')
-        return self._aggregation_results.items()
-
-    def keys(self):
-        """Iterate over (period, scenario) keys."""
-        if self._aggregation_results is not None:
-            return self._aggregation_results.keys()
-        return self.results.keys()
-
-    def values(self):
-        """Iterate over AggregationResult objects.
-
-        Raises:
-            ValueError: If accessed on a Clustering loaded from JSON.
-        """
-        self._require_full_data('values()')
-        return self._aggregation_results.values()
 
     def _require_full_data(self, operation: str) -> None:
         """Raise error if full AggregationResult data is not available."""
-        if self._from_serialization:
+        if self._from_serialization or self._aggregation_result is None:
             raise ValueError(
                 f'{operation} requires full AggregationResult data, '
                 f'but this Clustering was loaded from JSON. '
