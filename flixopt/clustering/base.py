@@ -83,47 +83,6 @@ def _build_timestep_mapping(cr: TsamClusteringResult, n_timesteps: int) -> np.nd
     return mapping
 
 
-def _build_property_array(
-    clustering_info: ClusteringInfo,
-    get_data: callable,
-    base_dims: list[str],
-    base_coords: dict | None = None,
-    name: str | None = None,
-    unrename_map: dict[str, str] | None = None,
-) -> xr.DataArray:
-    """Build a DataArray property from per-slice ClusteringResult data.
-
-    Used for custom properties not provided by ClusteringInfo (e.g., timestep_mapping).
-    """
-    dim_names = clustering_info.slice_dims
-    results = clustering_info.clusterings
-
-    slices = []
-    for key, cr in results.items():
-        da = xr.DataArray(get_data(cr), dims=base_dims, coords=base_coords or {}, name=name)
-        for dim_name, coord_val in zip(dim_names, key, strict=True):
-            da = da.expand_dims({dim_name: [coord_val]})
-        slices.append(da)
-
-    if len(slices) == 1:
-        result = slices[0]
-    else:
-        combined = xr.combine_by_coords(slices)
-        if isinstance(combined, xr.Dataset):
-            result = combined[name]
-        else:
-            result = combined
-    result = result.transpose(*base_dims, *dim_names)
-
-    # Unrename dims (e.g., _period -> period)
-    if unrename_map:
-        renames = {k: v for k, v in unrename_map.items() if k in result.dims}
-        if renames:
-            result = result.rename(renames)
-
-    return result
-
-
 class Clustering:
     """Clustering information for a FlowSystem.
 
@@ -161,7 +120,9 @@ class Clustering:
         _aggregation_result: TsamXarrayAggregationResult | None = None,
         # Internal: mapping from renamed dims back to originals (e.g., _period -> period)
         _unrename_map: dict[str, str] | None = None,
-        # Legacy: accept 'results' kwarg for backwards compatibility during transition
+        # Legacy: accept 'results' kwarg for netcdf files saved before this refactor.
+        # The IO resolver passes serialized dict keys as kwargs to __init__().
+        # Remove once all users have re-saved their netcdf files with the new format.
         results: Any = None,
     ):
         from tsam_xarray import ClusteringInfo as ClusteringInfoClass
@@ -492,14 +453,27 @@ class Clustering:
         """
         n_original = len(self.original_timesteps)
         original_time_coord = self.original_timesteps.rename('original_time')
-        return _build_property_array(
-            self._clustering_info,
-            lambda cr: _build_timestep_mapping(cr, n_original),
-            base_dims=['original_time'],
-            base_coords={'original_time': original_time_coord},
-            name='timestep_mapping',
-            unrename_map=self._unrename_map,
-        )
+        info = self._clustering_info
+
+        slices = []
+        for key, cr in info.clusterings.items():
+            da = xr.DataArray(
+                _build_timestep_mapping(cr, n_original),
+                dims=['original_time'],
+                coords={'original_time': original_time_coord},
+                name='timestep_mapping',
+            )
+            for dim_name, coord_val in zip(info.slice_dims, key, strict=True):
+                da = da.expand_dims({dim_name: [coord_val]})
+            slices.append(da)
+
+        if len(slices) == 1:
+            result = slices[0]
+        else:
+            combined = xr.combine_by_coords(slices)
+            result = combined['timestep_mapping'] if isinstance(combined, xr.Dataset) else combined
+        result = result.transpose('original_time', *info.slice_dims)
+        return self._unrename(result)
 
     @property
     def metrics(self) -> xr.Dataset:

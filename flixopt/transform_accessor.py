@@ -108,7 +108,11 @@ class _ReducedFlowSystemBuilder:
         result = {}
         # Exclude known dims (including renamed variants like _period, _cluster)
         known_dims = {'cluster', 'timestep', 'period', 'scenario'} | set(self._unrename_map.keys())
-        variable_dim = [d for d in representatives.dims if d not in known_dims][0]
+        unknown_dims = [d for d in representatives.dims if d not in known_dims]
+        assert len(unknown_dims) == 1, (
+            f'Expected exactly 1 variable dim, got {unknown_dims} (known: {known_dims}, all: {representatives.dims})'
+        )
+        variable_dim = unknown_dims[0]
         for var_name in representatives.coords[variable_dim].values:
             da = representatives.sel({variable_dim: var_name}, drop=True)
             # Rename timestep -> time and assign our coordinates
@@ -154,7 +158,9 @@ class _ReducedFlowSystemBuilder:
             ]:
                 # Rename the variable dimension to 'time_series'
                 known_metric_dims = {'period', 'scenario'} | set(self._unrename_map.keys())
-                variable_dim = [d for d in metric_da.dims if d not in known_metric_dims][0]
+                unknown_dims = [d for d in metric_da.dims if d not in known_metric_dims]
+                assert len(unknown_dims) == 1, f'Expected 1 variable dim in {metric_name}, got {unknown_dims}'
+                variable_dim = unknown_dims[0]
                 da = metric_da.rename({variable_dim: 'time_series'})
                 data_vars[metric_name] = da
             return self._unrename_ds(xr.Dataset(data_vars))
@@ -1702,8 +1708,10 @@ class TransformAccessor:
         if data_vars is not None:
             # Stack full dataset and apply existing clustering
             da_full = ds.to_dataarray(dim='variable')
-            # Clear weight dict to avoid tsam 3.2 KeyError when applying to
-            # data with different columns than original clustering
+            # TODO(tsam_xarray): Remove once tsam_xarray handles mismatched weights
+            # in ClusteringInfo.apply(). See: https://github.com/FZJ-IEK3-VSA/tsam/issues/XXX
+            # Workaround: clear weights to avoid KeyError when applying clustering
+            # to data with different columns than the original clustering input.
             info = agg_result.clustering
             for cr in info.clusterings.values():
                 object.__setattr__(cr, 'weights', {})
@@ -1809,7 +1817,8 @@ class TransformAccessor:
                 slice_dims=slice_dims,
                 clusterings=dict(info.clusterings),
             )
-            # Clear weight dict to avoid tsam 3.2 KeyError
+            # TODO(tsam_xarray): Same workaround as in cluster() above — remove
+            # once tsam_xarray handles mismatched weights in apply().
             for cr in info.clusterings.values():
                 object.__setattr__(cr, 'weights', {})
             agg_result = info.apply(da_full)
