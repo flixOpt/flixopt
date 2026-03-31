@@ -746,81 +746,6 @@ class TransformAccessor:
         """
         self._fs = flow_system
 
-    @staticmethod
-    def _calculate_clustering_weights(ds) -> dict[str, float]:
-        """Calculate weights for clustering based on dataset attributes."""
-        from collections import Counter
-
-        import numpy as np
-
-        groups = [da.attrs.get('clustering_group') for da in ds.data_vars.values() if 'clustering_group' in da.attrs]
-        group_counts = Counter(groups)
-
-        # Calculate weight for each group (1/count)
-        group_weights = {group: 1 / count for group, count in group_counts.items()}
-
-        weights = {}
-        variables = ds.variables
-        for name in ds.data_vars:
-            var_attrs = variables[name].attrs
-            clustering_group = var_attrs.get('clustering_group')
-            group_weight = group_weights.get(clustering_group)
-            if group_weight is not None:
-                weights[name] = group_weight
-            else:
-                weights[name] = var_attrs.get('clustering_weight', 1)
-
-        if np.all(np.isclose(list(weights.values()), 1, atol=1e-6)):
-            logger.debug('All Clustering weights were set to 1')
-
-        return weights
-
-    @staticmethod
-    def _build_cluster_config_with_weights(
-        cluster: ClusterConfig | None,
-        auto_weights: dict[str, float],
-        available_columns: set[str] | None = None,
-    ) -> ClusterConfig:
-        """Merge auto-calculated weights into ClusterConfig.
-
-        Args:
-            cluster: Optional user-provided ClusterConfig.
-            auto_weights: Automatically calculated weights based on data variance.
-            available_columns: Column names present in the clustering DataFrame.
-                If provided, weights are filtered to only include these columns.
-                This prevents tsam errors when some time series are dropped
-                (e.g., constant arrays removed before clustering).
-
-        Returns:
-            ClusterConfig with weights set (either user-provided or auto-calculated).
-        """
-        from tsam import ClusterConfig
-
-        # Determine weights: user-provided take priority over auto-calculated
-        if cluster is not None and cluster.weights is not None:
-            weights = dict(cluster.weights)
-        else:
-            weights = auto_weights
-
-        # Filter weights to only include columns present in the clustering data
-        if available_columns is not None:
-            weights = {name: w for name, w in weights.items() if name in available_columns}
-
-        # No ClusterConfig provided - use defaults with weights
-        if cluster is None:
-            return ClusterConfig(weights=weights)
-
-        # ClusterConfig provided - use its settings with (possibly filtered) weights
-        return ClusterConfig(
-            method=cluster.method,
-            representation=cluster.representation,
-            weights=weights,
-            normalize_column_means=cluster.normalize_column_means,
-            use_duration_curves=cluster.use_duration_curves,
-            include_period_sums=cluster.include_period_sums,
-            solver=cluster.solver,
-        )
-
     def sel(
         self,
         time: str | slice | list[str] | pd.Timestamp | pd.DatetimeIndex | None = None,
@@ -1428,7 +1353,6 @@ class TransformAccessor:
         self,
         n_clusters: int,
         cluster_duration: str | float,
-        data_vars: list[str] | None = None,
         cluster: ClusterConfig | None = None,
         extremes: ExtremeConfig | None = None,
         segments: SegmentConfig | None = None,
@@ -1460,16 +1384,11 @@ class TransformAccessor:
             n_clusters: Number of clusters (typical periods) to extract (e.g., 8 typical days).
             cluster_duration: Duration of each cluster. Can be a pandas-style string
                 ('1D', '24h', '6h') or a numeric value in hours.
-            data_vars: Optional list of variable names to use for clustering. If specified,
-                only these variables are used to determine cluster assignments, but the
-                clustering is then applied to ALL time-varying data in the FlowSystem.
-                Use ``transform.clustering_data()`` to see available variables.
-                Example: ``data_vars=['HeatDemand(Q)|fixed_relative_profile']`` to cluster
-                based only on heat demand patterns.
             cluster: Optional tsam ``ClusterConfig`` object specifying clustering algorithm,
-                representation method, and weights. If None, uses default settings (hierarchical
-                clustering with medoid representation) and automatically calculated weights
-                based on data variance.
+                representation method, and weights. Use ``weights={var: 0}`` to exclude
+                specific variables from influencing cluster assignments while still
+                aggregating them. If None, uses default settings (hierarchical clustering
+                with medoid representation).
             extremes: Optional tsam ``ExtremeConfig`` object specifying how to handle
                 extreme periods (peaks). Use this to ensure peak demand days are captured.
                 Example: ``ExtremeConfig(method='new_cluster', max_value=['demand'])``.
@@ -1512,16 +1431,18 @@ class TransformAccessor:
             ... )
             >>> fs_clustered.optimize(solver)
 
-            Clustering based on specific variables only:
+            Clustering based on specific variables only (zero-weight the rest):
 
-            >>> # See available variables for clustering
-            >>> print(flow_system.transform.clustering_data().data_vars)
-            >>>
-            >>> # Cluster based only on demand profile
+            >>> from tsam import ClusterConfig
             >>> fs_clustered = flow_system.transform.cluster(
             ...     n_clusters=8,
             ...     cluster_duration='1D',
-            ...     data_vars=['HeatDemand(Q)|fixed_relative_profile'],
+            ...     cluster=ClusterConfig(
+            ...         weights={
+            ...             'HeatDemand(Q)|fixed_relative_profile': 1,
+            ...             'GasSource(Gas)|costs|per_flow_hour': 0,  # ignored for clustering
+            ...         }
+            ...     ),
             ... )
 
         Note:
@@ -1532,8 +1453,6 @@ class TransformAccessor:
               ``Storage.cluster_mode='intercluster'`` or ``'intercluster_cyclic'``
         """
         import tsam_xarray
-
-        from .core import drop_constant_arrays
 
         # Parse cluster_duration to hours
         hours_per_cluster = (
@@ -1558,36 +1477,11 @@ class TransformAccessor:
 
         ds = self._fs.to_dataset(include_solution=False)
 
-        # Validate data_vars if specified
-        if data_vars is not None:
-            missing = set(data_vars) - set(ds.data_vars)
-            if missing:
-                raise ValueError(
-                    f'data_vars not found in FlowSystem: {missing}. '
-                    f'Available time-varying variables can be found via transform.clustering_data().'
-                )
+        # Only keep variables with a time dimension for clustering
+        ds_for_clustering = ds[[name for name in ds.data_vars if 'time' in ds[name].dims]]
 
-        # Validate user-provided weight keys against available variables
-        if cluster is not None and cluster.weights is not None:
-            check_vars = set(data_vars) if data_vars is not None else set(ds.data_vars)
-            unknown = sorted(set(cluster.weights) - check_vars)
-            if unknown:
-                raise ValueError(
-                    f'ClusterConfig weights reference unknown variables: {unknown}. '
-                    f'Available variables can be found via transform.clustering_data().'
-                )
-
-        # Filter constant arrays once on the full dataset (not per slice)
-        # Filter constant arrays — all time-varying data goes to tsam_xarray.
-        # When data_vars is specified, weights=0 controls what influences clustering.
-        ds_for_clustering = drop_constant_arrays(ds, dim='time')
-
-        # Guard against empty dataset after removing constant arrays
         if not ds_for_clustering.data_vars:
-            raise ValueError(
-                'No time-varying data found for clustering. '
-                'All variables are constant over time. Check your input data.'
-            )
+            raise ValueError('No time-varying data found for clustering. Check your input data.')
 
         # Validate tsam_kwargs doesn't override explicit parameters
         reserved_tsam_keys = {
@@ -1623,11 +1517,15 @@ class TransformAccessor:
         # Rename reserved dimension names to avoid conflict with tsam_xarray
         # tsam_xarray reserves: 'period', 'cluster', 'timestep'
         reserved_renames = {'period': '_period', 'cluster': '_cluster'}
-        rename_map = {k: v for k, v in reserved_renames.items() if k in ds_for_clustering.dims}
+        # Check against full ds dims (period/cluster may only exist as coords, not in ds_for_clustering)
+        rename_map = {k: v for k, v in reserved_renames.items() if k in ds.dims}
         unrename_map = {v: k for k, v in rename_map.items()}
 
         if rename_map:
-            ds_for_clustering = ds_for_clustering.rename(rename_map)
+            # Only rename dims that exist in each dataset
+            clustering_renames = {k: v for k, v in rename_map.items() if k in ds_for_clustering.dims}
+            if clustering_renames:
+                ds_for_clustering = ds_for_clustering.rename(clustering_renames)
             ds = ds.rename(rename_map)
 
         # Stack Dataset into a single DataArray with 'variable' dimension
@@ -1647,21 +1545,11 @@ class TransformAccessor:
                     da_for_clustering = da_for_clustering.drop_vars(dim_name)
                 da_for_clustering = da_for_clustering.expand_dims({dim_name: ds.coords[dim_name].values})
 
-        # Build weights: all time-varying data goes to tsam_xarray, but when
-        # data_vars is specified, excluded variables get weight=0 so they don't
-        # influence clustering (but still get aggregated in a single pass).
-        available_vars = set(str(v) for v in da_for_clustering.coords['variable'].values)
-        clustering_weights = self._calculate_clustering_weights(ds_for_clustering)
+        # Pass user-specified weights to tsam_xarray (validates unknown keys)
         if cluster is not None and cluster.weights is not None:
-            weights = {k: v for k, v in cluster.weights.items() if k in available_vars}
+            weights = dict(cluster.weights)
         else:
-            weights = {k: v for k, v in clustering_weights.items() if k in available_vars}
-
-        # Zero out weights for variables excluded by data_vars
-        if data_vars is not None:
-            for var in available_vars:
-                if var not in data_vars:
-                    weights[var] = 0
+            weights = {}
 
         # Build tsam_kwargs with explicit parameters
         tsam_kwargs_full = {

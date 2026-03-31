@@ -338,9 +338,7 @@ class TestClusterAdvancedOptions:
     def test_unknown_weight_keys_raise(self, basic_flow_system):
         """Test that unknown keys in ClusterConfig.weights raise ValueError.
 
-        Regression test: weight keys that don't match any variable in the
-        FlowSystem are likely typos and should be caught early with a clear
-        error message.
+        tsam_xarray validates weight keys and raises ValueError for unknown coords.
         """
         from tsam import ClusterConfig
 
@@ -353,102 +351,12 @@ class TestClusterAdvancedOptions:
         weights['nonexistent_variable'] = 0.5
         weights['another_missing_col'] = 0.3
 
-        with pytest.raises(ValueError, match='unknown variables'):
+        with pytest.raises(ValueError, match='unknown'):
             basic_flow_system.transform.cluster(
                 n_clusters=2,
                 cluster_duration='1D',
                 cluster=ClusterConfig(weights=weights),
             )
-
-    def test_weight_keys_excluded_by_data_vars_raise(self, basic_flow_system):
-        """Test that weight keys excluded by the data_vars allow-list raise ValueError.
-
-        A variable may exist on the FlowSystem but be intentionally omitted from
-        the clustering input via data_vars. Weights referencing such excluded
-        variables should be rejected.
-        """
-        from tsam import ClusterConfig
-
-        ds = basic_flow_system.to_dataset(include_solution=False)
-        clustering_columns = list(basic_flow_system.transform.clustering_data().data_vars)
-        excluded_var = sorted(set(ds.data_vars) - set(clustering_columns))[0]
-
-        # Weight references both a selected var and an excluded var
-        weights = {clustering_columns[0]: 1.0, excluded_var: 0.5}
-
-        with pytest.raises(ValueError, match='unknown variables'):
-            basic_flow_system.transform.cluster(
-                n_clusters=2,
-                cluster_duration='1D',
-                data_vars=clustering_columns,
-                cluster=ClusterConfig(weights=weights),
-            )
-
-    def test_extra_weight_keys_filtered_with_constant_column(self):
-        """Test that weights for constant (dropped) columns are filtered out.
-
-        When a time series is constant over time it is removed before clustering.
-        User-provided weights referencing such columns must be silently dropped.
-        """
-        pytest.importorskip('tsam')
-        from tsam import ClusterConfig
-
-        from flixopt import Bus, Flow, Sink, Source
-        from flixopt.core import TimeSeriesData
-
-        n_hours = 168  # 7 days
-        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'))
-
-        demand_data = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2
-        bus = Bus('electricity')
-        grid_flow = Flow('grid_in', bus='electricity', size=100)
-        # One varying profile, one constant profile
-        demand_flow = Flow(
-            'demand_out',
-            bus='electricity',
-            size=100,
-            fixed_relative_profile=TimeSeriesData(demand_data / 100),
-        )
-        constant_flow = Flow(
-            'constant_out',
-            bus='electricity',
-            size=50,
-            fixed_relative_profile=TimeSeriesData(np.full(n_hours, 0.8)),
-        )
-        source = Source('grid', outputs=[grid_flow])
-        sink = Sink('demand', inputs=[demand_flow])
-        constant_sink = Sink('constant_load', inputs=[constant_flow])
-        fs.add_elements(source, sink, constant_sink, bus)
-
-        # Use to_dataset() to get ALL columns including the constant one
-        # (clustering_data() already strips constants, so it wouldn't test the path)
-        all_data = fs.to_dataset(include_solution=False)
-        all_columns = set(all_data.data_vars)
-        clustering_columns = set(fs.transform.clustering_data().data_vars)
-
-        # Identify constant columns: variables with a single unique value across time
-        constant_columns = set()
-        for name in all_data.data_vars:
-            var = all_data[name]
-            if 'time' not in var.dims or np.nanmax(var.values) - np.nanmin(var.values) < 1e-10:
-                constant_columns.add(name)
-
-        assert len(constant_columns) > 0, 'Test requires at least one constant column'
-        assert constant_columns <= all_columns, 'Constant columns must be in the full dataset'
-        for col in constant_columns:
-            assert col not in clustering_columns, f'Constant column {col!r} should not be in clustering_data()'
-
-        # Build weights that reference ALL columns including the constant one
-        # that will be dropped — these are valid variables, just constant over time
-        weights = {col: 1.0 for col in all_columns}
-
-        # Must not raise: constant columns are silently filtered, not rejected
-        fs_clustered = fs.transform.cluster(
-            n_clusters=2,
-            cluster_duration='1D',
-            cluster=ClusterConfig(weights=weights),
-        )
-        assert len(fs_clustered.clusters) == 2
 
     def test_unknown_weight_keys_raise_multiperiod(self):
         """Test that unknown weight keys raise ValueError in multi-period clustering."""
@@ -481,7 +389,7 @@ class TestClusterAdvancedOptions:
         weights = {col: 1.0 for col in clustering_data.data_vars}
         weights['nonexistent_period_var'] = 0.7
 
-        with pytest.raises(ValueError, match='unknown variables'):
+        with pytest.raises(ValueError, match='unknown'):
             fs.transform.cluster(
                 n_clusters=2,
                 cluster_duration='1D',
