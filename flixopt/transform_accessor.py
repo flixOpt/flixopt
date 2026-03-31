@@ -1558,7 +1558,7 @@ class TransformAccessor:
 
         ds = self._fs.to_dataset(include_solution=False)
 
-        # Validate and prepare data_vars for clustering
+        # Validate data_vars if specified
         if data_vars is not None:
             missing = set(data_vars) - set(ds.data_vars)
             if missing:
@@ -1566,15 +1566,11 @@ class TransformAccessor:
                     f'data_vars not found in FlowSystem: {missing}. '
                     f'Available time-varying variables can be found via transform.clustering_data().'
                 )
-            ds_for_clustering = ds[list(data_vars)]
-        else:
-            ds_for_clustering = ds
 
-        # Validate user-provided weight keys against the selected clustering input
-        # (before filtering constants, since weights should reference known variables)
+        # Validate user-provided weight keys against available variables
         if cluster is not None and cluster.weights is not None:
-            selected_vars = set(ds_for_clustering.data_vars)
-            unknown = sorted(set(cluster.weights) - selected_vars)
+            check_vars = set(data_vars) if data_vars is not None else set(ds.data_vars)
+            unknown = sorted(set(cluster.weights) - check_vars)
             if unknown:
                 raise ValueError(
                     f'ClusterConfig weights reference unknown variables: {unknown}. '
@@ -1582,15 +1578,15 @@ class TransformAccessor:
                 )
 
         # Filter constant arrays once on the full dataset (not per slice)
-        # This ensures all slices have the same variables for consistent metrics
-        ds_for_clustering = drop_constant_arrays(ds_for_clustering, dim='time')
+        # Filter constant arrays — all time-varying data goes to tsam_xarray.
+        # When data_vars is specified, weights=0 controls what influences clustering.
+        ds_for_clustering = drop_constant_arrays(ds, dim='time')
 
         # Guard against empty dataset after removing constant arrays
         if not ds_for_clustering.data_vars:
-            filter_info = f'data_vars={data_vars}' if data_vars else 'all variables'
             raise ValueError(
-                f'No time-varying data found for clustering ({filter_info}). '
-                f'All variables are constant over time. Check your data_vars filter or input data.'
+                'No time-varying data found for clustering. '
+                'All variables are constant over time. Check your input data.'
             )
 
         # Validate tsam_kwargs doesn't override explicit parameters
@@ -1651,17 +1647,21 @@ class TransformAccessor:
                     da_for_clustering = da_for_clustering.drop_vars(dim_name)
                 da_for_clustering = da_for_clustering.expand_dims({dim_name: ds.coords[dim_name].values})
 
-        # Build weights dict for tsam_xarray (variable-level weights)
-        clustering_weights = self._calculate_clustering_weights(ds_for_clustering)
-        # Merge user weights with auto-calculated weights
+        # Build weights: all time-varying data goes to tsam_xarray, but when
+        # data_vars is specified, excluded variables get weight=0 so they don't
+        # influence clustering (but still get aggregated in a single pass).
         available_vars = set(str(v) for v in da_for_clustering.coords['variable'].values)
+        clustering_weights = self._calculate_clustering_weights(ds_for_clustering)
         if cluster is not None and cluster.weights is not None:
-            # Filter weights to only include available columns (some may have been
-            # dropped as constant arrays)
             weights = {k: v for k, v in cluster.weights.items() if k in available_vars}
         else:
-            # Filter auto-calculated weights to available columns
             weights = {k: v for k, v in clustering_weights.items() if k in available_vars}
+
+        # Zero out weights for variables excluded by data_vars
+        if data_vars is not None:
+            for var in available_vars:
+                if var not in data_vars:
+                    weights[var] = 0
 
         # Build tsam_kwargs with explicit parameters
         tsam_kwargs_full = {
@@ -1703,19 +1703,6 @@ class TransformAccessor:
                 weights=weights,
                 **tsam_kwargs_full,
             )
-
-        # If data_vars was specified, apply clustering to FULL data
-        if data_vars is not None:
-            # Stack full dataset and apply existing clustering
-            da_full = ds.to_dataarray(dim='variable')
-            # TODO(tsam_xarray): Remove once tsam_xarray handles mismatched weights
-            # in ClusteringInfo.apply(). See: https://github.com/FZJ-IEK3-VSA/tsam/issues/XXX
-            # Workaround: clear weights to avoid KeyError when applying clustering
-            # to data with different columns than the original clustering input.
-            info = agg_result.clustering
-            for cr in info.clusterings.values():
-                object.__setattr__(cr, 'weights', {})
-            agg_result = info.apply(da_full)
 
         # Rename reserved dims back to original names in the dataset
         if unrename_map:
