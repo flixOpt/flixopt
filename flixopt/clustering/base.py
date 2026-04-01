@@ -89,21 +89,14 @@ class Clustering:
     Wraps tsam_xarray's ClusteringInfo for structure access and optionally
     AggregationResult for full data access (pre-serialization only).
 
-    Attributes:
-        original_timesteps: Original timesteps before clustering.
-        dims: Dimension names, e.g., ('period', 'scenario').
-        coords: Coordinate values, e.g., {'period': [2024, 2025]}.
+    For advanced access to clustering structure (dims, coords, cluster_centers,
+    segment_centers, etc.), use ``clustering_info`` directly.
 
     Example:
         >>> clustering = fs_clustered.clustering
         >>> clustering.n_clusters
         8
-        >>> clustering.dims
-        ('period',)
-
-        # Access tsam_xarray AggregationResult for detailed analysis
-        >>> clustering.aggregation_result.cluster_representatives  # DataArray
-        >>> clustering.aggregation_result.accuracy  # AccuracyMetrics
+        >>> clustering.clustering_info  # tsam_xarray ClusteringInfo for full access
     """
 
     def __init__(
@@ -266,23 +259,6 @@ class Clustering:
         """Names of extra dimensions, e.g., ['period', 'scenario']."""
         return [self._unrename_map.get(d, d) for d in self._clustering_info.slice_dims]
 
-    @property
-    def dims(self) -> tuple[str, ...]:
-        """Dimension names as tuple (xarray-like)."""
-        return tuple(self.dim_names)
-
-    @property
-    def coords(self) -> dict[str, list]:
-        """Coordinate values for each dimension (xarray-like)."""
-        raw_dims = self._clustering_info.slice_dims
-        result = {}
-        # Get unique values per dim from the clusterings dict keys
-        for i, dim in enumerate(raw_dims):
-            values = list(dict.fromkeys(k[i] for k in self._clustering_info.clusterings.keys()))
-            display_name = self._unrename_map.get(dim, dim)
-            result[display_name] = values
-        return result
-
     # ==========================================================================
     # DataArray properties (delegated to ClusteringInfo with unrename)
     # ==========================================================================
@@ -316,15 +292,6 @@ class Clustering:
         return self._unrename(self._clustering_info.cluster_occurrences)
 
     @property
-    def cluster_centers(self) -> xr.DataArray:
-        """Which original period is the representative (center) for each cluster.
-
-        Returns:
-            DataArray with dims [cluster, period?, scenario?].
-        """
-        return self._unrename(self._clustering_info.cluster_centers)
-
-    @property
     def segment_assignments(self) -> xr.DataArray | None:
         """For each timestep within a cluster, which segment it belongs to.
 
@@ -353,93 +320,6 @@ class Clustering:
         if 'timestep' in result.dims:
             result = result.rename({'timestep': 'segment'})
         return self._unrename(result)
-
-    @property
-    def segment_centers(self) -> xr.DataArray | None:
-        """Center of each intra-period segment.
-
-        Returns:
-            DataArray or None if no segmentation.
-        """
-        result = self._clustering_info.segment_centers
-        if result is None:
-            return None
-        # tsam_xarray uses 'timestep', we use 'segment'
-        if 'timestep' in result.dims:
-            result = result.rename({'timestep': 'segment'})
-        return self._unrename(result)
-
-    @property
-    def n_representatives(self) -> int:
-        """Number of representative timesteps after clustering."""
-        if self.is_segmented:
-            return self.n_clusters * self.n_segments
-        return self.n_clusters * self.timesteps_per_cluster
-
-    @property
-    def representative_weights(self) -> xr.DataArray:
-        """Weight for each cluster (number of original periods it represents).
-
-        Used as cluster_weight in FlowSystem.
-        """
-        return self.cluster_occurrences.rename('representative_weights')
-
-    # ==========================================================================
-    # Custom properties (not in ClusteringInfo)
-    # ==========================================================================
-
-    @property
-    def position_within_segment(self) -> xr.DataArray | None:
-        """Position of each timestep within its segment (0-indexed).
-
-        For each (cluster, time) position, returns how many timesteps into the
-        segment that position is. Used for interpolation within segments.
-
-        Returns:
-            DataArray with dims [cluster, time] or [cluster, time, period?, scenario?].
-            Returns None if no segmentation.
-        """
-        segment_assignments = self.segment_assignments
-        if segment_assignments is None:
-            return None
-
-        def _compute_positions(seg_assigns: np.ndarray) -> np.ndarray:
-            """Compute position within segment for each (cluster, time)."""
-            n_clusters, n_times = seg_assigns.shape
-            positions = np.zeros_like(seg_assigns)
-            for c in range(n_clusters):
-                pos = 0
-                prev_seg = -1
-                for t in range(n_times):
-                    seg = seg_assigns[c, t]
-                    if seg != prev_seg:
-                        pos = 0
-                        prev_seg = seg
-                    positions[c, t] = pos
-                    pos += 1
-            return positions
-
-        # Handle extra dimensions by applying _compute_positions to each slice
-        extra_dims = [d for d in segment_assignments.dims if d not in ('cluster', 'time')]
-
-        if not extra_dims:
-            positions = _compute_positions(segment_assignments.values)
-            return xr.DataArray(
-                positions,
-                dims=['cluster', 'time'],
-                coords=segment_assignments.coords,
-                name='position_within_segment',
-            )
-
-        # Multi-dimensional case: compute for each period/scenario slice
-        result = xr.apply_ufunc(
-            _compute_positions,
-            segment_assignments,
-            input_core_dims=[['cluster', 'time']],
-            output_core_dims=[['cluster', 'time']],
-            vectorize=True,
-        )
-        return result.rename('position_within_segment')
 
     @functools.cached_property
     def timestep_mapping(self) -> xr.DataArray:
@@ -474,17 +354,6 @@ class Clustering:
             result = combined['timestep_mapping'] if isinstance(combined, xr.Dataset) else combined
         result = result.transpose('original_time', *info.slice_dims)
         return self._unrename(result)
-
-    @property
-    def metrics(self) -> xr.Dataset:
-        """Clustering quality metrics (RMSE, MAE, etc.).
-
-        Returns:
-            Dataset with dims [time_series, period?, scenario?], or empty Dataset if no metrics.
-        """
-        if self._metrics is None:
-            return xr.Dataset()
-        return self._metrics
 
     # ==========================================================================
     # Methods

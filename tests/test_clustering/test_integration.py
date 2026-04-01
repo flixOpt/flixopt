@@ -122,97 +122,6 @@ class TestFlowSystemDimsIndexesWeights:
         np.testing.assert_array_almost_equal(fs.temporal_weight.values, expected.values)
 
 
-class TestClusteringData:
-    """Tests for FlowSystem.transform.clustering_data method."""
-
-    def test_clustering_data_method_exists(self):
-        """Test that transform.clustering_data method exists."""
-        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=48, freq='h'))
-
-        assert hasattr(fs.transform, 'clustering_data')
-        assert callable(fs.transform.clustering_data)
-
-    def test_clustering_data_returns_dataset(self):
-        """Test that clustering_data returns an xr.Dataset."""
-        from flixopt import Bus, Flow, Sink, Source
-
-        n_hours = 48
-        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'))
-
-        # Add components with time-varying data
-        demand_data = np.sin(np.linspace(0, 4 * np.pi, n_hours)) + 2
-        bus = Bus('electricity')
-        source = Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)])
-        sink = Sink(
-            'demand', inputs=[Flow('demand_out', bus='electricity', size=100, fixed_relative_profile=demand_data)]
-        )
-        fs.add_elements(source, sink, bus)
-
-        clustering_data = fs.transform.clustering_data()
-
-        assert isinstance(clustering_data, xr.Dataset)
-
-    def test_clustering_data_contains_only_time_varying(self):
-        """Test that clustering_data returns only time-varying data."""
-        from flixopt import Bus, Flow, Sink, Source
-
-        n_hours = 48
-        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'))
-
-        # Add components with time-varying and constant data
-        demand_data = np.sin(np.linspace(0, 4 * np.pi, n_hours)) + 2
-        bus = Bus('electricity')
-        source = Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)])
-        sink = Sink(
-            'demand', inputs=[Flow('demand_out', bus='electricity', size=100, fixed_relative_profile=demand_data)]
-        )
-        fs.add_elements(source, sink, bus)
-
-        clustering_data = fs.transform.clustering_data()
-
-        # Should contain the demand profile
-        assert 'demand(demand_out)|fixed_relative_profile' in clustering_data.data_vars
-
-        # All arrays should have 'time' dimension
-        for var in clustering_data.data_vars:
-            assert 'time' in clustering_data[var].dims
-
-    def test_clustering_data_with_periods(self):
-        """Test clustering_data with multi-period system."""
-        from flixopt import Bus, Effect, Flow, Sink, Source
-
-        n_hours = 48
-        periods = pd.Index([2024, 2030], name='period')
-        fs = FlowSystem(
-            timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'),
-            periods=periods,
-        )
-
-        # Add components
-        demand_data = xr.DataArray(
-            np.random.rand(n_hours, 2),
-            dims=['time', 'period'],
-            coords={'time': fs.timesteps, 'period': periods},
-        )
-        bus = Bus('electricity')
-        effect = Effect('costs', '€', is_objective=True)
-        source = Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)])
-        sink = Sink(
-            'demand', inputs=[Flow('demand_out', bus='electricity', size=100, fixed_relative_profile=demand_data)]
-        )
-        fs.add_elements(source, sink, bus, effect)
-
-        # Get data for specific period
-        data_2024 = fs.transform.clustering_data(period=2024)
-
-        # Should not have period dimension (it was selected)
-        assert 'period' not in data_2024.dims
-
-        # Get data for all periods
-        data_all = fs.transform.clustering_data()
-        assert 'period' in data_all.dims
-
-
 class TestClusterMethod:
     """Tests for FlowSystem.transform.cluster method."""
 
@@ -302,15 +211,6 @@ class TestClusterAdvancedOptions:
         # Hierarchical clustering should produce identical cluster orders
         xr.testing.assert_equal(fs1.clustering.cluster_assignments, fs2.clustering.cluster_assignments)
 
-    def test_metrics_available(self, basic_flow_system):
-        """Test that clustering metrics are available after clustering."""
-        fs_clustered = basic_flow_system.transform.cluster(n_clusters=2, cluster_duration='1D')
-
-        assert fs_clustered.clustering.metrics is not None
-        assert isinstance(fs_clustered.clustering.metrics, xr.Dataset)
-        assert 'time_series' in fs_clustered.clustering.metrics.dims
-        assert len(fs_clustered.clustering.metrics.data_vars) > 0
-
     def test_representation_method_parameter(self, basic_flow_system):
         """Test that representation method via ClusterConfig works."""
         from tsam import ClusterConfig
@@ -343,8 +243,8 @@ class TestClusterAdvancedOptions:
         from tsam import ClusterConfig
 
         # Get actual clustering column names
-        clustering_data = basic_flow_system.transform.clustering_data()
-        real_columns = list(clustering_data.data_vars)
+        ds = basic_flow_system.to_dataset(include_solution=False)
+        real_columns = [n for n in ds.data_vars if 'time' in ds[n].dims]
 
         # Build weights with real keys + extra bogus keys
         weights = {col: 1.0 for col in real_columns}
@@ -385,8 +285,8 @@ class TestClusterAdvancedOptions:
         sink = Sink('demand', inputs=[demand_flow])
         fs.add_elements(source, sink, bus)
 
-        clustering_data = fs.transform.clustering_data()
-        weights = {col: 1.0 for col in clustering_data.data_vars}
+        ds = fs.to_dataset(include_solution=False)
+        weights = {n: 1.0 for n in ds.data_vars if 'time' in ds[n].dims}
         weights['nonexistent_period_var'] = 0.7
 
         with pytest.raises(ValueError, match='unknown'):
@@ -427,8 +327,8 @@ class TestClusterAdvancedOptions:
         sink = Sink('demand', inputs=[demand_flow])
         fs.add_elements(source, sink, bus)
 
-        clustering_data = fs.transform.clustering_data()
-        weights = {col: 1.0 for col in clustering_data.data_vars}
+        ds = fs.to_dataset(include_solution=False)
+        weights = {n: 1.0 for n in ds.data_vars if 'time' in ds[n].dims}
 
         fs_clustered = fs.transform.cluster(
             n_clusters=2,
@@ -436,36 +336,6 @@ class TestClusterAdvancedOptions:
             cluster=ClusterConfig(weights=weights),
         )
         assert len(fs_clustered.clusters) == 2
-        assert 'period' in fs_clustered.clustering.metrics.dims
-
-    def test_metrics_with_periods(self):
-        """Test that metrics have period dimension for multi-period FlowSystems."""
-        pytest.importorskip('tsam')
-        from flixopt import Bus, Flow, Sink, Source
-        from flixopt.core import TimeSeriesData
-
-        n_hours = 168  # 7 days
-        fs = FlowSystem(
-            timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'),
-            periods=pd.Index([2025, 2030], name='period'),
-        )
-
-        demand_data = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2
-        bus = Bus('electricity')
-        grid_flow = Flow('grid_in', bus='electricity', size=100)
-        demand_flow = Flow(
-            'demand_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(demand_data / 100)
-        )
-        source = Source('grid', outputs=[grid_flow])
-        sink = Sink('demand', inputs=[demand_flow])
-        fs.add_elements(source, sink, bus)
-
-        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
-
-        # Metrics should have period dimension
-        assert fs_clustered.clustering.metrics is not None
-        assert 'period' in fs_clustered.clustering.metrics.dims
-        assert len(fs_clustered.clustering.metrics.period) == 2
 
 
 class TestClusteringModuleImports:

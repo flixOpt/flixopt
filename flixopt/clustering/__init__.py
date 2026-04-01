@@ -18,8 +18,7 @@ Example usage:
     # Access clustering structure (available before AND after IO)
     clustering = fs_clustered.clustering
     print(f'Number of clusters: {clustering.n_clusters}')
-    print(f'Dims: {clustering.dims}')  # e.g., ('period', 'scenario')
-    print(f'Coords: {clustering.coords}')  # e.g., {'period': [2024, 2025]}
+    print(f'Clustering info: {clustering.clustering_info}')  # tsam_xarray ClusteringInfo
 
     # Access tsam_xarray AggregationResult for detailed analysis
     # NOTE: Only available BEFORE saving/loading. Lost after IO.

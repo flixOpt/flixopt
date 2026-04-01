@@ -1865,9 +1865,9 @@ class FlowSystemDatasetIO:
             main_vars = {name: arrays_dict[name] for name in main_var_names}
             clustering.aggregated_data = drop_constant_arrays(xr.Dataset(main_vars), dim='time')
 
-        # Restore cluster_weight from clustering's representative_weights
-        if hasattr(clustering, 'representative_weights'):
-            flow_system.cluster_weight = clustering.representative_weights
+        # Restore cluster_weight from clustering's cluster_occurrences
+        if hasattr(clustering, 'cluster_occurrences'):
+            flow_system.cluster_weight = clustering.cluster_occurrences.rename('cluster_weight')
 
     @staticmethod
     def _restore_metadata(

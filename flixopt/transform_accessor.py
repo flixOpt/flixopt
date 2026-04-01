@@ -333,14 +333,52 @@ class _Expander:
             self._first_timestep_vars = set()
             self._segment_total_vars = self._build_segment_total_varnames() if clustering.is_segmented else set()
 
-        # Build expansion divisor for segmented systems
+        # Build expansion divisor and position_within_segment for segmented systems
         self._expansion_divisor = None
+        self._position_within_segment = None
         if clustering.is_segmented:
             self._expansion_divisor = clustering.build_expansion_divisor(original_time=self._original_timesteps)
+            self._position_within_segment = self._compute_position_within_segment(clustering.segment_assignments)
 
     def _is_state_variable(self, var_name: str) -> bool:
         """Check if variable is a state variable requiring interpolation."""
         return var_name in self._state_vars or (not self._variable_categories and var_name.endswith('|charge_state'))
+
+    @staticmethod
+    def _compute_position_within_segment(segment_assignments: xr.DataArray) -> xr.DataArray:
+        """Compute position of each timestep within its segment (0-indexed)."""
+
+        def _compute(seg_assigns: np.ndarray) -> np.ndarray:
+            n_clusters, n_times = seg_assigns.shape
+            positions = np.zeros_like(seg_assigns)
+            for c in range(n_clusters):
+                pos = 0
+                prev_seg = -1
+                for t in range(n_times):
+                    seg = seg_assigns[c, t]
+                    if seg != prev_seg:
+                        pos = 0
+                        prev_seg = seg
+                    positions[c, t] = pos
+                    pos += 1
+            return positions
+
+        extra_dims = [d for d in segment_assignments.dims if d not in ('cluster', 'time')]
+        if not extra_dims:
+            return xr.DataArray(
+                _compute(segment_assignments.values),
+                dims=['cluster', 'time'],
+                coords=segment_assignments.coords,
+                name='position_within_segment',
+            )
+        result = xr.apply_ufunc(
+            _compute,
+            segment_assignments,
+            input_core_dims=[['cluster', 'time']],
+            output_core_dims=[['cluster', 'time']],
+            vectorize=True,
+        )
+        return result.rename('position_within_segment')
 
     def _is_first_timestep_variable(self, var_name: str) -> bool:
         """Check if variable is a first-timestep-only variable (startup/shutdown)."""
@@ -414,7 +452,7 @@ class _Expander:
         # Get multi-dimensional properties from Clustering
         segment_assignments = clustering.segment_assignments
         segment_durations = clustering.segment_durations
-        position_within_segment = clustering.position_within_segment
+        position_within_segment = self._position_within_segment
         cluster_assignments = clustering.cluster_assignments
 
         # Compute original period index and position within period
@@ -471,7 +509,7 @@ class _Expander:
         expanded = clustering.expand_data(da, original_time=self._original_timesteps)
 
         # Build mask: True only at first timestep of each segment
-        position_within_segment = clustering.position_within_segment
+        position_within_segment = self._position_within_segment
         cluster_assignments = clustering.cluster_assignments
 
         # Compute original period index and position within period
@@ -1269,85 +1307,6 @@ class TransformAccessor:
                 )
 
         return new_fs
-
-    def clustering_data(
-        self,
-        period: Any | None = None,
-        scenario: Any | None = None,
-    ) -> xr.Dataset:
-        """
-        Get the time-varying data that would be used for clustering.
-
-        This method extracts only the data arrays that vary over time, which is
-        the data that clustering algorithms use to identify typical periods.
-        Constant arrays (same value for all timesteps) are excluded since they
-        don't contribute to pattern identification.
-
-        Use this to inspect or pre-process the data before clustering, or to
-        understand which variables influence the clustering result.
-
-        Args:
-            period: Optional period label to select. If None and the FlowSystem
-                has multiple periods, returns data for all periods.
-            scenario: Optional scenario label to select. If None and the FlowSystem
-                has multiple scenarios, returns data for all scenarios.
-
-        Returns:
-            xr.Dataset containing only time-varying data arrays. The dataset
-            includes arrays like demand profiles, price profiles, and other
-            time series that vary over the time dimension.
-
-        Examples:
-            Inspect clustering input data:
-
-            >>> data = flow_system.transform.clustering_data()
-            >>> print(f'Variables used for clustering: {list(data.data_vars)}')
-            >>> data['HeatDemand(Q)|fixed_relative_profile'].plot()
-
-            Get data for a specific period/scenario:
-
-            >>> data_2024 = flow_system.transform.clustering_data(period=2024)
-            >>> data_high = flow_system.transform.clustering_data(scenario='high')
-
-            Convert to DataFrame for external tools:
-
-            >>> df = flow_system.transform.clustering_data().to_dataframe()
-        """
-        from .core import drop_constant_arrays
-
-        if not self._fs.connected_and_transformed:
-            self._fs.connect_and_transform()
-
-        ds = self._fs.to_dataset(include_solution=False)
-
-        # Build selector for period/scenario
-        selector = {}
-        if period is not None:
-            selector['period'] = period
-        if scenario is not None:
-            selector['scenario'] = scenario
-
-        # Apply selection if specified
-        if selector:
-            ds = ds.sel(**selector, drop=True)
-
-        # Filter to only time-varying arrays
-        result = drop_constant_arrays(ds, dim='time')
-
-        # Guard against empty dataset (all variables are constant)
-        if not result.data_vars:
-            selector_info = f' for {selector}' if selector else ''
-            raise ValueError(
-                f'No time-varying data found{selector_info}. '
-                f'All variables are constant over time. Check your period/scenario filter or input data.'
-            )
-
-        # Remove attrs for cleaner output
-        result.attrs = {}
-        for var in result.data_vars:
-            result[var].attrs = {}
-
-        return result
 
     def cluster(
         self,

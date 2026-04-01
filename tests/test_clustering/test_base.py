@@ -101,10 +101,6 @@ class TestClustering:
         assert basic_clustering.timesteps_per_cluster == 24
         assert basic_clustering.n_original_clusters == 6
 
-    def test_n_representatives(self, basic_clustering):
-        """Test n_representatives property."""
-        assert basic_clustering.n_representatives == 72  # 3 * 24
-
     def test_cluster_occurrences(self, basic_clustering):
         """Test cluster_occurrences property returns correct values."""
         occurrences = basic_clustering.cluster_occurrences
@@ -115,27 +111,12 @@ class TestClustering:
         assert occurrences.sel(cluster=1).item() == 2
         assert occurrences.sel(cluster=2).item() == 1
 
-    def test_representative_weights(self, basic_clustering):
-        """Test representative_weights is same as cluster_occurrences."""
-        weights = basic_clustering.representative_weights
-        occurrences = basic_clustering.cluster_occurrences
-        xr.testing.assert_equal(
-            weights.drop_vars('cluster', errors='ignore'),
-            occurrences.drop_vars('cluster', errors='ignore'),
-        )
-
     def test_timestep_mapping(self, basic_clustering):
         """Test timestep_mapping property."""
         mapping = basic_clustering.timestep_mapping
         assert isinstance(mapping, xr.DataArray)
         assert 'original_time' in mapping.dims
         assert len(mapping) == 144  # Original timesteps
-
-    def test_metrics(self, basic_clustering):
-        """Test metrics property returns empty Dataset when no metrics."""
-        metrics = basic_clustering.metrics
-        assert isinstance(metrics, xr.Dataset)
-        assert len(metrics.data_vars) == 0
 
     def test_repr(self, basic_clustering):
         """Test string representation."""
@@ -144,10 +125,8 @@ class TestClustering:
         assert '6 periods' in repr_str
         assert '3 clusters' in repr_str
 
-    def test_dims_no_extra(self, basic_clustering):
-        """Test dims/coords with no extra dimensions."""
-        assert basic_clustering.dims == ()
-        assert basic_clustering.coords == {}
+    def test_dim_names_no_extra(self, basic_clustering):
+        """Test dim_names with no extra dimensions."""
         assert basic_clustering.dim_names == []
 
 
@@ -187,8 +166,7 @@ class TestClusteringMultiDim:
 
         assert clustering.n_clusters == 2
         assert 'period' in clustering.cluster_occurrences.dims
-        assert clustering.dims == ('period',)
-        assert clustering.coords == {'period': [2020, 2030]}
+        assert clustering.dim_names == ['period']
 
 
 class TestClusteringPlotAccessor:

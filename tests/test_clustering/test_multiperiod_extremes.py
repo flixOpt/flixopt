@@ -522,9 +522,9 @@ class TestExtremeConfigAppend:
         assert fs_clustered.clustering.is_segmented is True
         assert fs_clustered.clustering.n_segments == 4
 
-        # n_representatives = n_clusters * n_segments
+        # n_clusters * n_segments
         n_clusters = fs_clustered.clustering.n_clusters
-        assert fs_clustered.clustering.n_representatives == n_clusters * 4
+        assert n_clusters * fs_clustered.clustering.n_segments == n_clusters * 4
 
         fs_clustered.optimize(solver_fixture)
         assert fs_clustered.solution is not None

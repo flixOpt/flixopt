@@ -915,8 +915,8 @@ class TestPeakSelection:
         n_clusters = fs_clustered.clustering.n_clusters
         assert n_clusters >= 2
 
-        # n_representatives = n_clusters * n_segments
-        assert fs_clustered.clustering.n_representatives == n_clusters * 6
+        # n_clusters * n_segments
+        assert n_clusters * fs_clustered.clustering.n_segments == n_clusters * 6
 
         # Verify optimization works
         fs_clustered.optimize(solver_fixture)
