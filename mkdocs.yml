@@ -79,9 +79,6 @@ nav:
       - Clustering:
         - Introduction: notebooks/08c-clustering.ipynb
         - Storage Modes: notebooks/08c2-clustering-storage-modes.ipynb
-        - Multi-Period: notebooks/08d-clustering-multiperiod.ipynb
-        - Segmentation: notebooks/08f-clustering-segmentation.ipynb
-        - Internals: notebooks/08e-clustering-internals.ipynb
     - Results:
       - Plotting: notebooks/09-plotting-and-data-access.ipynb
 
