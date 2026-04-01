@@ -8,7 +8,6 @@ for full data access (pre-serialization only).
 
 from __future__ import annotations
 
-import functools
 import json
 from typing import TYPE_CHECKING, Any
 
@@ -19,7 +18,6 @@ import xarray as xr
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from tsam import ClusteringResult as TsamClusteringResult
     from tsam_xarray import AggregationResult as TsamXarrayAggregationResult
     from tsam_xarray import ClusteringResult
 
@@ -48,39 +46,6 @@ def _select_dims(da: xr.DataArray, period: Any = None, scenario: Any = None) -> 
     if 'scenario' in da.dims and scenario is not None:
         da = da.sel(scenario=scenario)
     return da
-
-
-def _build_timestep_mapping(cr: TsamClusteringResult, n_timesteps: int) -> np.ndarray:
-    """Build mapping from original timesteps to representative timestep indices.
-
-    For segmented systems, the mapping uses segment_assignments from tsam to map
-    each original timestep position to its corresponding segment index.
-    """
-    timesteps_per_cluster = cr.n_timesteps_per_period
-    # For segmented systems, representative time dimension has n_segments entries
-    # For non-segmented, it has timesteps_per_cluster entries
-    n_segments = cr.n_segments
-    is_segmented = n_segments is not None
-    time_dim_size = n_segments if is_segmented else timesteps_per_cluster
-
-    # For segmented systems, tsam provides segment_assignments which maps
-    # each position within a period to its segment index
-    segment_assignments = cr.segment_assignments if is_segmented else None
-
-    mapping = np.zeros(n_timesteps, dtype=np.int32)
-    for period_idx, cluster_id in enumerate(cr.cluster_assignments):
-        for pos in range(timesteps_per_cluster):
-            orig_idx = period_idx * timesteps_per_cluster + pos
-            if orig_idx < n_timesteps:
-                if is_segmented and segment_assignments is not None:
-                    # For segmented: use tsam's segment_assignments to get segment index
-                    # segment_assignments[cluster_id][pos] gives the segment index
-                    segment_idx = segment_assignments[cluster_id][pos]
-                    mapping[orig_idx] = int(cluster_id) * time_dim_size + segment_idx
-                else:
-                    # Non-segmented: direct position mapping
-                    mapping[orig_idx] = int(cluster_id) * time_dim_size + pos
-    return mapping
 
 
 class Clustering:
@@ -167,6 +132,11 @@ class Clustering:
         self._from_serialization = _aggregation_result is None
 
         self.original_timesteps = original_timesteps if original_timesteps is not None else pd.DatetimeIndex([])
+
+        # Ensure time_coords is set on ClusteringResult (needed for disaggregate)
+        if self._clustering_result.time_coords is None and len(self.original_timesteps) > 0:
+            object.__setattr__(self._clustering_result, 'time_coords', self.original_timesteps)
+
         self._metrics = _metrics
 
         # Handle reconstructed data from refs (list of DataArrays)
@@ -321,150 +291,40 @@ class Clustering:
             result = result.rename({'timestep': 'segment'})
         return self._unrename(result)
 
-    @functools.cached_property
-    def timestep_mapping(self) -> xr.DataArray:
-        """Mapping from original timesteps to representative timestep indices.
-
-        Each value indicates which representative timestep index (0 to n_representatives-1)
-        corresponds to each original timestep.
-
-        Note: This property is cached for performance since it's accessed frequently
-        during expand() operations.
-        """
-        n_original = len(self.original_timesteps)
-        original_time_coord = self.original_timesteps.rename('original_time')
-        cr_result = self._clustering_result
-
-        slices = []
-        for key, cr in cr_result.clusterings.items():
-            da = xr.DataArray(
-                _build_timestep_mapping(cr, n_original),
-                dims=['original_time'],
-                coords={'original_time': original_time_coord},
-                name='timestep_mapping',
-            )
-            for dim_name, coord_val in zip(cr_result.slice_dims, key, strict=True):
-                da = da.expand_dims({dim_name: [coord_val]})
-            slices.append(da)
-
-        if len(slices) == 1:
-            result = slices[0]
-        else:
-            combined = xr.combine_by_coords(slices)
-            result = combined['timestep_mapping'] if isinstance(combined, xr.Dataset) else combined
-        result = result.transpose('original_time', *cr_result.slice_dims)
-        return self._unrename(result)
-
     # ==========================================================================
     # Methods
     # ==========================================================================
 
-    def expand_data(
-        self,
-        aggregated: xr.DataArray,
-        original_time: pd.DatetimeIndex | None = None,
-    ) -> xr.DataArray:
-        """Expand aggregated data back to original timesteps.
+    def disaggregate(self, data: xr.DataArray) -> xr.DataArray:
+        """Expand clustered data back to original timesteps.
 
-        Uses the timestep_mapping to map each original timestep to its
-        representative value from the aggregated data. Fully vectorized using
-        xarray's advanced indexing - no loops over period/scenario dimensions.
+        Delegates to tsam_xarray's ClusteringResult.disaggregate(). Handles
+        the dim rename from flixopt's ``(cluster, time)`` to tsam_xarray's
+        ``(cluster, timestep)`` convention.
 
-        Args:
-            aggregated: DataArray with aggregated (cluster, time) or (time,) dimension.
-            original_time: Original time coordinates. Defaults to self.original_timesteps.
-
-        Returns:
-            DataArray expanded to original timesteps.
-        """
-        if original_time is None:
-            original_time = self.original_timesteps
-
-        timestep_mapping = self.timestep_mapping  # Already multi-dimensional DataArray
-
-        # Align timestep_mapping coordinates with aggregated data to prevent
-        # coordinate conflicts during isel (tsam_xarray may sort coords differently)
-        shared_dims = set(timestep_mapping.dims) & set(aggregated.dims)
-        for dim in shared_dims:
-            if dim in timestep_mapping.coords and dim in aggregated.coords:
-                timestep_mapping = timestep_mapping.reindex({dim: aggregated.coords[dim]})
-
-        if 'cluster' not in aggregated.dims:
-            # No cluster dimension: use mapping directly as time index
-            expanded = aggregated.isel(time=timestep_mapping)
-        else:
-            # Has cluster dimension: compute cluster and time indices from mapping
-            # For segmented systems, time dimension is n_segments, not timesteps_per_cluster
-            if self.is_segmented and self.n_segments is not None:
-                time_dim_size = self.n_segments
-            else:
-                time_dim_size = self.timesteps_per_cluster
-
-            cluster_indices = timestep_mapping // time_dim_size
-            time_indices = timestep_mapping % time_dim_size
-
-            # xarray's advanced indexing handles broadcasting across period/scenario dims
-            expanded = aggregated.isel(cluster=cluster_indices, time=time_indices)
-
-        # Clean up: drop coordinate artifacts from isel, then rename original_time -> time
-        # The isel operation may leave 'cluster' and 'time' as non-dimension coordinates
-        expanded = expanded.drop_vars(['cluster', 'time'], errors='ignore')
-        expanded = expanded.rename({'original_time': 'time'}).assign_coords(time=original_time)
-
-        return expanded.transpose('time', ...).assign_attrs(aggregated.attrs)
-
-    def build_expansion_divisor(
-        self,
-        original_time: pd.DatetimeIndex | None = None,
-    ) -> xr.DataArray:
-        """Build divisor for correcting segment totals when expanding to hourly.
-
-        For segmented systems, each segment value is a total that gets repeated N times
-        when expanded to hourly resolution (where N = segment duration in timesteps).
-        This divisor allows converting those totals back to hourly rates during expansion.
-
-        For each original timestep, returns the number of original timesteps that map
-        to the same (cluster, segment) - i.e., the segment duration in timesteps.
-
-        Fully vectorized using xarray's advanced indexing - no loops over period/scenario.
+        For non-segmented systems, values are repeated for each timestep in the period.
+        For segmented systems, values are placed at segment boundaries with NaN
+        elsewhere — use ``.ffill()``, ``.interpolate_na()``, or ``.fillna()``
+        on the result.
 
         Args:
-            original_time: Original time coordinates. Defaults to self.original_timesteps.
+            data: DataArray with ``(cluster, time)`` dims from the clustered FlowSystem.
 
         Returns:
-            DataArray with dims ['time'] or ['time', 'period'?, 'scenario'?] containing
-            the number of timesteps in each segment, aligned to original timesteps.
+            DataArray with ``time`` dim restored to original timesteps.
         """
-        if not self.is_segmented or self.n_segments is None:
-            raise ValueError('build_expansion_divisor requires a segmented clustering')
-
-        if original_time is None:
-            original_time = self.original_timesteps
-
-        timestep_mapping = self.timestep_mapping  # Already multi-dimensional
-        segment_durations = self.segment_durations  # [cluster, segment, period?, scenario?]
-
-        # Align coordinates to prevent conflicts during isel
-        shared_dims = set(timestep_mapping.dims) & set(segment_durations.dims)
-        for dim in shared_dims:
-            if dim in timestep_mapping.coords and dim in segment_durations.coords:
-                segment_durations = segment_durations.reindex({dim: timestep_mapping.coords[dim]})
-
-        # Decode cluster and segment indices from timestep_mapping
-        # For segmented systems, encoding is: cluster_id * n_segments + segment_idx
-        time_dim_size = self.n_segments
-        cluster_indices = timestep_mapping // time_dim_size
-        segment_indices = timestep_mapping % time_dim_size  # This IS the segment index
-
-        # Get duration for each segment directly
-        # segment_durations[cluster, segment] -> duration
-        divisor = segment_durations.isel(cluster=cluster_indices, segment=segment_indices)
-
-        # Clean up coordinates and rename
-        divisor = divisor.drop_vars(['cluster', 'time', 'segment'], errors='ignore')
-        divisor = divisor.rename({'original_time': 'time'}).assign_coords(time=original_time)
-
-        return divisor.transpose('time', ...).rename('expansion_divisor')
+        # Rename flixopt dim names to tsam_xarray's 'timestep' convention
+        flixopt_to_tsam = {'time': 'timestep', 'segment': 'timestep'}
+        renames_to_tsam = {k: v for k, v in flixopt_to_tsam.items() if k in data.dims}
+        if renames_to_tsam:
+            data = data.rename(renames_to_tsam)
+        # Rename period/scenario dims to internal names (_period, _scenario)
+        reverse_unrename = {v: k for k, v in self._unrename_map.items()}
+        renames = {k: v for k, v in reverse_unrename.items() if k in data.dims}
+        if renames:
+            data = data.rename(renames)
+        result = self._clustering_result.disaggregate(data)
+        return self._unrename(result)
 
     def apply(
         self,
@@ -708,7 +568,9 @@ class ClusteringPlotAccessor:
         data_vars = {}
         for var in resolved_variables:
             original = clustering.original_data[var]
-            clustered = clustering.expand_data(clustering.aggregated_data[var])
+            clustered = clustering.disaggregate(clustering.aggregated_data[var])
+            if clustering.is_segmented:
+                clustered = clustered.ffill(dim='time')
             combined = xr.concat([original, clustered], dim=pd.Index(['Original', 'Clustered'], name='representation'))
             data_vars[var] = combined
         ds = xr.Dataset(data_vars)

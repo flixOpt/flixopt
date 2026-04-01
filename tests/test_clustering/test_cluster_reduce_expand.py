@@ -1098,28 +1098,6 @@ class TestSegmentation:
         flow_rates = stats.flow_rates
         assert 'time' in flow_rates.dims
 
-    def test_segmented_timestep_mapping_uses_segment_assignments(self, timesteps_8_days):
-        """Test that timestep_mapping correctly maps original timesteps to segments."""
-        from tsam import SegmentConfig
-
-        fs = create_simple_system(timesteps_8_days)
-
-        fs_segmented = fs.transform.cluster(
-            n_clusters=2,
-            cluster_duration='1D',
-            segments=SegmentConfig(n_segments=6),
-        )
-
-        mapping = fs_segmented.clustering.timestep_mapping
-
-        # Mapping should have original timestep count
-        assert len(mapping.values) == 192
-
-        # Each mapped value should be in valid range: [0, n_clusters * n_segments)
-        max_valid_idx = 2 * 6 - 1  # n_clusters * n_segments - 1
-        assert mapping.min().item() >= 0
-        assert mapping.max().item() <= max_valid_idx
-
     @pytest.mark.parametrize('freq', ['1h', '2h'])
     def test_segmented_total_effects_match_solution(self, solver_fixture, freq):
         """Test that total_effects matches solution Cost after expand with segmentation.
@@ -1297,13 +1275,6 @@ class TestSegmentationWithPeriods:
         )
 
         fs_segmented.optimize(solver_fixture)
-
-        # Get the timestep_mapping which should be multi-dimensional
-        mapping = fs_segmented.clustering.timestep_mapping
-
-        # Mapping should have period dimension
-        assert 'period' in mapping.dims
-        assert mapping.sizes['period'] == 2
 
         # Expand and verify each period has correct number of timesteps
         fs_expanded = fs_segmented.transform.expand()

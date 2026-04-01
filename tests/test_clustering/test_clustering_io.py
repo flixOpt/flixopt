@@ -124,17 +124,6 @@ class TestClusteringRoundtrip:
         # check_names=False because index name may be lost during serialization
         pd.testing.assert_index_equal(fs_restored.clustering.original_timesteps, original_timesteps, check_names=False)
 
-    def test_clustering_roundtrip_preserves_timestep_mapping(self, simple_system_8_days):
-        """Timestep mapping should be preserved after roundtrip."""
-        fs = simple_system_8_days
-        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
-        original_mapping = fs_clustered.clustering.timestep_mapping.values.copy()
-
-        ds = fs_clustered.to_dataset(include_solution=False)
-        fs_restored = fx.FlowSystem.from_dataset(ds)
-
-        np.testing.assert_array_equal(fs_restored.clustering.timestep_mapping.values, original_mapping)
-
 
 class TestClusteringWithSolutionRoundtrip:
     """Test that clustering with solution survives roundtrip."""

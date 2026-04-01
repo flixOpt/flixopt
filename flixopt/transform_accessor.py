@@ -333,52 +333,14 @@ class _Expander:
             self._first_timestep_vars = set()
             self._segment_total_vars = self._build_segment_total_varnames() if clustering.is_segmented else set()
 
-        # Build expansion divisor and position_within_segment for segmented systems
+        # Pre-compute expansion divisor for segmented systems (segment durations on original time)
         self._expansion_divisor = None
-        self._position_within_segment = None
         if clustering.is_segmented:
-            self._expansion_divisor = clustering.build_expansion_divisor(original_time=self._original_timesteps)
-            self._position_within_segment = self._compute_position_within_segment(clustering.segment_assignments)
+            self._expansion_divisor = clustering.disaggregate(clustering.segment_durations).ffill(dim='time')
 
     def _is_state_variable(self, var_name: str) -> bool:
         """Check if variable is a state variable requiring interpolation."""
         return var_name in self._state_vars or (not self._variable_categories and var_name.endswith('|charge_state'))
-
-    @staticmethod
-    def _compute_position_within_segment(segment_assignments: xr.DataArray) -> xr.DataArray:
-        """Compute position of each timestep within its segment (0-indexed)."""
-
-        def _compute(seg_assigns: np.ndarray) -> np.ndarray:
-            n_clusters, n_times = seg_assigns.shape
-            positions = np.zeros_like(seg_assigns)
-            for c in range(n_clusters):
-                pos = 0
-                prev_seg = -1
-                for t in range(n_times):
-                    seg = seg_assigns[c, t]
-                    if seg != prev_seg:
-                        pos = 0
-                        prev_seg = seg
-                    positions[c, t] = pos
-                    pos += 1
-            return positions
-
-        extra_dims = [d for d in segment_assignments.dims if d not in ('cluster', 'time')]
-        if not extra_dims:
-            return xr.DataArray(
-                _compute(segment_assignments.values),
-                dims=['cluster', 'time'],
-                coords=segment_assignments.coords,
-                name='position_within_segment',
-            )
-        result = xr.apply_ufunc(
-            _compute,
-            segment_assignments,
-            input_core_dims=[['cluster', 'time']],
-            output_core_dims=[['cluster', 'time']],
-            vectorize=True,
-        )
-        return result.rename('position_within_segment')
 
     def _is_first_timestep_variable(self, var_name: str) -> bool:
         """Check if variable is a first-timestep-only variable (startup/shutdown)."""
@@ -434,112 +396,14 @@ class _Expander:
         extra_val = extra_val.expand_dims(time=[self._original_timesteps_extra[-1]])
         return xr.concat([expanded, extra_val], dim='time')
 
-    def _interpolate_charge_state_segmented(self, da: xr.DataArray) -> xr.DataArray:
-        """Interpolate charge_state values within segments for segmented systems.
-
-        For segmented systems, charge_state has values at segment boundaries (n_segments+1).
-        This method interpolates between start and end boundary values to show the
-        actual charge trajectory as the storage charges/discharges.
-
-        Args:
-            da: charge_state DataArray with dims (cluster, time) where time has n_segments+1 entries.
-
-        Returns:
-            Interpolated charge_state with dims (time, ...) for original timesteps.
-        """
-        clustering = self._clustering
-
-        # Get multi-dimensional properties from Clustering
-        segment_assignments = clustering.segment_assignments
-        segment_durations = clustering.segment_durations
-        position_within_segment = self._position_within_segment
-        cluster_assignments = clustering.cluster_assignments
-
-        # Compute original period index and position within period
-        original_period_indices = np.minimum(
-            np.arange(self._n_original_timesteps) // self._timesteps_per_cluster,
-            self._n_original_clusters - 1,
-        )
-        positions_in_period = np.arange(self._n_original_timesteps) % self._timesteps_per_cluster
-
-        # Create DataArrays for indexing
-        original_period_da = xr.DataArray(original_period_indices, dims=['original_time'])
-        position_in_period_da = xr.DataArray(positions_in_period, dims=['original_time'])
-
-        # Map original period to cluster
-        cluster_indices = cluster_assignments.isel(original_cluster=original_period_da)
-
-        # Get segment index and position for each original timestep
-        seg_indices = segment_assignments.isel(cluster=cluster_indices, time=position_in_period_da)
-        positions = position_within_segment.isel(cluster=cluster_indices, time=position_in_period_da)
-        durations = segment_durations.isel(cluster=cluster_indices, segment=seg_indices)
-
-        # Calculate interpolation factor: position within segment (0 to 1)
-        factor = xr.where(durations > 1, (positions + 0.5) / durations, 0.5)
-
-        # Get start and end boundary values from charge_state
-        start_vals = da.isel(cluster=cluster_indices, time=seg_indices)
-        end_vals = da.isel(cluster=cluster_indices, time=seg_indices + 1)
-
-        # Linear interpolation
-        interpolated = start_vals + (end_vals - start_vals) * factor
-
-        # Clean up coordinate artifacts and rename
-        interpolated = interpolated.drop_vars(['cluster', 'time', 'segment'], errors='ignore')
-        interpolated = interpolated.rename({'original_time': 'time'}).assign_coords(time=self._original_timesteps)
-
-        return interpolated.transpose('time', ...).assign_attrs(da.attrs)
-
-    def _expand_first_timestep_only(self, da: xr.DataArray) -> xr.DataArray:
-        """Expand binary event variables to first timestep of each segment only.
-
-        For segmented systems, binary event variables like startup and shutdown indicate
-        that an event occurred somewhere in the segment. When expanded, the event is placed
-        at the first timestep of each segment, with zeros elsewhere.
-
-        Args:
-            da: Binary event DataArray with dims including (cluster, time).
-
-        Returns:
-            Expanded DataArray with event values only at first timestep of each segment.
-        """
-        clustering = self._clustering
-
-        # First expand normally (repeats values)
-        expanded = clustering.expand_data(da, original_time=self._original_timesteps)
-
-        # Build mask: True only at first timestep of each segment
-        position_within_segment = self._position_within_segment
-        cluster_assignments = clustering.cluster_assignments
-
-        # Compute original period index and position within period
-        original_period_indices = np.minimum(
-            np.arange(self._n_original_timesteps) // self._timesteps_per_cluster,
-            self._n_original_clusters - 1,
-        )
-        positions_in_period = np.arange(self._n_original_timesteps) % self._timesteps_per_cluster
-
-        # Create DataArrays for indexing
-        original_period_da = xr.DataArray(original_period_indices, dims=['original_time'])
-        position_in_period_da = xr.DataArray(positions_in_period, dims=['original_time'])
-
-        # Map to cluster and get position within segment
-        cluster_indices = cluster_assignments.isel(original_cluster=original_period_da)
-        pos_in_segment = position_within_segment.isel(cluster=cluster_indices, time=position_in_period_da)
-
-        # Clean up and create mask
-        pos_in_segment = pos_in_segment.drop_vars(['cluster', 'time'], errors='ignore')
-        pos_in_segment = pos_in_segment.rename({'original_time': 'time'}).assign_coords(time=self._original_timesteps)
-
-        # First timestep of segment has position 0
-        is_first = pos_in_segment == 0
-
-        # Apply mask: keep value at first timestep, zero elsewhere
-        result = xr.where(is_first, expanded, 0)
-        return result.assign_attrs(da.attrs)
-
     def expand_dataarray(self, da: xr.DataArray, var_name: str = '', is_solution: bool = False) -> xr.DataArray:
         """Expand a DataArray from clustered to original timesteps.
+
+        Uses clustering.disaggregate() as the core expansion, then applies
+        post-processing based on variable category:
+        - State variables (segmented): interpolate within segments
+        - First-timestep variables (segmented): value at segment start, zero elsewhere
+        - Segment totals: divide by segment duration for hourly rate
 
         Args:
             da: DataArray to expand.
@@ -558,15 +422,26 @@ class _Expander:
         is_first_timestep = self._is_first_timestep_variable(var_name) and has_cluster_dim
         is_segment_total = is_solution and var_name in self._segment_total_vars
 
-        # Choose expansion method
-        if is_state and clustering.is_segmented:
-            expanded = self._interpolate_charge_state_segmented(da)
-        elif is_first_timestep and is_solution and clustering.is_segmented:
-            return self._expand_first_timestep_only(da)
-        else:
-            expanded = clustering.expand_data(da, original_time=self._original_timesteps)
-            if is_segment_total and self._expansion_divisor is not None:
-                expanded = expanded / self._expansion_divisor
+        # Solution variables have n+1 timesteps (extra boundary value).
+        # Strip it before disaggregating — it will be appended back for state variables.
+        expected_time = clustering.n_segments if clustering.is_segmented else clustering.timesteps_per_cluster
+        has_extra = has_cluster_dim and da.sizes.get('time', 0) > expected_time
+        da_for_disagg = da.isel(time=slice(None, expected_time)) if has_extra else da
+
+        # Disaggregate: map (cluster, time) back to original time axis.
+        # For non-segmented: values are repeated. For segmented: NaN between boundaries.
+        expanded = clustering.disaggregate(da_for_disagg)
+
+        # Post-processing for segmented systems
+        if clustering.is_segmented and has_cluster_dim:
+            if is_state:
+                expanded = expanded.interpolate_na(dim='time')
+            elif is_first_timestep and is_solution:
+                return expanded.fillna(0).assign_attrs(da.attrs)
+            else:
+                expanded = expanded.ffill(dim='time')
+                if is_segment_total and self._expansion_divisor is not None:
+                    expanded = expanded / self._expansion_divisor
 
         # State variables need final state appended
         if is_state:

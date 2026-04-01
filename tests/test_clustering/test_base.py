@@ -6,7 +6,6 @@ import pytest
 import xarray as xr
 
 from flixopt.clustering import Clustering
-from flixopt.clustering.base import _build_timestep_mapping
 
 tsam_xarray = pytest.importorskip('tsam_xarray')
 
@@ -59,17 +58,6 @@ class TestHelperFunctions:
         # cluster 2: 1 occurrence (index 4)
         np.testing.assert_array_equal(occurrences.values, [3, 2, 1])
 
-    def test_build_timestep_mapping(self, mock_clustering_result):
-        """Test _build_timestep_mapping helper."""
-        mapping = _build_timestep_mapping(mock_clustering_result, n_timesteps=144)
-        assert len(mapping) == 144
-
-        # First 24 timesteps should map to cluster 0's representative (0-23)
-        np.testing.assert_array_equal(mapping[:24], np.arange(24))
-
-        # Second 24 timesteps (period 1 -> cluster 1) should map to cluster 1's representative (24-47)
-        np.testing.assert_array_equal(mapping[24:48], np.arange(24, 48))
-
 
 class TestClustering:
     """Tests for Clustering class."""
@@ -110,13 +98,6 @@ class TestClustering:
         assert occurrences.sel(cluster=0).item() == 3
         assert occurrences.sel(cluster=1).item() == 2
         assert occurrences.sel(cluster=2).item() == 1
-
-    def test_timestep_mapping(self, basic_clustering):
-        """Test timestep_mapping property."""
-        mapping = basic_clustering.timestep_mapping
-        assert isinstance(mapping, xr.DataArray)
-        assert 'original_time' in mapping.dims
-        assert len(mapping) == 144  # Original timesteps
 
     def test_repr(self, basic_clustering):
         """Test string representation."""

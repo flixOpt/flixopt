@@ -987,22 +987,3 @@ class TestEdgeCases:
                     f'Occurrences for period {period} with n_clusters={n_clusters}: '
                     f'{int(period_occurrences.sum())} != 8'
                 )
-
-    def test_timestep_mapping_valid_range(self, timesteps_8_days, periods_2):
-        """Test that timestep_mapping values are within valid range."""
-        fs = create_multiperiod_system_with_different_profiles(timesteps_8_days, periods_2)
-
-        fs_clustered = fs.transform.cluster(n_clusters=3, cluster_duration='1D')
-
-        mapping = fs_clustered.clustering.timestep_mapping
-
-        # Mapping values should be in [0, n_clusters * timesteps_per_cluster - 1]
-        max_valid = 3 * 24 - 1  # n_clusters * timesteps_per_cluster - 1
-        assert mapping.min().item() >= 0
-        assert mapping.max().item() <= max_valid
-
-        # Each period should have valid mappings
-        for period in periods_2:
-            period_mapping = mapping.sel(period=period)
-            assert period_mapping.min().item() >= 0
-            assert period_mapping.max().item() <= max_valid
