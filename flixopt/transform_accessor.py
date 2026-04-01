@@ -82,11 +82,6 @@ class _ReducedFlowSystemBuilder:
         renames = {k: v for k, v in self._unrename_map.items() if k in da.dims}
         return da.rename(renames) if renames else da
 
-    def _unrename_ds(self, ds: xr.Dataset) -> xr.Dataset:
-        """Rename tsam_xarray output dims back to original names in Dataset."""
-        renames = {k: v for k, v in self._unrename_map.items() if k in ds.dims}
-        return ds.rename(renames) if renames else ds
-
     def build_cluster_weights(self) -> xr.DataArray:
         """Build cluster_weight DataArray from aggregation result.
 
@@ -141,32 +136,6 @@ class _ReducedFlowSystemBuilder:
         da = da.assign_coords(cluster=self._cluster_coords, time=self._time_coords)
         other_dims = [d for d in da.dims if d not in ('cluster', 'time')]
         return self._unrename(da.transpose('cluster', 'time', *other_dims).rename('timestep_duration'))
-
-    def build_metrics(self) -> xr.Dataset:
-        """Build clustering metrics Dataset from aggregation result.
-
-        Returns:
-            Dataset with RMSE, MAE, RMSE_duration metrics.
-        """
-        accuracy = self._agg_result.accuracy
-        try:
-            data_vars = {}
-            for metric_name, metric_da in [
-                ('RMSE', accuracy.rmse),
-                ('MAE', accuracy.mae),
-                ('RMSE_duration', accuracy.rmse_duration),
-            ]:
-                # Rename the variable dimension to 'time_series'
-                known_metric_dims = {'period', 'scenario'} | set(self._unrename_map.keys())
-                unknown_dims = [d for d in metric_da.dims if d not in known_metric_dims]
-                assert len(unknown_dims) == 1, f'Expected 1 variable dim in {metric_name}, got {unknown_dims}'
-                variable_dim = unknown_dims[0]
-                da = metric_da.rename({variable_dim: 'time_series'})
-                data_vars[metric_name] = da
-            return self._unrename_ds(xr.Dataset(data_vars))
-        except Exception as e:
-            logger.warning(f'Failed to compute clustering metrics: {e}')
-            return xr.Dataset()
 
     def build_reduced_dataset(self, ds: xr.Dataset, typical_das: dict[str, xr.DataArray]) -> xr.Dataset:
         """Build the reduced dataset with (cluster, time) structure.
@@ -235,13 +204,11 @@ class _ReducedFlowSystemBuilder:
             Reduced FlowSystem with clustering metadata attached.
         """
         from .clustering import Clustering
-        from .core import drop_constant_arrays
         from .flow_system import FlowSystem
 
         # Build all components
         cluster_weight = self.build_cluster_weights()
         typical_das = self.build_typical_periods()
-        metrics = self.build_metrics()
         ds_new = self.build_reduced_dataset(ds, typical_das)
 
         # Add segment durations if segmented
@@ -272,9 +239,6 @@ class _ReducedFlowSystemBuilder:
         # Create Clustering object with full AggregationResult access
         reduced_fs.clustering = Clustering(
             original_timesteps=self._fs.timesteps,
-            original_data=drop_constant_arrays(ds, dim='time'),
-            aggregated_data=drop_constant_arrays(ds_new, dim='time'),
-            _metrics=metrics if metrics.data_vars else None,
             _aggregation_result=self._agg_result,
             _unrename_map=self._unrename_map,
         )

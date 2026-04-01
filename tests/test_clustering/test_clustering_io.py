@@ -70,12 +70,8 @@ class TestClusteringRoundtrip:
 
         ds = fs_clustered.to_dataset(include_solution=False)
 
-        # Check that clustering attrs are present
+        # Check that clustering attrs are present (serialized as JSON string)
         assert 'clustering' in ds.attrs
-
-        # Check that clustering arrays are present with prefix
-        clustering_vars = [name for name in ds.data_vars if name.startswith('clustering|')]
-        assert len(clustering_vars) > 0
 
     def test_clustering_roundtrip_preserves_clustering_object(self, simple_system_8_days):
         """Clustering object should be restored after roundtrip."""

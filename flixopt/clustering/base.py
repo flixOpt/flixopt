@@ -11,41 +11,14 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
 import pandas as pd
-import xarray as xr
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import xarray as xr
     from tsam_xarray import AggregationResult as TsamXarrayAggregationResult
     from tsam_xarray import ClusteringResult
-
-    from ..color_processing import ColorType
-    from ..plot_result import PlotResult
-    from ..statistics_accessor import SelectType
-
-from ..statistics_accessor import _build_color_kwargs
-
-
-def _apply_slot_defaults(plotly_kwargs: dict, defaults: dict[str, str | None]) -> None:
-    """Apply default slot assignments to plotly kwargs.
-
-    Args:
-        plotly_kwargs: The kwargs dict to update (modified in place).
-        defaults: Default slot assignments. None values block slots.
-    """
-    for slot, value in defaults.items():
-        plotly_kwargs.setdefault(slot, value)
-
-
-def _select_dims(da: xr.DataArray, period: Any = None, scenario: Any = None) -> xr.DataArray:
-    """Select from DataArray by period/scenario if those dimensions exist."""
-    if 'period' in da.dims and period is not None:
-        da = da.sel(period=period)
-    if 'scenario' in da.dims and scenario is not None:
-        da = da.sel(scenario=scenario)
-    return da
 
 
 class Clustering:
@@ -68,12 +41,6 @@ class Clustering:
         self,
         clustering_result: ClusteringResult | dict | None = None,
         original_timesteps: pd.DatetimeIndex | list[str] | None = None,
-        original_data: xr.Dataset | None = None,
-        aggregated_data: xr.Dataset | None = None,
-        _metrics: xr.Dataset | None = None,
-        # These are for reconstruction from serialization
-        _original_data_refs: list[str] | None = None,
-        _metrics_refs: list[str] | None = None,
         # Internal: tsam_xarray AggregationResult for full data access
         _aggregation_result: TsamXarrayAggregationResult | None = None,
         # Internal: mapping from renamed dims back to originals (e.g., _period -> period)
@@ -82,6 +49,8 @@ class Clustering:
         # The IO resolver passes serialized dict keys as kwargs to __init__().
         # Remove once all users have re-saved their netcdf files with the new format.
         results: Any = None,
+        # Legacy kwargs ignored (removed: original_data, aggregated_data, _metrics, refs)
+        **_ignored: Any,
     ):
         from tsam_xarray import ClusteringResult as ClusteringResultClass
 
@@ -136,41 +105,6 @@ class Clustering:
         # Ensure time_coords is set on ClusteringResult (needed for disaggregate)
         if self._clustering_result.time_coords is None and len(self.original_timesteps) > 0:
             object.__setattr__(self._clustering_result, 'time_coords', self.original_timesteps)
-
-        self._metrics = _metrics
-
-        # Handle reconstructed data from refs (list of DataArrays)
-        if _original_data_refs is not None and isinstance(_original_data_refs, list):
-            # These are resolved DataArrays from the structure resolver
-            if all(isinstance(da, xr.DataArray) for da in _original_data_refs):
-                # Rename 'original_time' back to 'time' and strip 'original_data|' prefix
-                data_vars = {}
-                for da in _original_data_refs:
-                    if 'original_time' in da.dims:
-                        da = da.rename({'original_time': 'time'})
-                    # Strip 'original_data|' prefix from name (added during serialization)
-                    name = da.name
-                    if name.startswith('original_data|'):
-                        name = name[14:]  # len('original_data|') = 14
-                    data_vars[name] = da.rename(name)
-                self.original_data = xr.Dataset(data_vars)
-            else:
-                self.original_data = original_data
-        else:
-            self.original_data = original_data
-
-        self.aggregated_data = aggregated_data
-
-        if _metrics_refs is not None and isinstance(_metrics_refs, list):
-            if all(isinstance(da, xr.DataArray) for da in _metrics_refs):
-                # Strip 'metrics|' prefix from name (added during serialization)
-                data_vars = {}
-                for da in _metrics_refs:
-                    name = da.name
-                    if name.startswith('metrics|'):
-                        name = name[8:]  # len('metrics|') = 8
-                    data_vars[name] = da.rename(name)
-                self._metrics = xr.Dataset(data_vars)
 
     @staticmethod
     def _clustering_result_from_dict(d: dict) -> ClusteringResult:
@@ -308,7 +242,7 @@ class Clustering:
         on the result.
 
         Args:
-            data: DataArray with ``(cluster, time)`` dims from the clustered FlowSystem.
+            data: DataArray with ``(cluster, time)`` or ``(cluster, segment)`` dims.
 
         Returns:
             DataArray with ``time`` dim restored to original timesteps.
@@ -369,8 +303,8 @@ class Clustering:
     ) -> Clustering:
         """Load a clustering from JSON.
 
-        The loaded Clustering has full apply() support because ClusteringResult
-        is fully preserved via serialization.
+        The loaded Clustering has full apply() and disaggregate() support
+        because ClusteringResult is fully preserved via serialization.
 
         Args:
             path: Path to the JSON file.
@@ -399,61 +333,18 @@ class Clustering:
             original_timesteps=original_timesteps,
         )
 
-    def _create_reference_structure(self, include_original_data: bool = True) -> tuple[dict, dict[str, xr.DataArray]]:
+    def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """Create serialization structure for to_dataset().
-
-        Args:
-            include_original_data: Whether to include original_data in serialization.
-                Set to False for smaller files when plot.compare() isn't needed after IO.
-                Defaults to True.
 
         Returns:
             Tuple of (reference_dict, arrays_dict).
         """
-        arrays = {}
-
-        # Collect original_data arrays
-        # Rename 'time' to 'original_time' to avoid conflict with clustered FlowSystem's time coord
-        original_data_refs = None
-        if include_original_data and self.original_data is not None:
-            original_data_refs = []
-            # Use variables for faster access (avoids _construct_dataarray overhead)
-            variables = self.original_data.variables
-            for name in self.original_data.data_vars:
-                var = variables[name]
-                ref_name = f'original_data|{name}'
-                # Rename time dim to avoid xarray alignment issues
-                if 'time' in var.dims:
-                    new_dims = tuple('original_time' if d == 'time' else d for d in var.dims)
-                    arrays[ref_name] = xr.Variable(new_dims, var.values, attrs=var.attrs)
-                else:
-                    arrays[ref_name] = var
-                original_data_refs.append(f':::{ref_name}')
-
-        # NOTE: aggregated_data is NOT serialized - it's identical to the FlowSystem's
-        # main data arrays and would be redundant. After loading, aggregated_data is
-        # reconstructed from the FlowSystem's dataset.
-
-        # Collect metrics arrays
-        metrics_refs = None
-        if self._metrics is not None:
-            metrics_refs = []
-            # Use variables for faster access (avoids _construct_dataarray overhead)
-            metrics_vars = self._metrics.variables
-            for name in self._metrics.data_vars:
-                ref_name = f'metrics|{name}'
-                arrays[ref_name] = metrics_vars[name]
-                metrics_refs.append(f':::{ref_name}')
-
         reference = {
             '__class__': 'Clustering',
             'clustering_result': self._clustering_result.to_dict(),
             'original_timesteps': [ts.isoformat() for ts in self.original_timesteps],
-            '_original_data_refs': original_data_refs,
-            '_metrics_refs': metrics_refs,
         }
-
-        return reference, arrays
+        return reference, {}
 
     # ==========================================================================
     # Access to tsam_xarray AggregationResult
@@ -485,19 +376,6 @@ class Clustering:
                 f'Use apply_clustering() to get full results.'
             )
 
-    # ==========================================================================
-    # Visualization
-    # ==========================================================================
-
-    @property
-    def plot(self) -> ClusteringPlotAccessor:
-        """Access plotting methods for clustering visualization.
-
-        Returns:
-            ClusteringPlotAccessor with compare(), heatmap(), and clusters() methods.
-        """
-        return ClusteringPlotAccessor(self)
-
     def __repr__(self) -> str:
         return (
             f'Clustering(\n'
@@ -506,374 +384,6 @@ class Clustering:
             f'  dims={self.dim_names}\n'
             f')'
         )
-
-
-class ClusteringPlotAccessor:
-    """Plot accessor for Clustering objects.
-
-    Provides visualization methods for comparing original vs aggregated data
-    and understanding the clustering structure.
-    """
-
-    def __init__(self, clustering: Clustering):
-        self._clustering = clustering
-
-    def compare(
-        self,
-        kind: str = 'timeseries',
-        variables: str | list[str] | None = None,
-        *,
-        select: SelectType | None = None,
-        colors: ColorType | None = None,
-        show: bool | None = None,
-        data_only: bool = False,
-        **plotly_kwargs: Any,
-    ) -> PlotResult:
-        """Compare original vs aggregated data.
-
-        Args:
-            kind: Type of comparison plot.
-                - 'timeseries': Time series comparison (default)
-                - 'duration_curve': Sorted duration curve comparison
-            variables: Variable(s) to plot. Can be a string, list of strings,
-                or None to plot all time-varying variables.
-            select: xarray-style selection dict, e.g. {'scenario': 'Base Case'}.
-            colors: Color specification (colorscale name, color list, or label-to-color dict).
-            show: Whether to display the figure.
-                Defaults to CONFIG.Plotting.default_show.
-            data_only: If True, skip figure creation and return only data.
-            **plotly_kwargs: Additional arguments passed to plotly (e.g., color, line_dash,
-                facet_col, facet_row). Defaults: x='time'/'duration', color='variable',
-                line_dash='representation', symbol=None.
-
-        Returns:
-            PlotResult containing the comparison figure and underlying data.
-        """
-        import plotly.graph_objects as go
-
-        from ..config import CONFIG
-        from ..plot_result import PlotResult
-        from ..statistics_accessor import _apply_selection
-
-        if kind not in ('timeseries', 'duration_curve'):
-            raise ValueError(f"Unknown kind '{kind}'. Use 'timeseries' or 'duration_curve'.")
-
-        clustering = self._clustering
-        if clustering.original_data is None or clustering.aggregated_data is None:
-            raise ValueError('No original/aggregated data available for comparison')
-
-        resolved_variables = self._resolve_variables(variables)
-
-        # Build Dataset with variables as data_vars
-        data_vars = {}
-        for var in resolved_variables:
-            original = clustering.original_data[var]
-            clustered = clustering.disaggregate(clustering.aggregated_data[var])
-            if clustering.is_segmented:
-                clustered = clustered.ffill(dim='time')
-            combined = xr.concat([original, clustered], dim=pd.Index(['Original', 'Clustered'], name='representation'))
-            data_vars[var] = combined
-        ds = xr.Dataset(data_vars)
-
-        ds = _apply_selection(ds, select)
-
-        if kind == 'duration_curve':
-            sorted_vars = {}
-            # Use variables for faster access (avoids _construct_dataarray overhead)
-            variables = ds.variables
-            rep_values = ds.coords['representation'].values
-            rep_idx = {rep: i for i, rep in enumerate(rep_values)}
-            for var in ds.data_vars:
-                data = variables[var].values
-                for rep in rep_values:
-                    # Direct numpy indexing instead of .sel()
-                    values = np.sort(data[rep_idx[rep]].flatten())[::-1]
-                    sorted_vars[(var, rep)] = values
-            # Get length from first sorted array
-            n = len(next(iter(sorted_vars.values())))
-            ds = xr.Dataset(
-                {
-                    var: xr.DataArray(
-                        [sorted_vars[(var, r)] for r in ['Original', 'Clustered']],
-                        dims=['representation', 'duration'],
-                        coords={'representation': ['Original', 'Clustered'], 'duration': range(n)},
-                    )
-                    for var in resolved_variables
-                }
-            )
-
-        title = (
-            (
-                'Original vs Clustered'
-                if len(resolved_variables) > 1
-                else f'Original vs Clustered: {resolved_variables[0]}'
-            )
-            if kind == 'timeseries'
-            else ('Duration Curve' if len(resolved_variables) > 1 else f'Duration Curve: {resolved_variables[0]}')
-        )
-
-        # Early return for data_only mode
-        if data_only:
-            return PlotResult(data=ds, figure=go.Figure())
-
-        # Apply slot defaults
-        defaults = {
-            'x': 'duration' if kind == 'duration_curve' else 'time',
-            'color': 'variable',
-            'line_dash': 'representation',
-            'line_dash_map': {'Original': 'dot', 'Clustered': 'solid'},
-            'symbol': None,  # Block symbol slot
-        }
-        _apply_slot_defaults(plotly_kwargs, defaults)
-
-        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
-        fig = ds.plotly.line(
-            title=title,
-            **color_kwargs,
-            **plotly_kwargs,
-        )
-        fig.update_yaxes(matches=None)
-        fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
-
-        plot_result = PlotResult(data=ds, figure=fig)
-
-        if show is None:
-            show = CONFIG.Plotting.default_show
-        if show:
-            plot_result.show()
-
-        return plot_result
-
-    def _get_time_varying_variables(self) -> list[str]:
-        """Get list of time-varying variables from original data that also exist in aggregated data."""
-        if self._clustering.original_data is None:
-            return []
-        # Get variables that exist in both original and aggregated data
-        aggregated_vars = (
-            set(self._clustering.aggregated_data.data_vars)
-            if self._clustering.aggregated_data is not None
-            else set(self._clustering.original_data.data_vars)
-        )
-        return [
-            name
-            for name in self._clustering.original_data.data_vars
-            if name in aggregated_vars
-            and 'time' in self._clustering.original_data[name].dims
-            and not np.isclose(
-                self._clustering.original_data[name].min(),
-                self._clustering.original_data[name].max(),
-            )
-        ]
-
-    def _resolve_variables(self, variables: str | list[str] | None) -> list[str]:
-        """Resolve variables parameter to a list of valid variable names."""
-        time_vars = self._get_time_varying_variables()
-        if not time_vars:
-            raise ValueError('No time-varying variables found')
-
-        if variables is None:
-            return time_vars
-        elif isinstance(variables, str):
-            if variables not in time_vars:
-                raise ValueError(f"Variable '{variables}' not found. Available: {time_vars}")
-            return [variables]
-        else:
-            invalid = [v for v in variables if v not in time_vars]
-            if invalid:
-                raise ValueError(f'Variables {invalid} not found. Available: {time_vars}')
-            return list(variables)
-
-    def heatmap(
-        self,
-        *,
-        select: SelectType | None = None,
-        colors: str | list[str] | None = None,
-        show: bool | None = None,
-        data_only: bool = False,
-        **plotly_kwargs: Any,
-    ) -> PlotResult:
-        """Plot cluster assignments over time as a heatmap timeline.
-
-        Shows which cluster each timestep belongs to as a horizontal color bar.
-        The x-axis is time, color indicates cluster assignment. This visualization
-        aligns with time series data, making it easy to correlate cluster
-        assignments with other plots.
-
-        For multi-period/scenario data, uses faceting and/or animation.
-
-        Args:
-            select: xarray-style selection dict, e.g. {'scenario': 'Base Case'}.
-            colors: Colorscale name (str) or list of colors for heatmap coloring.
-                Dicts are not supported for heatmaps.
-                Defaults to plotly template's sequential colorscale.
-            show: Whether to display the figure.
-                Defaults to CONFIG.Plotting.default_show.
-            data_only: If True, skip figure creation and return only data.
-            **plotly_kwargs: Additional arguments passed to plotly (e.g., facet_col, animation_frame).
-
-        Returns:
-            PlotResult containing the heatmap figure and cluster assignment data.
-            The data has 'cluster' variable with time dimension, matching original timesteps.
-        """
-        import plotly.graph_objects as go
-
-        from ..config import CONFIG
-        from ..plot_result import PlotResult
-        from ..statistics_accessor import _apply_selection
-
-        clustering = self._clustering
-        cluster_assignments = clustering.cluster_assignments
-        timesteps_per_cluster = clustering.timesteps_per_cluster
-        original_time = clustering.original_timesteps
-
-        if select:
-            cluster_assignments = _apply_selection(cluster_assignments.to_dataset(name='cluster'), select)['cluster']
-
-        # Expand cluster_assignments to per-timestep
-        extra_dims = [d for d in cluster_assignments.dims if d != 'original_cluster']
-        expanded_values = np.repeat(cluster_assignments.values, timesteps_per_cluster, axis=0)
-
-        coords = {'time': original_time}
-        coords.update({d: cluster_assignments.coords[d].values for d in extra_dims})
-        cluster_da = xr.DataArray(expanded_values, dims=['time'] + extra_dims, coords=coords)
-        cluster_da.name = 'cluster'
-
-        # Early return for data_only mode
-        if data_only:
-            return PlotResult(data=xr.Dataset({'cluster': cluster_da}), figure=go.Figure())
-
-        heatmap_da = cluster_da.expand_dims('y', axis=-1).assign_coords(y=['Cluster'])
-        heatmap_da.name = 'cluster_assignment'
-        heatmap_da = heatmap_da.transpose('time', 'y', ...)
-
-        # Use plotly.imshow for heatmap
-        # Only pass color_continuous_scale if explicitly provided (template handles default)
-        if colors is not None:
-            plotly_kwargs.setdefault('color_continuous_scale', colors)
-        fig = heatmap_da.plotly.imshow(
-            title='Cluster Assignments',
-            aspect='auto',
-            **plotly_kwargs,
-        )
-
-        fig.update_yaxes(showticklabels=False)
-        fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
-
-        # Data is exactly what we plotted (without dummy y dimension)
-        data = xr.Dataset({'cluster': cluster_da})
-        plot_result = PlotResult(data=data, figure=fig)
-
-        if show is None:
-            show = CONFIG.Plotting.default_show
-        if show:
-            plot_result.show()
-
-        return plot_result
-
-    def clusters(
-        self,
-        variables: str | list[str] | None = None,
-        *,
-        select: SelectType | None = None,
-        colors: ColorType | None = None,
-        show: bool | None = None,
-        data_only: bool = False,
-        **plotly_kwargs: Any,
-    ) -> PlotResult:
-        """Plot each cluster's typical period profile.
-
-        Shows each cluster as a separate faceted subplot with all variables
-        colored differently. Useful for understanding what each cluster represents.
-
-        Args:
-            variables: Variable(s) to plot. Can be a string, list of strings,
-                or None to plot all time-varying variables.
-            select: xarray-style selection dict, e.g. {'scenario': 'Base Case'}.
-            colors: Color specification (colorscale name, color list, or label-to-color dict).
-            show: Whether to display the figure.
-                Defaults to CONFIG.Plotting.default_show.
-            data_only: If True, skip figure creation and return only data.
-            **plotly_kwargs: Additional arguments passed to plotly (e.g., color, facet_col,
-                facet_col_wrap). Defaults: x='time', color='variable', symbol=None.
-
-        Returns:
-            PlotResult containing the figure and underlying data.
-        """
-        import plotly.graph_objects as go
-
-        from ..config import CONFIG
-        from ..plot_result import PlotResult
-        from ..statistics_accessor import _apply_selection
-
-        clustering = self._clustering
-        if clustering.aggregated_data is None:
-            raise ValueError('No aggregated data available')
-
-        aggregated_data = _apply_selection(clustering.aggregated_data, select)
-        resolved_variables = self._resolve_variables(variables)
-
-        n_clusters = clustering.n_clusters
-        timesteps_per_cluster = clustering.timesteps_per_cluster
-        cluster_occurrences = clustering.cluster_occurrences
-
-        # Build cluster labels
-        occ_extra_dims = [d for d in cluster_occurrences.dims if d != 'cluster']
-        if occ_extra_dims:
-            cluster_labels = [f'Cluster {c}' for c in range(n_clusters)]
-        else:
-            cluster_labels = [
-                f'Cluster {c} (×{int(cluster_occurrences.sel(cluster=c).values)})' for c in range(n_clusters)
-            ]
-
-        data_vars = {}
-        for var in resolved_variables:
-            da = aggregated_data[var]
-            if 'cluster' in da.dims:
-                data_by_cluster = da.values
-            else:
-                data_by_cluster = da.values.reshape(n_clusters, timesteps_per_cluster)
-            data_vars[var] = xr.DataArray(
-                data_by_cluster,
-                dims=['cluster', 'time'],
-                coords={'cluster': cluster_labels, 'time': range(timesteps_per_cluster)},
-            )
-
-        ds = xr.Dataset(data_vars)
-
-        # Early return for data_only mode (include occurrences in result)
-        if data_only:
-            data_vars['occurrences'] = cluster_occurrences
-            return PlotResult(data=xr.Dataset(data_vars), figure=go.Figure())
-
-        title = 'Clusters' if len(resolved_variables) > 1 else f'Clusters: {resolved_variables[0]}'
-
-        # Apply slot defaults
-        defaults = {
-            'x': 'time',
-            'color': 'variable',
-            'symbol': None,  # Block symbol slot
-        }
-        _apply_slot_defaults(plotly_kwargs, defaults)
-
-        color_kwargs = _build_color_kwargs(colors, list(ds.data_vars))
-        fig = ds.plotly.line(
-            title=title,
-            **color_kwargs,
-            **plotly_kwargs,
-        )
-        fig.update_yaxes(matches=None)
-        fig.for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))
-
-        data_vars['occurrences'] = cluster_occurrences
-        result_data = xr.Dataset(data_vars)
-        plot_result = PlotResult(data=result_data, figure=fig)
-
-        if show is None:
-            show = CONFIG.Plotting.default_show
-        if show:
-            plot_result.show()
-
-        return plot_result
 
 
 def _register_clustering_classes():
