@@ -299,8 +299,6 @@ class _Expander:
 
         # Pre-compute clustering dimensions
         self._timesteps_per_cluster = clustering.timesteps_per_cluster
-        self._n_segments = clustering.n_segments
-        self._time_dim_size = self._n_segments if self._n_segments else self._timesteps_per_cluster
         self._n_clusters = clustering.n_clusters
         self._n_original_clusters = clustering.n_original_clusters
 
@@ -319,69 +317,16 @@ class _Expander:
             self._n_original_clusters - 1,
         )
 
-        # Build variable category sets
-        self._variable_categories = getattr(fs, '_variable_categories', {})
-        if self._variable_categories:
-            self._state_vars = {name for name, cat in self._variable_categories.items() if cat in EXPAND_INTERPOLATE}
-            self._first_timestep_vars = {
-                name for name, cat in self._variable_categories.items() if cat in EXPAND_FIRST_TIMESTEP
-            }
-            self._segment_total_vars = {name for name, cat in self._variable_categories.items() if cat in EXPAND_DIVIDE}
-        else:
-            # Fallback to pattern matching for old FlowSystems without categories
-            self._state_vars = set()
-            self._first_timestep_vars = set()
-            self._segment_total_vars = self._build_segment_total_varnames() if clustering.is_segmented else set()
+        # Build variable category sets from registered categories
+        variable_categories = fs._variable_categories
+        self._state_vars = {name for name, cat in variable_categories.items() if cat in EXPAND_INTERPOLATE}
+        self._first_timestep_vars = {name for name, cat in variable_categories.items() if cat in EXPAND_FIRST_TIMESTEP}
+        self._segment_total_vars = {name for name, cat in variable_categories.items() if cat in EXPAND_DIVIDE}
 
         # Pre-compute expansion divisor for segmented systems (segment durations on original time)
         self._expansion_divisor = None
         if clustering.is_segmented:
             self._expansion_divisor = clustering.disaggregate(clustering.segment_durations).ffill(dim='time')
-
-    def _is_state_variable(self, var_name: str) -> bool:
-        """Check if variable is a state variable requiring interpolation."""
-        return var_name in self._state_vars or (not self._variable_categories and var_name.endswith('|charge_state'))
-
-    def _is_first_timestep_variable(self, var_name: str) -> bool:
-        """Check if variable is a first-timestep-only variable (startup/shutdown)."""
-        return var_name in self._first_timestep_vars or (
-            not self._variable_categories and (var_name.endswith('|startup') or var_name.endswith('|shutdown'))
-        )
-
-    def _build_segment_total_varnames(self) -> set[str]:
-        """Build segment total variable names - BACKWARDS COMPATIBILITY FALLBACK.
-
-        This method is only used when variable_categories is empty (old FlowSystems
-        saved before category registration was implemented). New FlowSystems use
-        the VariableCategory registry with EXPAND_DIVIDE categories (PER_TIMESTEP, SHARE).
-
-        Returns:
-            Set of variable names that should be divided by expansion divisor.
-        """
-        segment_total_vars: set[str] = set()
-        effect_names = list(self._fs.effects.keys())
-
-        # 1. Per-timestep totals for each effect
-        for effect in effect_names:
-            segment_total_vars.add(f'{effect}(temporal)|per_timestep')
-
-        # 2. Flow contributions to effects
-        for flow_label in self._fs.flows:
-            for effect in effect_names:
-                segment_total_vars.add(f'{flow_label}->{effect}(temporal)')
-
-        # 3. Component contributions to effects
-        for component_label in self._fs.components:
-            for effect in effect_names:
-                segment_total_vars.add(f'{component_label}->{effect}(temporal)')
-
-        # 4. Effect-to-effect contributions
-        for target_effect_name, target_effect in self._fs.effects.items():
-            if target_effect.share_from_temporal:
-                for source_effect_name in target_effect.share_from_temporal:
-                    segment_total_vars.add(f'{source_effect_name}(temporal)->{target_effect_name}(temporal)')
-
-        return segment_total_vars
 
     def _append_final_state(self, expanded: xr.DataArray, da: xr.DataArray) -> xr.DataArray:
         """Append final state value from original data to expanded data."""
@@ -418,8 +363,8 @@ class _Expander:
 
         clustering = self._clustering
         has_cluster_dim = 'cluster' in da.dims
-        is_state = self._is_state_variable(var_name) and has_cluster_dim
-        is_first_timestep = self._is_first_timestep_variable(var_name) and has_cluster_dim
+        is_state = var_name in self._state_vars and has_cluster_dim
+        is_first_timestep = var_name in self._first_timestep_vars and has_cluster_dim
         is_segment_total = is_solution and var_name in self._segment_total_vars
 
         # Solution variables have n+1 timesteps (extra boundary value).
@@ -615,8 +560,10 @@ class _Expander:
         n_combinations = (len(self._fs.periods) if has_periods else 1) * (
             len(self._fs.scenarios) if has_scenarios else 1
         )
-        n_reduced_timesteps = self._n_clusters * self._time_dim_size
-        segmented_info = f' ({self._n_segments} segments)' if self._n_segments else ''
+        n_segments = self._clustering.n_segments
+        time_dim_size = n_segments if n_segments else self._timesteps_per_cluster
+        n_reduced_timesteps = self._n_clusters * time_dim_size
+        segmented_info = f' ({n_segments} segments)' if n_segments else ''
         logger.info(
             f'Expanded FlowSystem from {n_reduced_timesteps} to {self._n_original_timesteps} timesteps '
             f'({self._n_clusters} clusters{segmented_info}'
