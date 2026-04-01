@@ -623,21 +623,21 @@ class TestMultiDimensionalClusteringIO:
         # cluster_assignments should be exactly preserved
         xr.testing.assert_equal(original_cluster_assignments, fs_restored.clustering.cluster_assignments)
 
-    def test_clustering_info_preserved_after_load(self, system_with_periods_and_scenarios, tmp_path):
-        """ClusteringInfo should be preserved after loading."""
+    def test_clustering_result_preserved_after_load(self, system_with_periods_and_scenarios, tmp_path):
+        """ClusteringResult should be preserved after loading."""
         fs = system_with_periods_and_scenarios
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
 
-        # Before save, clustering_info exists
-        assert fs_clustered.clustering.clustering_info is not None
+        # Before save, clustering_result exists
+        assert fs_clustered.clustering.clustering_result is not None
 
         # Roundtrip
         nc_path = tmp_path / 'multi_dim_clustering.nc'
         fs_clustered.to_netcdf(nc_path)
         fs_restored = fx.FlowSystem.from_netcdf(nc_path)
 
-        # After load, clustering_info should be reconstructed
-        assert fs_restored.clustering.clustering_info is not None
+        # After load, clustering_result should be reconstructed
+        assert fs_restored.clustering.clustering_result is not None
         # The restored clustering should have the same structure
         assert len(fs_restored.clustering) == len(fs_clustered.clustering)
 
@@ -676,8 +676,8 @@ class TestMultiDimensionalClusteringIO:
         # Load the full FlowSystem with clustering
         fs_loaded = fx.FlowSystem.from_netcdf(nc_path)
         clustering_loaded = fs_loaded.clustering
-        # ClusteringInfo should be fully preserved after load
-        assert clustering_loaded.clustering_info is not None
+        # ClusteringResult should be fully preserved after load
+        assert clustering_loaded.clustering_result is not None
 
         # Create a fresh FlowSystem (copy the original, unclustered one)
         fs_fresh = fs.copy()

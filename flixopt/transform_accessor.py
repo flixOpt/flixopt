@@ -1639,23 +1639,23 @@ class TransformAccessor:
                         da_full = da_full.drop_vars(renamed)
                     da_full = da_full.expand_dims({renamed: ds.coords[renamed].values})
 
-            # Get clustering info with correct dim names for the renamed data
-            from tsam_xarray import ClusteringInfo as ClusteringInfoClass
+            # Get clustering result with correct dim names for the renamed data
+            from tsam_xarray import ClusteringResult as ClusteringResultClass
 
-            info = clustering.clustering_info
+            cr_result = clustering.clustering_result
             # Map dim names to renamed versions (e.g., period → _period)
             slice_dims = [rename_map.get(d, d) for d in clustering.dim_names]
-            info = ClusteringInfoClass(
+            cr_result = ClusteringResultClass(
                 time_dim='time',
                 cluster_dim=['variable'],
                 slice_dims=slice_dims,
-                clusterings=dict(info.clusterings),
+                clusterings=dict(cr_result.clusterings),
             )
             # TODO(tsam_xarray): Same workaround as in cluster() above — remove
             # once tsam_xarray handles mismatched weights in apply().
-            for cr in info.clusterings.values():
+            for cr in cr_result.clusterings.values():
                 object.__setattr__(cr, 'weights', {})
-            agg_result = info.apply(da_full)
+            agg_result = cr_result.apply(da_full)
 
         # Rename back
         if unrename_map:

@@ -11,9 +11,9 @@ from flixopt.clustering.base import _build_timestep_mapping
 tsam_xarray = pytest.importorskip('tsam_xarray')
 
 
-def _make_clustering_info(clusterings: dict, dim_names: list[str]):
-    """Create a ClusteringInfo from a dict of tsam ClusteringResult-like objects."""
-    return tsam_xarray.ClusteringInfo(
+def _make_clustering_result(clusterings: dict, dim_names: list[str]):
+    """Create a ClusteringResult from a dict of tsam ClusteringResult-like objects."""
+    return tsam_xarray.ClusteringResult(
         time_dim='time',
         cluster_dim=['variable'],
         slice_dims=dim_names,
@@ -23,12 +23,12 @@ def _make_clustering_info(clusterings: dict, dim_names: list[str]):
 
 def _make_clustering(clusterings: dict, dim_names: list[str], n_timesteps: int | None = None):
     """Create a Clustering from mock ClusteringResult objects."""
-    info = _make_clustering_info(clusterings, dim_names)
+    cr_result = _make_clustering_result(clusterings, dim_names)
     first = next(iter(clusterings.values()))
     if n_timesteps is None:
         n_timesteps = first.n_original_periods * first.n_timesteps_per_period
     original_timesteps = pd.date_range('2024-01-01', periods=n_timesteps, freq='h')
-    return Clustering(clustering_info=info, original_timesteps=original_timesteps)
+    return Clustering(clustering_result=cr_result, original_timesteps=original_timesteps)
 
 
 class TestHelperFunctions:
@@ -186,7 +186,7 @@ class TestClusteringPlotAccessor:
             segment_assignments = None
             cluster_centers = (0, 1)
 
-        info = _make_clustering_info({(): MockClusteringResult()}, [])
+        cr_result = _make_clustering_result({(): MockClusteringResult()}, [])
         original_timesteps = pd.date_range('2024-01-01', periods=72, freq='h')
 
         original_data = xr.Dataset(
@@ -205,7 +205,7 @@ class TestClusteringPlotAccessor:
         )
 
         return Clustering(
-            clustering_info=info,
+            clustering_result=cr_result,
             original_timesteps=original_timesteps,
             original_data=original_data,
             aggregated_data=aggregated_data,
@@ -231,11 +231,11 @@ class TestClusteringPlotAccessor:
             segment_assignments = None
             cluster_centers = (0, 1)
 
-        info = _make_clustering_info({(): MockClusteringResult()}, [])
+        cr_result = _make_clustering_result({(): MockClusteringResult()}, [])
         original_timesteps = pd.date_range('2024-01-01', periods=48, freq='h')
 
         clustering = Clustering(
-            clustering_info=info,
+            clustering_result=cr_result,
             original_timesteps=original_timesteps,
         )
 

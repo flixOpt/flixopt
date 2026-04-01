@@ -2,7 +2,7 @@
 Time Series Aggregation Module for flixopt.
 
 This module provides the Clustering class stored on FlowSystem after clustering,
-wrapping tsam_xarray's ClusteringInfo.
+wrapping tsam_xarray's ClusteringResult.
 
 Example usage:
 
@@ -18,7 +18,7 @@ Example usage:
     # Access clustering structure (available before AND after IO)
     clustering = fs_clustered.clustering
     print(f'Number of clusters: {clustering.n_clusters}')
-    print(f'Clustering info: {clustering.clustering_info}')  # tsam_xarray ClusteringInfo
+    print(f'Clustering info: {clustering.clustering_result}')  # tsam_xarray ClusteringResult
 
     # Access tsam_xarray AggregationResult for detailed analysis
     # NOTE: Only available BEFORE saving/loading. Lost after IO.
