@@ -1232,6 +1232,7 @@ class TransformAccessor:
         reserved_tsam_keys = {
             'n_clusters',
             'period_duration',  # exposed as cluster_duration
+            'temporal_resolution',  # computed automatically
             'timestep_duration',  # computed automatically
             'cluster',
             'segments',
