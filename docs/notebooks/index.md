@@ -45,9 +45,6 @@ Learn flixopt through practical examples organized by topic. Each notebook inclu
 |----------|-------------|
 | [08c-Clustering](08c-clustering.ipynb) | Reduce timesteps using typical periods with tsam integration |
 | [08c2-Storage Modes](08c2-clustering-storage-modes.ipynb) | Compare storage behavior modes in clustered systems |
-| [08d-Multi-Period Clustering](08d-clustering-multiperiod.ipynb) | Clustering with multiple periods and scenarios |
-| [08f-Segmentation](08f-clustering-segmentation.ipynb) | Intra-period segmentation for variable timestep durations |
-| [08e-Clustering Internals](08e-clustering-internals.ipynb) | Deep dive into clustering data structures and algorithms |
 
 ## Results
 

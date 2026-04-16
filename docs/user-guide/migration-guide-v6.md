@@ -166,8 +166,6 @@ print(fs_segmented.timestep_duration)  # Different duration per segment
 fs_expanded = fs_segmented.transform.expand()
 ```
 
-See [08f-Segmentation notebook](../notebooks/08f-clustering-segmentation.ipynb) for details.
-
 ---
 
 ### I/O Performance
