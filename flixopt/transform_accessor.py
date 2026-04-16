@@ -1780,9 +1780,14 @@ class TransformAccessor:
                 if selector:
                     logger.info(f'Clustering {", ".join(f"{k}={v}" for k, v in selector.items())}...')
 
-                # Suppress tsam warning about minimal value constraints (informational, not actionable)
+                # Suppress tsam warnings:
+                # - minimal value constraints (informational, not actionable)
+                # - ClusterConfig.weights deprecation (will be addressed in clustering refactor)
                 with warnings.catch_warnings():
                     warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
+                    warnings.filterwarnings(
+                        'ignore', category=DeprecationWarning, message='.*Passing weights via ClusterConfig.*'
+                    )
 
                     # Build ClusterConfig with auto-calculated weights, filtered to available columns
                     clustering_weights = self._calculate_clustering_weights(ds_slice)
