@@ -33,7 +33,7 @@ classifiers = [
 dependencies = [
     # Core scientific computing
     "numpy >= 1.21.5, < 3",
-    "pandas >= 2.0.0, < 3",
+    "pandas >= 2.0.0, < 4",
     "xarray >=2024.2.0, <2026.3", # CalVer: allow through next calendar year
     # Optimization and data handling
     "linopy >=0.5.1, <0.7", # Widened from patch pin to minor range
