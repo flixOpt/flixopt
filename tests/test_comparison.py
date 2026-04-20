@@ -212,11 +212,25 @@ class TestComparisonContainerProtocol:
         with pytest.raises(IndexError):
             _ = comp[99]
 
-    def test_iter(self, optimized_base, optimized_with_chp):
-        """Iteration yields (name, FlowSystem) pairs."""
+    def test_iter_yields_names(self, optimized_base, optimized_with_chp):
+        """Iteration yields case names, matching the dict/Mapping protocol."""
         comp = fx.Comparison([optimized_base, optimized_with_chp])
-        items = list(comp)
-        assert items == [('Base', optimized_base), ('WithCHP', optimized_with_chp)]
+        assert list(comp) == ['Base', 'WithCHP']
+
+    def test_keys(self, optimized_base, optimized_with_chp):
+        """keys() returns case names."""
+        comp = fx.Comparison([optimized_base, optimized_with_chp])
+        assert list(comp.keys()) == ['Base', 'WithCHP']
+
+    def test_values(self, optimized_base, optimized_with_chp):
+        """values() returns FlowSystems."""
+        comp = fx.Comparison([optimized_base, optimized_with_chp])
+        assert list(comp.values()) == [optimized_base, optimized_with_chp]
+
+    def test_items(self, optimized_base, optimized_with_chp):
+        """items() returns (name, FlowSystem) pairs without warning."""
+        comp = fx.Comparison([optimized_base, optimized_with_chp])
+        assert list(comp.items()) == [('Base', optimized_base), ('WithCHP', optimized_with_chp)]
 
     def test_contains(self, optimized_base, optimized_with_chp):
         """'in' operator checks for case name."""
