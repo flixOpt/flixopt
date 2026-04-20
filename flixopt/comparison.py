@@ -163,12 +163,12 @@ class Comparison:
         if not isinstance(flow_systems, list):
             raise TypeError(f'flow_systems must be a list, got {type(flow_systems).__name__}')
 
-        if len(flow_systems) < 2:
-            raise ValueError('Comparison requires at least 2 FlowSystems')
-
         non_fs = [(i, type(fs).__name__) for i, fs in enumerate(flow_systems) if not isinstance(fs, FlowSystem)]
         if non_fs:
             raise TypeError(f'flow_systems must contain only FlowSystem instances; got {non_fs} (index, type)')
+
+        if len(flow_systems) < 2:
+            raise ValueError('Comparison requires at least 2 FlowSystems')
 
         self._systems: list[FlowSystem] = flow_systems
         self._names = names or [fs.name or f'System {i}' for i, fs in enumerate(flow_systems)]
