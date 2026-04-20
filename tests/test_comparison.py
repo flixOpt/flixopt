@@ -173,6 +173,16 @@ class TestComparisonCreation:
         with pytest.raises(RuntimeError, match='no solution'):
             _ = comp.solution
 
+    def test_comparison_rejects_non_list(self, optimized_base, optimized_with_chp):
+        """Comparison rejects non-list flow_systems input."""
+        with pytest.raises(TypeError, match='must be a list'):
+            fx.Comparison((optimized_base, optimized_with_chp))
+
+    def test_comparison_rejects_non_flowsystem_items(self, optimized_base):
+        """Comparison rejects list items that are not FlowSystem instances."""
+        with pytest.raises(TypeError, match='FlowSystem instances'):
+            fx.Comparison([optimized_base, 'not a flow system'])
+
 
 # ============================================================================
 # CONTAINER PROTOCOL TESTS
