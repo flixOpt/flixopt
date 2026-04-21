@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import threading
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 import xarray as xr
@@ -19,6 +21,7 @@ from .statistics_accessor import (
 )
 
 if TYPE_CHECKING:
+    import pathlib
     from collections.abc import ItemsView, Iterator, KeysView, ValuesView
 
     from .flow_system import FlowSystem
@@ -27,6 +30,12 @@ __all__ = ['Comparison']
 
 # Extract all unique slot names from xarray_plotly
 _CASE_SLOTS = frozenset(slot for slots in SLOT_ORDERS.values() for slot in slots)
+
+# The netCDF4 C library is not thread-safe: concurrent `xr.load_dataset` calls
+# with engine='netcdf4' can segfault because the HDF5 error stack and library
+# state are global. We serialize only the file-read step (the CPU-heavy
+# deserialization that follows runs in parallel).
+_NETCDF_READ_LOCK = threading.Lock()
 
 
 def _extract_nonindex_coords(datasets: list[xr.Dataset]) -> tuple[list[xr.Dataset], dict[str, tuple[str, dict]]]:
@@ -185,6 +194,66 @@ class Comparison:
         self._solution: xr.Dataset | None = None
         self._statistics: ComparisonStatistics | None = None
         self._inputs: xr.Dataset | None = None
+
+    @classmethod
+    def from_netcdf(
+        cls,
+        paths: list[str | pathlib.Path] | dict[str | pathlib.Path, str],
+        max_workers: int | None = None,
+    ) -> Comparison:
+        """Load multiple FlowSystems from NetCDF files and combine them into a Comparison.
+
+        The file read itself is serialized (the netCDF4 C library is not
+        thread-safe — concurrent reads can segfault), but the CPU-heavy
+        deserialization — JSON attrs and rebuilding the FlowSystem from the
+        dataset — runs in parallel across a thread pool. This typically still
+        gives a solid speedup because deserialization dominates the total load
+        time for non-trivial systems.
+
+        Args:
+            paths: Either a list of file paths (names are derived from the
+                filename stems), or a dict mapping file paths to explicit case
+                names.
+            max_workers: Maximum number of threads used to deserialize loaded
+                datasets. ``None`` uses the default of
+                :class:`concurrent.futures.ThreadPoolExecutor`. Set to ``1`` to
+                run sequentially.
+
+        Returns:
+            A new :class:`Comparison` containing the loaded FlowSystems.
+
+        Examples:
+            ```python
+            # From a list (names come from filenames)
+            comp = fx.Comparison.from_netcdf(['results/base.nc', 'results/modified.nc'])
+
+            # With explicit names
+            comp = fx.Comparison.from_netcdf({'results/base.nc': 'baseline', 'results/modified.nc': 'variant'})
+            ```
+        """
+        import pathlib as _pl
+
+        from .flow_system import FlowSystem
+        from .io import load_dataset_from_netcdf
+
+        if isinstance(paths, dict):
+            path_list = list(paths.keys())
+            names: list[str] | None = list(paths.values())
+        else:
+            path_list = list(paths)
+            names = None
+
+        def _load_one(path: str | _pl.Path) -> FlowSystem:
+            with _NETCDF_READ_LOCK:
+                ds = load_dataset_from_netcdf(path)
+            fs = FlowSystem.from_dataset(ds)
+            fs.name = _pl.Path(path).stem
+            return fs
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            flow_systems = list(executor.map(_load_one, path_list))
+
+        return cls(flow_systems, names=names)
 
     def __repr__(self) -> str:
         """Return a detailed string representation."""
@@ -416,6 +485,43 @@ class Comparison:
             result = xr.concat(expanded, dim='case', join='outer', coords='minimal', fill_value=float('nan'))
             self._inputs = _apply_merged_coords(result, merged_coords)
         return self._inputs
+
+    def expand(self, max_workers: int | None = None) -> Comparison:
+        """Expand clustered FlowSystems back to full timesteps in parallel.
+
+        Calls :meth:`FlowSystem.transform.expand` on every contained FlowSystem
+        that has a ``clustering`` attribute. FlowSystems without clustering are
+        passed through unchanged, so mixed comparisons are safe.
+
+        Expansion is CPU-bound but vectorized through xarray/numpy, which
+        release the GIL for most operations — a thread pool is typically
+        enough to get a speedup.
+
+        Args:
+            max_workers: Maximum number of threads used to expand systems.
+                ``None`` uses the default of
+                :class:`concurrent.futures.ThreadPoolExecutor`. Set to ``1`` to
+                expand sequentially.
+
+        Returns:
+            A new :class:`Comparison` with expanded FlowSystems, preserving
+            the original case names.
+
+        Examples:
+            ```python
+            comp_reduced = fx.Comparison([fs_clustered_a, fs_clustered_b])
+            comp_full = comp_reduced.expand()
+            comp_full.stats.plot.balance('Heat')  # Full-resolution plots
+            ```
+        """
+
+        def _expand_one(fs: FlowSystem) -> FlowSystem:
+            return fs.transform.expand() if fs.clustering is not None else fs
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            expanded = list(executor.map(_expand_one, self._systems))
+
+        return type(self)(expanded, names=list(self._names))
 
 
 class ComparisonStatistics:

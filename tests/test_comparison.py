@@ -533,3 +533,131 @@ class TestComparisonErrors:
 
         with pytest.raises(ValueError, match='not found'):
             comp.diff(reference='NonexistentCase')
+
+
+# ============================================================================
+# PARALLEL LOAD / EXPAND TESTS
+# ============================================================================
+
+
+class TestComparisonFromNetcdf:
+    """Tests for Comparison.from_netcdf classmethod."""
+
+    def test_from_netcdf_list_of_paths(self, tmp_path, optimized_base, optimized_with_chp):
+        """List of paths loads systems with names derived from filenames."""
+        p1 = tmp_path / 'base.nc'
+        p2 = tmp_path / 'with_chp.nc'
+        optimized_base.to_netcdf(p1)
+        optimized_with_chp.to_netcdf(p2)
+
+        comp = fx.Comparison.from_netcdf([p1, p2])
+
+        assert comp.names == ['base', 'with_chp']
+        assert len(comp) == 2
+        assert comp.is_optimized
+
+    def test_from_netcdf_dict_paths_to_names(self, tmp_path, optimized_base, optimized_with_chp):
+        """Dict input uses explicit names instead of filenames."""
+        p1 = tmp_path / 'base.nc'
+        p2 = tmp_path / 'chp.nc'
+        optimized_base.to_netcdf(p1)
+        optimized_with_chp.to_netcdf(p2)
+
+        comp = fx.Comparison.from_netcdf({p1: 'baseline', p2: 'variant'})
+
+        assert comp.names == ['baseline', 'variant']
+
+    def test_from_netcdf_serial_matches_parallel(self, tmp_path, optimized_base, optimized_with_chp):
+        """max_workers=1 produces the same result as the default parallel load."""
+        p1 = tmp_path / 'base.nc'
+        p2 = tmp_path / 'chp.nc'
+        optimized_base.to_netcdf(p1)
+        optimized_with_chp.to_netcdf(p2)
+
+        comp_parallel = fx.Comparison.from_netcdf([p1, p2])
+        comp_serial = fx.Comparison.from_netcdf([p1, p2], max_workers=1)
+
+        assert comp_parallel.names == comp_serial.names
+        xr.testing.assert_identical(comp_parallel.solution, comp_serial.solution)
+
+
+class TestComparisonExpand:
+    """Tests for Comparison.expand method."""
+
+    @pytest.fixture(scope='class')
+    def clustered_systems(self):
+        """Build two clustered, optimized FlowSystems (module/class-scoped: solve once)."""
+        pytest.importorskip('tsam')
+        n_hours = 168  # 7 days
+        ts = pd.date_range('2024-01-01', periods=n_hours, freq='h', name='time')
+        demand = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2
+
+        def _build(name: str, cost: float) -> fx.FlowSystem:
+            fs = fx.FlowSystem(ts, name=name)
+            fs.add_elements(
+                fx.Effect('costs', '€', 'Costs', is_standard=True, is_objective=True),
+                fx.Bus('Electricity'),
+                fx.Source(
+                    'Grid',
+                    outputs=[fx.Flow('P_el', bus='Electricity', size=100, effects_per_flow_hour={'costs': cost})],
+                ),
+                fx.Sink(
+                    'Demand',
+                    inputs=[
+                        fx.Flow(
+                            'P_demand',
+                            bus='Electricity',
+                            size=100,
+                            fixed_relative_profile=fx.TimeSeriesData(demand / 100),
+                        )
+                    ],
+                ),
+            )
+            return fs
+
+        solver = fx.solvers.HighsSolver(mip_gap=0, time_limit_seconds=60, log_to_console=False)
+        systems = []
+        for name, cost in [('A', 0.3), ('B', 0.25)]:
+            fs = _build(name, cost).transform.cluster(n_clusters=2, cluster_duration='1D')
+            fs.optimize(solver)
+            systems.append(fs)
+        return systems
+
+    def test_expand_returns_new_comparison(self, clustered_systems):
+        """expand() returns a new Comparison instance, preserving names."""
+        comp = fx.Comparison(clustered_systems, names=['a', 'b'])
+        expanded = comp.expand()
+
+        assert isinstance(expanded, fx.Comparison)
+        assert expanded is not comp
+        assert expanded.names == ['a', 'b']
+
+    def test_expand_restores_full_timesteps(self, clustered_systems):
+        """Each expanded FlowSystem has the full (original) timestep count."""
+        comp = fx.Comparison(clustered_systems, names=['a', 'b'])
+        expanded = comp.expand()
+
+        for fs in expanded.values():
+            # Original was 168 hours; clustering exposes 2D shape but expand
+            # restores a single time axis with 168 steps (+1 boundary).
+            assert 'time' in fs.solution.dims
+            assert fs.solution.sizes['time'] == 168 + 1
+
+    def test_expand_serial_matches_parallel(self, clustered_systems):
+        """max_workers=1 gives identical results to the default parallel path."""
+        comp = fx.Comparison(clustered_systems, names=['a', 'b'])
+
+        expanded_parallel = comp.expand()
+        expanded_serial = comp.expand(max_workers=1)
+
+        xr.testing.assert_identical(expanded_parallel.solution, expanded_serial.solution)
+
+    def test_expand_passes_through_non_clustered(self, clustered_systems, optimized_base):
+        """Systems without clustering are passed through unchanged (mixed comparison)."""
+        comp = fx.Comparison([clustered_systems[0], optimized_base], names=['clustered', 'plain'])
+        expanded = comp.expand()
+
+        # The non-clustered system is the same object, untouched.
+        assert expanded['plain'] is optimized_base
+        # The clustered system was actually expanded (new object).
+        assert expanded['clustered'] is not clustered_systems[0]
