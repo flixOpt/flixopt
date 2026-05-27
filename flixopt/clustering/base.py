@@ -9,7 +9,7 @@ for full data access (pre-serialization only).
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
@@ -45,15 +45,7 @@ class Clustering:
         _aggregation_result: TsamXarrayAggregationResult | None = None,
         # Internal: mapping from renamed dims back to originals (e.g., _period -> period)
         _unrename_map: dict[str, str] | None = None,
-        # Legacy: accept 'results' kwarg for netcdf files saved before this refactor.
-        # The IO resolver passes serialized dict keys as kwargs to __init__().
-        # Remove once all users have re-saved their netcdf files with the new format.
-        results: Any = None,
-        # Legacy kwargs ignored (removed: original_data, aggregated_data, _metrics, refs)
-        **_ignored: Any,
     ):
-        from tsam_xarray import ClusteringResult as ClusteringResultClass
-
         # Handle ISO timestamp strings from serialization
         if (
             isinstance(original_timesteps, list)
@@ -73,19 +65,6 @@ class Clustering:
                 self._clustering_result = clustering_result
         elif _aggregation_result is not None:
             self._clustering_result = _aggregation_result.clustering
-        elif results is not None:
-            # Legacy path: accept old ClusteringResults or dict
-            if isinstance(results, dict):
-                self._clustering_result = self._clustering_result_from_dict(results)
-            elif hasattr(results, '_results') and hasattr(results, '_dim_names'):
-                self._clustering_result = ClusteringResultClass(
-                    time_dim='time',
-                    cluster_dim=['variable'],
-                    slice_dims=list(results._dim_names),
-                    clusterings=dict(results._results),
-                )
-            else:
-                raise TypeError(f'Cannot create ClusteringResult from {type(results)}')
         else:
             raise ValueError('Either clustering_result or _aggregation_result must be provided')
 
@@ -101,10 +80,6 @@ class Clustering:
         self._from_serialization = _aggregation_result is None
 
         self.original_timesteps = original_timesteps if original_timesteps is not None else pd.DatetimeIndex([])
-
-        # Ensure time_coords is set on ClusteringResult (needed for disaggregate)
-        if self._clustering_result.time_coords is None and len(self.original_timesteps) > 0:
-            object.__setattr__(self._clustering_result, 'time_coords', self.original_timesteps)
 
     @staticmethod
     def _clustering_result_from_dict(d: dict) -> ClusteringResult:
@@ -317,19 +292,14 @@ class Clustering:
         with open(path) as f:
             data = json.load(f)
 
-        # Support both new format (clustering_result) and legacy format (results)
-        if 'clustering_result' in data:
-            clustering_result = data['clustering_result']
-        elif 'results' in data:
-            clustering_result = data['results']  # Legacy format, handled by __init__
-        else:
-            raise ValueError('JSON file must contain "clustering_result" or "results" key')
+        if 'clustering_result' not in data:
+            raise ValueError('JSON file must contain "clustering_result" key')
 
         if original_timesteps is None:
             original_timesteps = pd.DatetimeIndex([pd.Timestamp(ts) for ts in data['original_timesteps']])
 
         return cls(
-            clustering_result=clustering_result,
+            clustering_result=data['clustering_result'],
             original_timesteps=original_timesteps,
         )
 

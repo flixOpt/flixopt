@@ -212,7 +212,7 @@ def test_expand_withoutclustering_raises(solver_fixture, timesteps_2_days):
 
 
 def test_expand_without_solution(timesteps_8_days):
-    """Test that expand works without a solution (e.g. for inspecting clustering_data)."""
+    """Test that expand works without a solution (e.g. for inspecting cluster_inputs)."""
     fs = create_simple_system(timesteps_8_days)
 
     fs_reduced = fs.transform.cluster(

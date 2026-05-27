@@ -122,6 +122,92 @@ class TestFlowSystemDimsIndexesWeights:
         np.testing.assert_array_almost_equal(fs.temporal_weight.values, expected.values)
 
 
+class TestClusterInputs:
+    """Tests for FlowSystem.transform.cluster_inputs — variable discovery helper."""
+
+    def _two_var_system(self, n_hours: int = 168):
+        from flixopt import Bus, Effect, Flow, Sink, Source
+        from flixopt.core import TimeSeriesData
+
+        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'))
+        varying = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2
+        constant = np.full(n_hours, 0.8)
+        bus = Bus('electricity')
+        fs.add_elements(
+            Effect('costs', '€', is_standard=True, is_objective=True),
+            Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)]),
+            Sink('demand', inputs=[
+                Flow('demand_out', bus='electricity', size=100,
+                     fixed_relative_profile=TimeSeriesData(varying / 100))
+            ]),
+            Sink('constant_load', inputs=[
+                Flow('constant_out', bus='electricity', size=50,
+                     fixed_relative_profile=TimeSeriesData(constant))
+            ]),
+            bus,
+        )
+        return fs
+
+    def test_returns_only_time_dim_vars(self):
+        """cluster_inputs() returns every Dataset variable with a `time` dim."""
+        fs = self._two_var_system()
+
+        ds_time_vars = fs.transform.cluster_inputs()
+        for var in ds_time_vars.data_vars:
+            assert 'time' in ds_time_vars[var].dims, f'{var} should have a time dim'
+
+    def test_includes_constants(self):
+        """Constant time-series columns are included (they are passed to tsam too)."""
+        fs = self._two_var_system()
+
+        ds_time_vars = fs.transform.cluster_inputs()
+        names = set(ds_time_vars.data_vars)
+        assert 'demand(demand_out)|fixed_relative_profile' in names
+        assert 'constant_load(constant_out)|fixed_relative_profile' in names
+
+    def test_documented_weight_zero_pattern(self):
+        """User pattern: enumerate columns and zero-weight everything except one.
+
+        Regression test for the v6 migration recipe — users discovering clustering
+        inputs via cluster_inputs() and feeding the names back into
+        ClusterConfig(weights={...}) should not raise.
+        """
+        pytest.importorskip('tsam')
+        from tsam import ClusterConfig
+
+        fs = self._two_var_system()
+
+        # Enumerate columns the way users are expected to
+        ds_time_vars = fs.transform.cluster_inputs()
+        target = 'demand(demand_out)|fixed_relative_profile'
+        assert target in ds_time_vars.data_vars
+
+        weights = {target: 1}
+        weights.update({v: 0 for v in ds_time_vars.data_vars if v != target})
+
+        fs_clustered = fs.transform.cluster(
+            n_clusters=2, cluster_duration='1D', cluster=ClusterConfig(weights=weights)
+        )
+        assert fs_clustered.clustering.n_clusters == 2
+
+    def test_matches_what_cluster_sees(self):
+        """The set of columns from cluster_inputs() == what cluster() passes to tsam.
+
+        If this drifts, the recommended user pattern stops working — users would
+        pass weights for variables tsam doesn't see, or miss ones it does.
+        """
+        fs = self._two_var_system()
+
+        # cluster_inputs is documented as the source of truth
+        discovered = set(fs.transform.cluster_inputs().data_vars)
+
+        # Reproduce the cluster() filter inline
+        ds = fs.to_dataset(include_solution=False)
+        actual = {name for name in ds.data_vars if 'time' in ds[name].dims}
+
+        assert discovered == actual
+
+
 class TestClusterMethod:
     """Tests for FlowSystem.transform.cluster method."""
 
@@ -168,6 +254,50 @@ class TestClusterMethod:
         assert len(fs_clustered.timesteps) == 24  # Within-cluster time
         assert len(fs_clustered.clusters) == 2  # Number of clusters
         assert len(fs_clustered.timesteps) * len(fs_clustered.clusters) == 48
+
+    def test_cluster_with_constant_columns(self):
+        """Constant time-series columns must not break clustering.
+
+        The pre-refactor path called ``drop_constant_arrays`` to avoid feeding
+        zero-variance columns into tsam. The new tsam_xarray-backed path skips
+        that filter, so this test guards against any future regression where a
+        constant column makes tsam_xarray crash, normalize-divide-by-zero, or
+        silently drop the column from the reduced FlowSystem.
+        """
+        pytest.importorskip('tsam')
+        from flixopt import Bus, Flow, Sink, Source
+        from flixopt.core import TimeSeriesData
+
+        n_hours = 168
+        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'))
+
+        varying = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2
+        constant = np.full(n_hours, 0.8)
+
+        bus = Bus('electricity')
+        grid_flow = Flow('grid_in', bus='electricity', size=100)
+        demand_flow = Flow(
+            'demand_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(varying / 100)
+        )
+        constant_flow = Flow(
+            'constant_out', bus='electricity', size=50, fixed_relative_profile=TimeSeriesData(constant)
+        )
+        fs.add_elements(
+            Source('grid', outputs=[grid_flow]),
+            Sink('demand', inputs=[demand_flow]),
+            Sink('constant_load', inputs=[constant_flow]),
+            bus,
+        )
+
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        # Reduced FlowSystem keeps the constant column
+        ds = fs_clustered.to_dataset(include_solution=False)
+        assert 'constant_load(constant_out)|fixed_relative_profile' in ds.data_vars
+
+        # And the constant column stays constant after clustering
+        constant_da = ds['constant_load(constant_out)|fixed_relative_profile']
+        np.testing.assert_allclose(constant_da.values, 0.8)
 
 
 class TestClusterAdvancedOptions:

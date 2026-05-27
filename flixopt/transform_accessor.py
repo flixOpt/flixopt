@@ -88,8 +88,7 @@ class _ReducedFlowSystemBuilder:
         Returns:
             DataArray with dims [cluster, period?, scenario?].
         """
-        weights = self._agg_result.cluster_weights.rename(cluster='cluster')
-        return self._unrename(weights.rename('cluster_weight'))
+        return self._unrename(self._agg_result.cluster_weights.rename('cluster_weight'))
 
     def build_typical_periods(self) -> dict[str, xr.DataArray]:
         """Build typical periods DataArrays with (cluster, time, ...) shape.
@@ -104,9 +103,11 @@ class _ReducedFlowSystemBuilder:
         # Exclude known dims (including renamed variants like _period, _cluster)
         known_dims = {'cluster', 'timestep', 'period', 'scenario'} | set(self._unrename_map.keys())
         unknown_dims = [d for d in representatives.dims if d not in known_dims]
-        assert len(unknown_dims) == 1, (
-            f'Expected exactly 1 variable dim, got {unknown_dims} (known: {known_dims}, all: {representatives.dims})'
-        )
+        if len(unknown_dims) != 1:
+            raise ValueError(
+                f'Expected exactly 1 variable dim in cluster_representatives, got {unknown_dims} '
+                f'(known: {known_dims}, all: {representatives.dims})'
+            )
         variable_dim = unknown_dims[0]
         for var_name in representatives.coords[variable_dim].values:
             da = representatives.sel({variable_dim: var_name}, drop=True)
@@ -1094,6 +1095,47 @@ class TransformAccessor:
 
         return new_fs
 
+    def cluster_inputs(self) -> xr.Dataset:
+        """Return the variables that ``cluster()`` will feed to tsam_xarray.
+
+        Use this to enumerate the columns available for ``ClusterConfig(weights={...})``
+        — for example to assign ``weight=0`` to the variables you want excluded from
+        cluster-assignment scoring.
+
+        The returned Dataset contains every ``data_var`` with a ``time`` dimension,
+        **including arrays that are constant over time**. Constants are included
+        because ``cluster()`` passes them to tsam_xarray as-is; if you want them
+        excluded from clustering, set their weight to 0 explicitly.
+
+        Returns:
+            xr.Dataset: Time-varying inputs that ``cluster()`` would aggregate.
+                Period and scenario dimensions (if present) are preserved.
+
+        Examples:
+            List candidate variables and weight one of them out:
+
+            >>> ds = fs.transform.cluster_inputs()
+            >>> list(ds.data_vars)
+            ['HeatDemand(Q)|fixed_relative_profile',
+             'GasSource(Gas)|costs|per_flow_hour']
+            >>>
+            >>> from tsam import ClusterConfig
+            >>> fs.transform.cluster(
+            ...     n_clusters=8, cluster_duration='1D',
+            ...     cluster=ClusterConfig(weights={'GasSource(Gas)|costs|per_flow_hour': 0}),
+            ... )
+
+        Note:
+            Variables omitted from ``ClusterConfig.weights`` receive the default
+            weight of **1.0** (they still influence cluster assignments). To
+            exclude a variable, set its weight to ``0`` explicitly.
+        """
+        if not self._fs.connected_and_transformed:
+            self._fs.connect_and_transform()
+        ds = self._fs.to_dataset(include_solution=False)
+        time_vars = [name for name in ds.data_vars if 'time' in ds[name].dims]
+        return ds[time_vars]
+
     def cluster(
         self,
         n_clusters: int,
@@ -1130,10 +1172,13 @@ class TransformAccessor:
             cluster_duration: Duration of each cluster. Can be a pandas-style string
                 ('1D', '24h', '6h') or a numeric value in hours.
             cluster: Optional tsam ``ClusterConfig`` object specifying clustering algorithm,
-                representation method, and weights. Use ``weights={var: 0}`` to exclude
-                specific variables from influencing cluster assignments while still
-                aggregating them. If None, uses default settings (hierarchical clustering
-                with medoid representation).
+                representation method, and weights. Variables not listed in ``weights``
+                receive the default weight of **1.0** (they still influence cluster
+                assignments). Use ``weights={var: 0}`` to *exclude* a specific variable
+                from influencing cluster assignments while still aggregating its values.
+                Call ``transform.cluster_inputs()`` to list the available variable names.
+                If None, uses default settings (hierarchical clustering with medoid
+                representation) and weight 1.0 for every time-varying variable.
             extremes: Optional tsam ``ExtremeConfig`` object specifying how to handle
                 extreme periods (peaks). Use this to ensure peak demand days are captured.
                 Example: ``ExtremeConfig(method='new_cluster', max_value=['demand'])``.
@@ -1438,10 +1483,6 @@ class TransformAccessor:
                 slice_dims=slice_dims,
                 clusterings=dict(cr_result.clusterings),
             )
-            # TODO(tsam_xarray): Same workaround as in cluster() above — remove
-            # once tsam_xarray handles mismatched weights in apply().
-            for cr in cr_result.clusterings.values():
-                object.__setattr__(cr, 'weights', {})
             agg_result = cr_result.apply(da_full)
 
         # Rename back

@@ -609,22 +609,29 @@ class TestMultiDimensionalClusteringIO:
         xr.testing.assert_equal(original_cluster_assignments, fs_restored.clustering.cluster_assignments)
 
     def test_clustering_result_preserved_after_load(self, system_with_periods_and_scenarios, tmp_path):
-        """ClusteringResult should be preserved after loading."""
+        """ClusteringResult structure should be preserved after netcdf roundtrip."""
         fs = system_with_periods_and_scenarios
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
 
-        # Before save, clustering_result exists
-        assert fs_clustered.clustering.clustering_result is not None
-
-        # Roundtrip
         nc_path = tmp_path / 'multi_dim_clustering.nc'
         fs_clustered.to_netcdf(nc_path)
         fs_restored = fx.FlowSystem.from_netcdf(nc_path)
 
-        # After load, clustering_result should be reconstructed
-        assert fs_restored.clustering.clustering_result is not None
-        # The restored clustering should have the same structure
-        assert len(fs_restored.clustering) == len(fs_clustered.clustering)
+        before = fs_clustered.clustering
+        after = fs_restored.clustering
+
+        # Structural metadata
+        assert after.clustering_result is not None
+        assert len(after) == len(before)
+        assert after.n_clusters == before.n_clusters
+        assert after.timesteps_per_cluster == before.timesteps_per_cluster
+        assert after.n_original_clusters == before.n_original_clusters
+        assert after.n_segments == before.n_segments
+        assert after.dim_names == before.dim_names
+
+        # Data: cluster_assignments and cluster_occurrences should match exactly
+        xr.testing.assert_equal(after.cluster_assignments, before.cluster_assignments)
+        xr.testing.assert_equal(after.cluster_occurrences, before.cluster_occurrences)
 
     def test_derived_properties_work_after_load(self, system_with_periods_and_scenarios, tmp_path):
         """Derived properties should work correctly after loading (computed from cluster_assignments)."""

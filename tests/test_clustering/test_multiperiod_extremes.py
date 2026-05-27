@@ -803,6 +803,18 @@ class TestFullDimensionalClustering:
         assert 'scenario' in fs_clustered.solution[flow_var].dims
         assert 'cluster' in fs_clustered.solution[flow_var].dims
 
+    def test_dim_names_order(self, timesteps_8_days, periods_2, scenarios_2):
+        """Clustering.dim_names must be ['period', 'scenario'] in that order.
+
+        Downstream code (cluster_assignments, _ReducedFlowSystemBuilder) relies on
+        this order — tsam_xarray populates slice_dims based on the input DataArray,
+        so the cluster() path must keep period before scenario.
+        """
+        fs = create_multiperiod_multiscenario_system(timesteps_8_days, periods_2, scenarios_2)
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        assert fs_clustered.clustering.dim_names == ['period', 'scenario']
+
     def test_full_dimensional_expand(self, solver_fixture, timesteps_8_days, periods_2, scenarios_2):
         """Test expansion of system with all dimensions."""
         fs = create_multiperiod_multiscenario_system(timesteps_8_days, periods_2, scenarios_2)
