@@ -413,8 +413,7 @@ class ModelingPrimitives:
 
         # Forward constraint: duration[t+1] ≤ duration[t] + duration_per_step[t]
         constraints['forward'] = model.add_constraints(
-            duration.isel(lead).assign_coords(lag_coord)
-            <= duration.isel(lag) + duration_per_step.isel(lag),
+            duration.isel(lead).assign_coords(lag_coord) <= duration.isel(lag) + duration_per_step.isel(lag),
             name=f'{duration.name}|forward',
         )
 
@@ -727,8 +726,7 @@ class BoundingPatterns:
         lag = {coord: slice(None, -1)}
         lead_coord = {coord: state.coords[coord].isel(lead)}
         transition = model.add_constraints(
-            activate.isel(lead) - deactivate.isel(lead)
-            == state.isel(lead) - state.isel(lag).assign_coords(lead_coord),
+            activate.isel(lead) - deactivate.isel(lead) == state.isel(lead) - state.isel(lag).assign_coords(lead_coord),
             name=f'{name}|transition',
         )
 
@@ -788,31 +786,24 @@ class BoundingPatterns:
         if not isinstance(model, Submodel):
             raise ValueError('ModelingPrimitives.continuous_transition_bounds() can only be used with a Submodel')
 
-        # Transition constraints for t > 0: continuous variable can only change when transitions occur
-        transition_upper = model.add_constraints(
-            continuous_variable.isel({coord: slice(1, None)}) - continuous_variable.isel({coord: slice(None, -1)})
-            <= max_change * (activate.isel({coord: slice(1, None)}) + deactivate.isel({coord: slice(1, None)})),
-            name=f'{name}|transition_ub',
-        )
+        # Transition constraints for t > 0: continuous variable can only change when transitions occur.
+        # Lag slices are relabeled onto the lead axis so positional alignment is explicit
+        # (linopy v1 requires matching labels on shared dims).
+        lead = {coord: slice(1, None)}
+        lag = {coord: slice(None, -1)}
+        lead_coord = {coord: continuous_variable.coords[coord].isel(lead)}
+        change = continuous_variable.isel(lead) - continuous_variable.isel(lag).assign_coords(lead_coord)
+        transition_bound = max_change * (activate.isel(lead) + deactivate.isel(lead))
 
-        transition_lower = model.add_constraints(
-            -(continuous_variable.isel({coord: slice(1, None)}) - continuous_variable.isel({coord: slice(None, -1)}))
-            <= max_change * (activate.isel({coord: slice(1, None)}) + deactivate.isel({coord: slice(1, None)})),
-            name=f'{name}|transition_lb',
-        )
+        transition_upper = model.add_constraints(change <= transition_bound, name=f'{name}|transition_ub')
+        transition_lower = model.add_constraints(-change <= transition_bound, name=f'{name}|transition_lb')
 
         # Initial constraints for t = 0
-        initial_upper = model.add_constraints(
-            continuous_variable.isel({coord: 0}) - previous_value
-            <= max_change * (activate.isel({coord: 0}) + deactivate.isel({coord: 0})),
-            name=f'{name}|initial_ub',
-        )
+        initial_bound = max_change * (activate.isel({coord: 0}, drop=True) + deactivate.isel({coord: 0}, drop=True))
+        initial_change = continuous_variable.isel({coord: 0}, drop=True) - previous_value
 
-        initial_lower = model.add_constraints(
-            -continuous_variable.isel({coord: 0}) + previous_value
-            <= max_change * (activate.isel({coord: 0}) + deactivate.isel({coord: 0})),
-            name=f'{name}|initial_lb',
-        )
+        initial_upper = model.add_constraints(initial_change <= initial_bound, name=f'{name}|initial_ub')
+        initial_lower = model.add_constraints(-initial_change <= initial_bound, name=f'{name}|initial_lb')
 
         return transition_upper, transition_lower, initial_upper, initial_lower
 
@@ -859,17 +850,22 @@ class BoundingPatterns:
 
         # 1. Initial period: level[0] - initial_level =  increase[0] - decrease[0]
         initial_constraint = model.add_constraints(
-            level_variable.isel({coord: 0}) - initial_level
-            == increase_variable.isel({coord: 0}) - decrease_variable.isel({coord: 0}),
+            level_variable.isel({coord: 0}, drop=True) - initial_level
+            == increase_variable.isel({coord: 0}, drop=True) - decrease_variable.isel({coord: 0}, drop=True),
             name=f'{name}|initial_level',
         )
 
-        # 2. Transition periods: level[t] = level[t-1] + increase[t] - decrease[t] for t > 0
+        # 2. Transition periods: level[t] = level[t-1] + increase[t] - decrease[t] for t > 0.
+        # Lag slice of level_variable is relabeled onto the lead axis so positional alignment is
+        # explicit (linopy v1 requires matching labels on shared dims).
+        lead = {coord: slice(1, None)}
+        lag = {coord: slice(None, -1)}
+        lead_coord = {coord: level_variable.coords[coord].isel(lead)}
         transition_constraints = model.add_constraints(
-            level_variable.isel({coord: slice(1, None)})
-            == level_variable.isel({coord: slice(None, -1)})
-            + increase_variable.isel({coord: slice(1, None)})
-            - decrease_variable.isel({coord: slice(1, None)}),
+            level_variable.isel(lead)
+            == level_variable.isel(lag).assign_coords(lead_coord)
+            + increase_variable.isel(lead)
+            - decrease_variable.isel(lead),
             name=f'{name}|transitions',
         )
 
