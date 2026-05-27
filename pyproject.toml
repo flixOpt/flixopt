@@ -43,7 +43,9 @@ dependencies = [
     "colorlog >= 6.8.0, < 7",
     "tqdm >= 4.66.0, < 5",
     # Default solver
-    "highspy >= 1.5.3, < 2",
+    # 1.14.0 excluded: presolve regression returns wrong MIP optima on big-M / invest-style models.
+    # Fixed on HiGHS `latest` branch but not yet released. See ERGO-Code/HiGHS#2975 and PyPSA/linopy#651.
+    "highspy >= 1.5.3, < 2, != 1.14.0",
     # Visualization
     "matplotlib >= 3.5.2, < 4",
     "plotly >= 5.15.0, < 7",
