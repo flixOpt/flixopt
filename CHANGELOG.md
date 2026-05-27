@@ -11,6 +11,13 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ---
 
+## [6.1.3](https://github.com/flixOpt/flixopt/compare/v6.1.2...v6.1.3) (2026-05-27)
+
+
+### Bug Fixes
+
+* exclude highspy 1.14.0 (closes [#685](https://github.com/flixOpt/flixopt/issues/685)) ([#686](https://github.com/flixOpt/flixopt/issues/686)) ([251e5d4](https://github.com/flixOpt/flixopt/commit/251e5d49f3eb4e93c46b8d9461c00ad369864f6b))
+
 ## [6.1.2](https://github.com/flixOpt/flixopt/compare/v6.1.1...v6.1.2) (2026-03-30)
 
 
