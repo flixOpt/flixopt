@@ -91,8 +91,10 @@ class InvestmentModel(Submodel):
 
         if self.parameters.linked_periods is not None:
             masked_size = self.size.where(self.parameters.linked_periods, drop=True)
+            lead_period = masked_size.coords['period'].isel(period=slice(1, None))
             self.add_constraints(
-                masked_size.isel(period=slice(None, -1)) == masked_size.isel(period=slice(1, None)),
+                masked_size.isel(period=slice(None, -1)).assign_coords(period=lead_period)
+                == masked_size.isel(period=slice(1, None)),
                 short_name='linked_periods',
             )
 
@@ -295,7 +297,7 @@ class StatusModel(Submodel):
         """For 'cyclic' cluster mode: each cluster's start status equals its end status."""
         if self._model.flow_system.clusters is not None and self.parameters.cluster_mode == 'cyclic':
             self.add_constraints(
-                self.status.isel(time=0) == self.status.isel(time=-1),
+                self.status.isel(time=0, drop=True) == self.status.isel(time=-1, drop=True),
                 short_name='cluster_cyclic',
             )
 
