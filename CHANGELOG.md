@@ -11,6 +11,13 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ---
 
+## [6.1.4](https://github.com/flixOpt/flixopt/compare/v6.1.3...v6.1.4) (2026-05-29)
+
+
+### Bug Fixes
+
+* stop using deprecated tsam ClusterConfig(weights=) API ([#689](https://github.com/flixOpt/flixopt/issues/689)) ([54ff8e6](https://github.com/flixOpt/flixopt/commit/54ff8e63a97ea617638c40392f00ba816c4aca39))
+
 ## [6.1.3](https://github.com/flixOpt/flixopt/compare/v6.1.2...v6.1.3) (2026-05-27)
 
 
