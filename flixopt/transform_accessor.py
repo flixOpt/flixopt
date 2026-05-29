@@ -900,8 +900,12 @@ class TransformAccessor:
         cluster: ClusterConfig | None,
         auto_weights: dict[str, float],
         available_columns: set[str] | None = None,
-    ) -> ClusterConfig:
-        """Merge auto-calculated weights into ClusterConfig.
+    ) -> tuple[ClusterConfig, dict[str, float]]:
+        """Resolve clustering weights and build a ClusterConfig without weights.
+
+        Weights are returned separately so they can be passed as a top-level
+        argument to ``tsam.aggregate``. Passing weights via ``ClusterConfig`` is
+        deprecated in tsam (>= 3.4.0) and raises a ``DeprecationWarning``.
 
         Args:
             cluster: Optional user-provided ClusterConfig.
@@ -912,7 +916,7 @@ class TransformAccessor:
                 (e.g., constant arrays removed before clustering).
 
         Returns:
-            ClusterConfig with weights set (either user-provided or auto-calculated).
+            Tuple of (ClusterConfig without weights, resolved weights dict).
         """
         from tsam import ClusterConfig
 
@@ -926,19 +930,21 @@ class TransformAccessor:
         if available_columns is not None:
             weights = {name: w for name, w in weights.items() if name in available_columns}
 
-        # No ClusterConfig provided - use defaults with weights
+        # No ClusterConfig provided - use defaults (weights passed to aggregate())
         if cluster is None:
-            return ClusterConfig(weights=weights)
+            return ClusterConfig(), weights
 
-        # ClusterConfig provided - use its settings with (possibly filtered) weights
-        return ClusterConfig(
-            method=cluster.method,
-            representation=cluster.representation,
-            weights=weights,
-            normalize_column_means=cluster.normalize_column_means,
-            use_duration_curves=cluster.use_duration_curves,
-            include_period_sums=cluster.include_period_sums,
-            solver=cluster.solver,
+        # ClusterConfig provided - preserve its settings; weights passed to aggregate()
+        return (
+            ClusterConfig(
+                method=cluster.method,
+                representation=cluster.representation,
+                normalize_column_means=cluster.normalize_column_means,
+                use_duration_curves=cluster.use_duration_curves,
+                include_period_sums=cluster.include_period_sums,
+                solver=cluster.solver,
+            ),
+            weights,
         )
 
     def sel(
@@ -1786,7 +1792,7 @@ class TransformAccessor:
 
                     # Build ClusterConfig with auto-calculated weights, filtered to available columns
                     clustering_weights = self._calculate_clustering_weights(ds_slice)
-                    cluster_config = self._build_cluster_config_with_weights(
+                    cluster_config, resolved_weights = self._build_cluster_config_with_weights(
                         cluster, clustering_weights, available_columns=set(df_for_clustering.columns)
                     )
 
@@ -1797,6 +1803,7 @@ class TransformAccessor:
                         period_duration=hours_per_cluster,
                         temporal_resolution=dt,
                         cluster=cluster_config,
+                        weights=resolved_weights,
                         extremes=extremes,
                         segments=segments,
                         preserve_column_means=preserve_column_means,
