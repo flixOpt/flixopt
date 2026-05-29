@@ -11,6 +11,7 @@ on:
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
+      - 'flixopt/**'  # notebooks import flixopt; catch library changes that break docs
   workflow_dispatch:
     inputs:
       deploy:
