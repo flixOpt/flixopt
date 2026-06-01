@@ -11,6 +11,14 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ---
 
+## [6.1.5](https://github.com/flixOpt/flixopt/compare/v6.1.4...v6.1.5) (2026-06-01)
+
+
+### Bug Fixes
+
+* **docs:** remove malicious polyfill.io script reference ([#693](https://github.com/flixOpt/flixopt/issues/693)) ([a825371](https://github.com/flixOpt/flixopt/commit/a82537115059c5d16fef8cbc35d3ce33e9feb391))
+* preserve per-period sizes in transform.fix_sizes() for multi-period models ([#696](https://github.com/flixOpt/flixopt/issues/696)) ([54cc04a](https://github.com/flixOpt/flixopt/commit/54cc04a5c0eb48c7472f8850b94249209177e8d7)), closes [#695](https://github.com/flixOpt/flixopt/issues/695)
+
 ## [6.1.4](https://github.com/flixOpt/flixopt/compare/v6.1.3...v6.1.4) (2026-05-29)
 
 
