@@ -39,19 +39,18 @@ bibliography: paper.bib
 Flixopt is an open-source Python framework for the mixed-integer linear optimization of systems with energy and material flows. It addresses the growing complexity of modern supply systems—characterized by fluctuating renewables, sector coupling, storage integration, and diverse technology portfolios—by providing a general, extensible, and vectorized modeling architecture. Built on the linear optimization package Linopy [@Hofmann2023], Flixopt allows users to represent system topologies flexibly, configure operational and investment decisions, and evaluate multiple metrics through its novel *Effects* concept. While it was developed primarily for energy-system studies such as heat supply systems, the framework is domain-agnostic and suitable for any flow-based system where modular modeling and transparency are essential.
 
 ## Statement of Need
-Existing energy system modeling frameworks, as surveyed in [@HOFFMANN2024100190], are often tailored to particular use cases, have limited flexibility for extensions, exhibit inflexible handling of timesteps, or do not support evaluation metrics beyond monetary costs. This highlights the need for more flexible, framework-based modeling tools capable of adapting to diverse questions. 
-In addition to the need for more flexible and adaptable settings, the efficient handling of equations in a vector-based form has emerged as an important requirement, as it supports improved mathematical modeling, enhances computational performance, and facilitates better transparency and manageability of the model’s equation set.
- [@PyPSA]
+Existing energy system modeling frameworks, as surveyed in [@HOFFMANN2024100190], are often tailored to particular use cases, have limited flexibility for extensions, exhibit inflexible handling of timesteps, or do not support evaluation metrics beyond monetary costs. These limitations highlight the need for more flexible, framework-based modeling tools capable of addressing diverse research questions. 
+Beyond flexibility in scope, the efficient handling of equations in vector form has become a key requirement, as it supports rigorous mathematical modeling, enhances computational performance, and improves transparency and manageability of the model's equation system [@PyPSA].
 
 Flixopt fills this gap by enabling:
 
-* full flexibility of system construction 
-* detailed representation of operational and investment behavior
-* arbitrary evaluation metrics through *Effects*, supporting multiobjective and constrained formulations. 
-* multi-year investment planning by using periods
-* seperate or combined consideration of scenarios within the optimization
+* Full flexibility of system construction.
+* Detailed representation of operational and investment behavior.
+* Arbitrary evaluation metrics through *Effects*, supporting multi-objective and constrained formulations.
+* Multi-year investment planning through multi-period optimization.
+* Separate or combined consideration of scenarios within the optimization.
 
-Flixopt is designed for flexible use across various disciplines and research questions or practical tasks ranging from operational dispatch to strategic planning.
+Flixopt is designed for broad applicability across various disciplines, encompassing research questions and practical tasks ranging from operational dispatch to strategic planning.
 
 ## Software Description
 
