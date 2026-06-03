@@ -44,11 +44,11 @@ Beyond flexibility in scope, the efficient handling of equations in vector form 
 
 Flixopt fills this gap by enabling:
 
-* Full flexibility of system construction.
-* Detailed representation of operational and investment behavior.
-* Arbitrary evaluation metrics through *Effects*, supporting multi-objective and constrained formulations.
-* Multi-year investment planning through multi-period optimization.
-* Separate or combined consideration of scenarios within the optimization.
+* full flexibility of system construction,
+* detailed representation of operational and investment behavior,
+* arbitrary evaluation metrics through *Effects*, supporting multi-objective and constrained formulations,
+* multi-year investment planning through multi-period optimization,
+* separate or combined consideration of scenarios within the optimization.
 
 Flixopt is designed for broad applicability across various disciplines, encompassing research questions and practical tasks ranging from operational dispatch to strategic planning.
 
@@ -60,11 +60,12 @@ During modeling, Flixopt constructs the optimization problem in a fully vectoriz
 ![Overview of Flixopt´s system architecture and workflow \label{fig:architecture}](figures/architecture_draft.pdf)
 
 The package optionally supports, for example, the following features:
-* investment decisions with continuous sizes and binary selection;
-* on- and off-states and switching behavior;
-* minimum and maximum consecutive operation or downtime;
-* prevention of simultaneous flow operation;
+* investment decisions with continuous sizes and binary selection,
+* on- and off-states and switching behavior,
+* minimum and maximum consecutive operation or downtime,
+* prevention of simultaneous flow operation,
 * piecewise linear relations via linear segments.
+
 These capabilities remain inactive unless explicitly required, keeping models compact and computationally efficient.
 Flixopt supports several calculation modes. The default mode performs full time-resolved optimization. Aggregated modes use clustered typical periods following principles discussed in the literature on time-series aggregation [@TSAM2020] thereby reducing computational load for long time horizons. A segmented mode decomposes large operational problems into smaller, sequentially optimized blocks.
 
