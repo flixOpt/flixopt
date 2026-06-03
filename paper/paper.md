@@ -54,21 +54,19 @@ Flixopt is designed for broad applicability across various disciplines, encompas
 
 ## Software Description
 
-The architecture and workflow of the Flixopt package consist of three main steps: initialization, modeling and solving, and postprocessing of results; illustrated in \autoref{fig:architecture}. Users begin by implementing a flow‑system, defining the network topology and all element parameters. The flow-system describes the structural representation of a physical system to be modeled. It consists of *Flows*, *Components* and *Buses* inspired by [@oemof_2020]. Based on an arbitrary subset of the flow-system, one or more calculation setups can then be configured.  
-During modeling, Flixopt constructs the optimization problem in a fully vectorized manner using Linopy. After solving, Flixopt provides a postprocessing environment that yields structured access to results, facilitates visualization and statistical analysis, and enables saving/restoring complete solution states.
+The Flixopt package follows a three-step workflow: initialization, modeling and solving, and postprocessing of results—as illustrated in \autoref{fig:architecture}. Users begin by defining a flow system, specifying the network topology and all element parameters. The flow system describes the structural representation of a physical system to be modeled. It consists of Flows, Components, and Buses, following the design proposed in [@oemof_2020]. Based on any chosen subset of the flow system, one or more calculation setups can then be configured.
+During modeling, Flixopt constructs the optimization problem in a fully vectorized manner using Linopy. After solving, Flixopt provides a postprocessing environment that yields structured access to results, facilitates visualization and statistical analysis, and enables saving and restoring complete solution states.
 
 ![Overview of Flixopt´s system architecture and workflow \label{fig:architecture}](figures/architecture_draft.pdf)
 
-For example, following features can be used:
-* investment decisions with continuous sizes and binary selection,
-* on/off states and switching behavior,
-* minimum/maximum consecutive operation or downtime,
-* prevention of simultaneous flow operation,
+The package optionally supports, for example, the following features:
+* investment decisions with continuous sizes and binary selection;
+* on- and off-states and switching behavior;
+* minimum and maximum consecutive operation or downtime;
+* prevention of simultaneous flow operation;
 * piecewise linear relations via linear segments.
-
 These capabilities remain inactive unless explicitly required, keeping models compact and computationally efficient.
-
-Flixopt supports several calculation modes. The default mode performs full time-resolved optimization. Aggregated modes use clustered typical periods, following principles discussed in the literature on time-series aggregation ([@TSAM2020]), reducing computational load for long time horizons. A segmented mode decomposes large operational problems into smaller, sequentially optimized blocks.
+Flixopt supports several calculation modes. The default mode performs full time-resolved optimization. Aggregated modes use clustered typical periods following principles discussed in the literature on time-series aggregation [@TSAM2020] thereby reducing computational load for long time horizons. A segmented mode decomposes large operational problems into smaller, sequentially optimized blocks.
 
 ## Effects
 
