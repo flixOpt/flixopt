@@ -71,21 +71,22 @@ Flixopt supports several calculation modes. The default mode performs full time-
 
 ## Effects
 
-Flixopt introduces a freely definable system of evaluation metrics called *Effects* such as costs, emissions, primary energy demand, or any user-defined indicators. One *Effect* is chosen as objective. Any structural entity can contribute shares to any *Effect* and *Effects* can contribute to each other. This abstraction through *Effects* has the following advantages over a traditional rigid objective, as it generically integrates the following features:
+Flixopt introduces a freely definable system of evaluation metrics called *Effects* such as costs, emissions, primary energy demand, or any user-defined indicators. One *Effect* is chosen as the objective. Any structural entity can contribute shares to any *Effect*, and *Effects* can contribute to each other. This abstraction through *Effects* provides the following advantages over a traditional rigid objective by generically integrating the following features:
 
-* Switch the objective to another *Effect* easily, once *Effects* and a flow-system are defined.
-* Include as many evaluation metrics as needed to simplify the evaluation of the solution.
-  * Example: Instead of a global objective ’costs’, you could divide it into ’energy costs’, ’labor costs’, ’funding’, ’revenues’ and more, which all have a share to the ’net total’. This way it is possible to access these metrics individually after the optimization.
-* Constrain the solution space for the programming problem via additional criteria, that are not included in the objective (ϵ-constraint method [@HOFFMANN2024100190]). 
-  * Example 1: Available floor space as a constraint on investment options.
-  * Example 2: Limitation of ’primary energy demand’ or ’CO2 emission’ for a supply task.
-  * Example 3: Limitation or necessity of a ’number of installed entities’ for the investment decision.
-* Combine multiple evaluation metrics to the objective (Weighted Sum Method [@HOFFMANN2024100190]). 
-  * Example 1: ’CO2 emissions’ contribute to the ’costs’ through CO2 taxes.
-  * Example 2: ’floor space area’ used for investments contribute to the ’costs’ through the land price.
-* Distinguish between operational and investment impacts and constraints of an evaluation criteria. 
-  * Example: Only operational ’CO2 emissions’ should be integrated to cost objective via CO2 taxes, as investment related CO2 emission costs are already included in the component costs.
-* Adjust the optimization by using an additional Effect to apply an incentive for or against an investment or dispatch decision without altering existing effects. This simplifies modeling to generate alternatives and comparing their results.
+
+* Switching the objective to another *Effect* is straightforward once *Effects* and a flow system are defined.
+* Including as many evaluation metrics as needed simplifies the evaluation of the solution.
+  * Example: Instead of a global objective 'costs', the objective could be divided into 'energy costs', 'labor costs', 'funding', 'revenues', and more, all of which contribute to the 'net total'. This way it is possible to access these metrics individually after the optimization.
+* Constraining the solution space for the optimization problem via additional criteria that are not included in the objective (ϵ-constraint method [@HOFFMANN2024100190]). 
+  * Example 1: Example 1: Available floor space as a constraint on investment options.
+  * Example 2: Limitation of 'primary energy demand' or 'CO2 emissions' for a supply task.
+  * Example 3: Limitation or necessity of a 'number of installed entities' for the investment decision.
+* Combining multiple evaluation metrics into the objective (Weighted Sum Method [@HOFFMANN2024100190]). 
+  * Example 1: 'CO2 emissions' contribute to the 'costs' through CO2 taxes.
+  * Example 2: 'floor space area' used for investments contributes to the 'costs' through the land price.
+* Distinguishing between operational and investment-related impacts and constraints of an evaluation criterion. 
+  * Example: Only operational 'CO2 emissions' should be integrated into the cost objective via CO2 taxes, as investment-related CO2 emission costs are already included in the component costs.
+* Adjusting the optimization by applying an additional *Effect* to apply an incentive for or against an investment or dispatch decision without altering existing *Effects*. This simplifies the generation of alternatives and the comparison of their results.
 
 ## Scenarios and Periods 
 
