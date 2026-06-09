@@ -98,8 +98,5 @@ Periods typically refer to multi-year time segments within a long-term planning 
 
 Flixopt was originally developed at [TU Dresden](https://github.com/gewv-tu-dresden) for the SMARTBIOGRID project (funded by the German Federal Ministry for Economic Affairs and Energy, FKZ: 03KB159B).
 
-## todo
-* Prüfen, dass möglichst alle Literaturquellen verwendet 
-
 # References
 * todo: Prüfen, dass möglichst alle Literaturquellen verwendet 
