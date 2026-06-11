@@ -57,7 +57,7 @@ Flixopt is designed for broad applicability across various disciplines, encompas
 The Flixopt package follows a three-step workflow: initialization, modeling and solving, and postprocessing of results as illustrated in \autoref{fig:architecture}. Users begin by defining a flow system, specifying the network topology and all element parameters. The flow system describes the structural representation of a physical system to be modeled. It consists of Flows, Components, and Buses, following the design proposed in [@oemof_2020]. Based on any chosen subset of the flow system, one or more calculation setups can then be configured.
 During modeling, Flixopt constructs the optimization problem in a fully vectorized manner using Linopy. After solving, Flixopt provides a postprocessing environment that yields structured access to results, facilitates visualization and statistical analysis, and enables saving and restoring complete solution states.
 
-![Overview of Flixopt´s system architecture and workflow \label{fig:architecture}](figures/architecture_draft.pdf)
+![Overview of Flixopt´s system architecture and workflow \label{fig:architecture}](figures/overview.png)
 
 The package optionally supports, for example, the following features:
 * investment decisions with continuous sizes and binary selection,
@@ -90,7 +90,7 @@ Flixopt introduces a freely definable system of evaluation metrics called *Effec
 
 ## Scenarios and Periods 
 
-![Usage of scenarios and periods in Flixopt \label{fig:scen_and_periods}](figures/scen_and_periods.svg)
+![Usage of scenarios and periods in Flixopt \label{fig:scen_and_periods}](figures/scen_and_periods.png)
 
 Periods typically refer to multi-year time segments within a long-term planning horizon. Periods are employed to structure the model across several years, specifically by modeling investment or transformation stages. This enables the representation of system evolution over time, including capacity expansion, technology diffusion, or changing boundary conditions, while keeping the optimization problem tractable. Scenarios, in contrast, describe alternative assumptions about external developments or system configurations within one period. Scenarios enable the structured comparison of different futures, such as varying fuel prices, policy settings, technology costs, or demand trajectories, within a consistent modeling framework. The use of scenarios thereby supports robust decision-making under varying assumptions. Periods and scenarios can be combined in one model, which is illustrated in \ref{fig:scen_and_periods}.
 
