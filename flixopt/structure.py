@@ -335,6 +335,8 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         if 'time' in solution.coords:
             if not solution.indexes['time'].equals(self.flow_system.timesteps_extra):
                 solution = solution.reindex(time=self.flow_system.timesteps_extra)
+        if 'cluster' in solution.dims and 'time' in solution.dims:
+            solution = solution.transpose('cluster', 'time', ...)
         return solution
 
     @property
