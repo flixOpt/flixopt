@@ -11,6 +11,13 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ---
 
+## [6.1.6](https://github.com/flixOpt/flixopt/compare/v6.1.5...v6.1.6) (2026-06-14)
+
+
+### Bug Fixes
+
+* normalize clustered solution dim order to (cluster, time) ([#704](https://github.com/flixOpt/flixopt/issues/704)) ([792bb4d](https://github.com/flixOpt/flixopt/commit/792bb4d5e8a26fc5ca7c545157a93e345e2ea0ce))
+
 ## [6.1.5](https://github.com/flixOpt/flixopt/compare/v6.1.4...v6.1.5) (2026-06-01)
 
 
