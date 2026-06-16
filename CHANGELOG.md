@@ -11,6 +11,13 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ---
 
+## [6.2.0](https://github.com/flixOpt/flixopt/compare/v6.1.6...v6.2.0) (2026-06-16)
+
+
+### Features
+
+* **tutorials:** ship tutorial data + downloadable example systems ([#706](https://github.com/flixOpt/flixopt/issues/706)) ([c9652bc](https://github.com/flixOpt/flixopt/commit/c9652bc12be75cf6cca91cb2324914f69e3f199d))
+
 ## [6.1.6](https://github.com/flixOpt/flixopt/compare/v6.1.5...v6.1.6) (2026-06-14)
 
 
