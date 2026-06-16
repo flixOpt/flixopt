@@ -45,9 +45,12 @@ def test_weekly_daily_pattern(hourly_week_data):
 def test_with_irregular_data():
     """Real-world use case: data with missing timestamps needs filling."""
     time = pd.date_range('2024-01-01', periods=100, freq='15min')
-    data = np.random.rand(100)
-    # Randomly drop 30% to simulate real data gaps
-    keep = np.sort(np.random.choice(100, 70, replace=False))  # Must be sorted
+    # Local generator + retained endpoint: keeps the 25h span deterministic
+    # regardless of test order under pytest-xdist (global np.random state varies).
+    rng = np.random.default_rng(42)
+    data = rng.random(100)
+    # Drop 30% to simulate gaps, but keep the final timestamp so the span stays 25h
+    keep = np.sort(np.append(rng.choice(99, 69, replace=False), 99))
     da = xr.DataArray(data[keep], dims=['time'], coords={'time': time[keep]})
 
     result = reshape_data_for_heatmap(da, reshape_time=('h', 'min'), fill='ffill')
