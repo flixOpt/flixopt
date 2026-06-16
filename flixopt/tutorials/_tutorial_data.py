@@ -1,18 +1,23 @@
-"""Generate tutorial data for notebooks 01-07.
+"""Synthetic tutorial data for the introductory notebooks (01-07).
 
-These functions return data (timesteps, profiles, prices) rather than full FlowSystems,
-so notebooks can demonstrate building systems step by step.
+These functions return raw data (timesteps, profiles, prices) rather than full
+FlowSystems, so the notebooks can demonstrate building systems step by step.
 
-Usage:
-    from data.tutorial_data import get_quickstart_data, get_heat_system_data, ...
+The data is generated purely from numpy/pandas - no files and no network access
+are needed, so these helpers work straight out of a plain ``pip install flixopt``.
+
+These functions are private; use :func:`flixopt.tutorials.get_data` to access them
+by name.
 """
+
+from typing import Literal, get_args
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
 
-def get_quickstart_data() -> dict:
+def _get_quickstart_data() -> dict:
     """Data for 01-quickstart: minimal 4-hour example.
 
     Returns:
@@ -31,7 +36,7 @@ def get_quickstart_data() -> dict:
     }
 
 
-def get_heat_system_data() -> dict:
+def _get_heat_system_data() -> dict:
     """Data for 02-heat-system: one week with storage.
 
     Returns:
@@ -59,7 +64,7 @@ def get_heat_system_data() -> dict:
     }
 
 
-def get_investment_data() -> dict:
+def _get_investment_data() -> dict:
     """Data for 03-investment-optimization: solar pool heating.
 
     Returns:
@@ -88,7 +93,7 @@ def get_investment_data() -> dict:
     }
 
 
-def get_constraints_data() -> dict:
+def _get_constraints_data() -> dict:
     """Data for 04-operational-constraints: factory steam demand.
 
     Returns:
@@ -118,7 +123,7 @@ def get_constraints_data() -> dict:
     }
 
 
-def get_multicarrier_data() -> dict:
+def _get_multicarrier_data() -> dict:
     """Data for 05-multi-carrier-system: hospital CHP.
 
     Returns:
@@ -164,7 +169,7 @@ def get_multicarrier_data() -> dict:
     }
 
 
-def get_time_varying_data() -> dict:
+def _get_time_varying_data() -> dict:
     """Data for 06a-time-varying-parameters: heat pump with variable COP.
 
     Returns:
@@ -199,7 +204,7 @@ def get_time_varying_data() -> dict:
     }
 
 
-def get_scenarios_data() -> dict:
+def _get_scenarios_data() -> dict:
     """Data for 07-scenarios-and-periods: multi-year planning.
 
     Returns:
@@ -244,3 +249,37 @@ def get_scenarios_data() -> dict:
         'gas_prices': np.array([0.06, 0.08, 0.10]),
         'elec_prices': np.array([0.28, 0.34, 0.43]),
     }
+
+
+#: The available synthetic datasets - the single source of truth for their names.
+#: Each maps to the private ``_get_<name>_data`` builder above.
+DataName = Literal[
+    'quickstart',
+    'heat_system',
+    'investment',
+    'constraints',
+    'multicarrier',
+    'time_varying',
+    'scenarios',
+]
+
+
+def list_data() -> list[str]:
+    """Return the names accepted by :func:`get_data`."""
+    return list(get_args(DataName))
+
+
+def get_data(name: DataName) -> dict:
+    """Return the synthetic tutorial dataset ``name`` as a dict of arrays.
+
+    Generated from numpy/pandas, so this works offline with no extra dependencies.
+
+    Args:
+        name: One of :func:`list_data` (e.g. ``'heat_system'``).
+
+    Raises:
+        ValueError: If ``name`` is not a known dataset.
+    """
+    if name not in get_args(DataName):
+        raise ValueError(f'Unknown dataset {name!r}. Available: {", ".join(list_data())}.')
+    return globals()[f'_get_{name}_data']()

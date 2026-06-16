@@ -63,6 +63,11 @@ network_viz = [
     "flask >= 3.0.0, < 4",  # Explicit Flask cap to prevent transitive major bumps
 ]
 
+# Downloading the pre-built example systems used by the advanced notebooks (08-09)
+tutorials = [
+    "pooch >= 1.8.0, < 2",  # Download + cache example FlowSystems from GitHub releases
+]
+
 # Full feature set (everything except dev tools)
 full = [
     "tsam >= 3.1.2, < 4",  # Time series aggregation for clustering (3.0.0 and 3.1.0 yanked)
@@ -75,6 +80,7 @@ full = [
     "networkx >= 3.0.0, < 4",  # Visualizing FlowSystem Network as app
     "werkzeug >= 3.0.0, < 4",  # Visualizing FlowSystem Network as app
     "flask >= 3.0.0, < 4",  # Explicit Flask cap to prevent transitive major bumps
+    "pooch >= 1.8.0, < 2",  # Download + cache example FlowSystems for the notebooks
 ]
 
 # Development tools and testing
@@ -95,6 +101,7 @@ dev = [
     "dash-daq==0.6.0",
     "networkx==3.0.0",
     "werkzeug==3.1.8",
+    "pooch==1.8.2",
 ]
 
 # Documentation building
