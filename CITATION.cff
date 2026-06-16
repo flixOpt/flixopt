@@ -3,7 +3,7 @@ message: "If you use this software, please cite it as below and consider citing 
 type: software
 title: "flixopt"
 version: 6.2.0 # x-release-please-version
-date-released: 2026-06-14
+date-released: 2026-06-16
 url: "https://github.com/flixOpt/flixopt"
 repository-code: "https://github.com/flixOpt/flixopt"
 license: MIT
