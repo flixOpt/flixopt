@@ -101,7 +101,7 @@ dev = [
     "dash-daq==0.6.0",
     "networkx==3.0.0",
     "werkzeug==3.1.8",
-    "pooch==1.8.2",
+    "pooch==1.9.0",
 ]
 
 # Documentation building
