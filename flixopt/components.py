@@ -974,7 +974,7 @@ class StorageModel(ComponentModel):
         """For 'cyclic' cluster mode: each cluster's start equals its end."""
         if self._model.flow_system.clusters is not None and self.element.cluster_mode == 'cyclic':
             self.add_constraints(
-                self.charge_state.isel(time=0) == self.charge_state.isel(time=-2),
+                self.charge_state.isel(time=0, drop=True) == self.charge_state.isel(time=-2, drop=True),
                 short_name='cluster_cyclic',
             )
 
@@ -1018,24 +1018,24 @@ class StorageModel(ComponentModel):
         if self.element.initial_charge_state is not None:
             if isinstance(self.element.initial_charge_state, str):
                 self.add_constraints(
-                    self.charge_state.isel(time=0) == self.charge_state.isel(time=-1),
+                    self.charge_state.isel(time=0, drop=True) == self.charge_state.isel(time=-1, drop=True),
                     short_name='initial_charge_state',
                 )
             else:
                 self.add_constraints(
-                    self.charge_state.isel(time=0) == self.element.initial_charge_state,
+                    self.charge_state.isel(time=0, drop=True) == self.element.initial_charge_state,
                     short_name='initial_charge_state',
                 )
 
         if self.element.maximal_final_charge_state is not None:
             self.add_constraints(
-                self.charge_state.isel(time=-1) <= self.element.maximal_final_charge_state,
+                self.charge_state.isel(time=-1, drop=True) <= self.element.maximal_final_charge_state,
                 short_name='final_charge_max',
             )
 
         if self.element.minimal_final_charge_state is not None:
             self.add_constraints(
-                self.charge_state.isel(time=-1) >= self.element.minimal_final_charge_state,
+                self.charge_state.isel(time=-1, drop=True) >= self.element.minimal_final_charge_state,
                 short_name='final_charge_min',
             )
 
@@ -1072,9 +1072,13 @@ class StorageModel(ComponentModel):
         eff_charge = self.element.eta_charge
         eff_discharge = self.element.eta_discharge
 
+        # charge_state lives on timesteps_extra; index the balance on the regular timesteps
+        # (the start of each interval) so it aligns with charge_rate / discharge_rate.
+        charge_state_t = charge_state.isel(time=slice(None, -1))
+        charge_state_tp1 = charge_state.isel(time=slice(1, None)).assign_coords(time=charge_state_t.coords['time'])
         return (
-            charge_state.isel(time=slice(1, None))
-            - charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
+            charge_state_tp1
+            - charge_state_t * ((1 - rel_loss) ** timestep_duration)
             - charge_rate * eff_charge * timestep_duration
             + discharge_rate * timestep_duration / eff_discharge
         )
