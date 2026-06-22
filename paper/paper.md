@@ -60,6 +60,7 @@ During modeling, Flixopt constructs the optimization problem in a fully vectoriz
 ![Overview of Flixopt´s system architecture and workflow \label{fig:architecture}](figures/overview.png)
 
 The package optionally supports, for example, the following features:
+
 * investment decisions with continuous sizes and binary selection,
 * on- and off-states and switching behavior,
 * minimum and maximum consecutive operation or downtime,
@@ -78,7 +79,7 @@ Flixopt introduces a freely definable system of evaluation metrics called *Effec
 * Including as many evaluation metrics as needed simplifies the evaluation of the solution.
   * Example: Instead of a global objective 'costs', the objective could be divided into 'energy costs', 'labor costs', 'funding', 'revenues', and more, all of which contribute to the 'net total'. This way it is possible to access these metrics individually after the optimization.
 * Constraining the solution space for the optimization problem via additional criteria that are not included in the objective (ϵ-constraint method [@HOFFMANN2024100190]). 
-  * Example 1: Example 1: Available floor space as a constraint on investment options.
+  * Example 1: Available floor space as a constraint on investment options.
   * Example 2: Limitation of 'primary energy demand' or 'CO2 emissions' for a supply task.
   * Example 3: Limitation or necessity of a 'number of installed entities' for the investment decision.
 * Combining multiple evaluation metrics into the objective (Weighted Sum Method [@HOFFMANN2024100190]). 
