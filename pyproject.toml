@@ -87,7 +87,7 @@ full = [
 dev = [
     "xarray<2026.5",  # TODO: drop once linopy ships xarray 2026.3+ compat fix
     "tsam==3.4.0",  # Time series aggregation for clustering
-    "pytest==9.1.0",
+    "pytest==9.1.1",
     "pytest-xdist==3.8.0",
     "nbformat==5.10.4",
     "ruff==0.15.18",
