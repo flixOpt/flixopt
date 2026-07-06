@@ -217,6 +217,55 @@ class TestStatisticsAccessor:
         assert isinstance(flow_hours, xr.Dataset)
         assert len(flow_hours.data_vars) > 0
 
+    @pytest.mark.parametrize('by', ['component', 'contributor'])
+    def test_effects_threshold_drops_uninvested_component(self, highs_solver, by):
+        """threshold must drop non-invested components in effects breakdown (issue #719).
+
+        When broken down by component/contributor, entities live along a coordinate of a
+        single variable rather than as separate variables, so a per-variable threshold
+        alone leaves the ~0 non-invested entry visible.
+        """
+        timesteps = pd.date_range('2024-01-15 08:00', periods=2, freq='h')
+        fs = fx.FlowSystem(timesteps)
+        fs.add_elements(
+            fx.Bus('Heat', carrier='heat'),
+            fx.Effect('costs', '€', 'Total Costs', is_standard=True, is_objective=True),
+            fx.Source(
+                'S1',
+                outputs=[
+                    fx.Flow(
+                        'S1',
+                        bus='Heat',
+                        size=fx.InvestParameters(minimum_size=10, maximum_size=500, effects_of_investment_per_size=10, mandatory=False),
+                        effects_per_flow_hour=10,
+                    )
+                ],
+            ),
+            fx.Source(
+                'S2',
+                outputs=[
+                    fx.Flow(
+                        'S2',
+                        bus='Heat',
+                        size=fx.InvestParameters(minimum_size=10, maximum_size=500, effects_of_investment_per_size=100, mandatory=False),
+                        effects_per_flow_hour=100,
+                    )
+                ],
+            ),
+            fx.Sink('ABC', inputs=[fx.Flow('abc', bus='Heat', size=1, fixed_relative_profile=222)]),
+        )
+        fs.optimize(highs_solver)
+
+        # S2 is the expensive source and stays uninvested -> zero cost contribution.
+        filtered = fs.stats.plot.effects('periodic', effect='costs', by=by, threshold=1.0, show=False, data_only=True)
+        kept = list(filtered.data.coords[by].values)
+        assert all('S2' not in str(label) for label in kept), f'Uninvested S2 should be dropped, got {kept}'
+        assert any('S1' in str(label) for label in kept), f'Invested S1 should remain, got {kept}'
+
+        # threshold=None keeps everything, including the zero-cost S2.
+        unfiltered = fs.stats.plot.effects('periodic', effect='costs', by=by, threshold=None, show=False, data_only=True)
+        assert any('S2' in str(label) for label in unfiltered.data.coords[by].values)
+
 
 # ============================================================================
 # PLOTTING WITH OPTIMIZED DATA TESTS
