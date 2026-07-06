@@ -236,7 +236,9 @@ class TestStatisticsAccessor:
                     fx.Flow(
                         'S1',
                         bus='Heat',
-                        size=fx.InvestParameters(minimum_size=10, maximum_size=500, effects_of_investment_per_size=10, mandatory=False),
+                        size=fx.InvestParameters(
+                            minimum_size=10, maximum_size=500, effects_of_investment_per_size=10, mandatory=False
+                        ),
                         effects_per_flow_hour=10,
                     )
                 ],
@@ -247,7 +249,9 @@ class TestStatisticsAccessor:
                     fx.Flow(
                         'S2',
                         bus='Heat',
-                        size=fx.InvestParameters(minimum_size=10, maximum_size=500, effects_of_investment_per_size=100, mandatory=False),
+                        size=fx.InvestParameters(
+                            minimum_size=10, maximum_size=500, effects_of_investment_per_size=100, mandatory=False
+                        ),
                         effects_per_flow_hour=100,
                     )
                 ],
@@ -263,7 +267,9 @@ class TestStatisticsAccessor:
         assert any('S1' in str(label) for label in kept), f'Invested S1 should remain, got {kept}'
 
         # threshold=None keeps everything, including the zero-cost S2.
-        unfiltered = fs.stats.plot.effects('periodic', effect='costs', by=by, threshold=None, show=False, data_only=True)
+        unfiltered = fs.stats.plot.effects(
+            'periodic', effect='costs', by=by, threshold=None, show=False, data_only=True
+        )
         assert any('S2' in str(label) for label in unfiltered.data.coords[by].values)
 
 

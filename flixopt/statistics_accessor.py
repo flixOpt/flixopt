@@ -302,9 +302,7 @@ def _drop_small_along_dim(ds: xr.Dataset, dim: str, threshold: float) -> xr.Data
     return ds.sel({dim: keep_idx}) if len(keep_idx) else ds
 
 
-def _drop_small(
-    ds: xr.Dataset, threshold: float | None, dim: str | list[str] | None = None
-) -> xr.Dataset:
+def _drop_small(ds: xr.Dataset, threshold: float | None, dim: str | list[str] | None = None) -> xr.Dataset:
     """Remove entries whose max absolute value is below threshold.
 
     Useful for filtering out solver noise or non-invested components. Always drops whole
