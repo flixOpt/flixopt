@@ -299,7 +299,7 @@ def _drop_small_along_dim(ds: xr.Dataset, dim: str, threshold: float) -> xr.Data
     arr = abs(ds.to_dataarray())
     max_along = arr.max(dim=[x for x in arr.dims if x != dim])
     keep_idx = ds[dim].values[(max_along >= threshold).values]
-    return ds.sel({dim: keep_idx}) if len(keep_idx) else ds
+    return ds.sel({dim: keep_idx})
 
 
 def _drop_small(ds: xr.Dataset, threshold: float | None, dim: str | list[str] | None = None) -> xr.Dataset:

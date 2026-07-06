@@ -272,6 +272,14 @@ class TestStatisticsAccessor:
         )
         assert any('S2' in str(label) for label in unfiltered.data.coords[by].values)
 
+        # All entries below threshold -> empty breakdown, not a fallback to showing everything,
+        # and the full render must not crash on the empty dataset.
+        empty = fs.stats.plot.effects('periodic', effect='costs', by=by, threshold=1e12, show=False)
+        assert len(empty.data.coords[by].values) == 0, (
+            f'All-below-threshold should drop everything, got {list(empty.data.coords[by].values)}'
+        )
+        assert len(empty.figure.data) == 0
+
 
 # ============================================================================
 # PLOTTING WITH OPTIMIZED DATA TESTS
