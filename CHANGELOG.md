@@ -11,6 +11,17 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ---
 
+## [7.0.0](https://github.com/flixOpt/flixopt/compare/v6.2.1...v7.0.0) (2026-07-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* migrate clustering from tsam to tsam_xarray ([#654](https://github.com/flixOpt/flixopt/issues/654))
+
+### Code Refactoring
+
+* migrate clustering from tsam to tsam_xarray ([#654](https://github.com/flixOpt/flixopt/issues/654)) ([8c2e3ce](https://github.com/flixOpt/flixopt/commit/8c2e3ce4e53b87fd3eb110da12e84ca774513cc9))
+
 ## [6.2.1](https://github.com/flixOpt/flixopt/compare/v6.2.0...v6.2.1) (2026-07-07)
 
 
