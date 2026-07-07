@@ -11,6 +11,13 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ---
 
+## [6.2.1](https://github.com/flixOpt/flixopt/compare/v6.2.0...v6.2.1) (2026-07-07)
+
+
+### Bug Fixes
+
+* **transform:** don't force investment when fixing a size of 0 ([#721](https://github.com/flixOpt/flixopt/issues/721)) ([88e2203](https://github.com/flixOpt/flixopt/commit/88e2203660ac28772d7aa49f9470aa86f3ce0a8c))
+
 ## [6.2.0](https://github.com/flixOpt/flixopt/compare/v6.1.6...v6.2.0) (2026-06-16)
 
 
