@@ -143,6 +143,99 @@ The clustering API now uses tsam v3's configuration objects instead of individua
 
 ---
 
+### Clustering Backend: tsam_xarray
+
+v6.0.0 replaces the per-slice tsam loop with a single
+[`tsam_xarray.aggregate()`](https://github.com/FZJ-IEK3-VSA/tsam_xarray) call. The
+`Clustering` object is now a thin wrapper around `tsam_xarray.ClusteringResult` /
+`AggregationResult`. Most code keeps working, but the items below changed.
+
+#### Removed: `data_vars` parameter
+
+Use `ClusterConfig(weights={var: 0})` to exclude variables from cluster assignment
+while still aggregating them.
+
+!!! note "Default weight is 1.0, not 0"
+    Variables omitted from `ClusterConfig(weights={...})` keep the default
+    weight of **1.0** and still influence cluster assignments. To exclude a
+    variable from the clustering objective without dropping it from the
+    aggregated FlowSystem, set its weight explicitly to `0`.
+
+=== "v5.x (Old)"
+    ```python
+    fs_clustered = flow_system.transform.cluster(
+        n_clusters=8,
+        cluster_duration='1D',
+        data_vars=['HeatDemand(Q)|fixed_relative_profile'],  # cluster on this only
+    )
+    ```
+
+=== "v6.0.0 (New)"
+    ```python
+    from tsam import ClusterConfig
+
+    fs_clustered = flow_system.transform.cluster(
+        n_clusters=8,
+        cluster_duration='1D',
+        cluster=ClusterConfig(weights={
+            'HeatDemand(Q)|fixed_relative_profile': 1,
+            'GasSource(Gas)|costs|per_flow_hour': 0,  # ignored for clustering
+        }),
+    )
+    ```
+
+#### Removed: `TimeSeriesData(clustering_group=..., clustering_weight=...)`
+
+Auto-weighting from `clustering_group` / `clustering_weight` attributes has been
+removed. Provide weights explicitly via `ClusterConfig(weights={...})`.
+
+#### Removed: `Clustering.metrics` and `clustering.plot`
+
+`metrics` (RMSE/MAE), `plot.compare()`, `plot.heatmap()`, `plot.clusters()`, and
+`include_original_data=...` on `to_netcdf` / `to_dataset` are gone. For accuracy
+analysis or visualisation, use `clustering.aggregation_result` (a
+[tsam_xarray `AggregationResult`](https://github.com/FZJ-IEK3-VSA/tsam_xarray))
+before serialisation, or rebuild via `flow_system.transform.apply_clustering(...)`
+after loading.
+
+#### Removed: `flow_system.transform.clustering_data()`
+
+The v5 helper that returned a Dataset of *non-constant* time-varying inputs is
+gone. It's not a rename — the v6 clustering pipeline now passes **all**
+time-varying inputs (including constants) to tsam_xarray, so the v5 set isn't
+a meaningful preview anymore. See `cluster_inputs()` below for the v6 equivalent
+(with different semantics).
+
+#### Removed/renamed properties on `Clustering`
+
+| Removed | Replacement |
+|---|---|
+| `Clustering.results` | `Clustering.clustering_result` |
+| `Clustering.dims`, `Clustering.coords` | `clustering.clustering_result.slice_dims` and per-property `.coords` on the returned DataArrays |
+| `Clustering.sel(period=..., scenario=...)` | `clustering.aggregation_result` (pre-IO only) |
+| `Clustering.get_result(...)` | Same as above |
+| `Clustering.n_representatives` | `clustering.n_clusters * (clustering.n_segments or clustering.timesteps_per_cluster)` |
+| `Clustering.timestep_mapping` | `clustering.disaggregate(da)` |
+| `Clustering.expand_data(da)` | `clustering.disaggregate(da)` |
+| `Clustering.build_expansion_divisor()` | Internal-only, replaced by `disaggregate(segment_durations).ffill('time')` |
+| `Clustering.cluster_start_positions` | `np.arange(0, n_clusters * step, step)` |
+| `Clustering.representative_weights` | `Clustering.cluster_occurrences` |
+| `AggregationResults` alias | `Clustering` (use directly) |
+
+#### Removed notebooks
+
+`08d-clustering-multiperiod`, `08e-clustering-internals`, and
+`08f-clustering-segmentation` were merged into `08c-clustering` and
+`08c2-clustering-storage-modes`.
+
+#### NetCDF compatibility
+
+NetCDF files saved with v5 cannot be loaded with v6 — the on-disk format of the
+embedded clustering changed. Re-save by loading in v5 and writing with v6, or
+re-run `transform.cluster()` after upgrading.
+
+---
+
 ## ✨ New Features in v6.0.0
 
 ### Time-Series Segmentation
@@ -166,8 +259,6 @@ print(fs_segmented.timestep_duration)  # Different duration per segment
 fs_expanded = fs_segmented.transform.expand()
 ```
 
-See [08f-Segmentation notebook](../notebooks/08f-clustering-segmentation.ipynb) for details.
-
 ---
 
 ### I/O Performance
@@ -188,24 +279,41 @@ print(ds.attrs['flixopt_version'])  # e.g., '6.0.0'
 
 ---
 
-### Clustering Inspection
+### New: `flow_system.transform.cluster_inputs()`
 
-New methods to inspect clustering data before and after:
+Returns an `xr.Dataset` of **every** variable with a `time` dim — exactly the
+set `cluster()` will pass to tsam_xarray, constants included. Different from
+the removed v5 `clustering_data()`, which filtered constants out.
+
+Use it to enumerate columns for `ClusterConfig(weights={...})`:
 
 ```python
-# Before clustering: see what data will be used
-clustering_data = flow_system.transform.clustering_data()
-print(list(clustering_data.data_vars))
+cols = list(flow_system.transform.cluster_inputs())
+target = 'HeatDemand(Q)|fixed_relative_profile'
+weights = {target: 1, **{v: 0 for v in cols if v != target}}
 
-# After clustering: access metadata
+fs_clustered = flow_system.transform.cluster(
+    n_clusters=8, cluster_duration='1D',
+    cluster=ClusterConfig(weights=weights),
+)
+```
+
+Variables omitted from `weights` keep the default weight of **1.0** (still
+influence cluster assignments). Set a variable's weight to `0` to exclude it
+from clustering while keeping it aggregated.
+
+### Clustering Metadata
+
+After clustering, access structural info via `fs.clustering`:
+
+```python
 fs_clustered.clustering.n_clusters
 fs_clustered.clustering.cluster_assignments
 fs_clustered.clustering.cluster_occurrences
-fs_clustered.clustering.metrics.to_dataframe()
 
-# Visualize
-fs_clustered.clustering.plot.compare()
-fs_clustered.clustering.plot.heatmap()
+# Accuracy metrics and richer access via the tsam_xarray result directly
+# (pre-IO only — lost after to_netcdf / from_netcdf)
+fs_clustered.clustering.aggregation_result
 ```
 
 ---

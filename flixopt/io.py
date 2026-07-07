@@ -1664,7 +1664,7 @@ class FlowSystemDatasetIO:
         flow_system = cls._create_flow_system(ds, reference_structure, arrays_dict, FlowSystem)
         cls._restore_elements(flow_system, reference_structure, arrays_dict, FlowSystem)
         cls._restore_solution(flow_system, ds, reference_structure, solution_var_names)
-        cls._restore_clustering(flow_system, ds, reference_structure, config_var_names, arrays_dict, FlowSystem)
+        cls._restore_clustering(flow_system, reference_structure, FlowSystem)
         cls._restore_metadata(flow_system, reference_structure, FlowSystem)
         flow_system.connect_and_transform()
         return flow_system
@@ -1831,10 +1831,7 @@ class FlowSystemDatasetIO:
     def _restore_clustering(
         cls,
         flow_system: FlowSystem,
-        ds: xr.Dataset,
         reference_structure: dict[str, Any],
-        config_var_names: list[str],
-        arrays_dict: dict[str, xr.DataArray],
         fs_cls: type[FlowSystem],
     ) -> None:
         """Restore Clustering object if present."""
@@ -1842,32 +1839,12 @@ class FlowSystemDatasetIO:
             return
 
         clustering_structure = json.loads(reference_structure['clustering'])
-
-        # Collect clustering arrays (prefixed with 'clustering|')
-        clustering_arrays: dict[str, xr.DataArray] = {}
-        main_var_names: list[str] = []
-
-        for name in config_var_names:
-            if name.startswith(cls.CLUSTERING_PREFIX):
-                arr = ds[name]
-                arr_name = name[len(cls.CLUSTERING_PREFIX) :]
-                clustering_arrays[arr_name] = arr.rename(arr_name)
-            else:
-                main_var_names.append(name)
-
-        clustering = fs_cls._resolve_reference_structure(clustering_structure, clustering_arrays)
+        clustering = fs_cls._resolve_reference_structure(clustering_structure, {})
         flow_system.clustering = clustering
 
-        # Reconstruct aggregated_data from FlowSystem's main data arrays
-        if clustering.aggregated_data is None and main_var_names:
-            from .core import drop_constant_arrays
-
-            main_vars = {name: arrays_dict[name] for name in main_var_names}
-            clustering.aggregated_data = drop_constant_arrays(xr.Dataset(main_vars), dim='time')
-
-        # Restore cluster_weight from clustering's representative_weights
-        if hasattr(clustering, 'representative_weights'):
-            flow_system.cluster_weight = clustering.representative_weights
+        # Restore cluster_weight from clustering's cluster_occurrences
+        if hasattr(clustering, 'cluster_occurrences'):
+            flow_system.cluster_weight = clustering.cluster_occurrences.rename('cluster_weight')
 
     @staticmethod
     def _restore_metadata(
@@ -1904,7 +1881,6 @@ class FlowSystemDatasetIO:
         flow_system: FlowSystem,
         base_dataset: xr.Dataset,
         include_solution: bool = True,
-        include_original_data: bool = True,
     ) -> xr.Dataset:
         """Convert FlowSystem-specific data to dataset.
 
@@ -1915,7 +1891,6 @@ class FlowSystemDatasetIO:
             flow_system: The FlowSystem to serialize
             base_dataset: Dataset from parent class with basic structure
             include_solution: Whether to include optimization solution
-            include_original_data: Whether to include clustering.original_data
 
         Returns:
             Complete dataset with all FlowSystem data
@@ -1931,7 +1906,7 @@ class FlowSystemDatasetIO:
         ds = cls._add_carriers_to_dataset(ds, flow_system._carriers)
 
         # Add clustering
-        ds = cls._add_clustering_to_dataset(ds, flow_system.clustering, include_original_data)
+        ds = cls._add_clustering_to_dataset(ds, flow_system.clustering)
 
         # Add variable categories
         ds = cls._add_variable_categories_to_dataset(ds, flow_system._variable_categories)
@@ -1996,17 +1971,10 @@ class FlowSystemDatasetIO:
         cls,
         ds: xr.Dataset,
         clustering: Any,
-        include_original_data: bool,
     ) -> xr.Dataset:
         """Add clustering object to dataset."""
         if clustering is not None:
-            clustering_ref, clustering_arrays = clustering._create_reference_structure(
-                include_original_data=include_original_data
-            )
-            # Add clustering arrays with prefix using batch assignment
-            # (individual ds[name] = arr assignments are slow)
-            prefixed_arrays = {f'{cls.CLUSTERING_PREFIX}{name}': arr for name, arr in clustering_arrays.items()}
-            ds = ds.assign(prefixed_arrays)
+            clustering_ref, _ = clustering._create_reference_structure()
             ds.attrs['clustering'] = json.dumps(clustering_ref, ensure_ascii=False)
 
         return ds
@@ -2064,7 +2032,6 @@ def flow_system_to_dataset(
     flow_system: FlowSystem,
     base_dataset: xr.Dataset,
     include_solution: bool = True,
-    include_original_data: bool = True,
 ) -> xr.Dataset:
     """Convert FlowSystem-specific data to dataset.
 
@@ -2075,7 +2042,6 @@ def flow_system_to_dataset(
         flow_system: The FlowSystem to serialize
         base_dataset: Dataset from parent class with basic structure
         include_solution: Whether to include optimization solution
-        include_original_data: Whether to include clustering.original_data
 
     Returns:
         Complete dataset with all FlowSystem data
@@ -2083,4 +2049,4 @@ def flow_system_to_dataset(
     See Also:
         FlowSystemDatasetIO: Class containing the implementation
     """
-    return FlowSystemDatasetIO.to_dataset(flow_system, base_dataset, include_solution, include_original_data)
+    return FlowSystemDatasetIO.to_dataset(flow_system, base_dataset, include_solution)

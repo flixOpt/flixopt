@@ -70,7 +70,8 @@ tutorials = [
 
 # Full feature set (everything except dev tools)
 full = [
-    "tsam >= 3.1.2, < 4",  # Time series aggregation for clustering (3.0.0 and 3.1.0 yanked)
+    "tsam_xarray >= 0.6.0, < 1",  # Time series aggregation for clustering (wraps tsam)
+    "tsam >= 3.4.0, < 4",  # Directly imported for ClusterConfig, ExtremeConfig, SegmentConfig
     "pyvis==0.3.2",  # Visualizing FlowSystem Network
     "scipy >= 1.15.1, < 2", # Used by tsam. Prior versions have conflict with highspy. See https://github.com/scipy/scipy/issues/22257
     "gurobipy >= 10.0.0, < 14; python_version < '3.14'",  # No Python 3.14 wheels yet (expected Q1 2026)
@@ -86,7 +87,8 @@ full = [
 # Development tools and testing
 dev = [
     "xarray<2026.5",  # TODO: drop once linopy ships xarray 2026.3+ compat fix
-    "tsam==3.4.0",  # Time series aggregation for clustering
+    "tsam_xarray==0.6.0",  # Time series aggregation for clustering (wraps tsam)
+    "tsam==3.4.0",  # Directly imported for ClusterConfig, ExtremeConfig, SegmentConfig
     "pytest==9.1.1",
     "pytest-xdist==3.8.0",
     "nbformat==5.10.4",

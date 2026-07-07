@@ -696,7 +696,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return reference_structure, all_extracted_arrays
 
-    def to_dataset(self, include_solution: bool = True, include_original_data: bool = True) -> xr.Dataset:
+    def to_dataset(self, include_solution: bool = True) -> xr.Dataset:
         """
         Convert the FlowSystem to an xarray Dataset.
         Ensures FlowSystem is connected before serialization.
@@ -714,10 +714,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             include_solution: Whether to include the optimization solution in the dataset.
                 Defaults to True. Set to False to get only the FlowSystem structure
                 without solution data (useful for copying or saving templates).
-            include_original_data: Whether to include clustering.original_data in the dataset.
-                Defaults to True. Set to False for smaller files (~38% reduction) when
-                clustering.plot.compare() isn't needed after loading. The core workflow
-                (optimize → expand) works without original_data.
 
         Returns:
             xr.Dataset: Dataset containing all DataArrays with structure in attributes
@@ -734,7 +730,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         base_ds = super().to_dataset()
 
         # Add FlowSystem-specific data (solution, clustering, metadata)
-        return fx_io.flow_system_to_dataset(self, base_ds, include_solution, include_original_data)
+        return fx_io.flow_system_to_dataset(self, base_ds, include_solution)
 
     @classmethod
     def from_dataset(cls, ds: xr.Dataset) -> FlowSystem:
@@ -766,7 +762,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         path: str | pathlib.Path,
         compression: int = 5,
         overwrite: bool = False,
-        include_original_data: bool = True,
     ):
         """
         Save the FlowSystem to a NetCDF file.
@@ -779,9 +774,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             path: The path to the netCDF file. Parent directories are created if they don't exist.
             compression: The compression level to use when saving the file (0-9).
             overwrite: If True, overwrite existing file. If False, raise error if file exists.
-            include_original_data: Whether to include clustering.original_data in the file.
-                Defaults to True. Set to False for smaller files (~38% reduction) when
-                clustering.plot.compare() isn't needed after loading.
 
         Raises:
             FileExistsError: If overwrite=False and file already exists.
@@ -801,7 +793,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.name = path.stem
 
         try:
-            ds = self.to_dataset(include_original_data=include_original_data)
+            ds = self.to_dataset()
             fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
             logger.info(f'Saved FlowSystem to {path}')
         except Exception as e:
