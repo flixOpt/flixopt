@@ -894,6 +894,43 @@ class TestPeakSelection:
         fs_clustered.optimize(solver_fixture)
         assert fs_clustered.solution is not None
 
+    def test_extremes_new_cluster_allowed_for_single_period(self, timesteps_8_days):
+        """A single-period system has one clustering slice, so non-'replace' extremes are fine.
+
+        Regression: the guard rejected any system with a period/scenario dimension,
+        wrongly including length-1 indices where consistency across slices is trivial.
+        """
+        from tsam import ExtremeConfig
+
+        hour_of_day = np.array([t.hour for t in timesteps_8_days])
+        demand = np.where((hour_of_day >= 8) & (hour_of_day < 18), 20, 8)
+        fs = fx.FlowSystem(timesteps_8_days, periods=pd.Index([2020], name='period'), weight_of_last_period=1)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink('HeatDemand', inputs=[fx.Flow('Q', bus='Heat', fixed_relative_profile=demand, size=1)]),
+            fx.Source('Grid', outputs=[fx.Flow('Q', bus='Heat', effects_per_flow_hour=0.05)]),
+        )
+
+        fs_clustered = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            extremes=ExtremeConfig(method='new_cluster', max_value=['HeatDemand(Q)|fixed_relative_profile']),
+        )
+        assert fs_clustered.clustering.n_clusters >= 2
+
+    def test_extremes_new_cluster_rejected_for_multi_period(self, timesteps_8_days, periods_2):
+        """Genuine multi-slice systems still require method='replace'."""
+        from tsam import ExtremeConfig
+
+        fs = create_system_with_periods(timesteps_8_days, periods_2)
+        with pytest.raises(ValueError, match='not supported for multi-period'):
+            fs.transform.cluster(
+                n_clusters=2,
+                cluster_duration='1D',
+                extremes=ExtremeConfig(method='new_cluster', max_value=['HeatDemand(Q)|fixed_relative_profile']),
+            )
+
     def test_extremes_append_with_segments(self, solver_fixture, timesteps_8_days):
         """Test that method='append' works correctly with segmentation."""
         from tsam import ExtremeConfig, SegmentConfig
@@ -1097,6 +1134,30 @@ class TestSegmentation:
         # Flow rates should have correct dimensions
         flow_rates = stats.flow_rates
         assert 'time' in flow_rates.dims
+
+    def test_segmented_storage_expand_charge_state_no_nan(self, solver_fixture, timesteps_8_days):
+        """Segmented + storage expand must not leave NaN in charge_state.
+
+        Regression: state variables were expanded with a global interpolate_na, which
+        left the final period's last segment unfilled (NaN) and interpolated across
+        period boundaries. Segment-aware interpolation fills every hour between the
+        loss-correct segment boundaries.
+        """
+        from tsam import SegmentConfig
+
+        fs = create_system_with_storage(timesteps_8_days, cluster_mode='independent')
+        fs_segmented = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            segments=SegmentConfig(n_segments=6),
+        )
+        fs_segmented.optimize(solver_fixture)
+        fs_expanded = fs_segmented.transform.expand()
+
+        charge_state = fs_expanded.solution['Battery|charge_state']
+        assert not np.isnan(charge_state.values).any()
+        assert (charge_state.values >= -1e-6).all()
+        assert (charge_state.values <= 100 + 1e-6).all()
 
     @pytest.mark.parametrize('freq', ['1h', '2h'])
     def test_segmented_total_effects_match_solution(self, solver_fixture, freq):

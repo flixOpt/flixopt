@@ -306,6 +306,27 @@ class _Expander:
         extra_val = extra_val.expand_dims(time=[self._original_timesteps_extra[-1]])
         return xr.concat([expanded, extra_val], dim='time')
 
+    def _interpolate_state_segmented(self, da: xr.DataArray, segment_starts: xr.DataArray) -> xr.DataArray:
+        """Linearly interpolate a segmented state variable within each segment.
+
+        ``disaggregate`` only places segment-boundary values (NaN in between), so a
+        plain ``interpolate_na`` would bleed across period boundaries and leave each
+        period's final segment unfilled. Instead, each hour is interpolated between
+        its segment's start and end charge (consecutive boundary values), using the
+        segment duration from ``_expansion_divisor``.
+        """
+        n_seg = self._clustering.n_segments
+        segment_ends = self._clustering.disaggregate(
+            da.isel(time=slice(1, n_seg + 1)).assign_coords(time=da['time'].values[:n_seg])
+        ).ffill(dim='time')
+        starts = segment_starts.ffill(dim='time')
+
+        time_idx = xr.DataArray(np.arange(starts.sizes['time']), dims=['time'], coords={'time': starts['time']})
+        segment_start_idx = time_idx.where(segment_starts.notnull()).ffill(dim='time')
+        duration = self._expansion_divisor
+        factor = xr.where(duration > 1, (time_idx - segment_start_idx + 0.5) / duration, 0.5)
+        return (starts + (segment_ends - starts) * factor).assign_attrs(da.attrs)
+
     def expand_dataarray(self, da: xr.DataArray, var_name: str = '', is_solution: bool = False) -> xr.DataArray:
         """Expand a DataArray from clustered to original timesteps.
 
@@ -345,7 +366,7 @@ class _Expander:
         # Post-processing for segmented systems
         if clustering.is_segmented and has_cluster_dim:
             if is_state:
-                expanded = expanded.interpolate_na(dim='time')
+                expanded = self._interpolate_state_segmented(da, expanded) if has_extra else expanded.ffill(dim='time')
             elif is_first_timestep and is_solution:
                 return expanded.fillna(0).assign_attrs(da.attrs)
             else:
@@ -1303,9 +1324,10 @@ class TransformAccessor:
                 f'Use the corresponding cluster() parameters instead.'
             )
 
-        # Validate ExtremeConfig compatibility with multi-period/scenario systems
-        has_slices = has_periods or has_scenarios
-        if has_slices and extremes is not None:
+        # Only genuinely multi-slice systems need method='replace' for consistent cluster counts
+        n_periods = len(self._fs.periods) if has_periods else 1
+        n_scenarios = len(self._fs.scenarios) if has_scenarios else 1
+        if n_periods * n_scenarios > 1 and extremes is not None:
             if extremes.method != 'replace':
                 raise ValueError(
                     f"ExtremeConfig method='{extremes.method}' is not supported for multi-period "
