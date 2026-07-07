@@ -1365,7 +1365,9 @@ class TransformAccessor:
         2. Fix sizes and solve dispatch at full resolution
 
         The returned FlowSystem has InvestParameters with fixed_size set,
-        making those sizes mandatory rather than decision variables.
+        turning those sizes into constants rather than decision variables. A fixed
+        size of 0 keeps the investment optional so its fixed effects_of_investment
+        are not charged, letting the dispatch objective match the sizing run.
 
         Args:
             sizes: The sizes to fix. Can be:
@@ -1435,30 +1437,27 @@ class TransformAccessor:
         # Fix sizes in the new FlowSystem's InvestParameters
         # Note: statistics.sizes returns keys without '|size' suffix (e.g., 'Boiler(Q_fu)')
         # but dicts may have either format
+        modified = False
         for size_var in sizes.data_vars:
-            # Normalize: strip '|size' suffix if present
-            base_name = size_var.replace('|size', '') if size_var.endswith('|size') else size_var
-            size_data = sizes[size_var]
-            if size_data.ndim == 0:
-                fixed_value = float(size_data.item())
-            else:
-                # Per-period/per-scenario sizes: keep the DataArray so each
-                # coordinate retains its own fixed size
-                fixed_value = size_data
+            base_name = size_var[: -len('|size')] if size_var.endswith('|size') else size_var
+            fixed_value = sizes[size_var]
 
-            # Find matching element with InvestParameters
+            # Only force the investment where every value is non-zero. A fixed size of
+            # 0 means "do not invest"; mandatory=True would still charge the flat
+            # effects_of_investment (no invested binary to gate it), so keep it
+            # optional whenever any period/scenario is 0.
+            mandatory = bool((fixed_value != 0).all())
+
             found = False
-
-            # Check flows
             for flow in new_fs.flows.values():
                 if flow.label_full == base_name and isinstance(flow.size, InvestParameters):
                     flow.size.fixed_size = fixed_value
-                    flow.size.mandatory = True
+                    flow.size.mandatory = mandatory
                     found = True
-                    logger.debug(f'Fixed size of {base_name} to {fixed_value}')
+                    modified = True
+                    logger.debug(f'Fixed size of {base_name} to {fixed_value} (mandatory={mandatory})')
                     break
 
-            # Check storage capacity
             if not found:
                 for component in new_fs.components.values():
                     if hasattr(component, 'capacity_in_flow_hours'):
@@ -1466,9 +1465,10 @@ class TransformAccessor:
                             component.capacity_in_flow_hours, InvestParameters
                         ):
                             component.capacity_in_flow_hours.fixed_size = fixed_value
-                            component.capacity_in_flow_hours.mandatory = True
+                            component.capacity_in_flow_hours.mandatory = mandatory
                             found = True
-                            logger.debug(f'Fixed size of {base_name} to {fixed_value}')
+                            modified = True
+                            logger.debug(f'Fixed size of {base_name} to {fixed_value} (mandatory={mandatory})')
                             break
 
             if not found:
@@ -1476,6 +1476,12 @@ class TransformAccessor:
                     f'Size variable "{base_name}" not found as InvestParameters in FlowSystem. '
                     f'It may be a fixed-size component or the name may not match.'
                 )
+
+        # from_dataset() restores the stage-1 solution; drop it so the returned system
+        # is an unsolved dispatch problem (as documented) and re-transforms cleanly
+        # with the sizes we just assigned on the next optimize().
+        if modified:
+            new_fs.reset()
 
         return new_fs
 
