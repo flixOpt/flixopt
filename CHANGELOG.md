@@ -11,6 +11,42 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ---
 
+## [6.2.0](https://github.com/flixOpt/flixopt/compare/v6.1.6...v6.2.0) (2026-06-16)
+
+
+### Features
+
+* **tutorials:** ship tutorial data + downloadable example systems ([#706](https://github.com/flixOpt/flixopt/issues/706)) ([c9652bc](https://github.com/flixOpt/flixopt/commit/c9652bc12be75cf6cca91cb2324914f69e3f199d))
+
+## [6.1.6](https://github.com/flixOpt/flixopt/compare/v6.1.5...v6.1.6) (2026-06-14)
+
+
+### Bug Fixes
+
+* normalize clustered solution dim order to (cluster, time) ([#704](https://github.com/flixOpt/flixopt/issues/704)) ([792bb4d](https://github.com/flixOpt/flixopt/commit/792bb4d5e8a26fc5ca7c545157a93e345e2ea0ce))
+
+## [6.1.5](https://github.com/flixOpt/flixopt/compare/v6.1.4...v6.1.5) (2026-06-01)
+
+
+### Bug Fixes
+
+* **docs:** remove malicious polyfill.io script reference ([#693](https://github.com/flixOpt/flixopt/issues/693)) ([a825371](https://github.com/flixOpt/flixopt/commit/a82537115059c5d16fef8cbc35d3ce33e9feb391))
+* preserve per-period sizes in transform.fix_sizes() for multi-period models ([#696](https://github.com/flixOpt/flixopt/issues/696)) ([54cc04a](https://github.com/flixOpt/flixopt/commit/54cc04a5c0eb48c7472f8850b94249209177e8d7)), closes [#695](https://github.com/flixOpt/flixopt/issues/695)
+
+## [6.1.4](https://github.com/flixOpt/flixopt/compare/v6.1.3...v6.1.4) (2026-05-29)
+
+
+### Bug Fixes
+
+* stop using deprecated tsam ClusterConfig(weights=) API ([#689](https://github.com/flixOpt/flixopt/issues/689)) ([54ff8e6](https://github.com/flixOpt/flixopt/commit/54ff8e63a97ea617638c40392f00ba816c4aca39))
+
+## [6.1.3](https://github.com/flixOpt/flixopt/compare/v6.1.2...v6.1.3) (2026-05-27)
+
+
+### Bug Fixes
+
+* exclude highspy 1.14.0 (closes [#685](https://github.com/flixOpt/flixopt/issues/685)) ([#686](https://github.com/flixOpt/flixopt/issues/686)) ([251e5d4](https://github.com/flixOpt/flixopt/commit/251e5d49f3eb4e93c46b8d9461c00ad369864f6b))
+
 ## [6.1.2](https://github.com/flixOpt/flixopt/compare/v6.1.1...v6.1.2) (2026-03-30)
 
 

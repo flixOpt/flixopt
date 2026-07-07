@@ -996,6 +996,8 @@ class TransformAccessor:
                 - None: Uses sizes from this FlowSystem's solution (must be solved)
                 - xr.Dataset: Dataset with size variables (e.g., from statistics.sizes)
                 - dict: Mapping of component names to sizes (e.g., {'Boiler(Q_fu)': 100})
+                Sizes with period/scenario dimensions are preserved, fixing each
+                period/scenario to its own value.
             decimal_rounding: Number of decimal places to round sizes to.
                 Rounding helps avoid numerical infeasibility. Set to None to disable.
 
@@ -1060,7 +1062,13 @@ class TransformAccessor:
         for size_var in sizes.data_vars:
             # Normalize: strip '|size' suffix if present
             base_name = size_var.replace('|size', '') if size_var.endswith('|size') else size_var
-            fixed_value = float(sizes[size_var].item())
+            size_data = sizes[size_var]
+            if size_data.ndim == 0:
+                fixed_value = float(size_data.item())
+            else:
+                # Per-period/per-scenario sizes: keep the DataArray so each
+                # coordinate retains its own fixed size
+                fixed_value = size_data
 
             # Find matching element with InvestParameters
             found = False
@@ -1121,7 +1129,8 @@ class TransformAccessor:
             >>>
             >>> from tsam import ClusterConfig
             >>> fs.transform.cluster(
-            ...     n_clusters=8, cluster_duration='1D',
+            ...     n_clusters=8,
+            ...     cluster_duration='1D',
             ...     cluster=ClusterConfig(weights={'GasSource(Gas)|costs|per_flow_hour': 0}),
             ... )
 

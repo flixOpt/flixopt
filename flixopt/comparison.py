@@ -19,7 +19,7 @@ from .statistics_accessor import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import ItemsView, Iterator, KeysView, ValuesView
 
     from .flow_system import FlowSystem
 
@@ -158,10 +158,19 @@ class Comparison:
     """
 
     def __init__(self, flow_systems: list[FlowSystem], names: list[str] | None = None) -> None:
+        from .flow_system import FlowSystem
+
+        if not isinstance(flow_systems, list):
+            raise TypeError(f'flow_systems must be a list, got {type(flow_systems).__name__}')
+
+        non_fs = [(i, type(fs).__name__) for i, fs in enumerate(flow_systems) if not isinstance(fs, FlowSystem)]
+        if non_fs:
+            raise TypeError(f'flow_systems must contain only FlowSystem instances; got {non_fs} (index, type)')
+
         if len(flow_systems) < 2:
             raise ValueError('Comparison requires at least 2 FlowSystems')
 
-        self._systems = flow_systems
+        self._systems: list[FlowSystem] = flow_systems
         self._names = names or [fs.name or f'System {i}' for i, fs in enumerate(flow_systems)]
 
         if len(self._names) != len(self._systems):
@@ -224,13 +233,29 @@ class Comparison:
             return self._systems[idx]
         raise KeyError(f"Case '{key}' not found. Available: {self._names}")
 
-    def __iter__(self) -> Iterator[tuple[str, FlowSystem]]:
-        """Iterate over (name, FlowSystem) pairs."""
-        yield from zip(self._names, self._systems, strict=True)
+    def __iter__(self) -> Iterator[str]:
+        """Iterate over case names, matching the ``dict`` / ``Mapping`` protocol.
+
+        Use :meth:`items` for ``(name, FlowSystem)`` pairs or :meth:`values`
+        for FlowSystems.
+        """
+        return iter(self._names)
 
     def __contains__(self, key: str) -> bool:
         """Check if a case name exists."""
         return key in self._names
+
+    def keys(self) -> KeysView[str]:
+        """Return a view of case names, like :meth:`dict.keys`."""
+        return self.flow_systems.keys()
+
+    def values(self) -> ValuesView[FlowSystem]:
+        """Return a view of FlowSystems, like :meth:`dict.values`."""
+        return self.flow_systems.values()
+
+    def items(self) -> ItemsView[str, FlowSystem]:
+        """Return a view of ``(name, FlowSystem)`` pairs, like :meth:`dict.items`."""
+        return self.flow_systems.items()
 
     @property
     def flow_systems(self) -> dict[str, FlowSystem]:

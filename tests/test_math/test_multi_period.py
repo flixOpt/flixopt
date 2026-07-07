@@ -372,3 +372,70 @@ class TestMultiPeriod:
         )
         fs = optimize(fs)
         assert_allclose(fs.solution['objective'].item(), 500.0, rtol=1e-5)
+
+    def test_fix_sizes_preserves_per_period_sizes(self, optimize):
+        """Proves: transform.fix_sizes() preserves per-period investment sizes
+        in multi-period models (two-stage sizing -> dispatch workflow).
+
+        3 ts, periods=[2020, 2025], weight_of_last_period=5. Weights=[5, 5].
+        Demand peaks at 50 (2020) and 80 (2025), so optimal sizes differ per period.
+        Boiler invest: 10 fixed + 1 per size. Fuel @1.
+        Per-period costs: 2020: (10+50) + 80 = 140; 2025: (10+80) + 110 = 200.
+        Objective = 5*140 + 5*200 = 1700.
+
+        Stage 2 (fixed sizes) must reproduce the same sizes and objective.
+
+        Sensitivity: Before the fix, fix_sizes() collapsed sizes via .item(),
+        raising 'ValueError: can only convert an array of size 1 to a Python
+        scalar' on any multi-period model. If per-period sizes were collapsed
+        to a single value instead, stage-2 sizes or objective would differ.
+        """
+        from .conftest import _SOLVER
+
+        fs = make_multi_period_flow_system(n_timesteps=3, periods=[2020, 2025], weight_of_last_period=5)
+        demand = xr.DataArray(
+            np.array([[10, 50, 20], [10, 80, 20]], dtype=float),
+            coords={'period': [2020, 2025], 'time': fs.timesteps},
+            dims=['period', 'time'],
+        )
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=demand),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=fx.InvestParameters(
+                        maximum_size=200,
+                        effects_of_investment=10,
+                        effects_of_investment_per_size=1,
+                    ),
+                ),
+            ),
+        )
+        # Stage 1: sizing
+        fs = optimize(fs)
+        assert_allclose(fs.solution['Boiler(heat)|size'].values, [50.0, 80.0], rtol=1e-5)
+        assert_allclose(fs.solution['objective'].item(), 1700.0, rtol=1e-5)
+
+        # Stage 2: fix sizes and dispatch
+        fs_dispatch = fs.transform.fix_sizes()
+        fs_dispatch.optimize(_SOLVER)
+        assert_allclose(fs_dispatch.solution['Boiler(heat)|size'].values, [50.0, 80.0], rtol=1e-5)
+        assert_allclose(fs_dispatch.solution['objective'].item(), 1700.0, rtol=1e-5)

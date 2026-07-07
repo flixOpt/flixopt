@@ -166,8 +166,12 @@ class ElectricityLoadGenerator:
             Electricity demand profile in kW
         """
         slp_type = self.CONSUMER_TYPES[consumer_type]
-        e_slp = bdew.ElecSlp(self.year, holidays=self.holidays)
-        profile = e_slp.get_scaled_power_profiles({slp_type: annual_demand_kwh})
+        # demandlib calls warnings.simplefilter("error") internally, which would otherwise
+        # leak into the global state and turn every later warning (e.g. third-party
+        # DeprecationWarnings) into a hard error. Contain that side effect here.
+        with warnings.catch_warnings():
+            e_slp = bdew.ElecSlp(self.year, holidays=self.holidays)
+            profile = e_slp.get_scaled_power_profiles({slp_type: annual_demand_kwh})
         # Resample to hourly and align with requested timesteps
         profile_hourly = profile[slp_type].resample('h').mean()
         return profile_hourly.reindex(timesteps, method='ffill').values
