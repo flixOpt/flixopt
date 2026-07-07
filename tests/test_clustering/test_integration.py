@@ -136,14 +136,20 @@ class TestClusterInputs:
         fs.add_elements(
             Effect('costs', '€', is_standard=True, is_objective=True),
             Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)]),
-            Sink('demand', inputs=[
-                Flow('demand_out', bus='electricity', size=100,
-                     fixed_relative_profile=TimeSeriesData(varying / 100))
-            ]),
-            Sink('constant_load', inputs=[
-                Flow('constant_out', bus='electricity', size=50,
-                     fixed_relative_profile=TimeSeriesData(constant))
-            ]),
+            Sink(
+                'demand',
+                inputs=[
+                    Flow(
+                        'demand_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(varying / 100)
+                    )
+                ],
+            ),
+            Sink(
+                'constant_load',
+                inputs=[
+                    Flow('constant_out', bus='electricity', size=50, fixed_relative_profile=TimeSeriesData(constant))
+                ],
+            ),
             bus,
         )
         return fs
@@ -185,9 +191,7 @@ class TestClusterInputs:
         weights = {target: 1}
         weights.update({v: 0 for v in ds_time_vars.data_vars if v != target})
 
-        fs_clustered = fs.transform.cluster(
-            n_clusters=2, cluster_duration='1D', cluster=ClusterConfig(weights=weights)
-        )
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D', cluster=ClusterConfig(weights=weights))
         assert fs_clustered.clustering.n_clusters == 2
 
     def test_matches_what_cluster_sees(self):
