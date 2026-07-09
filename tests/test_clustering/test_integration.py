@@ -472,6 +472,129 @@ class TestClusterAdvancedOptions:
         assert len(fs_clustered.clusters) == 2
 
 
+class TestClusterOn:
+    """Tests for the cluster_on convenience argument (subset-then-apply exclusion)."""
+
+    def _two_var_system(self, n_hours: int = 168):
+        pytest.importorskip('tsam')
+        from flixopt import Bus, Effect, Flow, Sink, Source
+        from flixopt.core import TimeSeriesData
+
+        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'))
+        # Two distinct non-constant profiles so that clustering on one vs the other
+        # yields genuinely different assignments.
+        profile_a = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2
+        profile_b = np.cos(np.linspace(0, 3 * np.pi, n_hours)) + 2
+        bus = Bus('electricity')
+        fs.add_elements(
+            Effect('costs', '€', is_standard=True, is_objective=True),
+            Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)]),
+            Sink(
+                'demand_a',
+                inputs=[
+                    Flow('a_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(profile_a / 100))
+                ],
+            ),
+            Sink(
+                'demand_b',
+                inputs=[
+                    Flow('b_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(profile_b / 100))
+                ],
+            ),
+            bus,
+        )
+        return fs
+
+    VAR_A = 'demand_a(a_out)|fixed_relative_profile'
+    VAR_B = 'demand_b(b_out)|fixed_relative_profile'
+
+    def test_matches_manual_subset_then_apply(self):
+        """cluster_on produces the exact assignments of a manual tsam_xarray subset+apply."""
+        import tsam_xarray
+
+        fs = self._two_var_system()
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D', cluster_on=[self.VAR_A])
+
+        # Reproduce the intended pipeline directly against tsam_xarray
+        ds = fs.to_dataset(include_solution=False)
+        da = ds[[n for n in ds.data_vars if 'time' in ds[n].dims]].to_dataarray(dim='variable')
+        agg_subset = tsam_xarray.aggregate(
+            da.sel(variable=[self.VAR_A]),
+            time_dim='time',
+            cluster_dim='variable',
+            n_clusters=2,
+            period_duration=24.0,
+            temporal_resolution=1.0,
+        )
+        expected = agg_subset.clustering.apply(da, time_dim='time', cluster_dim='variable')
+
+        np.testing.assert_array_equal(
+            fs_clustered.clustering.cluster_assignments.values,
+            expected.clustering.cluster_assignments.values,
+        )
+
+    def test_subset_selection_drives_assignments(self):
+        """Clustering on A vs on B gives different assignments (subset genuinely matters)."""
+        assignments_a = (
+            self._two_var_system()
+            .transform.cluster(n_clusters=2, cluster_duration='1D', cluster_on=[self.VAR_A])
+            .clustering.cluster_assignments.values
+        )
+        assignments_b = (
+            self._two_var_system()
+            .transform.cluster(n_clusters=2, cluster_duration='1D', cluster_on=[self.VAR_B])
+            .clustering.cluster_assignments.values
+        )
+        assert not np.array_equal(assignments_a, assignments_b)
+
+    def test_excluded_variable_still_aggregated(self):
+        """The excluded variable is kept in the reduced system (aggregated, not dropped)."""
+        fs_clustered = self._two_var_system().transform.cluster(
+            n_clusters=2, cluster_duration='1D', cluster_on=[self.VAR_A]
+        )
+        assert self.VAR_B in set(fs_clustered.transform.cluster_inputs().data_vars)
+
+    def test_no_epsilon_clamp_warning(self):
+        """True exclusion emits no 'minimal tolerable weighting' warning (unlike weight 0)."""
+        import warnings
+
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter('always')
+            self._two_var_system().transform.cluster(n_clusters=2, cluster_duration='1D', cluster_on=[self.VAR_A])
+        assert not [w for w in record if 'minimal tolerable' in str(w.message)]
+
+    def test_combines_with_weights(self):
+        """cluster_on may carry relative weights among the kept variables."""
+        from tsam import ClusterConfig
+
+        fs_clustered = self._two_var_system().transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            cluster_on=[self.VAR_A, self.VAR_B],
+            cluster=ClusterConfig(weights={self.VAR_A: 5.0}),
+        )
+        assert fs_clustered.clustering.n_clusters == 2
+
+    def test_empty_list_raises(self):
+        with pytest.raises(ValueError, match='at least one'):
+            self._two_var_system().transform.cluster(n_clusters=2, cluster_duration='1D', cluster_on=[])
+
+    def test_unknown_variable_raises(self):
+        with pytest.raises(ValueError, match='not clusterable'):
+            self._two_var_system().transform.cluster(n_clusters=2, cluster_duration='1D', cluster_on=['does_not_exist'])
+
+    def test_weights_for_excluded_variable_raises(self):
+        from tsam import ClusterConfig
+
+        with pytest.raises(ValueError, match='excluded by cluster_on'):
+            self._two_var_system().transform.cluster(
+                n_clusters=2,
+                cluster_duration='1D',
+                cluster_on=[self.VAR_A],
+                cluster=ClusterConfig(weights={self.VAR_B: 3.0}),
+            )
+
+
 class TestClusteringModuleImports:
     """Tests for flixopt.clustering module imports."""
 
