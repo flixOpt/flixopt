@@ -547,6 +547,53 @@ class TestClusterOn:
         )
         assert not np.array_equal(assignments_a, assignments_b)
 
+    def _two_var_system_multiperiod(self, n_hours: int = 168):
+        pytest.importorskip('tsam')
+        from flixopt import Bus, Effect, Flow, Sink, Source
+        from flixopt.core import TimeSeriesData
+
+        fs = FlowSystem(
+            timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'),
+            periods=pd.Index([2025, 2030], name='period'),
+        )
+        profile_a = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2
+        profile_b = np.cos(np.linspace(0, 3 * np.pi, n_hours)) + 2
+        bus = Bus('electricity')
+        fs.add_elements(
+            Effect('costs', '€', is_standard=True, is_objective=True),
+            Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)]),
+            Sink(
+                'demand_a',
+                inputs=[
+                    Flow('a_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(profile_a / 100))
+                ],
+            ),
+            Sink(
+                'demand_b',
+                inputs=[
+                    Flow('b_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(profile_b / 100))
+                ],
+            ),
+            bus,
+        )
+        return fs
+
+    def test_multiperiod_matches_single_period_per_slice(self):
+        """cluster_on is applied per slice: each period's assignments match the single-period result."""
+        single = (
+            self._two_var_system()
+            .transform.cluster(n_clusters=2, cluster_duration='1D', cluster_on=[self.VAR_A])
+            .clustering.cluster_assignments
+        )
+        multi = (
+            self._two_var_system_multiperiod()
+            .transform.cluster(n_clusters=2, cluster_duration='1D', cluster_on=[self.VAR_A])
+            .clustering.cluster_assignments
+        )
+        assert 'period' in multi.dims
+        for period in multi['period'].values:
+            np.testing.assert_array_equal(multi.sel(period=period).values, single.values)
+
     def test_excluded_variable_still_aggregated(self):
         """The excluded variable is kept in the reduced system (aggregated, not dropped)."""
         fs_clustered = self._two_var_system().transform.cluster(

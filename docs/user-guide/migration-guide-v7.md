@@ -35,7 +35,7 @@ Config objects (`ClusterConfig`, `ExtremeConfig`, `SegmentConfig`) and the
 ### Removed: `data_vars` parameter → use `cluster_on`
 
 The v5/v6 `data_vars` argument ("cluster on these variables only") is replaced by
-`cluster_on`, which keeps the exact same semantics: the clustering is computed on
+`cluster_on`, which keeps the same semantics: the clustering is computed on
 the listed subset and the assignments are applied to the full dataset. Excluded
 variables are aggregated but have **no** influence on the assignments.
 
@@ -62,7 +62,7 @@ among the kept variables (weights may not reference an excluded variable).
     You *can* express exclusion through weights, but a `0` weight is **not** true
     exclusion — tsam clamps it up to a minimal tolerable value, so the variable
     still nudges the assignment (and you must enumerate every column via
-    [`cluster_inputs()`](#new-transformcluster_inputs) to zero the rest). Prefer
+    [`cluster_inputs()`](#cluster-inputs) to zero the rest). Prefer
     `cluster_on` for genuine exclusion. Note this is a correctness feature, not a
     speed one: subset-then-apply is a second pass, so it is not faster than a full
     clustering. Variables omitted from `weights` (without `cluster_on`) keep the
@@ -77,7 +77,7 @@ Auto-weighting from these attributes is gone. Pass weights explicitly via
 
 Not a rename. v7 passes **all** time-varying inputs (including constants) to
 tsam_xarray, so the old "non-constant inputs" preview is no longer meaningful.
-See [`cluster_inputs()`](#new-transformcluster_inputs) for the v7 equivalent
+See [`cluster_inputs()`](#cluster-inputs) for the v7 equivalent
 (different semantics — it includes constants).
 
 ### Removed: metrics, plotting, and original-data serialization
@@ -132,7 +132,7 @@ v7.** Re-run `transform.cluster()` after upgrading, or re-save from v6.
 
 ---
 
-## ✨ New: `transform.cluster_inputs()`
+## ✨ New: `transform.cluster_inputs()` { #cluster-inputs }
 
 Returns an `xr.Dataset` of **every** variable with a `time` dim — exactly what
 `cluster()` feeds to tsam_xarray, **constants included**. Use it to build a

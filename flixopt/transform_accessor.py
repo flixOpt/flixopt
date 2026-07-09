@@ -1394,11 +1394,6 @@ class TransformAccessor:
                     da_for_clustering = da_for_clustering.drop_vars(dim_name)
                 da_for_clustering = da_for_clustering.expand_dims({dim_name: ds.coords[dim_name].values})
 
-        # Pass user-specified weights to tsam_xarray (validates unknown keys).
-        # cluster_on filters *which* variables the clustering runs on; weights set the
-        # relative importance among the kept ones. Excluded variables are left out of the
-        # aggregation entirely (below) and only receive the resulting assignments — this
-        # is true exclusion, unlike a 0 weight, which tsam clamps up to a tiny epsilon.
         weights = dict(cluster.weights) if (cluster is not None and cluster.weights is not None) else {}
         if cluster_on is not None:
             if not cluster_on:
@@ -1449,30 +1444,15 @@ class TransformAccessor:
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
 
-            if cluster_on is not None:
-                # True exclusion: cluster on the selected variables only, then apply the
-                # resulting assignments to the full variable set. The excluded variables
-                # never influence cluster assignment (a 0 weight would not achieve this,
-                # since tsam clamps it up to a minimal tolerable weight).
-                agg_subset = tsam_xarray.aggregate(
-                    da_for_clustering.sel(variable=cluster_on),
-                    time_dim='time',
-                    cluster_dim='variable',
-                    n_clusters=n_clusters,
-                    weights=weights,
-                    **tsam_kwargs_full,
-                )
-                agg_result = agg_subset.clustering.apply(da_for_clustering, time_dim='time', cluster_dim='variable')
-            else:
-                # Single call: tsam_xarray handles (period, scenario) slicing automatically
-                agg_result = tsam_xarray.aggregate(
-                    da_for_clustering,
-                    time_dim='time',
-                    cluster_dim='variable',
-                    n_clusters=n_clusters,
-                    weights=weights,
-                    **tsam_kwargs_full,
-                )
+            agg_result = tsam_xarray.aggregate(
+                da_for_clustering,
+                time_dim='time',
+                cluster_dim='variable',
+                n_clusters=n_clusters,
+                weights=weights,
+                cluster_on=cluster_on,
+                **tsam_kwargs_full,
+            )
 
         # Rename reserved dims back to original names in the dataset
         if unrename_map:
