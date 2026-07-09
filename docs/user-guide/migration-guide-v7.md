@@ -25,7 +25,7 @@ Config objects (`ClusterConfig`, `ExtremeConfig`, `SegmentConfig`) and the
 
 ### Dependencies
 
-- `tsam_xarray >= 0.6.0, < 1` (new; replaces the tsam backend)
+- `tsam_xarray >= 0.6.1, < 1` (new; replaces the tsam backend)
 - `tsam >= 3.4.0, < 4` (still required directly for the config objects)
 
 ---
