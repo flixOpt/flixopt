@@ -92,7 +92,7 @@ dev = [
     "pytest==9.1.1",
     "pytest-xdist==3.8.0",
     "nbformat==5.10.4",
-    "ruff==0.15.18",
+    "ruff==0.15.21",
     "pre-commit==4.6.0",
     "pyvis==0.3.2",
     "scipy==1.16.3",  # 1.16.1+ required for Python 3.14 wheels
