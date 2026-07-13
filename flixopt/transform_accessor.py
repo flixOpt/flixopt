@@ -1177,6 +1177,7 @@ class TransformAccessor:
         n_clusters: int,
         cluster_duration: str | float,
         cluster: ClusterConfig | None = None,
+        cluster_on: list[str] | None = None,
         extremes: ExtremeConfig | None = None,
         segments: SegmentConfig | None = None,
         preserve_column_means: bool = True,
@@ -1215,6 +1216,15 @@ class TransformAccessor:
                 Call ``transform.cluster_inputs()`` to list the available variable names.
                 If None, uses default settings (hierarchical clustering with medoid
                 representation) and weight 1.0 for every time-varying variable.
+            cluster_on: Restrict clustering to these variables ("cluster on these only").
+                The clustering is computed on this subset and the resulting cluster
+                assignments are then applied to the full dataset, so the excluded variables
+                are aggregated but have **no** influence on the assignments. This is genuine
+                exclusion — stronger than a 0 weight, which tsam clamps up to a minimal
+                tolerable value. Acts as a *filter on top of* ``weights``: variables listed
+                here may still carry a relative weight via ``ClusterConfig(weights=...)``,
+                but ``weights`` may not reference a variable that ``cluster_on`` excludes.
+                Call ``transform.cluster_inputs()`` to list the available variable names.
             extremes: Optional tsam ``ExtremeConfig`` object specifying how to handle
                 extreme periods (peaks). Use this to ensure peak demand days are captured.
                 Example: ``ExtremeConfig(method='new_cluster', max_value=['demand'])``.
@@ -1257,7 +1267,18 @@ class TransformAccessor:
             ... )
             >>> fs_clustered.optimize(solver)
 
-            Clustering based on specific variables only (zero-weight the rest):
+            Cluster on specific variables only; the rest are aggregated but excluded
+            from the cluster assignment:
+
+            >>> fs_clustered = flow_system.transform.cluster(
+            ...     n_clusters=8,
+            ...     cluster_duration='1D',
+            ...     cluster_on=['HeatDemand(Q)|fixed_relative_profile'],
+            ... )
+
+            A ``weights`` map can *downweight* a variable, but note a 0 weight is not
+            true exclusion (tsam clamps it up to a minimal tolerable value); use
+            ``cluster_on`` when you want a variable to have no influence at all:
 
             >>> from tsam import ClusterConfig
             >>> fs_clustered = flow_system.transform.cluster(
@@ -1265,8 +1286,8 @@ class TransformAccessor:
             ...     cluster_duration='1D',
             ...     cluster=ClusterConfig(
             ...         weights={
-            ...             'HeatDemand(Q)|fixed_relative_profile': 1,
-            ...             'GasSource(Gas)|costs|per_flow_hour': 0,  # ignored for clustering
+            ...             'HeatDemand(Q)|fixed_relative_profile': 2,  # twice the influence
+            ...             'SolarThermal(Q)|fixed_relative_profile': 1,
             ...         }
             ...     ),
             ... )
@@ -1373,11 +1394,24 @@ class TransformAccessor:
                     da_for_clustering = da_for_clustering.drop_vars(dim_name)
                 da_for_clustering = da_for_clustering.expand_dims({dim_name: ds.coords[dim_name].values})
 
-        # Pass user-specified weights to tsam_xarray (validates unknown keys)
-        if cluster is not None and cluster.weights is not None:
-            weights = dict(cluster.weights)
-        else:
-            weights = {}
+        weights = dict(cluster.weights) if (cluster is not None and cluster.weights is not None) else {}
+        if cluster_on is not None:
+            if not cluster_on:
+                raise ValueError('cluster_on must list at least one variable to cluster on.')
+            clusterable = list(ds_for_clustering.data_vars)
+            unknown = [name for name in cluster_on if name not in clusterable]
+            if unknown:
+                raise ValueError(
+                    f'cluster_on contains variables that are not clusterable inputs: {unknown}. '
+                    f'Call transform.cluster_inputs() to list the valid names.'
+                )
+            cluster_on_set = set(cluster_on)
+            masked = [name for name in weights if name not in cluster_on_set]
+            if masked:
+                raise ValueError(
+                    f'ClusterConfig(weights=...) sets weights for variables excluded by cluster_on: '
+                    f'{masked}. Remove them from weights or add them to cluster_on.'
+                )
 
         # Build tsam_kwargs with explicit parameters
         tsam_kwargs_full = {
@@ -1410,13 +1444,13 @@ class TransformAccessor:
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
 
-            # Single call: tsam_xarray handles (period, scenario) slicing automatically
             agg_result = tsam_xarray.aggregate(
                 da_for_clustering,
                 time_dim='time',
                 cluster_dim='variable',
                 n_clusters=n_clusters,
                 weights=weights,
+                cluster_on=cluster_on,
                 **tsam_kwargs_full,
             )
 
