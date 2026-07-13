@@ -11,6 +11,13 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ---
 
+## [7.1.0](https://github.com/flixOpt/flixopt/compare/v7.0.0...v7.1.0) (2026-07-13)
+
+
+### Features
+
+* **cluster:** add cluster_on for true subset clustering ([#724](https://github.com/flixOpt/flixopt/issues/724)) ([8b0c409](https://github.com/flixOpt/flixopt/commit/8b0c409270a6e6fcb409de1959e777e28348d1c1))
+
 ## [7.0.0](https://github.com/flixOpt/flixopt/compare/v6.2.1...v7.0.0) (2026-07-07)
 
 
