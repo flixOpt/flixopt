@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import linopy
 import numpy as np
 
-from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities, _lead
+from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities, _lead, _set_constraint_lhs
 from .structure import FlowSystemModel, Submodel, VariableCategory
 
 if TYPE_CHECKING:
@@ -666,7 +666,9 @@ class ShareAllocationModel(Submodel):
             # Add it to the total (cluster_weight handles cluster representation, defaults to 1.0)
             # Sum over all temporal dimensions (time, and cluster if present)
             weighted_per_timestep = self.total_per_timestep * self._model.weights.get('cluster', 1.0)
-            self._eq_total.update(lhs=self._eq_total.lhs - weighted_per_timestep.sum(dim=self._model.temporal_dims))
+            _set_constraint_lhs(
+                self._eq_total, self._eq_total.lhs - weighted_per_timestep.sum(dim=self._model.temporal_dims)
+            )
 
     def add_share(
         self,
@@ -696,7 +698,7 @@ class ShareAllocationModel(Submodel):
                 raise ValueError('Cannot add share with scenario-dim to a model without scenario-dim')
 
         if name in self.shares:
-            self.share_constraints[name].update(lhs=self.share_constraints[name].lhs - expression)
+            _set_constraint_lhs(self.share_constraints[name], self.share_constraints[name].lhs - expression)
         else:
             # Temporal shares (with 'time' dim) are segment totals that need division
             category = VariableCategory.SHARE if 'time' in dims else None
@@ -712,6 +714,6 @@ class ShareAllocationModel(Submodel):
             )
 
             if 'time' not in dims:
-                self._eq_total.update(lhs=self._eq_total.lhs - self.shares[name])
+                _set_constraint_lhs(self._eq_total, self._eq_total.lhs - self.shares[name])
             else:
-                self._eq_total_per_timestep.update(lhs=self._eq_total_per_timestep.lhs - self.shares[name])
+                _set_constraint_lhs(self._eq_total_per_timestep, self._eq_total_per_timestep.lhs - self.shares[name])

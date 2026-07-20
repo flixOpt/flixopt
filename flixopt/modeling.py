@@ -96,6 +96,22 @@ def _lead(variable, dim: str):
     return leading
 
 
+def _set_constraint_lhs(constraint: linopy.Constraint, lhs) -> None:
+    """Replace a constraint's LHS, compatibly across linopy versions.
+
+    Incremental accumulators (e.g. share totals) must mutate a constraint after
+    it is created. linopy >= 0.8 exposes ``Constraint.update(lhs=...)`` and
+    deprecates the ``.lhs`` setter (flixopt escalates that deprecation to an
+    error); linopy < 0.8 has only the setter, which is not deprecated there.
+    Dispatch on whichever API the installed linopy provides so the same call
+    works — and warns on neither — under both.
+    """
+    if hasattr(constraint, 'update'):
+        constraint.update(lhs=lhs)
+    else:
+        constraint.lhs = lhs
+
+
 def _xr_allclose(a: xr.DataArray, b: xr.DataArray, rtol: float = 1e-5, atol: float = 1e-8) -> bool:
     """Check if two DataArrays are element-wise equal within tolerance.
 

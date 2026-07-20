@@ -1012,6 +1012,7 @@ class BusModel(ElementModel):
             self.register_variable(flow.submodel.flow_rate, flow.label_full)
         inputs = sum([flow.submodel.flow_rate for flow in self.element.inputs.values()])
         outputs = sum([flow.submodel.flow_rate for flow in self.element.outputs.values()])
+        balance = inputs - outputs
 
         # Add virtual supply/demand to the balance and penalty if needed
         if self.element.allows_imbalance:
@@ -1032,8 +1033,7 @@ class BusModel(ElementModel):
             )
 
             # Σ(inflows) + virtual_supply = Σ(outflows) + virtual_demand
-            inputs = inputs + self.virtual_supply
-            outputs = outputs + self.virtual_demand
+            balance = balance + self.virtual_supply - self.virtual_demand
 
             # Add penalty shares as temporal effects (time-dependent)
             from .effects import PENALTY_EFFECT_LABEL
@@ -1045,7 +1045,7 @@ class BusModel(ElementModel):
                 target='temporal',
             )
 
-        self.add_constraints(inputs == outputs, short_name='balance')
+        self.add_constraints(balance == 0, short_name='balance')
 
     def results_structure(self):
         inputs = [flow.submodel.flow_rate.name for flow in self.element.inputs.values()]
