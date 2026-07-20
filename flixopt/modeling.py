@@ -76,6 +76,26 @@ def _scalar_safe_reduce(data: xr.DataArray | Any, dim: str, method: str = 'mean'
     return data
 
 
+def _lead(variable, dim: str):
+    """Return ``variable[dim, 1:]`` relabeled onto the ``variable[dim, :-1]`` coordinate.
+
+    Adjacent-step constraints relate ``x[t+1]`` to ``x[t]`` by slicing the same
+    variable two ways: ``isel({dim: slice(1, None)})`` and ``isel({dim: slice(None, -1)})``.
+    Those slices carry different coordinate labels on ``dim`` (``labels[1:]`` vs
+    ``labels[:-1]``), so combining them is a coordinate mismatch. linopy's legacy
+    semantics aligned such operands by position silently; the v1 convention rejects
+    the mismatch and raises. Relabeling the leading slice onto the trailing slice's
+    labels makes the positional pairing explicit; the result is identical under both
+    semantics (the leading value at index ``i`` still pairs with the trailing value at
+    index ``i``), and the constraint dimension keeps the ``labels[:-1]`` coordinate.
+    """
+    leading = variable.isel({dim: slice(1, None)})
+    indexes = getattr(variable, 'indexes', None)
+    if indexes is not None and dim in indexes:
+        leading = leading.assign_coords({dim: indexes[dim][:-1]})
+    return leading
+
+
 def _xr_allclose(a: xr.DataArray, b: xr.DataArray, rtol: float = 1e-5, atol: float = 1e-8) -> bool:
     """Check if two DataArrays are element-wise equal within tolerance.
 
@@ -405,17 +425,17 @@ class ModelingPrimitives:
 
         # Forward constraint: duration[t+1] ≤ duration[t] + duration_per_step[t]
         constraints['forward'] = model.add_constraints(
-            duration.isel({duration_dim: slice(1, None)})
+            _lead(duration, duration_dim)
             <= duration.isel({duration_dim: slice(None, -1)}) + duration_per_step.isel({duration_dim: slice(None, -1)}),
             name=f'{duration.name}|forward',
         )
 
         # Backward constraint: duration[t+1] ≥ duration[t] + duration_per_step[t] + (state[t+1] - 1) * M
         constraints['backward'] = model.add_constraints(
-            duration.isel({duration_dim: slice(1, None)})
+            _lead(duration, duration_dim)
             >= duration.isel({duration_dim: slice(None, -1)})
             + duration_per_step.isel({duration_dim: slice(None, -1)})
-            + (state.isel({duration_dim: slice(1, None)}) - 1) * mega,
+            + (_lead(state, duration_dim) - 1) * mega,
             name=f'{duration.name}|backward',
         )
 
@@ -431,8 +451,8 @@ class ModelingPrimitives:
         # Minimum duration constraint if provided
         if minimum_duration is not None:
             constraints['lb'] = model.add_constraints(
-                duration
-                >= (state.isel({duration_dim: slice(None, -1)}) - state.isel({duration_dim: slice(1, None)}))
+                duration.isel({duration_dim: slice(None, -1)})
+                >= (state.isel({duration_dim: slice(None, -1)}) - _lead(state, duration_dim))
                 * _scalar_safe_isel(minimum_duration, {duration_dim: slice(None, -1)}),
                 name=f'{duration.name}|lb',
             )
@@ -714,8 +734,8 @@ class BoundingPatterns:
 
         # State transition constraints for t > 0
         transition = model.add_constraints(
-            activate.isel({coord: slice(1, None)}) - deactivate.isel({coord: slice(1, None)})
-            == state.isel({coord: slice(1, None)}) - state.isel({coord: slice(None, -1)}),
+            _lead(activate, coord) - _lead(deactivate, coord)
+            == _lead(state, coord) - state.isel({coord: slice(None, -1)}),
             name=f'{name}|transition',
         )
 
@@ -776,14 +796,14 @@ class BoundingPatterns:
 
         # Transition constraints for t > 0: continuous variable can only change when transitions occur
         transition_upper = model.add_constraints(
-            continuous_variable.isel({coord: slice(1, None)}) - continuous_variable.isel({coord: slice(None, -1)})
-            <= max_change * (activate.isel({coord: slice(1, None)}) + deactivate.isel({coord: slice(1, None)})),
+            _lead(continuous_variable, coord) - continuous_variable.isel({coord: slice(None, -1)})
+            <= max_change * (_lead(activate, coord) + _lead(deactivate, coord)),
             name=f'{name}|transition_ub',
         )
 
         transition_lower = model.add_constraints(
-            -(continuous_variable.isel({coord: slice(1, None)}) - continuous_variable.isel({coord: slice(None, -1)}))
-            <= max_change * (activate.isel({coord: slice(1, None)}) + deactivate.isel({coord: slice(1, None)})),
+            -(_lead(continuous_variable, coord) - continuous_variable.isel({coord: slice(None, -1)}))
+            <= max_change * (_lead(activate, coord) + _lead(deactivate, coord)),
             name=f'{name}|transition_lb',
         )
 
@@ -852,10 +872,10 @@ class BoundingPatterns:
 
         # 2. Transition periods: level[t] = level[t-1] + increase[t] - decrease[t] for t > 0
         transition_constraints = model.add_constraints(
-            level_variable.isel({coord: slice(1, None)})
+            _lead(level_variable, coord)
             == level_variable.isel({coord: slice(None, -1)})
-            + increase_variable.isel({coord: slice(1, None)})
-            - decrease_variable.isel({coord: slice(1, None)}),
+            + _lead(increase_variable, coord)
+            - _lead(decrease_variable, coord),
             name=f'{name}|transitions',
         )
 

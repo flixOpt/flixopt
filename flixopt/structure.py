@@ -273,7 +273,7 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
         logger.debug(f'Adding scenario equality constraints for {len(vars_to_constrain)} {parameter_type} variables')
         for var in vars_to_constrain:
             self.add_constraints(
-                self.variables[var].isel(scenario=0) == self.variables[var].isel(scenario=slice(1, None)),
+                self.variables[var].isel(scenario=0, drop=True) == self.variables[var].isel(scenario=slice(1, None)),
                 name=f'{var}|scenario_independent',
             )
 

@@ -3,6 +3,7 @@ import pytest
 import xarray as xr
 
 import flixopt as fx
+from flixopt.modeling import _lead
 
 from .conftest import assert_conequal, assert_sets_equal, assert_var_equal, create_linopy_model
 
@@ -703,7 +704,7 @@ class TestFlowOnModel:
 
         assert_conequal(
             model.constraints['Sink(Wärme)|uptime|forward'],
-            model.variables['Sink(Wärme)|uptime'].isel(time=slice(1, None))
+            _lead(model.variables['Sink(Wärme)|uptime'], 'time')
             <= model.variables['Sink(Wärme)|uptime'].isel(time=slice(None, -1))
             + model.timestep_duration.isel(time=slice(None, -1)),
         )
@@ -711,10 +712,10 @@ class TestFlowOnModel:
         # eq: duration(t) >= duration(t - 1) + dt(t) + (On(t) - 1) * BIG
         assert_conequal(
             model.constraints['Sink(Wärme)|uptime|backward'],
-            model.variables['Sink(Wärme)|uptime'].isel(time=slice(1, None))
+            _lead(model.variables['Sink(Wärme)|uptime'], 'time')
             >= model.variables['Sink(Wärme)|uptime'].isel(time=slice(None, -1))
             + model.timestep_duration.isel(time=slice(None, -1))
-            + (model.variables['Sink(Wärme)|status'].isel(time=slice(1, None)) - 1) * mega,
+            + (_lead(model.variables['Sink(Wärme)|status'], 'time') - 1) * mega,
         )
 
         assert_conequal(
@@ -725,10 +726,10 @@ class TestFlowOnModel:
 
         assert_conequal(
             model.constraints['Sink(Wärme)|uptime|lb'],
-            model.variables['Sink(Wärme)|uptime']
+            model.variables['Sink(Wärme)|uptime'].isel(time=slice(None, -1))
             >= (
                 model.variables['Sink(Wärme)|status'].isel(time=slice(None, -1))
-                - model.variables['Sink(Wärme)|status'].isel(time=slice(1, None))
+                - _lead(model.variables['Sink(Wärme)|status'], 'time')
             )
             * 2,
         )
@@ -784,7 +785,7 @@ class TestFlowOnModel:
 
         assert_conequal(
             model.constraints['Sink(Wärme)|uptime|forward'],
-            model.variables['Sink(Wärme)|uptime'].isel(time=slice(1, None))
+            _lead(model.variables['Sink(Wärme)|uptime'], 'time')
             <= model.variables['Sink(Wärme)|uptime'].isel(time=slice(None, -1))
             + model.timestep_duration.isel(time=slice(None, -1)),
         )
@@ -792,10 +793,10 @@ class TestFlowOnModel:
         # eq: duration(t) >= duration(t - 1) + dt(t) + (On(t) - 1) * BIG
         assert_conequal(
             model.constraints['Sink(Wärme)|uptime|backward'],
-            model.variables['Sink(Wärme)|uptime'].isel(time=slice(1, None))
+            _lead(model.variables['Sink(Wärme)|uptime'], 'time')
             >= model.variables['Sink(Wärme)|uptime'].isel(time=slice(None, -1))
             + model.timestep_duration.isel(time=slice(None, -1))
-            + (model.variables['Sink(Wärme)|status'].isel(time=slice(1, None)) - 1) * mega,
+            + (_lead(model.variables['Sink(Wärme)|status'], 'time') - 1) * mega,
         )
 
         assert_conequal(
@@ -806,10 +807,10 @@ class TestFlowOnModel:
 
         assert_conequal(
             model.constraints['Sink(Wärme)|uptime|lb'],
-            model.variables['Sink(Wärme)|uptime']
+            model.variables['Sink(Wärme)|uptime'].isel(time=slice(None, -1))
             >= (
                 model.variables['Sink(Wärme)|status'].isel(time=slice(None, -1))
-                - model.variables['Sink(Wärme)|status'].isel(time=slice(1, None))
+                - _lead(model.variables['Sink(Wärme)|status'], 'time')
             )
             * 2,
         )
@@ -869,7 +870,7 @@ class TestFlowOnModel:
 
         assert_conequal(
             model.constraints['Sink(Wärme)|downtime|forward'],
-            model.variables['Sink(Wärme)|downtime'].isel(time=slice(1, None))
+            _lead(model.variables['Sink(Wärme)|downtime'], 'time')
             <= model.variables['Sink(Wärme)|downtime'].isel(time=slice(None, -1))
             + model.timestep_duration.isel(time=slice(None, -1)),
         )
@@ -877,10 +878,10 @@ class TestFlowOnModel:
         # eq: duration(t) >= duration(t - 1) + dt(t) + (On(t) - 1) * BIG
         assert_conequal(
             model.constraints['Sink(Wärme)|downtime|backward'],
-            model.variables['Sink(Wärme)|downtime'].isel(time=slice(1, None))
+            _lead(model.variables['Sink(Wärme)|downtime'], 'time')
             >= model.variables['Sink(Wärme)|downtime'].isel(time=slice(None, -1))
             + model.timestep_duration.isel(time=slice(None, -1))
-            + (model.variables['Sink(Wärme)|inactive'].isel(time=slice(1, None)) - 1) * mega,
+            + (_lead(model.variables['Sink(Wärme)|inactive'], 'time') - 1) * mega,
         )
 
         assert_conequal(
@@ -891,10 +892,10 @@ class TestFlowOnModel:
 
         assert_conequal(
             model.constraints['Sink(Wärme)|downtime|lb'],
-            model.variables['Sink(Wärme)|downtime']
+            model.variables['Sink(Wärme)|downtime'].isel(time=slice(None, -1))
             >= (
                 model.variables['Sink(Wärme)|inactive'].isel(time=slice(None, -1))
-                - model.variables['Sink(Wärme)|inactive'].isel(time=slice(1, None))
+                - _lead(model.variables['Sink(Wärme)|inactive'], 'time')
             )
             * 4,
         )
@@ -952,7 +953,7 @@ class TestFlowOnModel:
 
         assert_conequal(
             model.constraints['Sink(Wärme)|downtime|forward'],
-            model.variables['Sink(Wärme)|downtime'].isel(time=slice(1, None))
+            _lead(model.variables['Sink(Wärme)|downtime'], 'time')
             <= model.variables['Sink(Wärme)|downtime'].isel(time=slice(None, -1))
             + model.timestep_duration.isel(time=slice(None, -1)),
         )
@@ -960,10 +961,10 @@ class TestFlowOnModel:
         # eq: duration(t) >= duration(t - 1) + dt(t) + (On(t) - 1) * BIG
         assert_conequal(
             model.constraints['Sink(Wärme)|downtime|backward'],
-            model.variables['Sink(Wärme)|downtime'].isel(time=slice(1, None))
+            _lead(model.variables['Sink(Wärme)|downtime'], 'time')
             >= model.variables['Sink(Wärme)|downtime'].isel(time=slice(None, -1))
             + model.timestep_duration.isel(time=slice(None, -1))
-            + (model.variables['Sink(Wärme)|inactive'].isel(time=slice(1, None)) - 1) * mega,
+            + (_lead(model.variables['Sink(Wärme)|inactive'], 'time') - 1) * mega,
         )
 
         assert_conequal(
@@ -974,10 +975,10 @@ class TestFlowOnModel:
 
         assert_conequal(
             model.constraints['Sink(Wärme)|downtime|lb'],
-            model.variables['Sink(Wärme)|downtime']
+            model.variables['Sink(Wärme)|downtime'].isel(time=slice(None, -1))
             >= (
                 model.variables['Sink(Wärme)|inactive'].isel(time=slice(None, -1))
-                - model.variables['Sink(Wärme)|inactive'].isel(time=slice(1, None))
+                - _lead(model.variables['Sink(Wärme)|inactive'], 'time')
             )
             * 4,
         )

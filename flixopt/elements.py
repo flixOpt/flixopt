@@ -1033,7 +1033,7 @@ class BusModel(ElementModel):
             )
 
             # Σ(inflows) + virtual_supply = Σ(outflows) + virtual_demand
-            eq_bus_balance.lhs += self.virtual_supply - self.virtual_demand
+            eq_bus_balance.update(lhs=eq_bus_balance.lhs + (self.virtual_supply - self.virtual_demand))
 
             # Add penalty shares as temporal effects (time-dependent)
             from .effects import PENALTY_EFFECT_LABEL
