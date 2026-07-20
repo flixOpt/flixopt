@@ -843,17 +843,14 @@ class TransmissionModel(ComponentModel):
         """Creates an Equation for the Transmission efficiency and adds it to the model"""
         # eq: out(t) + on(t)*loss_abs(t) = in(t)*(1 - loss_rel(t))
         rel_losses = 0 if self.element.relative_losses is None else self.element.relative_losses
-        con_transmission = self.add_constraints(
-            out_flow.submodel.flow_rate == in_flow.submodel.flow_rate * (1 - rel_losses),
+        lhs = out_flow.submodel.flow_rate
+        if (self.element.absolute_losses is not None) and np.any(self.element.absolute_losses != 0):
+            lhs = lhs + in_flow.submodel.status.status * self.element.absolute_losses
+
+        return self.add_constraints(
+            lhs == in_flow.submodel.flow_rate * (1 - rel_losses),
             short_name=name,
         )
-
-        if (self.element.absolute_losses is not None) and np.any(self.element.absolute_losses != 0):
-            con_transmission.update(
-                lhs=con_transmission.lhs + in_flow.submodel.status.status * self.element.absolute_losses
-            )
-
-        return con_transmission
 
 
 class LinearConverterModel(ComponentModel):
