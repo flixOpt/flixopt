@@ -1425,13 +1425,13 @@ class InterclusterStorageModel(StorageModel):
                 if isinstance(initial, str):
                     # 'equals_final' means cyclic
                     self.add_constraints(
-                        soc_boundary.isel(cluster_boundary=0)
-                        == soc_boundary.isel(cluster_boundary=n_original_clusters),
+                        soc_boundary.isel(cluster_boundary=0, drop=True)
+                        == soc_boundary.isel(cluster_boundary=n_original_clusters, drop=True),
                         short_name='initial_SOC_boundary',
                     )
                 else:
                     self.add_constraints(
-                        soc_boundary.isel(cluster_boundary=0) == initial,
+                        soc_boundary.isel(cluster_boundary=0, drop=True) == initial,
                         short_name='initial_SOC_boundary',
                     )
 
