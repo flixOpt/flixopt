@@ -11,6 +11,13 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ---
 
+## [7.2.1](https://github.com/flixOpt/flixopt/compare/v7.2.0...v7.2.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* **stats:** threshold not applied along breakdown dimension in plot.effects ([#719](https://github.com/flixOpt/flixopt/issues/719)) ([#720](https://github.com/flixOpt/flixopt/issues/720)) ([49ed538](https://github.com/flixOpt/flixopt/commit/49ed5385d988c6b5e6c11a5550f84fabd9efd3f5))
+
 ## [7.2.0](https://github.com/flixOpt/flixopt/compare/v7.1.0...v7.2.0) (2026-07-21)
 
 
