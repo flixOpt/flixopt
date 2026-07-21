@@ -11,6 +11,13 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ---
 
+## [7.2.0](https://github.com/flixOpt/flixopt/compare/v7.1.0...v7.2.0) (2026-07-21)
+
+
+### Features
+
+* **cluster:** add original-vs-clustered comparison accessors ([#734](https://github.com/flixOpt/flixopt/issues/734)) ([82f2be1](https://github.com/flixOpt/flixopt/commit/82f2be1e85a11009c8460d0b3f3b430d3ed2060d))
+
 ## [7.1.0](https://github.com/flixOpt/flixopt/compare/v7.0.0...v7.1.0) (2026-07-13)
 
 
