@@ -6,6 +6,7 @@ import pytest
 import xarray as xr
 
 from flixopt import FlowSystem
+from flixopt.clustering import Clustering
 
 
 class TestWeights:
@@ -640,6 +641,112 @@ class TestClusterOn:
                 cluster_on=[self.VAR_A],
                 cluster=ClusterConfig(weights={self.VAR_B: 3.0}),
             )
+
+
+class TestClusteringCompare:
+    """Tests for the original-vs-clustered comparison accessors.
+
+    These replace the removed ``clustering.plot.compare()`` and are the
+    documented v7 way to inspect aggregation quality (see migration-guide-v7).
+    """
+
+    def _system(self, n_hours: int = 168, periods=None, scenarios=None):
+        pytest.importorskip('tsam')
+        from flixopt import Bus, Effect, Flow, Sink, Source
+        from flixopt.core import TimeSeriesData
+
+        fs = FlowSystem(
+            timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'),
+            periods=periods,
+            scenarios=scenarios,
+        )
+        demand = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2
+        bus = Bus('electricity')
+        fs.add_elements(
+            Effect('costs', '€', is_standard=True, is_objective=True),
+            Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)]),
+            Sink(
+                'demand',
+                inputs=[
+                    Flow('demand_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(demand / 100))
+                ],
+            ),
+            bus,
+        )
+        return fs
+
+    VAR = 'demand(demand_out)|fixed_relative_profile'
+
+    def test_original_and_reconstructed_aligned(self):
+        """original / reconstructed share dims, shape, and dim order, on the original time axis."""
+        clustering = self._system().transform.cluster(n_clusters=2, cluster_duration='1D').clustering
+
+        assert clustering.original.dims == clustering.reconstructed.dims
+        assert clustering.original.sizes == clustering.reconstructed.sizes
+        assert clustering.original.sizes['time'] == 168
+        assert self.VAR in list(clustering.original['variable'].values)
+
+    def test_residuals_equal_original_minus_reconstructed(self):
+        """residuals == original - reconstructed."""
+        clustering = self._system().transform.cluster(n_clusters=2, cluster_duration='1D').clustering
+        xr.testing.assert_allclose(clustering.residuals, clustering.original - clustering.reconstructed)
+
+    def test_compare_returns_tidy_dataset(self):
+        """compare() yields a Dataset with original/clustered vars ready for plotting."""
+        clustering = self._system().transform.cluster(n_clusters=2, cluster_duration='1D').clustering
+
+        cmp = clustering.compare(self.VAR)
+        assert set(cmp.data_vars) == {'original', 'clustered'}
+        assert 'variable' not in cmp.dims  # single variable selected out
+        assert cmp.sizes['time'] == 168
+
+        # No variable filter keeps the variable dim
+        assert 'variable' in clustering.compare().dims
+
+    def test_accuracy_exposed(self):
+        """accuracy carries per-variable and weighted metrics with unrenamed dims."""
+        clustering = self._system().transform.cluster(n_clusters=2, cluster_duration='1D').clustering
+        acc = clustering.accuracy
+        assert 'variable' in acc.rmse.dims
+        assert float(acc.weighted_rmse) >= 0.0
+
+    def test_period_dim_is_unrenamed(self):
+        """The friendly accessors expose `period`, not the internal `_period`."""
+        periods = pd.Index([2025, 2030], name='period')
+        clustering = self._system(periods=periods).transform.cluster(n_clusters=2, cluster_duration='1D').clustering
+
+        for da in (clustering.original, clustering.reconstructed, clustering.residuals):
+            assert 'period' in da.dims
+            assert '_period' not in da.dims
+        assert 'period' in clustering.accuracy.rmse.dims
+
+        # selection works with the natural coordinate name
+        one = clustering.compare(self.VAR).sel(period=2030)
+        assert 'period' not in one.dims
+
+    def test_accessors_raise_after_serialization(self):
+        """The data accessors need the full AggregationResult (pre-serialization only)."""
+        clustering = self._system().transform.cluster(n_clusters=2, cluster_duration='1D').clustering
+        reloaded = Clustering(
+            clustering_result=clustering.clustering_result,
+            original_timesteps=clustering.original_timesteps,
+        )
+        for attr in ('original', 'reconstructed', 'residuals', 'accuracy'):
+            with pytest.raises(ValueError, match='requires full AggregationResult'):
+                getattr(reloaded, attr)
+        with pytest.raises(ValueError, match='requires full AggregationResult'):
+            reloaded.compare()
+
+    def test_compare_is_plot_ready(self):
+        """compare().to_dataframe() yields the columns the docs' px.line recipe plots."""
+        pytest.importorskip('plotly')
+        import plotly.express as px
+
+        clustering = self._system().transform.cluster(n_clusters=2, cluster_duration='1D').clustering
+        df = clustering.compare(self.VAR).to_dataframe()[['original', 'clustered']]
+        assert list(df.columns) == ['original', 'clustered']
+        fig = px.line(df)
+        assert len(fig.data) == 2
 
 
 class TestClusteringModuleImports:

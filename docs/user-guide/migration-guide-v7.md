@@ -5,7 +5,7 @@
     pip install --upgrade flixopt
     ```
     v7.0.0 has a single breaking change: clustering now runs on
-    [tsam_xarray](https://github.com/FZJ-IEK3-VSA/tsam_xarray) instead of tsam.
+    [tsam_xarray](https://github.com/FBumann/tsam_xarray) instead of tsam.
     The `transform.cluster()` call signature is unchanged — only the `Clustering`
     result object and a few helpers changed.
 
@@ -80,13 +80,82 @@ tsam_xarray, so the old "non-constant inputs" preview is no longer meaningful.
 See [`cluster_inputs()`](#cluster-inputs) for the v7 equivalent
 (different semantics — it includes constants).
 
-### Removed: metrics, plotting, and original-data serialization
+### Changed: metrics, plotting, and original-data serialization
 
-`Clustering.metrics` (RMSE/MAE), `clustering.plot.*`, and the
-`include_original_data=...` flag on `to_netcdf()` / `to_dataset()` are gone. For
-accuracy analysis or plotting, use `clustering.aggregation_result` (a tsam_xarray
-`AggregationResult`) **before** serialization, or rebuild via
+`Clustering.metrics` (RMSE/MAE), the `clustering.plot.heatmap()` / `.clusters()`
+plots, and the `include_original_data=...` flag on `to_netcdf()` / `to_dataset()`
+are gone. For accuracy analysis or plotting, use the accessors below (backed by a
+tsam_xarray `AggregationResult`) **before** serialization, or rebuild via
 `transform.apply_clustering(...)` after loading.
+
+#### Comparing original vs clustered profiles
+
+`clustering.compare()` returns a tidy `xr.Dataset` (data vars `original` and
+`clustered`, on the **original** time axis) for **all** clustered variables —
+select a subset on the dataset itself, e.g. `.sel(variable=...)`. flixopt bundles
+the `.plotly` accessor (`xarray_plotly`), so plotting all variables at once is a
+one-liner (stack `original`/`clustered` onto a `profile` dim, then facet):
+
+```python
+fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
+clustering = fs_clustered.clustering
+
+(
+    clustering.compare()  # all variables; subset via clustering.compare().sel(variable=...)
+    .to_dataarray(dim='profile')
+    .plotly.line(x='time', color='profile', facet_row='variable')
+    .update_yaxes(matches=None)  # variables have different scales
+)
+```
+
+For a single variable, `clustering.compare('HeatDemand(Q)|fixed_relative_profile')`
+returns just that column.
+
+Related accessors (all on the original time axis, with the original dim names):
+
+| Accessor | Meaning |
+|---|---|
+| `clustering.original` | the input time series (dims: `variable`, `time`, plus periods/scenarios) |
+| `clustering.reconstructed` | the clustered profile mapped back onto full time (same dims/order as `original`) |
+| `clustering.residuals` | `original - reconstructed` |
+| `clustering.accuracy` | `AccuracyMetrics` — `rmse`/`mae`/… per `variable`, plus `weighted_rmse`/… |
+
+Available column names are `list(clustering.original['variable'].values)`
+(equivalently `flow_system.transform.cluster_inputs()`).
+
+##### Multiple variables, periods, and scenarios
+
+These accessors keep **every** extra dimension: all time-varying inputs are
+stacked on a `variable` axis, and periods/scenarios stay as their own dims. So
+`clustering.original` is `(variable, time)` for a plain system and
+`(period, scenario, variable, time)` with both — `clustering.compare()` mirrors
+that. `accuracy.rmse` is resolved per `(variable, period, scenario)` and
+`accuracy.weighted_rmse` per `(period, scenario)`; clustering runs independently
+per slice. Select and facet with the natural coordinate names:
+
+```python
+cmp = clustering.compare('HeatDemand(Q)|fixed_relative_profile')  # dims: (period, scenario, time)
+cmp.sel(period=2030, scenario='high')  # a single 1-D slice
+
+# facet periods/scenarios with the natural coordinate names
+(
+    cmp.to_dataarray(dim='profile')
+    .plotly.line(x='time', color='profile', facet_row='period', facet_col='scenario')
+)
+```
+
+!!! note "Raw tsam_xarray access"
+    `clustering.aggregation_result` still exposes the underlying tsam_xarray
+    `AggregationResult` if you need it. Note it is the **raw** result, on which
+    flixopt's reserved-dim renames are still applied — its period dim is
+    `_period` (and `cluster` is `_cluster`). The `compare()` / `original` /
+    `reconstructed` / `residuals` / `accuracy` accessors above un-rename these
+    for you, so prefer them.
+
+!!! warning "Pre-serialization only"
+    These accessors hold the original data and are **not** persisted by
+    `to_netcdf()` / `to_json()`. Access them before saving, or rebuild the result
+    on a freshly loaded FlowSystem with `transform.apply_clustering(...)`.
 
 ### Expansion: `disaggregate()` replaces `expand_data()` / `timestep_mapping`
 
@@ -157,7 +226,7 @@ fs_clustered = flow_system.transform.cluster(
 - [ ] Remove `clustering_group` / `clustering_weight` from `TimeSeriesData`; pass weights explicitly
 - [ ] Replace `expand_data()` / `timestep_mapping` with `disaggregate()`
 - [ ] Update removed `Clustering` properties (see table above)
-- [ ] Move any metrics/plotting to `clustering.aggregation_result` before serialization
+- [ ] Replace `clustering.metrics` with `clustering.accuracy`; use `clustering.compare()` (+ your plotting library) for original-vs-clustered plots (before serialization)
 - [ ] Re-run `transform.cluster()` for any NetCDF saved with v6
 
 ---
@@ -166,6 +235,6 @@ fs_clustered = flow_system.transform.cluster(
 
 - [Clustering User Guide](optimization/clustering.md)
 - [Clustering Notebooks](../notebooks/08c-clustering.ipynb)
-- [tsam_xarray](https://github.com/FZJ-IEK3-VSA/tsam_xarray)
+- [tsam_xarray](https://github.com/FBumann/tsam_xarray)
 - [CHANGELOG](https://github.com/flixOpt/flixopt/blob/main/CHANGELOG.md)
 - [GitHub Issues](https://github.com/flixOpt/flixopt/issues)

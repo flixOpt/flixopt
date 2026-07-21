@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     import xarray as xr
+    from tsam_xarray import AccuracyMetrics as TsamXarrayAccuracyMetrics
     from tsam_xarray import AggregationResult as TsamXarrayAggregationResult
     from tsam_xarray import ClusteringResult
 
@@ -327,11 +328,102 @@ class Clustering:
         Only available before serialization. After loading from file,
         use clustering_result for structure-only access.
 
+        The returned object holds the **raw** tsam_xarray result, on which
+        flixopt's reserved-dim renames are still applied (the period dim is
+        ``_period``). For a friendlier view with the original dim names, use
+        the ``original`` / ``reconstructed`` / ``residuals`` / ``accuracy``
+        properties or ``compare()`` instead.
+
         Raises:
             ValueError: If accessed on a Clustering loaded from JSON/NetCDF.
         """
         self._require_full_data('aggregation_result')
         return self._aggregation_result
+
+    @property
+    def original(self) -> xr.DataArray:
+        """Original (input) time series fed to clustering, on the original time axis.
+
+        All time-varying inputs are stacked on a ``variable`` dim. Dims are
+        ``(*dim_names, variable, time)`` — e.g. ``(period, scenario, variable, time)``.
+
+        Only available before serialization.
+        """
+        self._require_full_data('original')
+        return self._unrename(self._aggregation_result.original)
+
+    @property
+    def reconstructed(self) -> xr.DataArray:
+        """Clustered profiles mapped back onto the original time axis.
+
+        Same dims and shape as ``original`` (dim order aligned with it), so the
+        two can be compared, subtracted, or plotted directly.
+
+        Only available before serialization.
+        """
+        self._require_full_data('reconstructed')
+        da = self._unrename(self._aggregation_result.reconstructed)
+        return da.transpose(*self.original.dims)
+
+    @property
+    def residuals(self) -> xr.DataArray:
+        """``original - reconstructed``, the per-timestep aggregation error.
+
+        Only available before serialization.
+        """
+        self._require_full_data('residuals')
+        return self._unrename(self._aggregation_result.residuals)
+
+    @property
+    def accuracy(self) -> TsamXarrayAccuracyMetrics:
+        """tsam_xarray ``AccuracyMetrics`` (per-variable and column-weighted).
+
+        Exposes ``rmse`` / ``mae`` / ``rmse_duration`` (dims ``(variable, *dim_names)``)
+        and the aggregate ``weighted_rmse`` / ``weighted_mae`` / ``weighted_rmse_duration``
+        (dims ``(*dim_names,)``). Dim names are un-renamed to match ``original``.
+
+        Only available before serialization.
+        """
+        import dataclasses
+
+        self._require_full_data('accuracy')
+        acc = self._aggregation_result.accuracy
+        return dataclasses.replace(
+            acc, **{f.name: self._unrename(getattr(acc, f.name)) for f in dataclasses.fields(acc)}
+        )
+
+    def compare(self, variable: str | list[str] | None = None) -> xr.Dataset:
+        """Tidy original-vs-clustered comparison, ready for plotting.
+
+        Returns a Dataset with data_vars ``original`` and ``clustered`` on the
+        original time axis and matching dim order, so ``.to_dataframe()`` and
+        plotting libraries need no reshaping. This is the v7 replacement for the
+        removed ``clustering.plot.compare()``.
+
+        Args:
+            variable: Optional column name (or list) to select from the
+                ``variable`` dim. Available names are
+                ``list(clustering.original['variable'].values)``. Defaults to
+                all variables.
+
+        Returns:
+            xr.Dataset with variables ``original`` and ``clustered``.
+
+        Examples:
+            >>> import plotly.express as px
+            >>> cmp = clustering.compare('HeatDemand(Q)|fixed_relative_profile')
+            >>> px.line(cmp.to_dataframe()[['original', 'clustered']]).show()
+
+        Only available before serialization.
+        """
+        import xarray as xr
+
+        original = self.original
+        reconstructed = self.reconstructed
+        if variable is not None:
+            original = original.sel(variable=variable)
+            reconstructed = reconstructed.sel(variable=variable)
+        return xr.Dataset({'original': original, 'clustered': reconstructed})
 
     def __len__(self) -> int:
         """Number of (period, scenario) combinations."""
