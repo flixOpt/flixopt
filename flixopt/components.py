@@ -17,7 +17,7 @@ from .core import PlausibilityError
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
-from .modeling import BoundingPatterns, _lead, _scalar_safe_isel, _scalar_safe_isel_drop, _scalar_safe_reduce
+from .modeling import BoundingPatterns, _scalar_safe_isel, _scalar_safe_isel_drop, _scalar_safe_reduce
 from .structure import FlowSystemModel, VariableCategory, register_class_for_io
 
 if TYPE_CHECKING:
@@ -1071,8 +1071,10 @@ class StorageModel(ComponentModel):
         eff_charge = self.element.eta_charge
         eff_discharge = self.element.eta_discharge
 
+        # charge_state[t+1] via shift(-1); the `.isel(time=slice(None, -1))` on the
+        # shifted term is a legacy-only boundary drop (v1 masks it natively).
         return (
-            _lead(charge_state, 'time')
+            charge_state.shift(time=-1).isel(time=slice(None, -1))
             - charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
             - charge_rate * eff_charge * timestep_duration
             + discharge_rate * timestep_duration / eff_discharge

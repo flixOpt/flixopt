@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import linopy
 import numpy as np
 
-from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities, _lead, _set_constraint_lhs
+from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities, _set_constraint_lhs
 from .structure import FlowSystemModel, Submodel, VariableCategory
 
 if TYPE_CHECKING:
@@ -91,8 +91,10 @@ class InvestmentModel(Submodel):
 
         if self.parameters.linked_periods is not None:
             masked_size = self.size.where(self.parameters.linked_periods, drop=True)
+            # size[p] == size[p+1]; size[p+1] via shift(-1). The `.isel(period=slice(None, -1))`
+            # on the shifted term is a legacy-only boundary drop (v1 masks it natively).
             self.add_constraints(
-                masked_size.isel(period=slice(None, -1)) == _lead(masked_size, 'period'),
+                masked_size.isel(period=slice(None, -1)) == masked_size.shift(period=-1).isel(period=slice(None, -1)),
                 short_name='linked_periods',
             )
 
