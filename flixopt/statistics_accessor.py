@@ -280,23 +280,51 @@ def _sort_dataset(ds: xr.Dataset) -> xr.Dataset:
     return ds[sorted_vars]
 
 
-def _filter_small_variables(ds: xr.Dataset, threshold: float | None) -> xr.Dataset:
-    """Remove variables where max absolute value is below threshold.
+def _drop_small_data_vars(ds: xr.Dataset, threshold: float) -> xr.Dataset:
+    """Drop data variables whose max absolute value is below threshold."""
+    max_vals = abs(ds).max()
+    keep = [v for v in ds.data_vars if float(max_vals.variables[v].values) >= threshold]
+    return ds[keep] if keep else ds
 
-    Useful for filtering out solver noise or non-invested components.
+
+def _drop_small_along_dim(ds: xr.Dataset, dim: str, threshold: float) -> xr.Dataset:
+    """Drop entries along ``dim`` whose max absolute value (over all other axes) is below threshold.
+
+    Needed when a breakdown such as ``by='component'`` lays entities out along a coordinate
+    of a single variable rather than as separate variables, e.g. non-invested components
+    with a near-zero contribution (see #719).
+    """
+    if dim not in ds.dims or not ds.data_vars:
+        return ds
+    arr = abs(ds.to_dataarray())
+    max_along = arr.max(dim=[x for x in arr.dims if x != dim])
+    keep_idx = ds[dim].values[(max_along >= threshold).values]
+    return ds.sel({dim: keep_idx})
+
+
+def _drop_small(ds: xr.Dataset, threshold: float | None, dim: str | list[str] | None = None) -> xr.Dataset:
+    """Remove entries whose max absolute value is below threshold.
+
+    Useful for filtering out solver noise or non-invested components. Always drops whole
+    data variables that are entirely below threshold; when ``dim`` is given, also drops
+    individual entries along those coordinate dimension(s).
 
     Args:
         ds: Dataset to filter.
         threshold: Minimum max absolute value to keep. If None, no filtering.
+        dim: Optional coordinate dimension(s) to filter along (e.g. 'component',
+            'contributor'). A single name or a list of names.
 
     Returns:
         Filtered dataset.
     """
     if threshold is None or not ds.data_vars:
         return ds
-    max_vals = abs(ds).max()  # Single computation for all variables
-    keep = [v for v in ds.data_vars if float(max_vals.variables[v].values) >= threshold]
-    return ds[keep] if keep else ds
+    ds = _drop_small_data_vars(ds, threshold)
+    dims = [dim] if isinstance(dim, str) else (dim or [])
+    for d in dims:
+        ds = _drop_small_along_dim(ds, d, threshold)
+    return ds
 
 
 def _filter_by_carrier(ds: xr.Dataset, carrier: str | list[str] | None) -> xr.Dataset:
@@ -1557,7 +1585,7 @@ class StatisticsPlotAccessor:
             ds = ds.round(round_decimals)
 
         # Filter out variables below threshold
-        ds = _filter_small_variables(ds, threshold)
+        ds = _drop_small(ds, threshold)
 
         # Build color kwargs: bus balance → component colors, component balance → carrier colors
         color_by: Literal['component', 'carrier'] = 'component' if is_bus else 'carrier'
@@ -1713,7 +1741,7 @@ class StatisticsPlotAccessor:
             ds = ds.round(round_decimals)
 
         # Filter out variables below threshold
-        ds = _filter_small_variables(ds, threshold)
+        ds = _drop_small(ds, threshold)
 
         # Build color kwargs with component colors (flows colored by their parent component)
         color_kwargs = self._build_color_kwargs(colors, list(ds.data_vars), color_by='component')
@@ -1793,7 +1821,7 @@ class StatisticsPlotAccessor:
         # Resolve, select, and stack into single DataArray
         resolved = self._resolve_variable_names(variables, solution)
         ds = _apply_selection(solution[resolved], select)
-        ds = _filter_small_variables(ds, threshold)
+        ds = _drop_small(ds, threshold)
         ds = _sort_dataset(ds)  # Sort for consistent plotting order
         da = xr.concat([ds[v] for v in ds.data_vars], dim=pd.Index(list(ds.data_vars), name='variable'))
 
@@ -1888,7 +1916,7 @@ class StatisticsPlotAccessor:
         ds = _apply_selection(ds, select)
 
         # Filter out variables below threshold
-        ds = _filter_small_variables(ds, threshold)
+        ds = _drop_small(ds, threshold)
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
@@ -1957,7 +1985,7 @@ class StatisticsPlotAccessor:
             ds = ds[valid_labels]
 
         # Filter out variables below threshold
-        ds = _filter_small_variables(ds, threshold)
+        ds = _drop_small(ds, threshold)
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
@@ -2052,7 +2080,7 @@ class StatisticsPlotAccessor:
         result_ds = ds.fxstats.to_duration_curve(normalize=normalize)
 
         # Filter out variables below threshold
-        result_ds = _filter_small_variables(result_ds, threshold)
+        result_ds = _drop_small(result_ds, threshold)
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
@@ -2180,8 +2208,9 @@ class StatisticsPlotAccessor:
         else:
             raise ValueError(f"'by' must be one of 'component', 'contributor', 'time', or None, got {by!r}")
 
-        # Filter out variables below threshold
-        ds = _filter_small_variables(ds, threshold)
+        # Filter out entries below threshold, including along the breakdown dimension
+        breakdown_dim = by if by in ('component', 'contributor') else None
+        ds = _drop_small(ds, threshold, dim=breakdown_dim)
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
@@ -2263,7 +2292,7 @@ class StatisticsPlotAccessor:
         ds = _apply_selection(ds, select)
 
         # Filter out variables below threshold
-        ds = _filter_small_variables(ds, threshold)
+        ds = _drop_small(ds, threshold)
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
@@ -2377,7 +2406,7 @@ class StatisticsPlotAccessor:
             flow_ds = flow_ds.round(round_decimals)
 
         # Filter out flow variables below threshold
-        flow_ds = _filter_small_variables(flow_ds, threshold)
+        flow_ds = _drop_small(flow_ds, threshold)
 
         # Early return for data_only mode (skip figure creation for performance)
         if data_only:
