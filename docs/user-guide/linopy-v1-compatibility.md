@@ -38,11 +38,11 @@ suite is verified under both `"legacy"` and `"v1"`.
 
 ## The three patterns flixopt uses
 
-### 1. Adjacent-step constraints → `modeling._lead`
+### 1. Adjacent-step constraints → `shift(-1)` + a legacy-only slice
 
 Constraints that relate `x[t+1]` to `x[t]` (storage balance, on/off duration
-tracking, state transitions, level tracking, linked-period sizing) slice the
-same variable two ways:
+tracking, state transitions, level tracking, linked-period sizing) used to slice
+the same variable two ways:
 
 ```python
 x.isel(time=slice(1, None))    # x[t+1] — labels t[1:]
@@ -52,32 +52,32 @@ x.isel(time=slice(None, -1))   # x[t]   — labels t[:-1]
 The two slices carry **different labels** on `time`, so combining them is a
 coordinate mismatch. Legacy aligned them by position; v1 raises.
 
-**Fix:** relabel the leading slice onto the trailing slice's labels with the
-`_lead` helper:
+**Fix:** express "next step" with `.shift({dim: -1})` — the v1-native form — and
+pair it with a legacy-only boundary slice:
 
 ```python
-from flixopt.modeling import _lead
-
 # Before (relies on legacy positional alignment):
 x.isel(time=slice(1, None)) - x.isel(time=slice(None, -1))
 
-# After (explicit, identical under both semantics):
-_lead(x, 'time') - x.isel(time=slice(None, -1))
+# After (identical under both semantics):
+x.shift(time=-1).isel(time=slice(None, -1)) - x.isel(time=slice(None, -1))
+#                ^^^^^^^^^^^^^^^^^^^^^^^^^^^ legacy-only (see below)
 ```
 
-`_lead(var, dim)` returns `var[dim, 1:]` relabelled onto the `var[dim, :-1]`
-coordinate. The positional pairing is unchanged (value at index *i* still pairs
-with value at index *i*); the resulting constraint keeps the `labels[:-1]`
-coordinate. This is exactly the `.assign_coords` fix linopy's migration guide
-prescribes for a shared-dim label mismatch.
+`x.shift({dim: -1})` places `x[t+1]` at position `t`. Under **v1** the
+out-of-range boundary slot is marked *absent*, so that constraint row drops out
+on its own — the shift alone is correct. Under **legacy** `.shift` instead
+*fills* the boundary slot with `0`, leaving a spurious row, so the trailing
+`.isel({dim: slice(None, -1)})` drops it. With the slice, both conventions
+produce **identical** constraints.
 
-!!! warning "Do **not** reach for `.shift()` here"
-    `x - x.shift(time=1)` looks tempting — it keeps the full coordinate — but its
-    boundary handling **differs between legacy and v1**: legacy fills the
-    shifted-in slot with `0` (creating a real `x[t0] ≤ …` constraint row), while
-    v1 marks that row absent (dropped). That is precisely the legacy↔v1
-    divergence we must avoid, and the boundary of these constraints is handled by
-    a **separate** initial constraint anyway. Use `_lead` / `.assign_coords`.
+!!! note "The `.isel(...)` is a legacy-only shim"
+    Pure `x - x.shift(...)` on its own is **not** identical across conventions —
+    that is exactly why the slice is there. But it is needed *only* for legacy:
+    once legacy support is dropped, every `.isel({dim: slice(None, -1)})` on a
+    shifted operand can be removed, leaving bare `.shift(...)` constraints (v1
+    masks the boundary natively). flixopt marks each such slice as legacy-only
+    (see the module note in `modeling.py`) so the future cleanup is mechanical.
 
 ### 2. Scalar-endpoint constraints → `drop=True`
 
@@ -106,25 +106,47 @@ This applies to any scalar `.isel(...)` whose result is combined with another
 operand — `time`, `scenario`, `cluster_boundary`, and to a value *derived* from
 such a select (e.g. `previous_status.isel(time=-1, drop=True)`).
 
-### 3. Constraint mutation → `Constraint.update`
+### 3. Constraint mutation → build once, or `_set_constraint_lhs`
 
-The `Constraint.lhs` / `.rhs` **setters** are deprecated in linopy 0.8. Use
-`update()`:
+The `Constraint.lhs` / `.rhs` **setters** are deprecated in linopy 0.8 (they were
+the only mutation API in 0.7). Two cases:
+
+**Prefer building the constraint in one pass** rather than creating it and then
+mutating it. Where a term is only conditionally present, assemble the full LHS
+first (this is what the transmission-loss and bus-balance constraints do now):
 
 ```python
 # Before:
-con.lhs += extra_term
+con = model.add_constraints(a == b)
+if extra:
+    con.lhs += term          # deprecated setter
 
 # After:
-con.update(lhs=con.lhs + extra_term)
+lhs = a
+if extra:
+    lhs = lhs + term
+con = model.add_constraints(lhs == b)
+```
+
+**For a genuine incremental accumulator** (e.g. the effect-share totals, which
+are grown across the whole model build) mutation is unavoidable. Use the
+`_set_constraint_lhs` shim, which works on **both** linopy versions — 0.8+ has
+`Constraint.update(lhs=...)` (and deprecates the setter), while 0.7 has only the
+setter (not deprecated there):
+
+```python
+from flixopt.modeling import _set_constraint_lhs
+
+_set_constraint_lhs(con, con.lhs - share)   # update() on >=0.8, setter on <0.8
 ```
 
 ---
 
 ## Writing v1-safe constraints (checklist)
 
-- Combining two slices of the same variable along a dim? → use `_lead`, never
-  raw `isel(slice(1, None))` against `isel(slice(None, -1))`.
+- Relating `x[t+1]` to `x[t]`? → write the next step as `x.shift({dim: -1})` and
+  add the legacy-only `.isel({dim: slice(None, -1)})`; never combine raw
+  `isel(slice(1, None))` with `isel(slice(None, -1))`.
 - Scalar `.isel(dim=k)` whose result feeds arithmetic or a comparison? → add
   `drop=True`.
 - Mutating an existing constraint? → `con.update(lhs=...)`, not `con.lhs = ...`.
