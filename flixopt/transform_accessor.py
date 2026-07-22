@@ -1074,6 +1074,11 @@ class TransformAccessor:
         if isinstance(sizes, dict):
             sizes = xr.Dataset({k: xr.DataArray(v) for k, v in sizes.items()})
 
+        # stats.sizes returns a DataArray with an 'element' dim; split it into
+        # per-element variables so lookup by name works uniformly below
+        if isinstance(sizes, xr.DataArray):
+            sizes = xr.Dataset({str(e): sizes.sel(element=e, drop=True) for e in sizes['element'].values})
+
         # Apply rounding
         if decimal_rounding is not None:
             sizes = sizes.round(decimal_rounding)

@@ -338,7 +338,14 @@ class TestClusteringExact:
         assert charge_state.dims == ('cluster', 'time')
         cs_c0 = charge_state.isel(cluster=0).values[:5]
         cs_c1 = charge_state.isel(cluster=1).values[:5]
-        assert_allclose(cs_c0, [50, 50, 0, 50, 0], atol=1e-5)
-        assert_allclose(cs_c1, [100, 100, 50, 100, 50], atol=1e-5)
+        # In 'cyclic' cluster mode the SOC trajectory is degenerate: the absolute level
+        # is unpinned and the 50 units can be bought at either cheap timestep (equal
+        # price), so both the level and the charge timing are solver-dependent. Assert
+        # the determinate invariants: SOC stays within bounds and its per-step change
+        # matches the charge/discharge flows. See issue #733.
+        charge_fr = fs.solution['Battery(charge)|flow_rate'].values[:, :4]
+        for cs, charge, discharge in [(cs_c0, charge_fr[0], discharge_fr[0]), (cs_c1, charge_fr[1], discharge_fr[1])]:
+            assert np.all((cs >= -1e-5) & (cs <= 100 + 1e-5))
+            assert_allclose(np.diff(cs), charge - discharge, atol=1e-5)
 
         assert_allclose(fs.solution['objective'].item(), 100.0, rtol=1e-5)

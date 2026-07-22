@@ -539,12 +539,16 @@ class StatisticsAccessor:
     def flow_sizes(self) -> xr.DataArray:
         """Flow sizes as a DataArray with 'flow' dimension."""
         self._require_solution()
+        if FlowVarName.SIZE not in self._fs.solution:
+            return xr.DataArray(np.empty(0), dims=['flow'], coords={'flow': np.array([], dtype=object)})
         return self._fs.solution[FlowVarName.SIZE].dropna('flow', how='all')
 
     @cached_property
     def storage_sizes(self) -> xr.DataArray:
         """Storage capacity sizes as a DataArray with 'storage' dimension."""
         self._require_solution()
+        if StorageVarName.SIZE not in self._fs.solution:
+            return xr.DataArray(np.empty(0), dims=['storage'], coords={'storage': np.array([], dtype=object)})
         return self._fs.solution[StorageVarName.SIZE].dropna('storage', how='all')
 
     @cached_property
