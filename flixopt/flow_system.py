@@ -4,7 +4,6 @@ This module contains the FlowSystem class, which is used to collect instances of
 
 from __future__ import annotations
 
-import json
 import logging
 import pathlib
 import warnings
@@ -252,7 +251,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.model: FlowSystemModel | None = None
 
         self._connected_and_transformed = False
-        self._used_in_optimization = False
 
         self._network_app = None
         self._flows_cache: ElementContainer[Flow] | None = None
@@ -820,89 +818,14 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return flow_system
 
     @classmethod
-    def from_old_results(cls, folder: str | pathlib.Path, name: str) -> FlowSystem:
-        """
-        Load a FlowSystem from old-format Results files (pre-v5 API).
-
-        This method loads results saved with the deprecated Results API
-        (which used multiple files: ``*--flow_system.nc4``, ``*--solution.nc4``)
-        and converts them to a FlowSystem with the solution attached.
-
-        The method performs the following:
-
-        - Loads the old multi-file format
-        - Renames deprecated parameters in the FlowSystem structure
-          (e.g., ``on_off_parameters`` → ``status_parameters``)
-        - Attaches the solution data to the FlowSystem
-
-        Args:
-            folder: Directory containing the saved result files
-            name: Base name of the saved files (without extensions)
-
-        Returns:
-            FlowSystem instance with solution attached
-
-        Warning:
-            This is a best-effort migration for accessing old results:
-
-            - **Solution variable names are NOT renamed** - only basic variables
-              work (flow rates, sizes, charge states, effect totals)
-            - Advanced variable access may require using the original names
-            - Summary metadata (solver info, timing) is not loaded
-
-            For full compatibility, re-run optimizations with the new API.
-
-        Examples:
-            ```python
-            # Load old results
-            fs = FlowSystem.from_old_results('results_folder', 'my_optimization')
-
-            # Access basic solution data
-            fs.solution['Boiler(Q_th)|flow_rate'].plot()
-
-            # Save in new single-file format
-            fs.to_netcdf('my_optimization.nc')
-            ```
-
-        Deprecated:
-            This method will be removed in v6.
-        """
-        warnings.warn(
-            f'from_old_results() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
-            'This utility is only for migrating results from flixopt versions before v5.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        from flixopt.io import load_dataset_from_netcdf
-
-        folder = pathlib.Path(folder)
-        flow_system_path = folder / f'{name}--flow_system.nc4'
-        solution_path = folder / f'{name}--solution.nc4'
-
-        # Load FlowSystem using from_old_dataset (suppress its deprecation warning)
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', DeprecationWarning)
-            flow_system = cls.from_old_dataset(flow_system_path)
-        flow_system.name = name
-
-        # Attach solution (convert attrs from dicts to JSON strings for consistency)
-        solution = load_dataset_from_netcdf(solution_path)
-        for key in ['Components', 'Buses', 'Effects', 'Flows']:
-            if key in solution.attrs and isinstance(solution.attrs[key], dict):
-                solution.attrs[key] = json.dumps(solution.attrs[key])
-        flow_system.solution = solution
-
-        return flow_system
-
-    @classmethod
     def from_old_dataset(cls, path: str | pathlib.Path) -> FlowSystem:
         """
         Load a FlowSystem from an old-format dataset file (pre-v5 API).
 
         This method loads a FlowSystem saved with older versions of flixopt
         (the ``*--flow_system.nc4`` file) and converts parameter names to the
-        current API. Unlike :meth:`from_old_results`, this does not require
-        a solution file and returns a FlowSystem without solution data.
+        current API. It does not require a solution file and returns a
+        FlowSystem without solution data.
 
         The method performs the following:
 
@@ -1344,20 +1267,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return self._flow_carriers
 
-    def create_model(self, normalize_weights: bool | None = None) -> FlowSystemModel:
-        """
-        Create a linopy model from the FlowSystem.
-
-        Args:
-            normalize_weights: Deprecated. Scenario weights are now always normalized in FlowSystem.
-        """
-        if normalize_weights is not None:
-            warnings.warn(
-                f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
-                'Scenario weights are now always normalized when set on FlowSystem.\n',
-                DeprecationWarning,
-                stacklevel=2,
-            )
+    def create_model(self) -> FlowSystemModel:
+        """Create a linopy model from the FlowSystem."""
         if not self.connected_and_transformed:
             raise RuntimeError(
                 'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
@@ -1366,7 +1277,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.model = FlowSystemModel(self)
         return self.model
 
-    def build_model(self, normalize_weights: bool | None = None) -> FlowSystem:
+    def build_model(self) -> FlowSystem:
         """
         Build the optimization model for this FlowSystem.
 
@@ -1379,9 +1290,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         After calling this method, `self.model` will be available for inspection
         before solving.
 
-        Args:
-            normalize_weights: Deprecated. Scenario weights are now always normalized in FlowSystem.
-
         Returns:
             Self, for method chaining.
 
@@ -1390,13 +1298,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             >>> print(flow_system.model.variables)  # Inspect variables before solving
             >>> flow_system.solve(solver)
         """
-        if normalize_weights is not None:
-            warnings.warn(
-                f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
-                'Scenario weights are now always normalized when set on FlowSystem.\n',
-                DeprecationWarning,
-                stacklevel=2,
-            )
         self.connect_and_transform()
         self.create_model()
 
@@ -2169,10 +2070,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if self.is_clustered:
             return self.clustering.timesteps_per_cluster
         return len(self.timesteps)
-
-    @property
-    def used_in_calculation(self) -> bool:
-        return self._used_in_optimization
 
     @property
     def scenario_weights(self) -> xr.DataArray | None:

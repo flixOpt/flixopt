@@ -1557,18 +1557,6 @@ class ElementContainer(ContainerMixin[T]):
         return element.label_full
 
 
-class ResultsContainer(ContainerMixin[T]):
-    """
-    Container for Results objects (ComponentResults, BusResults, etc).
-
-    Uses element.label for keying.
-    """
-
-    def _get_label(self, element: T) -> str:
-        """Extract label from Results object."""
-        return element.label
-
-
 class FlowContainer(ContainerMixin[T]):
     """Container for Flow objects with dual access: by index or by label_full.
 
@@ -1709,7 +1697,7 @@ class CompositeContainerMixin(Generic[T_element]):
 
     Integration with ContainerMixin:
         This mixin is designed to work alongside ContainerMixin-based containers
-        (ElementContainer, ResultsContainer) by aggregating them into a unified
+        (e.g. ElementContainer) by aggregating them into a unified
         interface while preserving their individual functionality.
     """
 
@@ -1718,7 +1706,7 @@ class CompositeContainerMixin(Generic[T_element]):
         Return ordered dict of container groups to aggregate.
 
         Returns:
-            Dictionary mapping group names to container objects (e.g., ElementContainer, ResultsContainer).
+            Dictionary mapping group names to container objects (e.g., ElementContainer).
             Group names should be capitalized (e.g., 'Components', 'Buses').
             Order determines display order in __repr__.
 

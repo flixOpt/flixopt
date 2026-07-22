@@ -14,3 +14,6 @@ temp-plot.html
 site/
 *.egg-info
 uv.lock
+
+# test artifacts written to cwd
+fs.json
