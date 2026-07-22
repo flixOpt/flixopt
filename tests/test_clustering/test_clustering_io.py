@@ -70,12 +70,8 @@ class TestClusteringRoundtrip:
 
         ds = fs_clustered.to_dataset(include_solution=False)
 
-        # Check that clustering attrs are present
+        # Check that clustering attrs are present (serialized as JSON string)
         assert 'clustering' in ds.attrs
-
-        # Check that clustering arrays are present with prefix
-        clustering_vars = [name for name in ds.data_vars if name.startswith('clustering|')]
-        assert len(clustering_vars) > 0
 
     def test_clustering_roundtrip_preserves_clustering_object(self, simple_system_8_days):
         """Clustering object should be restored after roundtrip."""
@@ -123,17 +119,6 @@ class TestClusteringRoundtrip:
 
         # check_names=False because index name may be lost during serialization
         pd.testing.assert_index_equal(fs_restored.clustering.original_timesteps, original_timesteps, check_names=False)
-
-    def test_clustering_roundtrip_preserves_timestep_mapping(self, simple_system_8_days):
-        """Timestep mapping should be preserved after roundtrip."""
-        fs = simple_system_8_days
-        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
-        original_mapping = fs_clustered.clustering.timestep_mapping.values.copy()
-
-        ds = fs_clustered.to_dataset(include_solution=False)
-        fs_restored = fx.FlowSystem.from_dataset(ds)
-
-        np.testing.assert_array_equal(fs_restored.clustering.timestep_mapping.values, original_mapping)
 
 
 class TestClusteringWithSolutionRoundtrip:
@@ -623,23 +608,30 @@ class TestMultiDimensionalClusteringIO:
         # cluster_assignments should be exactly preserved
         xr.testing.assert_equal(original_cluster_assignments, fs_restored.clustering.cluster_assignments)
 
-    def test_results_preserved_after_load(self, system_with_periods_and_scenarios, tmp_path):
-        """ClusteringResults should be preserved after loading (via ClusteringResults.to_dict())."""
+    def test_clustering_result_preserved_after_load(self, system_with_periods_and_scenarios, tmp_path):
+        """ClusteringResult structure should be preserved after netcdf roundtrip."""
         fs = system_with_periods_and_scenarios
         fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
 
-        # Before save, results exists
-        assert fs_clustered.clustering.results is not None
-
-        # Roundtrip
         nc_path = tmp_path / 'multi_dim_clustering.nc'
         fs_clustered.to_netcdf(nc_path)
         fs_restored = fx.FlowSystem.from_netcdf(nc_path)
 
-        # After load, results should be reconstructed
-        assert fs_restored.clustering.results is not None
-        # The restored results should have the same structure
-        assert len(fs_restored.clustering.results) == len(fs_clustered.clustering.results)
+        before = fs_clustered.clustering
+        after = fs_restored.clustering
+
+        # Structural metadata
+        assert after.clustering_result is not None
+        assert len(after) == len(before)
+        assert after.n_clusters == before.n_clusters
+        assert after.timesteps_per_cluster == before.timesteps_per_cluster
+        assert after.n_original_clusters == before.n_original_clusters
+        assert after.n_segments == before.n_segments
+        assert after.dim_names == before.dim_names
+
+        # Data: cluster_assignments and cluster_occurrences should match exactly
+        xr.testing.assert_equal(after.cluster_assignments, before.cluster_assignments)
+        xr.testing.assert_equal(after.cluster_occurrences, before.cluster_occurrences)
 
     def test_derived_properties_work_after_load(self, system_with_periods_and_scenarios, tmp_path):
         """Derived properties should work correctly after loading (computed from cluster_assignments)."""
@@ -676,8 +668,8 @@ class TestMultiDimensionalClusteringIO:
         # Load the full FlowSystem with clustering
         fs_loaded = fx.FlowSystem.from_netcdf(nc_path)
         clustering_loaded = fs_loaded.clustering
-        # ClusteringResults should be fully preserved after load
-        assert clustering_loaded.results is not None
+        # ClusteringResult should be fully preserved after load
+        assert clustering_loaded.clustering_result is not None
 
         # Create a fresh FlowSystem (copy the original, unclustered one)
         fs_fresh = fs.copy()

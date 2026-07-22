@@ -334,8 +334,11 @@ class TestClusteringExact:
         discharge_fr = fs.solution['Battery(discharge)|flow_rate'].values[:, :4]
         assert_allclose(discharge_fr[:, [1, 3]], [[50, 50], [50, 50]], atol=1e-5)
 
-        # Charge state: dims=(cluster, time), 5 entries per cluster (incl. final)
         charge_state = fs.solution['Battery|charge_state']
         assert charge_state.dims == ('cluster', 'time')
+        cs_c0 = charge_state.isel(cluster=0).values[:5]
+        cs_c1 = charge_state.isel(cluster=1).values[:5]
+        assert_allclose(cs_c0, [50, 50, 0, 50, 0], atol=1e-5)
+        assert_allclose(cs_c1, [100, 100, 50, 100, 50], atol=1e-5)
 
         assert_allclose(fs.solution['objective'].item(), 100.0, rtol=1e-5)

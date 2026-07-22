@@ -276,37 +276,12 @@ def _apply_selection(
     return data
 
 
-def _sort_dataset(ds: xr.Dataset) -> xr.Dataset:
-    """Sort dataset variables alphabetically for consistent plotting order."""
-    sorted_vars = sorted(ds.data_vars)
-    return ds[sorted_vars]
-
-
 def _sort_dataarray(da: xr.DataArray, dim: str) -> xr.DataArray:
     """Sort DataArray along a dimension alphabetically for consistent plotting order."""
     if dim not in da.dims:
         return da
     sorted_idx = sorted(da.coords[dim].values)
     return da.sel({dim: sorted_idx})
-
-
-def _filter_small_variables(ds: xr.Dataset, threshold: float | None) -> xr.Dataset:
-    """Remove variables where max absolute value is below threshold.
-
-    Useful for filtering out solver noise or non-invested components.
-
-    Args:
-        ds: Dataset to filter.
-        threshold: Minimum max absolute value to keep. If None, no filtering.
-
-    Returns:
-        Filtered dataset.
-    """
-    if threshold is None or not ds.data_vars:
-        return ds
-    max_vals = abs(ds).max()  # Single computation for all variables
-    keep = [v for v in ds.data_vars if float(max_vals.variables[v].values) >= threshold]
-    return ds[keep] if keep else ds
 
 
 def _filter_small_dataarray(da: xr.DataArray, dim: str, threshold: float | None) -> xr.DataArray:

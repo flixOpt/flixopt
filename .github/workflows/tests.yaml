@@ -6,7 +6,6 @@ on:
   pull_request:
     branches: ["**"]
   workflow_dispatch:
-  workflow_call:  # Allow release.yaml to call this workflow.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -22,11 +21,11 @@ jobs:
   lint:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: astral-sh/setup-uv@v7
         with:
-          version: "0.9.30"
+          version: "0.10.9"
           enable-cache: true
 
       - uses: actions/setup-python@v6
@@ -47,11 +46,11 @@ jobs:
       matrix:
         python-version: ['3.11', '3.12', '3.13', '3.14']
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: astral-sh/setup-uv@v7
         with:
-          version: "0.9.30"
+          version: "0.10.9"
           enable-cache: true
 
       - uses: actions/setup-python@v6
@@ -71,11 +70,11 @@ jobs:
     # Only run on main branch or when called by release workflow (not on PRs)
     if: github.event_name != 'pull_request'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: astral-sh/setup-uv@v7
         with:
-          version: "0.9.30"
+          version: "0.10.9"
           enable-cache: true
 
       - uses: actions/setup-python@v6
@@ -92,11 +91,11 @@ jobs:
     runs-on: ubuntu-24.04
     needs: lint
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: astral-sh/setup-uv@v7
         with:
-          version: "0.9.30"
+          version: "0.10.9"
           enable-cache: true
 
       - uses: actions/setup-python@v6

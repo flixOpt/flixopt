@@ -6,6 +6,10 @@
     ```
     v6.0.0 brings tsam v3 integration, faster I/O, and new clustering features. Review this guide to update your code.
 
+!!! info "Upgrading to v7?"
+    v7.0.0 replaces the clustering backend (tsam → tsam_xarray) and changes the
+    `Clustering` API. See the [Migration Guide v7](migration-guide-v7.md).
+
 ---
 
 ## Overview
@@ -166,8 +170,6 @@ print(fs_segmented.timestep_duration)  # Different duration per segment
 fs_expanded = fs_segmented.transform.expand()
 ```
 
-See [08f-Segmentation notebook](../notebooks/08f-clustering-segmentation.ipynb) for details.
-
 ---
 
 ### I/O Performance
@@ -188,24 +190,14 @@ print(ds.attrs['flixopt_version'])  # e.g., '6.0.0'
 
 ---
 
-### Clustering Inspection
+### Clustering Metadata
 
-New methods to inspect clustering data before and after:
+After clustering, access structural info via `fs.clustering`:
 
 ```python
-# Before clustering: see what data will be used
-clustering_data = flow_system.transform.clustering_data()
-print(list(clustering_data.data_vars))
-
-# After clustering: access metadata
 fs_clustered.clustering.n_clusters
 fs_clustered.clustering.cluster_assignments
 fs_clustered.clustering.cluster_occurrences
-fs_clustered.clustering.metrics.to_dataframe()
-
-# Visualize
-fs_clustered.clustering.plot.compare()
-fs_clustered.clustering.plot.heatmap()
 ```
 
 ---
@@ -240,6 +232,7 @@ fs_modified = flow_system_modified.transform.apply_clustering(fs_reference.clust
 
 ## Need Help?
 
+- [Migration Guide v7](migration-guide-v7.md) (tsam_xarray clustering backend)
 - [Clustering User Guide](optimization/clustering.md)
 - [Clustering Notebooks](../notebooks/08c-clustering.ipynb)
 - [CHANGELOG](https://github.com/flixOpt/flixopt/blob/main/CHANGELOG.md)

@@ -6,6 +6,7 @@ import pytest
 import xarray as xr
 
 from flixopt import FlowSystem
+from flixopt.clustering import Clustering
 
 
 class TestWeights:
@@ -122,95 +123,94 @@ class TestFlowSystemDimsIndexesWeights:
         np.testing.assert_array_almost_equal(fs.temporal_weight.values, expected.values)
 
 
-class TestClusteringData:
-    """Tests for FlowSystem.transform.clustering_data method."""
+class TestClusterInputs:
+    """Tests for FlowSystem.transform.cluster_inputs — variable discovery helper."""
 
-    def test_clustering_data_method_exists(self):
-        """Test that transform.clustering_data method exists."""
-        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=48, freq='h'))
-
-        assert hasattr(fs.transform, 'clustering_data')
-        assert callable(fs.transform.clustering_data)
-
-    def test_clustering_data_returns_dataset(self):
-        """Test that clustering_data returns an xr.Dataset."""
-        from flixopt import Bus, Flow, Sink, Source
-
-        n_hours = 48
-        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'))
-
-        # Add components with time-varying data
-        demand_data = np.sin(np.linspace(0, 4 * np.pi, n_hours)) + 2
-        bus = Bus('electricity')
-        source = Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)])
-        sink = Sink(
-            'demand', inputs=[Flow('demand_out', bus='electricity', size=100, fixed_relative_profile=demand_data)]
-        )
-        fs.add_elements(source, sink, bus)
-
-        clustering_data = fs.transform.clustering_data()
-
-        assert isinstance(clustering_data, xr.Dataset)
-
-    def test_clustering_data_contains_only_time_varying(self):
-        """Test that clustering_data returns only time-varying data."""
-        from flixopt import Bus, Flow, Sink, Source
-
-        n_hours = 48
-        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'))
-
-        # Add components with time-varying and constant data
-        demand_data = np.sin(np.linspace(0, 4 * np.pi, n_hours)) + 2
-        bus = Bus('electricity')
-        source = Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)])
-        sink = Sink(
-            'demand', inputs=[Flow('demand_out', bus='electricity', size=100, fixed_relative_profile=demand_data)]
-        )
-        fs.add_elements(source, sink, bus)
-
-        clustering_data = fs.transform.clustering_data()
-
-        # Should contain the demand profile
-        assert 'demand(demand_out)|fixed_relative_profile' in clustering_data.data_vars
-
-        # All arrays should have 'time' dimension
-        for var in clustering_data.data_vars:
-            assert 'time' in clustering_data[var].dims
-
-    def test_clustering_data_with_periods(self):
-        """Test clustering_data with multi-period system."""
+    def _two_var_system(self, n_hours: int = 168):
         from flixopt import Bus, Effect, Flow, Sink, Source
+        from flixopt.core import TimeSeriesData
 
-        n_hours = 48
-        periods = pd.Index([2024, 2030], name='period')
-        fs = FlowSystem(
-            timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'),
-            periods=periods,
-        )
-
-        # Add components
-        demand_data = xr.DataArray(
-            np.random.rand(n_hours, 2),
-            dims=['time', 'period'],
-            coords={'time': fs.timesteps, 'period': periods},
-        )
+        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'))
+        varying = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2
+        constant = np.full(n_hours, 0.8)
         bus = Bus('electricity')
-        effect = Effect('costs', '€', is_objective=True)
-        source = Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)])
-        sink = Sink(
-            'demand', inputs=[Flow('demand_out', bus='electricity', size=100, fixed_relative_profile=demand_data)]
+        fs.add_elements(
+            Effect('costs', '€', is_standard=True, is_objective=True),
+            Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)]),
+            Sink(
+                'demand',
+                inputs=[
+                    Flow(
+                        'demand_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(varying / 100)
+                    )
+                ],
+            ),
+            Sink(
+                'constant_load',
+                inputs=[
+                    Flow('constant_out', bus='electricity', size=50, fixed_relative_profile=TimeSeriesData(constant))
+                ],
+            ),
+            bus,
         )
-        fs.add_elements(source, sink, bus, effect)
+        return fs
 
-        # Get data for specific period
-        data_2024 = fs.transform.clustering_data(period=2024)
+    def test_returns_only_time_dim_vars(self):
+        """cluster_inputs() returns every Dataset variable with a `time` dim."""
+        fs = self._two_var_system()
 
-        # Should not have period dimension (it was selected)
-        assert 'period' not in data_2024.dims
+        ds_time_vars = fs.transform.cluster_inputs()
+        for var in ds_time_vars.data_vars:
+            assert 'time' in ds_time_vars[var].dims, f'{var} should have a time dim'
 
-        # Get data for all periods
-        data_all = fs.transform.clustering_data()
-        assert 'period' in data_all.dims
+    def test_includes_constants(self):
+        """Constant time-series columns are included (they are passed to tsam too)."""
+        fs = self._two_var_system()
+
+        ds_time_vars = fs.transform.cluster_inputs()
+        names = set(ds_time_vars.data_vars)
+        assert 'demand(demand_out)|fixed_relative_profile' in names
+        assert 'constant_load(constant_out)|fixed_relative_profile' in names
+
+    def test_documented_weight_zero_pattern(self):
+        """User pattern: enumerate columns and zero-weight everything except one.
+
+        Regression test for the v6 migration recipe — users discovering clustering
+        inputs via cluster_inputs() and feeding the names back into
+        ClusterConfig(weights={...}) should not raise.
+        """
+        pytest.importorskip('tsam')
+        from tsam import ClusterConfig
+
+        fs = self._two_var_system()
+
+        # Enumerate columns the way users are expected to
+        ds_time_vars = fs.transform.cluster_inputs()
+        target = 'demand(demand_out)|fixed_relative_profile'
+        assert target in ds_time_vars.data_vars
+
+        weights = {target: 1}
+        weights.update({v: 0 for v in ds_time_vars.data_vars if v != target})
+
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D', cluster=ClusterConfig(weights=weights))
+        assert fs_clustered.clustering.n_clusters == 2
+
+    def test_matches_what_cluster_sees(self):
+        """The set of columns from cluster_inputs() == what cluster() passes to tsam.
+
+        If this drifts, the recommended user pattern stops working — users would
+        pass weights for variables tsam doesn't see, or miss ones it does.
+        """
+        fs = self._two_var_system()
+
+        # cluster_inputs is documented as the source of truth
+        discovered = set(fs.transform.cluster_inputs().data_vars)
+
+        # Reproduce the cluster() filter inline
+        ds = fs.to_dataset(include_solution=False)
+        actual = {name for name in ds.data_vars if 'time' in ds[name].dims}
+
+        assert discovered == actual
 
 
 class TestClusterMethod:
@@ -260,6 +260,50 @@ class TestClusterMethod:
         assert len(fs_clustered.clusters) == 2  # Number of clusters
         assert len(fs_clustered.timesteps) * len(fs_clustered.clusters) == 48
 
+    def test_cluster_with_constant_columns(self):
+        """Constant time-series columns must not break clustering.
+
+        The pre-refactor path called ``drop_constant_arrays`` to avoid feeding
+        zero-variance columns into tsam. The new tsam_xarray-backed path skips
+        that filter, so this test guards against any future regression where a
+        constant column makes tsam_xarray crash, normalize-divide-by-zero, or
+        silently drop the column from the reduced FlowSystem.
+        """
+        pytest.importorskip('tsam')
+        from flixopt import Bus, Flow, Sink, Source
+        from flixopt.core import TimeSeriesData
+
+        n_hours = 168
+        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'))
+
+        varying = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2
+        constant = np.full(n_hours, 0.8)
+
+        bus = Bus('electricity')
+        grid_flow = Flow('grid_in', bus='electricity', size=100)
+        demand_flow = Flow(
+            'demand_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(varying / 100)
+        )
+        constant_flow = Flow(
+            'constant_out', bus='electricity', size=50, fixed_relative_profile=TimeSeriesData(constant)
+        )
+        fs.add_elements(
+            Source('grid', outputs=[grid_flow]),
+            Sink('demand', inputs=[demand_flow]),
+            Sink('constant_load', inputs=[constant_flow]),
+            bus,
+        )
+
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        # Reduced FlowSystem keeps the constant column
+        ds = fs_clustered.to_dataset(include_solution=False)
+        assert 'constant_load(constant_out)|fixed_relative_profile' in ds.data_vars
+
+        # And the constant column stays constant after clustering
+        constant_da = ds['constant_load(constant_out)|fixed_relative_profile']
+        np.testing.assert_allclose(constant_da.values, 0.8)
+
 
 class TestClusterAdvancedOptions:
     """Tests for advanced clustering options."""
@@ -302,15 +346,6 @@ class TestClusterAdvancedOptions:
         # Hierarchical clustering should produce identical cluster orders
         xr.testing.assert_equal(fs1.clustering.cluster_assignments, fs2.clustering.cluster_assignments)
 
-    def test_metrics_available(self, basic_flow_system):
-        """Test that clustering metrics are available after clustering."""
-        fs_clustered = basic_flow_system.transform.cluster(n_clusters=2, cluster_duration='1D')
-
-        assert fs_clustered.clustering.metrics is not None
-        assert isinstance(fs_clustered.clustering.metrics, xr.Dataset)
-        assert 'time_series' in fs_clustered.clustering.metrics.dims
-        assert len(fs_clustered.clustering.metrics.data_vars) > 0
-
     def test_representation_method_parameter(self, basic_flow_system):
         """Test that representation method via ClusterConfig works."""
         from tsam import ClusterConfig
@@ -335,9 +370,34 @@ class TestClusterAdvancedOptions:
         )
         assert len(fs_clustered.clusters) == 2
 
-    def test_metrics_with_periods(self):
-        """Test that metrics have period dimension for multi-period FlowSystems."""
+    def test_unknown_weight_keys_raise(self, basic_flow_system):
+        """Test that unknown keys in ClusterConfig.weights raise ValueError.
+
+        tsam_xarray validates weight keys and raises ValueError for unknown coords.
+        """
+        from tsam import ClusterConfig
+
+        # Get actual clustering column names
+        ds = basic_flow_system.to_dataset(include_solution=False)
+        real_columns = [n for n in ds.data_vars if 'time' in ds[n].dims]
+
+        # Build weights with real keys + extra bogus keys
+        weights = {col: 1.0 for col in real_columns}
+        weights['nonexistent_variable'] = 0.5
+        weights['another_missing_col'] = 0.3
+
+        with pytest.raises(ValueError, match='unknown'):
+            basic_flow_system.transform.cluster(
+                n_clusters=2,
+                cluster_duration='1D',
+                cluster=ClusterConfig(weights=weights),
+            )
+
+    def test_unknown_weight_keys_raise_multiperiod(self):
+        """Test that unknown weight keys raise ValueError in multi-period clustering."""
         pytest.importorskip('tsam')
+        from tsam import ClusterConfig
+
         from flixopt import Bus, Flow, Sink, Source
         from flixopt.core import TimeSeriesData
 
@@ -351,18 +411,342 @@ class TestClusterAdvancedOptions:
         bus = Bus('electricity')
         grid_flow = Flow('grid_in', bus='electricity', size=100)
         demand_flow = Flow(
-            'demand_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(demand_data / 100)
+            'demand_out',
+            bus='electricity',
+            size=100,
+            fixed_relative_profile=TimeSeriesData(demand_data / 100),
         )
         source = Source('grid', outputs=[grid_flow])
         sink = Sink('demand', inputs=[demand_flow])
         fs.add_elements(source, sink, bus)
 
-        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+        ds = fs.to_dataset(include_solution=False)
+        weights = {n: 1.0 for n in ds.data_vars if 'time' in ds[n].dims}
+        weights['nonexistent_period_var'] = 0.7
 
-        # Metrics should have period dimension
-        assert fs_clustered.clustering.metrics is not None
-        assert 'period' in fs_clustered.clustering.metrics.dims
-        assert len(fs_clustered.clustering.metrics.period) == 2
+        with pytest.raises(ValueError, match='unknown'):
+            fs.transform.cluster(
+                n_clusters=2,
+                cluster_duration='1D',
+                cluster=ClusterConfig(weights=weights),
+            )
+
+    def test_valid_weight_keys_multiperiod(self):
+        """Test that valid weight keys work in multi-period clustering.
+
+        Each period is clustered independently; weights for valid columns
+        must be filtered per slice so no extra keys leak through to tsam.
+        """
+        pytest.importorskip('tsam')
+        from tsam import ClusterConfig
+
+        from flixopt import Bus, Flow, Sink, Source
+        from flixopt.core import TimeSeriesData
+
+        n_hours = 168  # 7 days
+        fs = FlowSystem(
+            timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'),
+            periods=pd.Index([2025, 2030], name='period'),
+        )
+
+        demand_data = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2
+        bus = Bus('electricity')
+        grid_flow = Flow('grid_in', bus='electricity', size=100)
+        demand_flow = Flow(
+            'demand_out',
+            bus='electricity',
+            size=100,
+            fixed_relative_profile=TimeSeriesData(demand_data / 100),
+        )
+        source = Source('grid', outputs=[grid_flow])
+        sink = Sink('demand', inputs=[demand_flow])
+        fs.add_elements(source, sink, bus)
+
+        ds = fs.to_dataset(include_solution=False)
+        weights = {n: 1.0 for n in ds.data_vars if 'time' in ds[n].dims}
+
+        fs_clustered = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            cluster=ClusterConfig(weights=weights),
+        )
+        assert len(fs_clustered.clusters) == 2
+
+
+class TestClusterOn:
+    """Tests for the cluster_on convenience argument (subset-then-apply exclusion)."""
+
+    def _two_var_system(self, n_hours: int = 168):
+        pytest.importorskip('tsam')
+        from flixopt import Bus, Effect, Flow, Sink, Source
+        from flixopt.core import TimeSeriesData
+
+        fs = FlowSystem(timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'))
+        # Two distinct non-constant profiles so that clustering on one vs the other
+        # yields genuinely different assignments.
+        profile_a = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2
+        profile_b = np.cos(np.linspace(0, 3 * np.pi, n_hours)) + 2
+        bus = Bus('electricity')
+        fs.add_elements(
+            Effect('costs', '€', is_standard=True, is_objective=True),
+            Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)]),
+            Sink(
+                'demand_a',
+                inputs=[
+                    Flow('a_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(profile_a / 100))
+                ],
+            ),
+            Sink(
+                'demand_b',
+                inputs=[
+                    Flow('b_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(profile_b / 100))
+                ],
+            ),
+            bus,
+        )
+        return fs
+
+    VAR_A = 'demand_a(a_out)|fixed_relative_profile'
+    VAR_B = 'demand_b(b_out)|fixed_relative_profile'
+
+    def test_matches_manual_subset_then_apply(self):
+        """cluster_on produces the exact assignments of a manual tsam_xarray subset+apply."""
+        import tsam_xarray
+
+        fs = self._two_var_system()
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D', cluster_on=[self.VAR_A])
+
+        # Reproduce the intended pipeline directly against tsam_xarray
+        ds = fs.to_dataset(include_solution=False)
+        da = ds[[n for n in ds.data_vars if 'time' in ds[n].dims]].to_dataarray(dim='variable')
+        agg_subset = tsam_xarray.aggregate(
+            da.sel(variable=[self.VAR_A]),
+            time_dim='time',
+            cluster_dim='variable',
+            n_clusters=2,
+            period_duration=24.0,
+            temporal_resolution=1.0,
+        )
+        expected = agg_subset.clustering.apply(da, time_dim='time', cluster_dim='variable')
+
+        np.testing.assert_array_equal(
+            fs_clustered.clustering.cluster_assignments.values,
+            expected.clustering.cluster_assignments.values,
+        )
+
+    def test_subset_selection_drives_assignments(self):
+        """Clustering on A vs on B gives different assignments (subset genuinely matters)."""
+        assignments_a = (
+            self._two_var_system()
+            .transform.cluster(n_clusters=2, cluster_duration='1D', cluster_on=[self.VAR_A])
+            .clustering.cluster_assignments.values
+        )
+        assignments_b = (
+            self._two_var_system()
+            .transform.cluster(n_clusters=2, cluster_duration='1D', cluster_on=[self.VAR_B])
+            .clustering.cluster_assignments.values
+        )
+        assert not np.array_equal(assignments_a, assignments_b)
+
+    def _two_var_system_multiperiod(self, n_hours: int = 168):
+        pytest.importorskip('tsam')
+        from flixopt import Bus, Effect, Flow, Sink, Source
+        from flixopt.core import TimeSeriesData
+
+        fs = FlowSystem(
+            timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'),
+            periods=pd.Index([2025, 2030], name='period'),
+        )
+        profile_a = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2
+        profile_b = np.cos(np.linspace(0, 3 * np.pi, n_hours)) + 2
+        bus = Bus('electricity')
+        fs.add_elements(
+            Effect('costs', '€', is_standard=True, is_objective=True),
+            Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)]),
+            Sink(
+                'demand_a',
+                inputs=[
+                    Flow('a_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(profile_a / 100))
+                ],
+            ),
+            Sink(
+                'demand_b',
+                inputs=[
+                    Flow('b_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(profile_b / 100))
+                ],
+            ),
+            bus,
+        )
+        return fs
+
+    def test_multiperiod_matches_single_period_per_slice(self):
+        """cluster_on is applied per slice: each period's assignments match the single-period result."""
+        single = (
+            self._two_var_system()
+            .transform.cluster(n_clusters=2, cluster_duration='1D', cluster_on=[self.VAR_A])
+            .clustering.cluster_assignments
+        )
+        multi = (
+            self._two_var_system_multiperiod()
+            .transform.cluster(n_clusters=2, cluster_duration='1D', cluster_on=[self.VAR_A])
+            .clustering.cluster_assignments
+        )
+        assert 'period' in multi.dims
+        for period in multi['period'].values:
+            np.testing.assert_array_equal(multi.sel(period=period).values, single.values)
+
+    def test_excluded_variable_still_aggregated(self):
+        """The excluded variable is kept in the reduced system (aggregated, not dropped)."""
+        fs_clustered = self._two_var_system().transform.cluster(
+            n_clusters=2, cluster_duration='1D', cluster_on=[self.VAR_A]
+        )
+        assert self.VAR_B in set(fs_clustered.transform.cluster_inputs().data_vars)
+
+    def test_no_epsilon_clamp_warning(self):
+        """True exclusion emits no 'minimal tolerable weighting' warning (unlike weight 0)."""
+        import warnings
+
+        with warnings.catch_warnings(record=True) as record:
+            warnings.simplefilter('always')
+            self._two_var_system().transform.cluster(n_clusters=2, cluster_duration='1D', cluster_on=[self.VAR_A])
+        assert not [w for w in record if 'minimal tolerable' in str(w.message)]
+
+    def test_combines_with_weights(self):
+        """cluster_on may carry relative weights among the kept variables."""
+        from tsam import ClusterConfig
+
+        fs_clustered = self._two_var_system().transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            cluster_on=[self.VAR_A, self.VAR_B],
+            cluster=ClusterConfig(weights={self.VAR_A: 5.0}),
+        )
+        assert fs_clustered.clustering.n_clusters == 2
+
+    def test_empty_list_raises(self):
+        with pytest.raises(ValueError, match='at least one'):
+            self._two_var_system().transform.cluster(n_clusters=2, cluster_duration='1D', cluster_on=[])
+
+    def test_unknown_variable_raises(self):
+        with pytest.raises(ValueError, match='not clusterable'):
+            self._two_var_system().transform.cluster(n_clusters=2, cluster_duration='1D', cluster_on=['does_not_exist'])
+
+    def test_weights_for_excluded_variable_raises(self):
+        from tsam import ClusterConfig
+
+        with pytest.raises(ValueError, match='excluded by cluster_on'):
+            self._two_var_system().transform.cluster(
+                n_clusters=2,
+                cluster_duration='1D',
+                cluster_on=[self.VAR_A],
+                cluster=ClusterConfig(weights={self.VAR_B: 3.0}),
+            )
+
+
+class TestClusteringCompare:
+    """Tests for the original-vs-clustered comparison accessors.
+
+    These replace the removed ``clustering.plot.compare()`` and are the
+    documented v7 way to inspect aggregation quality (see migration-guide-v7).
+    """
+
+    def _system(self, n_hours: int = 168, periods=None, scenarios=None):
+        pytest.importorskip('tsam')
+        from flixopt import Bus, Effect, Flow, Sink, Source
+        from flixopt.core import TimeSeriesData
+
+        fs = FlowSystem(
+            timesteps=pd.date_range('2024-01-01', periods=n_hours, freq='h'),
+            periods=periods,
+            scenarios=scenarios,
+        )
+        demand = np.sin(np.linspace(0, 14 * np.pi, n_hours)) + 2
+        bus = Bus('electricity')
+        fs.add_elements(
+            Effect('costs', '€', is_standard=True, is_objective=True),
+            Source('grid', outputs=[Flow('grid_in', bus='electricity', size=100)]),
+            Sink(
+                'demand',
+                inputs=[
+                    Flow('demand_out', bus='electricity', size=100, fixed_relative_profile=TimeSeriesData(demand / 100))
+                ],
+            ),
+            bus,
+        )
+        return fs
+
+    VAR = 'demand(demand_out)|fixed_relative_profile'
+
+    def test_original_and_reconstructed_aligned(self):
+        """original / reconstructed share dims, shape, and dim order, on the original time axis."""
+        clustering = self._system().transform.cluster(n_clusters=2, cluster_duration='1D').clustering
+
+        assert clustering.original.dims == clustering.reconstructed.dims
+        assert clustering.original.sizes == clustering.reconstructed.sizes
+        assert clustering.original.sizes['time'] == 168
+        assert self.VAR in list(clustering.original['variable'].values)
+
+    def test_residuals_equal_original_minus_reconstructed(self):
+        """residuals == original - reconstructed."""
+        clustering = self._system().transform.cluster(n_clusters=2, cluster_duration='1D').clustering
+        xr.testing.assert_allclose(clustering.residuals, clustering.original - clustering.reconstructed)
+
+    def test_compare_returns_tidy_dataset(self):
+        """compare() yields a Dataset with original/clustered vars ready for plotting."""
+        clustering = self._system().transform.cluster(n_clusters=2, cluster_duration='1D').clustering
+
+        cmp = clustering.compare(self.VAR)
+        assert set(cmp.data_vars) == {'original', 'clustered'}
+        assert 'variable' not in cmp.dims  # single variable selected out
+        assert cmp.sizes['time'] == 168
+
+        # No variable filter keeps the variable dim
+        assert 'variable' in clustering.compare().dims
+
+    def test_accuracy_exposed(self):
+        """accuracy carries per-variable and weighted metrics with unrenamed dims."""
+        clustering = self._system().transform.cluster(n_clusters=2, cluster_duration='1D').clustering
+        acc = clustering.accuracy
+        assert 'variable' in acc.rmse.dims
+        assert float(acc.weighted_rmse) >= 0.0
+
+    def test_period_dim_is_unrenamed(self):
+        """The friendly accessors expose `period`, not the internal `_period`."""
+        periods = pd.Index([2025, 2030], name='period')
+        clustering = self._system(periods=periods).transform.cluster(n_clusters=2, cluster_duration='1D').clustering
+
+        for da in (clustering.original, clustering.reconstructed, clustering.residuals):
+            assert 'period' in da.dims
+            assert '_period' not in da.dims
+        assert 'period' in clustering.accuracy.rmse.dims
+
+        # selection works with the natural coordinate name
+        one = clustering.compare(self.VAR).sel(period=2030)
+        assert 'period' not in one.dims
+
+    def test_accessors_raise_after_serialization(self):
+        """The data accessors need the full AggregationResult (pre-serialization only)."""
+        clustering = self._system().transform.cluster(n_clusters=2, cluster_duration='1D').clustering
+        reloaded = Clustering(
+            clustering_result=clustering.clustering_result,
+            original_timesteps=clustering.original_timesteps,
+        )
+        for attr in ('original', 'reconstructed', 'residuals', 'accuracy'):
+            with pytest.raises(ValueError, match='requires full AggregationResult'):
+                getattr(reloaded, attr)
+        with pytest.raises(ValueError, match='requires full AggregationResult'):
+            reloaded.compare()
+
+    def test_compare_is_plot_ready(self):
+        """compare().to_dataframe() yields the columns the docs' px.line recipe plots."""
+        pytest.importorskip('plotly')
+        import plotly.express as px
+
+        clustering = self._system().transform.cluster(n_clusters=2, cluster_duration='1D').clustering
+        df = clustering.compare(self.VAR).to_dataframe()[['original', 'clustered']]
+        assert list(df.columns) == ['original', 'clustered']
+        fig = px.line(df)
+        assert len(fig.data) == 2
 
 
 class TestClusteringModuleImports:

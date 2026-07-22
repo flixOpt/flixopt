@@ -136,18 +136,47 @@ fs_clustered = flow_system.transform.cluster(
 
 ### Clustering Quality Metrics
 
-After clustering, access quality metrics to evaluate the aggregation accuracy:
+After clustering, evaluate the aggregation accuracy via `clustering.accuracy`:
 
 ```python
 fs_clustered = flow_system.transform.cluster(n_clusters=8, cluster_duration='1D')
+clustering = fs_clustered.clustering
 
-# Access clustering metrics (xr.Dataset)
-metrics = fs_clustered.clustering.metrics
-print(metrics)  # Shows RMSE, MAE, etc. per time series
+# Aggregate, column-weighted metrics
+print(clustering.accuracy)  # AccuracyMetrics(weighted_rmse=..., weighted_mae=...)
 
-# Access specific metric
-rmse = metrics['RMSE']  # xr.DataArray with dims [time_series, period?, scenario?]
+# Per-variable RMSE (xr.DataArray with dims [variable, period?, scenario?])
+rmse = clustering.accuracy.rmse
 ```
+
+### Comparing Original vs Clustered Profiles
+
+`clustering.compare()` returns a tidy `xr.Dataset` (`original` and `clustered`
+on the original time axis) for **all** clustered variables — the v7 replacement
+for the removed `clustering.plot.compare()`. Facet to plot them all at once, or
+select a subset on the dataset with `.sel(variable=...)`:
+
+```python
+# flixopt bundles the `.plotly` accessor (xarray_plotly)
+(
+    clustering.compare()  # all variables; subset via clustering.compare().sel(variable=...)
+    .to_dataarray(dim='profile')
+    .plotly.line(x='time', color='profile', facet_row='variable')
+    .update_yaxes(matches=None)  # variables have different scales
+)
+```
+
+Related accessors: `clustering.original`, `clustering.reconstructed`, and
+`clustering.residuals` (all on the original time axis, with periods/scenarios
+preserved).
+
+!!! note "Pre-serialization only"
+    `accuracy` / `compare()` / `original` / `reconstructed` need the full
+    clustering data, available before saving. They are **not** persisted by
+    `to_netcdf()` / `to_json()`; rebuild on a loaded FlowSystem with
+    `transform.apply_clustering(...)` if needed. See the
+    [v7 migration guide](../migration-guide-v7.md#comparing-original-vs-clustered-profiles)
+    for the multi-variable / multi-period recipe.
 
 ## Storage Modes
 

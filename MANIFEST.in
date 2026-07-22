@@ -20,6 +20,5 @@ prune .venv
 prune venv
 exclude .gitignore
 exclude .pre-commit-config.yaml
-exclude renovate.json
 exclude mkdocs.yml
 exclude test_package.sh

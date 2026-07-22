@@ -211,8 +211,8 @@ def test_expand_withoutclustering_raises(solver_fixture, timesteps_2_days):
         fs.transform.expand()
 
 
-def test_expand_without_solution_raises(timesteps_8_days):
-    """Test that expand raises error if no solution."""
+def test_expand_without_solution(timesteps_8_days):
+    """Test that expand works without a solution (e.g. for inspecting cluster_inputs)."""
     fs = create_simple_system(timesteps_8_days)
 
     fs_reduced = fs.transform.cluster(
@@ -221,8 +221,9 @@ def test_expand_without_solution_raises(timesteps_8_days):
     )
     # Don't optimize - no solution
 
-    with pytest.raises(ValueError, match='no solution'):
-        fs_reduced.transform.expand()
+    fs_expanded = fs_reduced.transform.expand()
+    assert fs_expanded.solution is None
+    assert len(fs_expanded.timesteps) == len(timesteps_8_days)
 
 
 # ==================== Multi-dimensional Tests ====================
@@ -894,6 +895,43 @@ class TestPeakSelection:
         fs_clustered.optimize(solver_fixture)
         assert fs_clustered.solution is not None
 
+    def test_extremes_new_cluster_allowed_for_single_period(self, timesteps_8_days):
+        """A single-period system has one clustering slice, so non-'replace' extremes are fine.
+
+        Regression: the guard rejected any system with a period/scenario dimension,
+        wrongly including length-1 indices where consistency across slices is trivial.
+        """
+        from tsam import ExtremeConfig
+
+        hour_of_day = np.array([t.hour for t in timesteps_8_days])
+        demand = np.where((hour_of_day >= 8) & (hour_of_day < 18), 20, 8)
+        fs = fx.FlowSystem(timesteps_8_days, periods=pd.Index([2020], name='period'), weight_of_last_period=1)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink('HeatDemand', inputs=[fx.Flow('Q', bus='Heat', fixed_relative_profile=demand, size=1)]),
+            fx.Source('Grid', outputs=[fx.Flow('Q', bus='Heat', effects_per_flow_hour=0.05)]),
+        )
+
+        fs_clustered = fs.transform.cluster(
+            n_clusters=2,
+            cluster_duration='1D',
+            extremes=ExtremeConfig(method='new_cluster', max_value=['HeatDemand(Q)|fixed_relative_profile']),
+        )
+        assert fs_clustered.clustering.n_clusters >= 2
+
+    def test_extremes_new_cluster_rejected_for_multi_period(self, timesteps_8_days, periods_2):
+        """Genuine multi-slice systems still require method='replace'."""
+        from tsam import ExtremeConfig
+
+        fs = create_system_with_periods(timesteps_8_days, periods_2)
+        with pytest.raises(ValueError, match='not supported for multi-period'):
+            fs.transform.cluster(
+                n_clusters=2,
+                cluster_duration='1D',
+                extremes=ExtremeConfig(method='new_cluster', max_value=['HeatDemand(Q)|fixed_relative_profile']),
+            )
+
     def test_extremes_append_with_segments(self, solver_fixture, timesteps_8_days):
         """Test that method='append' works correctly with segmentation."""
         from tsam import ExtremeConfig, SegmentConfig
@@ -915,8 +953,8 @@ class TestPeakSelection:
         n_clusters = fs_clustered.clustering.n_clusters
         assert n_clusters >= 2
 
-        # n_representatives = n_clusters * n_segments
-        assert fs_clustered.clustering.n_representatives == n_clusters * 6
+        # n_clusters * n_segments
+        assert n_clusters * fs_clustered.clustering.n_segments == n_clusters * 6
 
         # Verify optimization works
         fs_clustered.optimize(solver_fixture)
@@ -928,157 +966,6 @@ class TestPeakSelection:
 
         # The sum of cluster occurrences should equal n_original_clusters (8 days)
         assert int(fs_clustered.clustering.cluster_occurrences.sum()) == 8
-
-
-# ==================== Data Vars Parameter Tests ====================
-
-
-class TestDataVarsParameter:
-    """Tests for data_vars parameter in cluster() method."""
-
-    def test_cluster_with_data_vars_subset(self, timesteps_8_days):
-        """Test clustering with a subset of variables."""
-        # Create system with multiple time-varying data
-        hours = len(timesteps_8_days)
-        demand = np.sin(np.linspace(0, 4 * np.pi, hours)) * 10 + 15
-        price = np.cos(np.linspace(0, 4 * np.pi, hours)) * 0.02 + 0.05  # Different pattern
-
-        fs = fx.FlowSystem(timesteps_8_days)
-        fs.add_elements(
-            fx.Bus('Heat'),
-            fx.Bus('Gas'),
-            fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink('HeatDemand', inputs=[fx.Flow('Q', bus='Heat', fixed_relative_profile=demand, size=1)]),
-            fx.Source('GasSource', outputs=[fx.Flow('Gas', bus='Gas', effects_per_flow_hour=price)]),
-            fx.linear_converters.Boiler(
-                'Boiler',
-                thermal_efficiency=0.9,
-                fuel_flow=fx.Flow('Q_fu', bus='Gas'),
-                thermal_flow=fx.Flow('Q_th', bus='Heat'),
-            ),
-        )
-
-        # Cluster based only on demand profile (not price)
-        fs_reduced = fs.transform.cluster(
-            n_clusters=2,
-            cluster_duration='1D',
-            data_vars=['HeatDemand(Q)|fixed_relative_profile'],
-        )
-
-        # Should have clustered structure
-        assert len(fs_reduced.timesteps) == 24
-        assert len(fs_reduced.clusters) == 2
-
-    def test_data_vars_validation_error(self, timesteps_8_days):
-        """Test that invalid data_vars raises ValueError."""
-        fs = create_simple_system(timesteps_8_days)
-
-        with pytest.raises(ValueError, match='data_vars not found'):
-            fs.transform.cluster(
-                n_clusters=2,
-                cluster_duration='1D',
-                data_vars=['NonExistentVariable'],
-            )
-
-    def test_data_vars_preserves_all_flowsystem_data(self, timesteps_8_days):
-        """Test that clustering with data_vars preserves all FlowSystem variables."""
-        # Create system with multiple time-varying data
-        hours = len(timesteps_8_days)
-        demand = np.sin(np.linspace(0, 4 * np.pi, hours)) * 10 + 15
-        price = np.cos(np.linspace(0, 4 * np.pi, hours)) * 0.02 + 0.05
-
-        fs = fx.FlowSystem(timesteps_8_days)
-        fs.add_elements(
-            fx.Bus('Heat'),
-            fx.Bus('Gas'),
-            fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink('HeatDemand', inputs=[fx.Flow('Q', bus='Heat', fixed_relative_profile=demand, size=1)]),
-            fx.Source('GasSource', outputs=[fx.Flow('Gas', bus='Gas', effects_per_flow_hour=price)]),
-            fx.linear_converters.Boiler(
-                'Boiler',
-                thermal_efficiency=0.9,
-                fuel_flow=fx.Flow('Q_fu', bus='Gas'),
-                thermal_flow=fx.Flow('Q_th', bus='Heat'),
-            ),
-        )
-
-        # Cluster based only on demand profile
-        fs_reduced = fs.transform.cluster(
-            n_clusters=2,
-            cluster_duration='1D',
-            data_vars=['HeatDemand(Q)|fixed_relative_profile'],
-        )
-
-        # Both demand and price should be preserved in the reduced FlowSystem
-        ds = fs_reduced.to_dataset()
-        assert 'HeatDemand(Q)|fixed_relative_profile' in ds.data_vars
-        assert 'GasSource(Gas)|costs|per_flow_hour' in ds.data_vars
-
-    def test_data_vars_optimization_works(self, solver_fixture, timesteps_8_days):
-        """Test that FlowSystem clustered with data_vars can be optimized."""
-        hours = len(timesteps_8_days)
-        demand = np.sin(np.linspace(0, 4 * np.pi, hours)) * 10 + 15
-        price = np.cos(np.linspace(0, 4 * np.pi, hours)) * 0.02 + 0.05
-
-        fs = fx.FlowSystem(timesteps_8_days)
-        fs.add_elements(
-            fx.Bus('Heat'),
-            fx.Bus('Gas'),
-            fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink('HeatDemand', inputs=[fx.Flow('Q', bus='Heat', fixed_relative_profile=demand, size=1)]),
-            fx.Source('GasSource', outputs=[fx.Flow('Gas', bus='Gas', effects_per_flow_hour=price)]),
-            fx.linear_converters.Boiler(
-                'Boiler',
-                thermal_efficiency=0.9,
-                fuel_flow=fx.Flow('Q_fu', bus='Gas'),
-                thermal_flow=fx.Flow('Q_th', bus='Heat'),
-            ),
-        )
-
-        fs_reduced = fs.transform.cluster(
-            n_clusters=2,
-            cluster_duration='1D',
-            data_vars=['HeatDemand(Q)|fixed_relative_profile'],
-        )
-
-        # Should optimize successfully
-        fs_reduced.optimize(solver_fixture)
-        assert fs_reduced.solution is not None
-        assert 'flow|rate' in fs_reduced.solution
-
-    def test_data_vars_with_multiple_variables(self, timesteps_8_days):
-        """Test clustering with multiple selected variables."""
-        hours = len(timesteps_8_days)
-        demand = np.sin(np.linspace(0, 4 * np.pi, hours)) * 10 + 15
-        price = np.cos(np.linspace(0, 4 * np.pi, hours)) * 0.02 + 0.05
-
-        fs = fx.FlowSystem(timesteps_8_days)
-        fs.add_elements(
-            fx.Bus('Heat'),
-            fx.Bus('Gas'),
-            fx.Effect('costs', '€', is_standard=True, is_objective=True),
-            fx.Sink('HeatDemand', inputs=[fx.Flow('Q', bus='Heat', fixed_relative_profile=demand, size=1)]),
-            fx.Source('GasSource', outputs=[fx.Flow('Gas', bus='Gas', effects_per_flow_hour=price)]),
-            fx.linear_converters.Boiler(
-                'Boiler',
-                thermal_efficiency=0.9,
-                fuel_flow=fx.Flow('Q_fu', bus='Gas'),
-                thermal_flow=fx.Flow('Q_th', bus='Heat'),
-            ),
-        )
-
-        # Cluster based on both demand and price
-        fs_reduced = fs.transform.cluster(
-            n_clusters=2,
-            cluster_duration='1D',
-            data_vars=[
-                'HeatDemand(Q)|fixed_relative_profile',
-                'GasSource(Gas)|costs|per_flow_hour',
-            ],
-        )
-
-        assert len(fs_reduced.timesteps) == 24
-        assert len(fs_reduced.clusters) == 2
 
 
 # ==================== Segmentation Tests ====================
@@ -1248,27 +1135,29 @@ class TestSegmentation:
         flow_rates = stats.flow_rates
         assert 'time' in flow_rates.dims
 
-    def test_segmented_timestep_mapping_uses_segment_assignments(self, timesteps_8_days):
-        """Test that timestep_mapping correctly maps original timesteps to segments."""
+    def test_segmented_storage_expand_charge_state_no_nan(self, solver_fixture, timesteps_8_days):
+        """Segmented + storage expand must not leave NaN in charge_state.
+
+        Regression: state variables were expanded with a global interpolate_na, which
+        left the final period's last segment unfilled (NaN) and interpolated across
+        period boundaries. Segment-aware interpolation fills every hour between the
+        loss-correct segment boundaries.
+        """
         from tsam import SegmentConfig
 
-        fs = create_simple_system(timesteps_8_days)
-
+        fs = create_system_with_storage(timesteps_8_days, cluster_mode='independent')
         fs_segmented = fs.transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
             segments=SegmentConfig(n_segments=6),
         )
+        fs_segmented.optimize(solver_fixture)
+        fs_expanded = fs_segmented.transform.expand()
 
-        mapping = fs_segmented.clustering.timestep_mapping
-
-        # Mapping should have original timestep count
-        assert len(mapping.values) == 192
-
-        # Each mapped value should be in valid range: [0, n_clusters * n_segments)
-        max_valid_idx = 2 * 6 - 1  # n_clusters * n_segments - 1
-        assert mapping.min().item() >= 0
-        assert mapping.max().item() <= max_valid_idx
+        charge_state = fs_expanded.solution['Battery|charge_state']
+        assert not np.isnan(charge_state.values).any()
+        assert (charge_state.values >= -1e-6).all()
+        assert (charge_state.values <= 100 + 1e-6).all()
 
     @pytest.mark.parametrize('freq', ['1h', '2h'])
     def test_segmented_total_effects_match_solution(self, solver_fixture, freq):
@@ -1447,13 +1336,6 @@ class TestSegmentationWithPeriods:
         )
 
         fs_segmented.optimize(solver_fixture)
-
-        # Get the timestep_mapping which should be multi-dimensional
-        mapping = fs_segmented.clustering.timestep_mapping
-
-        # Mapping should have period dimension
-        assert 'period' in mapping.dims
-        assert mapping.sizes['period'] == 2
 
         # Expand and verify each period has correct number of timesteps
         fs_expanded = fs_segmented.transform.expand()

@@ -522,9 +522,9 @@ class TestExtremeConfigAppend:
         assert fs_clustered.clustering.is_segmented is True
         assert fs_clustered.clustering.n_segments == 4
 
-        # n_representatives = n_clusters * n_segments
+        # n_clusters * n_segments
         n_clusters = fs_clustered.clustering.n_clusters
-        assert fs_clustered.clustering.n_representatives == n_clusters * 4
+        assert n_clusters * fs_clustered.clustering.n_segments == n_clusters * 4
 
         fs_clustered.optimize(solver_fixture)
         assert fs_clustered.solution is not None
@@ -803,6 +803,18 @@ class TestFullDimensionalClustering:
         assert 'scenario' in fs_clustered.solution[flow_var].dims
         assert 'cluster' in fs_clustered.solution[flow_var].dims
 
+    def test_dim_names_order(self, timesteps_8_days, periods_2, scenarios_2):
+        """Clustering.dim_names must be ['period', 'scenario'] in that order.
+
+        Downstream code (cluster_assignments, _ReducedFlowSystemBuilder) relies on
+        this order — tsam_xarray populates slice_dims based on the input DataArray,
+        so the cluster() path must keep period before scenario.
+        """
+        fs = create_multiperiod_multiscenario_system(timesteps_8_days, periods_2, scenarios_2)
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        assert fs_clustered.clustering.dim_names == ['period', 'scenario']
+
     def test_full_dimensional_expand(self, solver_fixture, timesteps_8_days, periods_2, scenarios_2):
         """Test expansion of system with all dimensions."""
         fs = create_multiperiod_multiscenario_system(timesteps_8_days, periods_2, scenarios_2)
@@ -987,22 +999,3 @@ class TestEdgeCases:
                     f'Occurrences for period {period} with n_clusters={n_clusters}: '
                     f'{int(period_occurrences.sum())} != 8'
                 )
-
-    def test_timestep_mapping_valid_range(self, timesteps_8_days, periods_2):
-        """Test that timestep_mapping values are within valid range."""
-        fs = create_multiperiod_system_with_different_profiles(timesteps_8_days, periods_2)
-
-        fs_clustered = fs.transform.cluster(n_clusters=3, cluster_duration='1D')
-
-        mapping = fs_clustered.clustering.timestep_mapping
-
-        # Mapping values should be in [0, n_clusters * timesteps_per_cluster - 1]
-        max_valid = 3 * 24 - 1  # n_clusters * timesteps_per_cluster - 1
-        assert mapping.min().item() >= 0
-        assert mapping.max().item() <= max_valid
-
-        # Each period should have valid mappings
-        for period in periods_2:
-            period_mapping = mapping.sel(period=period)
-            assert period_mapping.min().item() >= 0
-            assert period_mapping.max().item() <= max_valid

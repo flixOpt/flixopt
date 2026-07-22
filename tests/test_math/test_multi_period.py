@@ -10,7 +10,7 @@ from numpy.testing import assert_allclose
 
 import flixopt as fx
 
-from .conftest import make_multi_period_flow_system
+from .conftest import _SOLVER, make_flow_system, make_multi_period_flow_system
 
 
 class TestMultiPeriod:
@@ -372,3 +372,165 @@ class TestMultiPeriod:
         )
         fs = optimize(fs)
         assert_allclose(fs.solution['objective'].item(), 500.0, rtol=1e-5)
+
+    def test_fix_sizes_preserves_per_period_sizes(self, optimize):
+        """Proves: transform.fix_sizes() preserves per-period investment sizes
+        in multi-period models (two-stage sizing -> dispatch workflow).
+
+        3 ts, periods=[2020, 2025], weight_of_last_period=5. Weights=[5, 5].
+        Demand peaks at 50 (2020) and 80 (2025), so optimal sizes differ per period.
+        Boiler invest: 10 fixed + 1 per size. Fuel @1.
+        Per-period costs: 2020: (10+50) + 80 = 140; 2025: (10+80) + 110 = 200.
+        Objective = 5*140 + 5*200 = 1700.
+
+        Stage 2 (fixed sizes) must reproduce the same sizes and objective.
+
+        Sensitivity: Before the fix, fix_sizes() collapsed sizes via .item(),
+        raising 'ValueError: can only convert an array of size 1 to a Python
+        scalar' on any multi-period model. If per-period sizes were collapsed
+        to a single value instead, stage-2 sizes or objective would differ.
+        """
+        fs = make_multi_period_flow_system(n_timesteps=3, periods=[2020, 2025], weight_of_last_period=5)
+        demand = xr.DataArray(
+            np.array([[10, 50, 20], [10, 80, 20]], dtype=float),
+            coords={'period': [2020, 2025], 'time': fs.timesteps},
+            dims=['period', 'time'],
+        )
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=demand),
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[
+                    fx.Flow('gas', bus='Gas', effects_per_flow_hour=1),
+                ],
+            ),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=fx.InvestParameters(
+                        maximum_size=200,
+                        effects_of_investment=10,
+                        effects_of_investment_per_size=1,
+                    ),
+                ),
+            ),
+        )
+        # Stage 1: sizing
+        fs = optimize(fs)
+        assert_allclose(fs.solution['Boiler(heat)|size'].values, [50.0, 80.0], rtol=1e-5)
+        assert_allclose(fs.solution['objective'].item(), 1700.0, rtol=1e-5)
+
+        # Stage 2: fix sizes and dispatch
+        fs_dispatch = fs.transform.fix_sizes()
+        fs_dispatch.optimize(_SOLVER)
+        assert_allclose(fs_dispatch.solution['Boiler(heat)|size'].values, [50.0, 80.0], rtol=1e-5)
+        assert_allclose(fs_dispatch.solution['objective'].item(), 1700.0, rtol=1e-5)
+
+    def test_fix_sizes_no_invest_reproduces_objective(self, optimize):
+        """Proves: transform.fix_sizes() does not charge investment for a size of 0.
+
+        Single period, 3 ts. Demand=[10, 50, 20] (sum 80). A DirectHeat source @2€
+        competes with a Boiler whose investment costs a prohibitive 100000€ fixed.
+        Optimal is to NOT invest and serve demand directly: objective = 80*2 = 160.
+
+        Stage 2 must reproduce size 0 AND objective 160.
+
+        Sensitivity: fix_sizes() used to force mandatory=True unconditionally. With
+        a fixed size of 0 that still charges the flat effects_of_investment (100000),
+        so the dispatch objective jumped to 100160 instead of 160.
+        """
+        fs = make_flow_system(n_timesteps=3)
+        demand = xr.DataArray(np.array([10, 50, 20], dtype=float), coords={'time': fs.timesteps}, dims=['time'])
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink('Demand', inputs=[fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=demand)]),
+            fx.Source('DirectHeat', outputs=[fx.Flow('h', bus='Heat', effects_per_flow_hour=2)]),
+            fx.Source('GasSrc', outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)]),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=fx.InvestParameters(
+                        maximum_size=200,
+                        effects_of_investment=100000,
+                        effects_of_investment_per_size=1,
+                    ),
+                ),
+            ),
+        )
+        fs = optimize(fs)
+        assert_allclose(fs.solution['Boiler(heat)|size'].item(), 0.0, atol=1e-6)
+        assert_allclose(fs.solution['objective'].item(), 160.0, rtol=1e-5)
+
+        fs_dispatch = fs.transform.fix_sizes()
+        fs_dispatch.optimize(_SOLVER)
+        assert_allclose(fs_dispatch.solution['Boiler(heat)|size'].item(), 0.0, atol=1e-6)
+        assert_allclose(fs_dispatch.solution['objective'].item(), 160.0, rtol=1e-5)
+
+    def test_fix_sizes_mixed_period_invest_reproduces_objective(self, optimize):
+        """Proves: transform.fix_sizes() charges investment per period, not globally.
+
+        periods=[2020, 2021], weight_of_last_period=1 -> weights [1, 1]. 3 ts each.
+        Demand is 0 in 2020 and [10, 90, 10] in 2021. The Boiler (10000€ fixed
+        invest + 1 per size) is only built in 2021 (size 90); 2020 stays at size 0.
+        Per-period cost: 2020: 0; 2021: 10000 + 90 + 110 = 10200. Objective = 10200.
+
+        Stage 2 must reproduce sizes [0, 90] AND objective 10200.
+
+        Sensitivity: with the old unconditional mandatory=True, the 2020 period
+        (size 0) was still charged the 10000€ fixed investment, inflating the
+        objective to 20200. A scalar mandatory flag cannot express "invest in 2021
+        but not 2020"; keeping it optional lets the invested binary gate the cost.
+        """
+        fs = make_multi_period_flow_system(n_timesteps=3, periods=[2020, 2021], weight_of_last_period=1)
+        demand = xr.DataArray(
+            np.array([[0, 0, 0], [10, 90, 10]], dtype=float),
+            coords={'period': [2020, 2021], 'time': fs.timesteps},
+            dims=['period', 'time'],
+        )
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink('Demand', inputs=[fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=demand)]),
+            fx.Source('GasSrc', outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)]),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=fx.InvestParameters(
+                        maximum_size=200,
+                        effects_of_investment=10000,
+                        effects_of_investment_per_size=1,
+                    ),
+                ),
+            ),
+        )
+        fs = optimize(fs)
+        assert_allclose(fs.solution['Boiler(heat)|size'].values, [0.0, 90.0], atol=1e-6)
+        assert_allclose(fs.solution['objective'].item(), 10200.0, rtol=1e-5)
+
+        fs_dispatch = fs.transform.fix_sizes()
+        fs_dispatch.optimize(_SOLVER)
+        assert_allclose(fs_dispatch.solution['Boiler(heat)|size'].values, [0.0, 90.0], atol=1e-6)
+        assert_allclose(fs_dispatch.solution['objective'].item(), 10200.0, rtol=1e-5)

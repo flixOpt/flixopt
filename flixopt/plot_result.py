@@ -41,7 +41,7 @@ class PlotResult:
 
         Customizing the figure:
 
-        >>> result = clustering.plot.compare()
+        >>> result = flow_system.stats.plot.balance('Bus')
         >>> result.update(title='My Custom Title').show()
     """
 

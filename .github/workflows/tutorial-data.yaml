@@ -1,0 +1,74 @@
+name: Tutorial data
+
+# Builds the pre-built example FlowSystems and uploads them (plus registry.txt) as
+# assets to the GitHub release that `flixopt.tutorials.load_example` downloads from.
+# Run manually whenever the example systems change. The release tag must match
+# `flixopt.tutorials._examples.DATA_RELEASE` (default: tutorial-data-v1).
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to (re)upload the data assets to (must match DATA_RELEASE)."
+        required: true
+        default: "tutorial-data-v1"
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  build-and-upload:
+    name: Build and upload example systems
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.10.9"
+          enable-cache: true
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # docs extra provides demandlib/pvlib/holidays used by the example generators.
+      - name: Install build dependencies
+        run: uv pip install --system -e ".[docs,full]"
+
+      - name: Verify DATA_RELEASE matches the requested tag
+        run: |
+          EXPECTED=$(python -c "from flixopt.tutorials._examples import DATA_RELEASE; print(DATA_RELEASE)")
+          if [[ "$EXPECTED" != "$TAG" ]]; then
+            echo "::error::DATA_RELEASE is '$EXPECTED' but the workflow was asked to upload to '$TAG'."
+            echo "Update flixopt/tutorials/_examples.py or pass the matching tag."
+            exit 1
+          fi
+        env:
+          TAG: ${{ inputs.release_tag }}
+
+      - name: Build example systems
+        run: python scripts/build_tutorial_datasets.py --out-dir dist/tutorial_datasets
+
+      - name: Create the data release if it does not exist
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "Tutorial data ($TAG)" \
+              --notes "Pre-built example FlowSystems downloaded by flixopt.tutorials.load_example." \
+              --prerelease
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+
+      - name: Upload data assets
+        run: gh release upload "$TAG" dist/tutorial_datasets/* --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
