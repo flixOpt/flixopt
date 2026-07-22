@@ -25,8 +25,8 @@ from . import io as fx_io
 from .components import Storage
 from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
 from .effects import PENALTY_EFFECT_LABEL
-from .features import InvestmentModel
 from .results import Results, SegmentedResults
+from .structure import BusVarName, FlowVarName, StorageVarName
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -195,7 +195,7 @@ class Optimization:
         self.flow_system.connect_and_transform()
 
         self.model = self.flow_system.create_model()
-        self.model.do_modeling()
+        self.model.build_model()
 
         self.durations['modeling'] = round(timeit.default_timer() - t_start, 2)
         return self
@@ -295,57 +295,88 @@ class Optimization:
         if self.model is None:
             raise RuntimeError('Optimization has not been solved yet. Call solve() before accessing main_results.')
 
+        # Access effects from type-level model
+        effects_model = self.model.effects
+
         try:
-            penalty_effect = self.flow_system.effects.penalty_effect
+            penalty_effect_id = PENALTY_EFFECT_LABEL
             penalty_section = {
-                'temporal': penalty_effect.submodel.temporal.total.solution.values,
-                'periodic': penalty_effect.submodel.periodic.total.solution.values,
-                'total': penalty_effect.submodel.total.solution.values,
+                'temporal': effects_model.temporal.sel(effect=penalty_effect_id).solution.values,
+                'periodic': effects_model.periodic.sel(effect=penalty_effect_id).solution.values,
+                'total': effects_model.total.sel(effect=penalty_effect_id).solution.values,
             }
-        except KeyError:
+        except (KeyError, AttributeError):
             penalty_section = {'temporal': 0.0, 'periodic': 0.0, 'total': 0.0}
+
+        # Get effect totals from type-level model
+        effects_section = {}
+        for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.label_full.upper()):
+            if effect.label_full != PENALTY_EFFECT_LABEL:
+                effect_id = effect.label
+                effects_section[f'{effect.label} [{effect.unit}]'] = {
+                    'temporal': effects_model.temporal.sel(effect=effect_id).solution.values,
+                    'periodic': effects_model.periodic.sel(effect=effect_id).solution.values,
+                    'total': effects_model.total.sel(effect=effect_id).solution.values,
+                }
+
+        # Get investment decisions from type-level models
+        invested = {}
+        not_invested = {}
+
+        # Check flows with investment
+        flows_model = self.model._flows_model
+        if flows_model is not None and flows_model.investment_ids:
+            size_var = flows_model.get_variable(FlowVarName.SIZE)
+            if size_var is not None:
+                for flow_id in flows_model.investment_ids:
+                    size_solution = size_var.sel(flow=flow_id).solution
+                    if size_solution.max().item() >= CONFIG.Modeling.epsilon:
+                        invested[flow_id] = size_solution
+                    else:
+                        not_invested[flow_id] = size_solution
+
+        # Check storages with investment
+        storages_model = self.model._storages_model
+        if storages_model is not None and hasattr(storages_model, 'investment_ids') and storages_model.investment_ids:
+            size_var = storages_model.get_variable(StorageVarName.SIZE)
+            if size_var is not None:
+                for storage_id in storages_model.investment_ids:
+                    size_solution = size_var.sel(storage=storage_id).solution
+                    if size_solution.max().item() >= CONFIG.Modeling.epsilon:
+                        invested[storage_id] = size_solution
+                    else:
+                        not_invested[storage_id] = size_solution
+
+        # Get buses with excess from type-level model
+        buses_with_excess = []
+        buses_model = self.model._buses_model
+        if buses_model is not None:
+            for bus in self.flow_system.buses.values():
+                if bus.allows_imbalance:
+                    virtual_supply = buses_model.get_variable(BusVarName.VIRTUAL_SUPPLY, bus.label_full)
+                    virtual_demand = buses_model.get_variable(BusVarName.VIRTUAL_DEMAND, bus.label_full)
+                    if virtual_supply is not None and virtual_demand is not None:
+                        supply_sum = virtual_supply.solution.sum().item()
+                        demand_sum = virtual_demand.solution.sum().item()
+                        if supply_sum > 1e-3 or demand_sum > 1e-3:
+                            buses_with_excess.append(
+                                {
+                                    bus.label_full: {
+                                        'virtual_supply': virtual_supply.solution.sum('time'),
+                                        'virtual_demand': virtual_demand.solution.sum('time'),
+                                    }
+                                }
+                            )
 
         main_results = {
             'Objective': self.model.objective.value,
             'Penalty': penalty_section,
-            'Effects': {
-                f'{effect.label} [{effect.unit}]': {
-                    'temporal': effect.submodel.temporal.total.solution.values,
-                    'periodic': effect.submodel.periodic.total.solution.values,
-                    'total': effect.submodel.total.solution.values,
-                }
-                for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.label_full.upper())
-                if effect.label_full != PENALTY_EFFECT_LABEL
-            },
+            'Effects': effects_section,
             'Invest-Decisions': {
-                'Invested': {
-                    model.label_of_element: model.size.solution
-                    for component in self.flow_system.components.values()
-                    for model in component.submodel.all_submodels
-                    if isinstance(model, InvestmentModel)
-                    and model.size.solution.max().item() >= CONFIG.Modeling.epsilon
-                },
-                'Not invested': {
-                    model.label_of_element: model.size.solution
-                    for component in self.flow_system.components.values()
-                    for model in component.submodel.all_submodels
-                    if isinstance(model, InvestmentModel) and model.size.solution.max().item() < CONFIG.Modeling.epsilon
-                },
+                'Invested': invested,
+                'Not invested': not_invested,
             },
-            'Buses with excess': [
-                {
-                    bus.label_full: {
-                        'virtual_supply': bus.submodel.virtual_supply.solution.sum('time'),
-                        'virtual_demand': bus.submodel.virtual_demand.solution.sum('time'),
-                    }
-                }
-                for bus in self.flow_system.buses.values()
-                if bus.allows_imbalance
-                and (
-                    bus.submodel.virtual_supply.solution.sum().item() > 1e-3
-                    or bus.submodel.virtual_demand.solution.sum().item() > 1e-3
-                )
-            ],
+            'Buses with excess': buses_with_excess,
         }
 
         return fx_io.round_nested_floats(main_results)
@@ -583,16 +614,23 @@ class SegmentedOptimization:
 
         # Check for unsupported Investments, but only in first run
         if i == 0:
-            invest_elements = [
-                model.label_full
-                for component in optimization.flow_system.components.values()
-                for model in component.submodel.all_submodels
-                if isinstance(model, InvestmentModel)
-            ]
+            invest_elements = []
+            # Check flows with investment from type-level model
+            flows_model = optimization.model._flows_model
+            if flows_model is not None and flows_model.investment_ids:
+                invest_elements.extend(flows_model.investment_ids)
+            # Check storages with investment from type-level model
+            storages_model = optimization.model._storages_model
+            if (
+                storages_model is not None
+                and hasattr(storages_model, 'investment_ids')
+                and storages_model.investment_ids
+            ):
+                invest_elements.extend(storages_model.investment_ids)
             if invest_elements:
                 raise ValueError(
                     f'Investments are not supported in SegmentedOptimization. '
-                    f'Found InvestmentModels: {invest_elements}. '
+                    f'Found investments: {invest_elements}. '
                     f'Please use Optimization instead for problems with investments.'
                 )
 
@@ -697,18 +735,26 @@ class SegmentedOptimization:
 
         start_values_of_this_segment = {}
 
+        # Get previous flow rates from type-level model
+        current_model = self.sub_optimizations[i - 1].model
+        flows_model = current_model._flows_model
         for current_flow in current_flow_system.flows.values():
             next_flow = next_flow_system.flows[current_flow.label_full]
-            next_flow.previous_flow_rate = current_flow.submodel.flow_rate.solution.sel(
+            flow_rate = flows_model.get_variable(FlowVarName.RATE, current_flow.label_full)
+            next_flow.previous_flow_rate = flow_rate.solution.sel(
                 time=slice(start_previous_values, end_previous_values)
             ).values
             start_values_of_this_segment[current_flow.label_full] = next_flow.previous_flow_rate
 
+        # Get previous charge state from type-level model
+        storages_model = current_model._storages_model
         for current_comp in current_flow_system.components.values():
             next_comp = next_flow_system.components[current_comp.label_full]
             if isinstance(next_comp, Storage):
-                next_comp.initial_charge_state = current_comp.submodel.charge_state.solution.sel(time=start).item()
-                start_values_of_this_segment[current_comp.label_full] = next_comp.initial_charge_state
+                if storages_model is not None:
+                    charge_state = storages_model.get_variable(StorageVarName.CHARGE, current_comp.label_full)
+                    next_comp.initial_charge_state = charge_state.solution.sel(time=start).item()
+                    start_values_of_this_segment[current_comp.label_full] = next_comp.initial_charge_state
 
         self._transfered_start_values.append(start_values_of_this_segment)
 

@@ -74,9 +74,11 @@ class TestNonSegmentedExpansion:
         fs_e = fs_c.transform.expand()
 
         sol = fs_e.solution
-        assert float(np.nansum(sol['B(Q_th)|flow_rate'].values)) == pytest.approx(EXPECTED_HEAT_SUM, rel=1e-6)
-        assert float(np.nansum(sol['D(Q)|flow_rate'].values)) == pytest.approx(EXPECTED_HEAT_SUM, rel=1e-6)
-        assert float(np.nansum(sol['G(Gas)|flow_rate'].values)) == pytest.approx(EXPECTED_GAS_SUM, rel=1e-6)
+        assert float(np.nansum(sol['flow|rate'].sel(flow='B(Q_th)').values)) == pytest.approx(
+            EXPECTED_HEAT_SUM, rel=1e-6
+        )
+        assert float(np.nansum(sol['flow|rate'].sel(flow='D(Q)').values)) == pytest.approx(EXPECTED_HEAT_SUM, rel=1e-6)
+        assert float(np.nansum(sol['flow|rate'].sel(flow='G(Gas)').values)) == pytest.approx(EXPECTED_GAS_SUM, rel=1e-6)
 
     def test_expanded_costs(self, system_with_storage, solver_fixture):
         fs_c = system_with_storage.transform.cluster(n_clusters=2, cluster_duration='1D')
@@ -84,8 +86,12 @@ class TestNonSegmentedExpansion:
         fs_e = fs_c.transform.expand()
 
         sol = fs_e.solution
-        assert float(np.nansum(sol['costs(temporal)|per_timestep'].values)) == pytest.approx(EXPECTED_COSTS, rel=1e-6)
-        assert float(np.nansum(sol['G(Gas)->costs(temporal)'].values)) == pytest.approx(EXPECTED_COSTS, rel=1e-6)
+        assert float(np.nansum(sol['effect|per_timestep'].sel(effect='costs').values)) == pytest.approx(
+            EXPECTED_COSTS, rel=1e-6
+        )
+        assert float(
+            np.nansum(sol['share|temporal'].sel(contributor='G(Gas)', effect='costs').values)
+        ) == pytest.approx(EXPECTED_COSTS, rel=1e-6)
 
     def test_expanded_storage(self, system_with_storage, solver_fixture):
         fs_c = system_with_storage.transform.cluster(n_clusters=2, cluster_duration='1D')
@@ -93,10 +99,16 @@ class TestNonSegmentedExpansion:
         fs_e = fs_c.transform.expand()
 
         sol = fs_e.solution
-        # Storage dispatch varies by solver — check charge_state is non-trivial
-        assert float(np.nansum(sol['S|charge_state'].values)) > 0
+        # The inter-cluster SOC level is unpinned, so its absolute value is degenerate
+        # and solver-dependent — an all-zero SOC is a valid optimum. Assert the
+        # determinate invariants instead (see issue #733).
+        cs = sol['intercluster_storage|charge_state'].sel(intercluster_storage='S').values
+        assert np.all(np.isfinite(cs))
+        assert float(np.nanmin(cs)) >= -1e-5
         # Net discharge should be ~0 (balanced storage)
-        assert float(np.nansum(sol['S|netto_discharge'].values)) == pytest.approx(0, abs=1e-4)
+        assert float(
+            np.nansum(sol['intercluster_storage|netto_discharge'].sel(intercluster_storage='S').values)
+        ) == pytest.approx(0, abs=1e-4)
 
     def test_expanded_shapes(self, system_with_storage, solver_fixture):
         fs_c = system_with_storage.transform.cluster(n_clusters=2, cluster_duration='1D')
@@ -130,9 +142,11 @@ class TestSegmentedExpansion:
         fs_e = fs_c.transform.expand()
 
         sol = fs_e.solution
-        assert float(np.nansum(sol['B(Q_th)|flow_rate'].values)) == pytest.approx(EXPECTED_HEAT_SUM, rel=1e-6)
-        assert float(np.nansum(sol['D(Q)|flow_rate'].values)) == pytest.approx(EXPECTED_HEAT_SUM, rel=1e-6)
-        assert float(np.nansum(sol['G(Gas)|flow_rate'].values)) == pytest.approx(EXPECTED_GAS_SUM, rel=1e-6)
+        assert float(np.nansum(sol['flow|rate'].sel(flow='B(Q_th)').values)) == pytest.approx(
+            EXPECTED_HEAT_SUM, rel=1e-6
+        )
+        assert float(np.nansum(sol['flow|rate'].sel(flow='D(Q)').values)) == pytest.approx(EXPECTED_HEAT_SUM, rel=1e-6)
+        assert float(np.nansum(sol['flow|rate'].sel(flow='G(Gas)').values)) == pytest.approx(EXPECTED_GAS_SUM, rel=1e-6)
 
     def test_expanded_costs(self, system_with_storage, solver_fixture):
         fs_c = system_with_storage.transform.cluster(
@@ -142,8 +156,12 @@ class TestSegmentedExpansion:
         fs_e = fs_c.transform.expand()
 
         sol = fs_e.solution
-        assert float(np.nansum(sol['costs(temporal)|per_timestep'].values)) == pytest.approx(EXPECTED_COSTS, rel=1e-6)
-        assert float(np.nansum(sol['G(Gas)->costs(temporal)'].values)) == pytest.approx(EXPECTED_COSTS, rel=1e-6)
+        assert float(np.nansum(sol['effect|per_timestep'].sel(effect='costs').values)) == pytest.approx(
+            EXPECTED_COSTS, rel=1e-6
+        )
+        assert float(
+            np.nansum(sol['share|temporal'].sel(contributor='G(Gas)', effect='costs').values)
+        ) == pytest.approx(EXPECTED_COSTS, rel=1e-6)
 
     def test_expanded_shapes(self, system_with_storage, solver_fixture):
         fs_c = system_with_storage.transform.cluster(
@@ -166,7 +184,8 @@ class TestSegmentedExpansion:
         fs_e = fs_c.transform.expand()
 
         sol = fs_e.solution
-        for name in ['B(Q_th)|flow_rate', 'D(Q)|flow_rate', 'G(Gas)|flow_rate']:
+        for flow in ['B(Q_th)', 'D(Q)', 'G(Gas)']:
             # Exclude last timestep (extra boundary, may be NaN for non-state variables)
-            vals = sol[name].isel(time=slice(None, -1))
+            name = flow
+            vals = sol['flow|rate'].sel(flow=flow).isel(time=slice(None, -1))
             assert not vals.isnull().any(), f'{name} has NaN values after expansion'
