@@ -48,13 +48,11 @@ class _ReducedFlowSystemBuilder:
         agg_result: Any,  # tsam_xarray.AggregationResult
         timesteps_per_cluster: int,
         dt: float,
-        unrename_map: dict[str, str] | None = None,
     ):
         self._fs = fs
         self._agg_result = agg_result
         self._timesteps_per_cluster = timesteps_per_cluster
         self._dt = dt
-        self._unrename_map = unrename_map or {}
 
         self._n_clusters = agg_result.n_clusters
         self._is_segmented = agg_result.n_segments is not None
@@ -77,18 +75,13 @@ class _ReducedFlowSystemBuilder:
 
         self._base_coords = {'cluster': self._cluster_coords, 'time': self._time_coords}
 
-    def _unrename(self, da: xr.DataArray) -> xr.DataArray:
-        """Rename tsam_xarray output dims back to original names (e.g., _period -> period)."""
-        renames = {k: v for k, v in self._unrename_map.items() if k in da.dims}
-        return da.rename(renames) if renames else da
-
     def build_cluster_weights(self) -> xr.DataArray:
         """Build cluster_weight DataArray from aggregation result.
 
         Returns:
             DataArray with dims [cluster, period?, scenario?].
         """
-        return self._unrename(self._agg_result.cluster_weights.rename('cluster_weight'))
+        return self._agg_result.cluster_weights.rename('cluster_weight')
 
     def build_typical_periods(self) -> dict[str, xr.DataArray]:
         """Build typical periods DataArrays with (cluster, time, ...) shape.
@@ -97,11 +90,10 @@ class _ReducedFlowSystemBuilder:
             Dict mapping column names to DataArrays.
         """
         representatives = self._agg_result.cluster_representatives
-        # representatives has dims: (cluster, timestep, variable, _period?, scenario?)
+        # representatives has dims: (cluster, timestep, variable, period?, scenario?)
         # We need to split by variable and rename timestep -> time
         result = {}
-        # Exclude known dims (including renamed variants like _period, _cluster)
-        known_dims = {'cluster', 'timestep', 'period', 'scenario'} | set(self._unrename_map.keys())
+        known_dims = {'cluster', 'timestep', 'period', 'scenario'}
         unknown_dims = [d for d in representatives.dims if d not in known_dims]
         if len(unknown_dims) != 1:
             raise ValueError(
@@ -117,7 +109,7 @@ class _ReducedFlowSystemBuilder:
             # Ensure cluster and time are first two dims
             other_dims = [d for d in da.dims if d not in ('cluster', 'time')]
             da = da.transpose('cluster', 'time', *other_dims)
-            result[str(var_name)] = self._unrename(da)
+            result[str(var_name)] = da
         return result
 
     def build_segment_durations(self) -> xr.DataArray:
@@ -136,7 +128,7 @@ class _ReducedFlowSystemBuilder:
         da = da.rename({'timestep': 'time'})
         da = da.assign_coords(cluster=self._cluster_coords, time=self._time_coords)
         other_dims = [d for d in da.dims if d not in ('cluster', 'time')]
-        return self._unrename(da.transpose('cluster', 'time', *other_dims).rename('timestep_duration'))
+        return da.transpose('cluster', 'time', *other_dims).rename('timestep_duration')
 
     def build_reduced_dataset(self, ds: xr.Dataset, typical_das: dict[str, xr.DataArray]) -> xr.Dataset:
         """Build the reduced dataset with (cluster, time) structure.
@@ -241,7 +233,6 @@ class _ReducedFlowSystemBuilder:
         reduced_fs.clustering = Clustering(
             original_timesteps=self._fs.timesteps,
             _aggregation_result=self._agg_result,
-            _unrename_map=self._unrename_map,
         )
 
         return reduced_fs
@@ -1343,6 +1334,7 @@ class TransformAccessor:
             'rescale_exclude_columns',
             'round_decimals',
             'numerical_tolerance',
+            'dim_names',  # set explicitly to keep the 'period' slice dim from colliding
         }
         conflicts = reserved_tsam_keys & set(tsam_kwargs.keys())
         if conflicts:
@@ -1363,20 +1355,6 @@ class TransformAccessor:
                     "ExtremeConfig(..., method='replace')"
                 )
 
-        # Rename reserved dimension names to avoid conflict with tsam_xarray
-        # tsam_xarray reserves: 'period', 'cluster', 'timestep'
-        reserved_renames = {'period': '_period', 'cluster': '_cluster'}
-        # Check against full ds dims (period/cluster may only exist as coords, not in ds_for_clustering)
-        rename_map = {k: v for k, v in reserved_renames.items() if k in ds.dims}
-        unrename_map = {v: k for k, v in rename_map.items()}
-
-        if rename_map:
-            # Only rename dims that exist in each dataset
-            clustering_renames = {k: v for k, v in rename_map.items() if k in ds_for_clustering.dims}
-            if clustering_renames:
-                ds_for_clustering = ds_for_clustering.rename(clustering_renames)
-            ds = ds.rename(rename_map)
-
         # Stack Dataset into a single DataArray with 'variable' dimension
         da_for_clustering = ds_for_clustering.to_dataarray(dim='variable')
 
@@ -1384,9 +1362,9 @@ class TransformAccessor:
         # even if the data doesn't vary across them (tsam_xarray needs them for slicing)
         extra_dims = []
         if has_periods:
-            extra_dims.append(rename_map.get('period', 'period'))
+            extra_dims.append('period')
         if has_scenarios:
-            extra_dims.append(rename_map.get('scenario', 'scenario'))
+            extra_dims.append('scenario')
         for dim_name in extra_dims:
             if dim_name not in da_for_clustering.dims and dim_name in ds.dims:
                 # Drop as non-dim coordinate first (to_dataarray may keep it as scalar coord)
@@ -1451,15 +1429,12 @@ class TransformAccessor:
                 n_clusters=n_clusters,
                 weights=weights,
                 cluster_on=cluster_on,
+                dim_names=tsam_xarray.DimNames(period='original_cluster'),
                 **tsam_kwargs_full,
             )
 
-        # Rename reserved dims back to original names in the dataset
-        if unrename_map:
-            ds = ds.rename(unrename_map)
-
         # Build and return the reduced FlowSystem
-        builder = _ReducedFlowSystemBuilder(self._fs, agg_result, timesteps_per_cluster, dt, unrename_map)
+        builder = _ReducedFlowSystemBuilder(self._fs, agg_result, timesteps_per_cluster, dt)
         return builder.build(ds)
 
     def apply_clustering(
@@ -1521,47 +1496,23 @@ class TransformAccessor:
                 f'Ensure self._fs.timesteps matches the original data used for clustering.'
             )
 
-        # Rename reserved dimension names to avoid conflict with tsam_xarray
-        reserved_renames = {'period': '_period', 'cluster': '_cluster'}
-        rename_map = {k: v for k, v in reserved_renames.items() if k in ds.dims}
-        unrename_map = {v: k for k, v in rename_map.items()}
-
-        if rename_map:
-            ds = ds.rename(rename_map)
-
         # Apply existing clustering to full data
         logger.info('Applying clustering...')
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
             da_full = ds.to_dataarray(dim='variable')
 
-            # Ensure extra dims are present in DataArray
-            for _orig_name, renamed in rename_map.items():
-                if renamed not in da_full.dims and renamed in ds.dims:
-                    if renamed in da_full.coords:
-                        da_full = da_full.drop_vars(renamed)
-                    da_full = da_full.expand_dims({renamed: ds.coords[renamed].values})
+            # Ensure slice dims (period/scenario) are present in the DataArray
+            for dim_name in clustering.dim_names:
+                if dim_name not in da_full.dims and dim_name in ds.dims:
+                    if dim_name in da_full.coords:
+                        da_full = da_full.drop_vars(dim_name)
+                    da_full = da_full.expand_dims({dim_name: ds.coords[dim_name].values})
 
-            # Get clustering result with correct dim names for the renamed data
-            from tsam_xarray import ClusteringResult as ClusteringResultClass
-
-            cr_result = clustering.clustering_result
-            # Map dim names to renamed versions (e.g., period → _period)
-            slice_dims = [rename_map.get(d, d) for d in clustering.dim_names]
-            cr_result = ClusteringResultClass(
-                time_dim='time',
-                cluster_dim=['variable'],
-                slice_dims=slice_dims,
-                clusterings=dict(cr_result.clusterings),
-            )
-            agg_result = cr_result.apply(da_full)
-
-        # Rename back
-        if unrename_map:
-            ds = ds.rename(unrename_map)
+            agg_result = clustering.clustering_result.apply(da_full)
 
         # Build and return the reduced FlowSystem
-        builder = _ReducedFlowSystemBuilder(self._fs, agg_result, timesteps_per_cluster, dt, unrename_map)
+        builder = _ReducedFlowSystemBuilder(self._fs, agg_result, timesteps_per_cluster, dt)
         return builder.build(ds)
 
     def _validate_for_expansion(self) -> Clustering:
