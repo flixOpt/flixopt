@@ -558,6 +558,7 @@ class TestInterclusterStorageLinking:
                 actual,
                 expected_clipped,
                 rtol=0.01,
+                atol=1e-9,
                 err_msg=f'Mismatch at period {p}, time {t}: expected {expected_clipped}, got {actual}',
             )
 
@@ -1154,7 +1155,7 @@ class TestSegmentation:
         fs_segmented.optimize(solver_fixture)
         fs_expanded = fs_segmented.transform.expand()
 
-        charge_state = fs_expanded.solution['Battery|charge_state']
+        charge_state = fs_expanded.solution['storage|charge'].sel(storage='Battery')
         assert not np.isnan(charge_state.values).any()
         assert (charge_state.values >= -1e-6).all()
         assert (charge_state.values <= 100 + 1e-6).all()

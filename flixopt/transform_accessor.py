@@ -288,7 +288,7 @@ class _Expander:
         from .structure import InterclusterStorageVarName
 
         soc_boundary_suffix = InterclusterStorageVarName.SOC_BOUNDARY
-        solution_names = set(fs.solution)
+        solution_names = set(fs.solution) if fs.solution is not None else set()
         self._consume_vars: set[str] = {
             s for s in solution_names if s == soc_boundary_suffix or s.endswith(soc_boundary_suffix)
         }
