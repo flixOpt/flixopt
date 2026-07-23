@@ -71,7 +71,7 @@ class TestStorageModel:
         charge_state = model.variables['TestStorage|charge_state']
         assert_conequal(
             model.constraints['TestStorage|charge_state'],
-            charge_state.isel(time=slice(1, None))
+            charge_state.shift(time=-1).isel(time=slice(None, -1))
             == charge_state.isel(time=slice(None, -1))
             + model.variables['TestStorage(Q_th_in)|flow_rate'] * model.timestep_duration
             - model.variables['TestStorage(Q_th_out)|flow_rate'] * model.timestep_duration,
@@ -154,7 +154,7 @@ class TestStorageModel:
 
         assert_conequal(
             model.constraints['TestStorage|charge_state'],
-            charge_state.isel(time=slice(1, None))
+            charge_state.shift(time=-1).isel(time=slice(None, -1))
             == charge_state.isel(time=slice(None, -1)) * (1 - rel_loss) ** timestep_duration
             + charge_rate * eff_charge * timestep_duration
             - discharge_rate / eff_discharge * timestep_duration,
@@ -240,7 +240,7 @@ class TestStorageModel:
         charge_state = model.variables['TestStorage|charge_state']
         assert_conequal(
             model.constraints['TestStorage|charge_state'],
-            charge_state.isel(time=slice(1, None))
+            charge_state.shift(time=-1).isel(time=slice(None, -1))
             == charge_state.isel(time=slice(None, -1))
             + model.variables['TestStorage(Q_th_in)|flow_rate'] * model.timestep_duration
             - model.variables['TestStorage(Q_th_out)|flow_rate'] * model.timestep_duration,
@@ -377,8 +377,8 @@ class TestStorageModel:
         # Check cyclic constraint formulation
         assert_conequal(
             model.constraints['CyclicStorage|initial_charge_state'],
-            model.variables['CyclicStorage|charge_state'].isel(time=0)
-            == model.variables['CyclicStorage|charge_state'].isel(time=-1),
+            model.variables['CyclicStorage|charge_state'].isel(time=0, drop=True)
+            == model.variables['CyclicStorage|charge_state'].isel(time=-1, drop=True),
         )
 
     @pytest.mark.parametrize(

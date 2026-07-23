@@ -10,6 +10,16 @@ from .structure import Submodel, VariableCategory
 
 logger = logging.getLogger('flixopt')
 
+# Adjacent-step constraints in this module relate x[t+1] to x[t]. The "next step"
+# is written `x.shift({dim: -1})` (x[t+1] placed at position t) — the v1-native
+# form: under the linopy v1 convention the out-of-range boundary slot is marked
+# *absent*, so that row drops from the constraint on its own. The trailing
+# `.isel({dim: slice(None, -1)})` paired with each such shift is a LEGACY-ONLY
+# shim: under the legacy convention `.shift` *fills* the boundary slot instead of
+# masking it, leaving a spurious row that the slice removes. Once legacy support
+# is dropped, every `.isel({dim: slice(None, -1)})` on a shifted operand here can
+# go and the constraints reduce to their bare `.shift(...)` form.
+
 
 def _scalar_safe_isel(data: xr.DataArray | Any, indexers: dict) -> xr.DataArray | Any:
     """Apply isel if data has the required dimensions, otherwise return data as-is.
@@ -74,6 +84,22 @@ def _scalar_safe_reduce(data: xr.DataArray | Any, dim: str, method: str = 'mean'
     if dim in data.dims:
         return getattr(data, method)(dim)
     return data
+
+
+def _set_constraint_lhs(constraint: linopy.Constraint, lhs) -> None:
+    """Replace a constraint's LHS, compatibly across linopy versions.
+
+    Incremental accumulators (e.g. share totals) must mutate a constraint after
+    it is created. linopy >= 0.8 exposes ``Constraint.update(lhs=...)`` and
+    deprecates the ``.lhs`` setter (flixopt escalates that deprecation to an
+    error); linopy < 0.8 has only the setter, which is not deprecated there.
+    Dispatch on whichever API the installed linopy provides so the same call
+    works — and warns on neither — under both.
+    """
+    if hasattr(constraint, 'update'):
+        constraint.update(lhs=lhs)
+    else:
+        constraint.lhs = lhs
 
 
 def _xr_allclose(a: xr.DataArray, b: xr.DataArray, rtol: float = 1e-5, atol: float = 1e-8) -> bool:
@@ -405,17 +431,17 @@ class ModelingPrimitives:
 
         # Forward constraint: duration[t+1] ≤ duration[t] + duration_per_step[t]
         constraints['forward'] = model.add_constraints(
-            duration.isel({duration_dim: slice(1, None)})
+            duration.shift({duration_dim: -1}).isel({duration_dim: slice(None, -1)})
             <= duration.isel({duration_dim: slice(None, -1)}) + duration_per_step.isel({duration_dim: slice(None, -1)}),
             name=f'{duration.name}|forward',
         )
 
         # Backward constraint: duration[t+1] ≥ duration[t] + duration_per_step[t] + (state[t+1] - 1) * M
         constraints['backward'] = model.add_constraints(
-            duration.isel({duration_dim: slice(1, None)})
+            duration.shift({duration_dim: -1}).isel({duration_dim: slice(None, -1)})
             >= duration.isel({duration_dim: slice(None, -1)})
             + duration_per_step.isel({duration_dim: slice(None, -1)})
-            + (state.isel({duration_dim: slice(1, None)}) - 1) * mega,
+            + (state.shift({duration_dim: -1}).isel({duration_dim: slice(None, -1)}) - 1) * mega,
             name=f'{duration.name}|backward',
         )
 
@@ -431,8 +457,11 @@ class ModelingPrimitives:
         # Minimum duration constraint if provided
         if minimum_duration is not None:
             constraints['lb'] = model.add_constraints(
-                duration
-                >= (state.isel({duration_dim: slice(None, -1)}) - state.isel({duration_dim: slice(1, None)}))
+                duration.isel({duration_dim: slice(None, -1)})
+                >= (
+                    state.isel({duration_dim: slice(None, -1)})
+                    - state.shift({duration_dim: -1}).isel({duration_dim: slice(None, -1)})
+                )
                 * _scalar_safe_isel(minimum_duration, {duration_dim: slice(None, -1)}),
                 name=f'{duration.name}|lb',
             )
@@ -714,8 +743,9 @@ class BoundingPatterns:
 
         # State transition constraints for t > 0
         transition = model.add_constraints(
-            activate.isel({coord: slice(1, None)}) - deactivate.isel({coord: slice(1, None)})
-            == state.isel({coord: slice(1, None)}) - state.isel({coord: slice(None, -1)}),
+            activate.shift({coord: -1}).isel({coord: slice(None, -1)})
+            - deactivate.shift({coord: -1}).isel({coord: slice(None, -1)})
+            == state.shift({coord: -1}).isel({coord: slice(None, -1)}) - state.isel({coord: slice(None, -1)}),
             name=f'{name}|transition',
         )
 
@@ -776,14 +806,26 @@ class BoundingPatterns:
 
         # Transition constraints for t > 0: continuous variable can only change when transitions occur
         transition_upper = model.add_constraints(
-            continuous_variable.isel({coord: slice(1, None)}) - continuous_variable.isel({coord: slice(None, -1)})
-            <= max_change * (activate.isel({coord: slice(1, None)}) + deactivate.isel({coord: slice(1, None)})),
+            continuous_variable.shift({coord: -1}).isel({coord: slice(None, -1)})
+            - continuous_variable.isel({coord: slice(None, -1)})
+            <= max_change
+            * (
+                activate.shift({coord: -1}).isel({coord: slice(None, -1)})
+                + deactivate.shift({coord: -1}).isel({coord: slice(None, -1)})
+            ),
             name=f'{name}|transition_ub',
         )
 
         transition_lower = model.add_constraints(
-            -(continuous_variable.isel({coord: slice(1, None)}) - continuous_variable.isel({coord: slice(None, -1)}))
-            <= max_change * (activate.isel({coord: slice(1, None)}) + deactivate.isel({coord: slice(1, None)})),
+            -(
+                continuous_variable.shift({coord: -1}).isel({coord: slice(None, -1)})
+                - continuous_variable.isel({coord: slice(None, -1)})
+            )
+            <= max_change
+            * (
+                activate.shift({coord: -1}).isel({coord: slice(None, -1)})
+                + deactivate.shift({coord: -1}).isel({coord: slice(None, -1)})
+            ),
             name=f'{name}|transition_lb',
         )
 
@@ -852,10 +894,10 @@ class BoundingPatterns:
 
         # 2. Transition periods: level[t] = level[t-1] + increase[t] - decrease[t] for t > 0
         transition_constraints = model.add_constraints(
-            level_variable.isel({coord: slice(1, None)})
+            level_variable.shift({coord: -1}).isel({coord: slice(None, -1)})
             == level_variable.isel({coord: slice(None, -1)})
-            + increase_variable.isel({coord: slice(1, None)})
-            - decrease_variable.isel({coord: slice(1, None)}),
+            + increase_variable.shift({coord: -1}).isel({coord: slice(None, -1)})
+            - decrease_variable.shift({coord: -1}).isel({coord: slice(None, -1)}),
             name=f'{name}|transitions',
         )
 
