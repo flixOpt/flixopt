@@ -11,6 +11,13 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ---
 
+## [7.2.2](https://github.com/flixOpt/flixopt/compare/v7.2.1...v7.2.2) (2026-07-23)
+
+
+### Bug Fixes
+
+* **io:** load pre-7.0 clustered NetCDF files with legacy `original_data`/`metrics` references ([339f3a0](https://github.com/flixOpt/flixopt/commit/339f3a07))
+
 ## [7.2.1](https://github.com/flixOpt/flixopt/compare/v7.2.0...v7.2.1) (2026-07-21)
 
 
