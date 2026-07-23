@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-import flixopt as fx
+from flixopt.transform_accessor import TransformAccessor
 
 
 def naive_dataset_resample(dataset: xr.Dataset, freq: str, method: str) -> xr.Dataset:
@@ -100,7 +100,7 @@ def test_resample_equivalence_mixed_dimensions(method, freq):
     ds = create_dataset_with_mixed_dimensions(n_timesteps=100)
 
     # Method 1: Optimized approach (with dimension grouping)
-    result_optimized = fx.FlowSystem._resample_by_dimension_groups(ds, freq, method)
+    result_optimized = TransformAccessor._resample_by_dimension_groups(ds, freq, method)
 
     # Method 2: Naive approach (direct Dataset resampling)
     result_naive = naive_dataset_resample(ds, freq, method)
@@ -122,7 +122,7 @@ def test_resample_equivalence_single_dimension(method):
     ds['var3'] = xr.DataArray(np.random.randn(48) / 5, dims=['time'], coords={'time': ds.time})
 
     # Optimized approach
-    result_optimized = fx.FlowSystem._resample_by_dimension_groups(ds, '2h', method)
+    result_optimized = TransformAccessor._resample_by_dimension_groups(ds, '2h', method)
 
     # Naive approach
     result_naive = naive_dataset_resample(ds, '2h', method)
@@ -139,7 +139,7 @@ def test_resample_equivalence_empty_dataset():
     ds = xr.Dataset(coords={'time': timesteps})
 
     # Both should handle empty dataset gracefully
-    result_optimized = fx.FlowSystem._resample_by_dimension_groups(ds, '2h', 'mean')
+    result_optimized = TransformAccessor._resample_by_dimension_groups(ds, '2h', 'mean')
     result_naive = naive_dataset_resample(ds, '2h', 'mean')
 
     xr.testing.assert_allclose(result_optimized, result_naive)
@@ -155,7 +155,7 @@ def test_resample_equivalence_single_variable():
 
     # Test multiple methods
     for method in ['mean', 'sum', 'max', 'min']:
-        result_optimized = fx.FlowSystem._resample_by_dimension_groups(ds, '3h', method)
+        result_optimized = TransformAccessor._resample_by_dimension_groups(ds, '3h', method)
         result_naive = naive_dataset_resample(ds, '3h', method)
 
         xr.testing.assert_allclose(result_optimized, result_naive)
@@ -180,7 +180,7 @@ def test_resample_equivalence_with_nans():
 
     # Test with methods that handle NaNs
     for method in ['mean', 'sum', 'max', 'min', 'first', 'last']:
-        result_optimized = fx.FlowSystem._resample_by_dimension_groups(ds, '2h', method)
+        result_optimized = TransformAccessor._resample_by_dimension_groups(ds, '2h', method)
         result_naive = naive_dataset_resample(ds, '2h', method)
 
         xr.testing.assert_allclose(result_optimized, result_naive)
@@ -222,7 +222,7 @@ def test_resample_equivalence_different_dimension_orders():
     )
 
     for method in ['mean', 'sum', 'max', 'min']:
-        result_optimized = fx.FlowSystem._resample_by_dimension_groups(ds, '2h', method)
+        result_optimized = TransformAccessor._resample_by_dimension_groups(ds, '2h', method)
         result_naive = naive_dataset_resample(ds, '2h', method)
 
         xr.testing.assert_allclose(result_optimized, result_naive)
@@ -248,7 +248,7 @@ def test_resample_equivalence_multiple_variables_same_dims():
         )
 
     for method in ['mean', 'sum', 'max', 'min']:
-        result_optimized = fx.FlowSystem._resample_by_dimension_groups(ds, '2h', method)
+        result_optimized = TransformAccessor._resample_by_dimension_groups(ds, '2h', method)
         result_naive = naive_dataset_resample(ds, '2h', method)
 
         xr.testing.assert_allclose(result_optimized, result_naive)
@@ -282,7 +282,7 @@ def test_resample_equivalence_large_dataset():
 
     # Test with a subset of methods (to keep test time reasonable)
     for method in ['mean', 'sum', 'first']:
-        result_optimized = fx.FlowSystem._resample_by_dimension_groups(ds, '1D', method)
+        result_optimized = TransformAccessor._resample_by_dimension_groups(ds, '1D', method)
         result_naive = naive_dataset_resample(ds, '1D', method)
 
         xr.testing.assert_allclose(result_optimized, result_naive)
@@ -300,7 +300,7 @@ def test_resample_equivalence_with_kwargs():
     ds['var'] = xr.DataArray(np.random.randn(48), dims=['time'], coords={'time': ds.time})
 
     kwargs = {'label': 'right', 'closed': 'right'}
-    result_optimized = fx.FlowSystem._resample_by_dimension_groups(ds, '2h', 'mean', **kwargs)
+    result_optimized = TransformAccessor._resample_by_dimension_groups(ds, '2h', 'mean', **kwargs)
     result_naive = ds.resample(time='2h', **kwargs).mean()
 
     xr.testing.assert_allclose(result_optimized, result_naive)
