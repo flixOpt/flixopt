@@ -11,17 +11,12 @@ tsam_xarray = pytest.importorskip('tsam_xarray')
 
 
 def _make_clustering_result(clusterings: dict, dim_names: list[str]):
-    """Create a ClusteringResult from a dict of tsam ClusteringResult-like objects.
-
-    Mirrors how ``transform.cluster()`` builds results: the original-period axis
-    is named ``original_cluster`` so it never collides with a ``period`` slice dim.
-    """
+    """Create a ClusteringResult from a dict of tsam ClusteringResult-like objects."""
     return tsam_xarray.ClusteringResult(
         time_dim='time',
         cluster_dim=['variable'],
         slice_dims=dim_names,
         clusterings=clusterings,
-        dim_names=tsam_xarray.DimNames(period='original_cluster'),
     )
 
 
