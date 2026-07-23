@@ -325,22 +325,27 @@ class TestClusteringExact:
         )
         fs = optimize(fs)
 
-        # Grid only buys at cheap timestep (index 2, price=1)
+        # Grid only buys at cheap timesteps (price=1, indices 0 and 2) — never at expensive (price=100)
         grid_fr = fs.solution['Grid(elec)|flow_rate'].values[:, :4]
-        assert_allclose(grid_fr, [[0, 0, 50, 0], [0, 0, 50, 0]], atol=1e-5)
+        assert_allclose(grid_fr[:, [1, 3]], 0.0, atol=1e-5)  # No purchase at expensive timesteps
+        assert_allclose(grid_fr.sum(axis=1), 50.0, atol=1e-5)  # Total purchase per cluster = 50
 
-        # Charge at cheap timestep, discharge at expensive timesteps
-        charge_fr = fs.solution['Battery(charge)|flow_rate'].values[:, :4]
-        assert_allclose(charge_fr, [[0, 0, 50, 0], [0, 0, 50, 0]], atol=1e-5)
-
+        # Discharge at expensive timesteps (indices 1, 3)
         discharge_fr = fs.solution['Battery(discharge)|flow_rate'].values[:, :4]
-        assert_allclose(discharge_fr, [[0, 50, 0, 50], [0, 50, 0, 50]], atol=1e-5)
+        assert_allclose(discharge_fr[:, [1, 3]], [[50, 50], [50, 50]], atol=1e-5)
 
         charge_state = fs.solution['Battery|charge_state']
         assert charge_state.dims == ('cluster', 'time')
         cs_c0 = charge_state.isel(cluster=0).values[:5]
         cs_c1 = charge_state.isel(cluster=1).values[:5]
-        assert_allclose(cs_c0, [50, 50, 0, 50, 0], atol=1e-5)
-        assert_allclose(cs_c1, [100, 100, 50, 100, 50], atol=1e-5)
+        # In 'cyclic' cluster mode the SOC trajectory is degenerate: the absolute level
+        # is unpinned and the 50 units can be bought at either cheap timestep (equal
+        # price), so both the level and the charge timing are solver-dependent. Assert
+        # the determinate invariants: SOC stays within bounds and its per-step change
+        # matches the charge/discharge flows. See issue #733.
+        charge_fr = fs.solution['Battery(charge)|flow_rate'].values[:, :4]
+        for cs, charge, discharge in [(cs_c0, charge_fr[0], discharge_fr[0]), (cs_c1, charge_fr[1], discharge_fr[1])]:
+            assert np.all((cs >= -1e-5) & (cs <= 100 + 1e-5))
+            assert_allclose(np.diff(cs), charge - discharge, atol=1e-5)
 
         assert_allclose(fs.solution['objective'].item(), 100.0, rtol=1e-5)

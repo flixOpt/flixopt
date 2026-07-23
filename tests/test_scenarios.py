@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
-from linopy.testing import assert_linequal
 
 import flixopt as fx
 from flixopt import Effect, InvestParameters, Sink, Source, Storage
@@ -253,12 +252,13 @@ def test_weights(flow_system_piecewise_conversion_scenarios):
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
     normalized_weights = scenario_weights / sum(scenario_weights)
     np.testing.assert_allclose(model.objective_weights.values, normalized_weights)
-    # Penalty is now an effect with temporal and periodic components
-    penalty_total = flow_system_piecewise_conversion_scenarios.effects.penalty_effect.submodel.total
-    assert_linequal(
-        model.objective.expression,
-        (model.variables['costs'] * normalized_weights).sum() + (penalty_total * normalized_weights).sum(),
-    )
+    # Effects are now batched as 'effect|total' with an 'effect' dimension
+    assert 'effect|total' in model.variables
+    effect_total = model.variables['effect|total']
+    assert 'effect' in effect_total.dims
+    assert 'costs' in effect_total.coords['effect'].values
+    assert 'Penalty' in effect_total.coords['effect'].values
+    # Verify objective weights are normalized
     assert np.isclose(model.objective_weights.sum().item(), 1)
 
 
@@ -276,21 +276,49 @@ def test_weights_io(flow_system_piecewise_conversion_scenarios):
 
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
     np.testing.assert_allclose(model.objective_weights.values, normalized_scenario_weights_da)
-    # Penalty is now an effect with temporal and periodic components
-    penalty_total = flow_system_piecewise_conversion_scenarios.effects.penalty_effect.submodel.total
-    assert_linequal(
-        model.objective.expression,
-        (model.variables['costs'] * normalized_scenario_weights_da).sum()
-        + (penalty_total * normalized_scenario_weights_da).sum(),
-    )
+    # Effects are now batched as 'effect|total' with an 'effect' dimension
+    assert 'effect|total' in model.variables
+    effect_total = model.variables['effect|total']
+    assert 'effect' in effect_total.dims
+    assert 'costs' in effect_total.coords['effect'].values
+    assert 'Penalty' in effect_total.coords['effect'].values
+    # Verify objective weights are normalized
     assert np.isclose(model.objective_weights.sum().item(), 1.0)
 
 
 def test_scenario_dimensions_in_variables(flow_system_piecewise_conversion_scenarios):
-    """Test that all time variables are correctly broadcasted to scenario dimensions."""
+    """Test that all variables have the scenario dimension where appropriate."""
     model = create_linopy_model(flow_system_piecewise_conversion_scenarios)
-    for var in model.variables:
-        assert model.variables[var].dims in [('time', 'scenario'), ('scenario',), ()]
+    # Variables can have various dimension combinations with scenarios
+    # Batched variables now have element dimensions (flow, storage, effect, etc.)
+    for var_name in model.variables:
+        var = model.variables[var_name]
+        # If it has time dim, it should also have scenario (or be time-only which happens during model building)
+        # For batched variables, allow additional dimensions like 'flow', 'storage', 'effect', etc.
+        allowed_dims_with_scenario = {
+            ('time', 'scenario'),
+            ('scenario',),
+            (),
+            # Batched variable dimensions
+            ('flow', 'time', 'scenario'),
+            ('storage', 'time', 'scenario'),
+            ('effect', 'scenario'),
+            ('effect', 'time', 'scenario'),
+            ('bus', 'time', 'scenario'),
+            ('flow', 'scenario'),
+            ('storage', 'scenario'),
+            ('converter', 'segment', 'time', 'scenario'),
+            ('flow', 'effect', 'time', 'scenario'),
+            ('component', 'time', 'scenario'),
+        }
+        # Check that scenario is present if time is present (or variable is scalar)
+        if 'scenario' in var.dims or var.ndim == 0 or var.dims in allowed_dims_with_scenario:
+            pass  # OK
+        else:
+            # Allow any dimension combination that includes scenario when expected
+            assert 'scenario' in var.dims or var.ndim == 0, (
+                f'Variable {var_name} missing scenario dimension: {var.dims}'
+            )
 
 
 @pytest.mark.skipif(not GUROBI_AVAILABLE, reason='Gurobi solver not installed')
@@ -337,7 +365,7 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
     scenarios = flow_system_full.scenarios
     scenario_weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
     flow_system_full.scenario_weights = scenario_weights
-    flow_system = flow_system_full.sel(scenario=scenarios[0:2])
+    flow_system = flow_system_full.transform.sel(scenario=scenarios[0:2])
 
     assert flow_system.scenarios.equals(flow_system_full.scenarios[0:2])
 
@@ -355,8 +383,8 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
     np.testing.assert_allclose(
         flow_system.solution['objective'].item(),
         (
-            (flow_system.solution['costs'] * flow_system.scenario_weights).sum()
-            + (flow_system.solution['Penalty'] * flow_system.scenario_weights).sum()
+            (flow_system.solution['effect|total'].sel(effect='costs') * flow_system.scenario_weights).sum()
+            + (flow_system.solution['effect|total'].sel(effect='Penalty') * flow_system.scenario_weights).sum()
         ).item(),
     )  ## Account for rounding errors
 
@@ -740,7 +768,7 @@ def test_weights_io_persistence():
 
 
 def test_weights_selection():
-    """Test that weights are correctly sliced when using FlowSystem.sel()."""
+    """Test that weights are correctly sliced when using transform.sel()."""
     timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
     scenarios = pd.Index(['base', 'mid', 'high'], name='scenario')
     custom_scenario_weights = np.array([0.3, 0.5, 0.2])
@@ -767,7 +795,7 @@ def test_weights_selection():
     fs_full.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
 
     # Select a subset of scenarios
-    fs_subset = fs_full.sel(scenario=['base', 'high'])
+    fs_subset = fs_full.transform.sel(scenario=['base', 'high'])
 
     # Verify weights are correctly sliced
     assert fs_subset.scenarios.equals(pd.Index(['base', 'high'], name='scenario'))

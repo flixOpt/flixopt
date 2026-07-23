@@ -8,104 +8,24 @@ This module provides the TopologyAccessor class that enables the
 from __future__ import annotations
 
 import logging
-import pathlib
 import warnings
+from functools import cached_property
 from itertools import chain
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
+import numpy as np
 import plotly.graph_objects as go
 import xarray as xr
 
 from .color_processing import ColorType, hex_to_rgba, process_colors
-from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
+from .config import CONFIG
+from .flow_system_status import FlowSystemStatus
 from .plot_result import PlotResult
 
 if TYPE_CHECKING:
-    import pyvis
-
     from .flow_system import FlowSystem
 
 logger = logging.getLogger('flixopt')
-
-
-def _plot_network(
-    node_infos: dict,
-    edge_infos: dict,
-    path: str | pathlib.Path | None = None,
-    controls: bool
-    | list[
-        Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
-    ] = True,
-    show: bool = False,
-) -> pyvis.network.Network | None:
-    """Visualize network structure using PyVis.
-
-    Args:
-        node_infos: Dictionary of node information.
-        edge_infos: Dictionary of edge information.
-        path: Path to save HTML visualization.
-        controls: UI controls to add. True for all, or list of specific controls.
-        show: Whether to open in browser.
-
-    Returns:
-        Network instance, or None if pyvis not installed.
-    """
-    try:
-        from pyvis.network import Network
-    except ImportError:
-        logger.critical("Plotting the flow system network was not possible. Please install pyvis: 'pip install pyvis'")
-        return None
-
-    net = Network(directed=True, height='100%' if controls is False else '800px', font_color='white')
-
-    for node_id, node in node_infos.items():
-        net.add_node(
-            node_id,
-            label=node['label'],
-            shape={'Bus': 'circle', 'Component': 'box'}[node['class']],
-            color={'Bus': '#393E46', 'Component': '#00ADB5'}[node['class']],
-            title=node['infos'].replace(')', '\n)'),
-            font={'size': 14},
-        )
-
-    for edge in edge_infos.values():
-        # Use carrier color if available, otherwise default gray
-        edge_color = edge.get('carrier_color', '#222831') or '#222831'
-        net.add_edge(
-            edge['start'],
-            edge['end'],
-            label=edge['label'],
-            title=edge['infos'].replace(')', '\n)'),
-            font={'color': '#4D4D4D', 'size': 14},
-            color=edge_color,
-        )
-
-    net.barnes_hut(central_gravity=0.8, spring_length=50, spring_strength=0.05, gravity=-10000)
-
-    if controls:
-        net.show_buttons(filter_=controls)
-    if not show and not path:
-        return net
-    elif path:
-        path = pathlib.Path(path) if isinstance(path, str) else path
-        net.write_html(path.as_posix())
-    elif show:
-        path = pathlib.Path('network.html')
-        net.write_html(path.as_posix())
-
-    if show:
-        try:
-            import webbrowser
-
-            worked = webbrowser.open(f'file://{path.resolve()}', 2)
-            if not worked:
-                logger.error(f'Showing the network in the Browser went wrong. Open it manually. Its saved under {path}')
-        except Exception as e:
-            logger.error(
-                f'Showing the network in the Browser went wrong. Open it manually. Its saved under {path}: {e}'
-            )
-
-    return net
 
 
 class TopologyAccessor:
@@ -142,15 +62,11 @@ class TopologyAccessor:
         """
         self._fs = flow_system
 
-        # Cached color mappings (lazily initialized)
+        # Cached color mappings (lazily initialized, invalidated by set_*_color methods)
         self._carrier_colors: dict[str, str] | None = None
         self._component_colors: dict[str, str] | None = None
         self._flow_colors: dict[str, str] | None = None
         self._bus_colors: dict[str, str] | None = None
-
-        # Cached unit mappings (lazily initialized)
-        self._carrier_units: dict[str, str] | None = None
-        self._effect_units: dict[str, str] | None = None
 
     @property
     def carrier_colors(self) -> dict[str, str]:
@@ -230,9 +146,9 @@ class TopologyAccessor:
                         self._bus_colors[label] = color
         return self._bus_colors
 
-    @property
+    @cached_property
     def carrier_units(self) -> dict[str, str]:
-        """Cached mapping of carrier name to unit string.
+        """Mapping of carrier name to unit string.
 
         Returns:
             Dict mapping carrier names (lowercase) to unit strings.
@@ -242,13 +158,11 @@ class TopologyAccessor:
             >>> fs.topology.carrier_units
             {'electricity': 'kW', 'heat': 'kW', 'gas': 'kW'}
         """
-        if self._carrier_units is None:
-            self._carrier_units = {name: carrier.unit or '' for name, carrier in self._fs.carriers.items()}
-        return self._carrier_units
+        return {name: carrier.unit or '' for name, carrier in self._fs.carriers.items()}
 
-    @property
+    @cached_property
     def effect_units(self) -> dict[str, str]:
-        """Cached mapping of effect label to unit string.
+        """Mapping of effect label to unit string.
 
         Returns:
             Dict mapping effect labels to unit strings.
@@ -258,9 +172,82 @@ class TopologyAccessor:
             >>> fs.topology.effect_units
             {'costs': '€', 'CO2': 'kg'}
         """
-        if self._effect_units is None:
-            self._effect_units = {effect.label: effect.unit or '' for effect in self._fs.effects.values()}
-        return self._effect_units
+        return {effect.label: effect.unit or '' for effect in self._fs.effects.values()}
+
+    @cached_property
+    def flows(self) -> xr.DataArray:
+        """DataArray with 'flow' dimension and metadata coordinates.
+
+        Coordinates on the 'flow' dimension:
+            - component: Parent component label
+            - bus: Connected bus label
+            - carrier: Carrier name (lowercase)
+            - unit: Unit string from carrier
+            - is_input: Whether the flow is an input to its component
+
+        Useful for filtering and groupby operations on flow data.
+
+        Examples:
+            Filter flow_rates by carrier:
+
+            >>> topo = flow_system.topology
+            >>> heat_flows = topo.flows.sel(flow=(topo.flows.carrier == 'heat')).flow.values
+            >>> flow_system.stats.flow_rates.sel(flow=heat_flows)
+
+            Filter by component:
+
+            >>> boiler_flows = topo.flows.sel(flow=(topo.flows.component == 'Boiler')).flow.values
+            >>> flow_system.stats.flow_rates.sel(flow=boiler_flows)
+
+            Filter by bus:
+
+            >>> bus_flows = topo.flows.sel(flow=(topo.flows.bus == 'HeatBus')).flow.values
+
+            Get only input flows (into components):
+
+            >>> inputs = topo.flows.sel(flow=topo.flows.is_input).flow.values
+
+            Combine filters (heat carrier inputs only):
+
+            >>> mask = (topo.flows.carrier == 'heat') & topo.flows.is_input
+            >>> topo.flows.sel(flow=mask).flow.values
+
+            GroupBy component (assign coord from topology, then group):
+
+            >>> rates = flow_system.stats.flow_rates
+            >>> rates = rates.assign_coords(component=topo.flows.component.sel(flow=rates.flow))
+            >>> rates.groupby('component').sum()
+        """
+        flow_labels = []
+        components = []
+        buses = []
+        carriers = []
+        units = []
+        is_inputs = []
+
+        carrier_units = self.carrier_units
+        for flow in self._fs.flows.values():
+            flow_labels.append(flow.label_full)
+            components.append(flow.component)
+            buses.append(flow.bus)
+            bus_obj = self._fs.buses.get(flow.bus)
+            carrier = bus_obj.carrier.lower() if bus_obj and bus_obj.carrier else ''
+            carriers.append(carrier)
+            units.append(carrier_units.get(carrier, ''))
+            is_inputs.append(flow.is_input_in_component)
+
+        return xr.DataArray(
+            data=np.ones(len(flow_labels)),  # Placeholder values
+            dims=['flow'],
+            coords={
+                'flow': flow_labels,
+                'component': ('flow', components),
+                'bus': ('flow', buses),
+                'carrier': ('flow', carriers),
+                'unit': ('flow', units),
+                'is_input': ('flow', is_inputs),
+            },
+        )
 
     def _invalidate_color_caches(self) -> None:
         """Reset all color caches so they are rebuilt on next access."""
@@ -449,7 +436,6 @@ class TopologyAccessor:
             Hover over nodes and links to see detailed element information.
 
         See Also:
-            - `plot_legacy()`: Previous PyVis-based network visualization.
             - `statistics.plot.sankey.flows()`: Sankey with actual flow values from optimization.
         """
         if not self._fs.connected_and_transformed:
@@ -557,14 +543,15 @@ class TopologyAccessor:
         title = plotly_kwargs.pop('title', 'Flow System Topology')
         fig.update_layout(title=title, **plotly_kwargs)
 
-        # Build xarray Dataset with topology data
-        data = xr.Dataset(
-            {
+        # Build xarray DataArray with topology data
+        data = xr.DataArray(
+            data=links['value'],
+            dims=['link'],
+            coords={
+                'link': links['label'],
                 'source': ('link', links['source']),
                 'target': ('link', links['target']),
-                'value': ('link', links['value']),
             },
-            coords={'link': links['label']},
         )
         result = PlotResult(data=data, figure=fig)
 
@@ -574,65 +561,6 @@ class TopologyAccessor:
             result.show()
 
         return result
-
-    def plot_legacy(
-        self,
-        path: bool | str | pathlib.Path = 'flow_system.html',
-        controls: bool
-        | list[
-            Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
-        ] = True,
-        show: bool | None = None,
-    ) -> pyvis.network.Network | None:
-        """
-        Visualize the network structure using PyVis, saving it as an interactive HTML file.
-
-        .. deprecated::
-            Use `plot()` instead for the new Plotly-based Sankey visualization.
-            This method is kept for backwards compatibility.
-
-        Args:
-            path: Path to save the HTML visualization.
-                - `False`: Visualization is created but not saved.
-                - `str` or `Path`: Specifies file path (default: 'flow_system.html').
-            controls: UI controls to add to the visualization.
-                - `True`: Enables all available controls.
-                - `List`: Specify controls, e.g., ['nodes', 'layout'].
-                - Options: 'nodes', 'edges', 'layout', 'interaction', 'manipulation',
-                  'physics', 'selection', 'renderer'.
-            show: Whether to open the visualization in the web browser.
-
-        Returns:
-            The `pyvis.network.Network` instance representing the visualization,
-            or `None` if `pyvis` is not installed.
-
-        Examples:
-            >>> flow_system.topology.plot_legacy()
-            >>> flow_system.topology.plot_legacy(show=False)
-            >>> flow_system.topology.plot_legacy(path='output/network.html', controls=['nodes', 'layout'])
-
-        Notes:
-            This function requires `pyvis`. If not installed, the function prints
-            a warning and returns `None`.
-            Nodes are styled based on type (circles for buses, boxes for components)
-            and annotated with node information.
-        """
-        warnings.warn(
-            f'This method is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
-            'Use flow_system.topology.plot() instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        node_infos, edge_infos = self.infos()
-        # Normalize path=False to None for _plot_network compatibility
-        normalized_path = None if path is False else path
-        return _plot_network(
-            node_infos,
-            edge_infos,
-            normalized_path,
-            controls,
-            show if show is not None else CONFIG.Plotting.default_show,
-        )
 
     def start_app(self) -> None:
         """
@@ -670,7 +598,7 @@ class TopologyAccessor:
                 f'Original error: {VISUALIZATION_ERROR}'
             )
 
-        if not self._fs._connected_and_transformed:
+        if self._fs.status < FlowSystemStatus.CONNECTED:
             self._fs._connect_network()
 
         if self._fs._network_app is not None:

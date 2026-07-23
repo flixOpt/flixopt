@@ -17,7 +17,7 @@ except (PackageNotFoundError, TypeError):
 # - xr.Dataset.fxstats (from stats_accessor)
 import xarray_plotly as _xpx  # noqa: F401
 
-from . import clustering, linear_converters, plotting, results, solvers, tutorials
+from . import clustering, linear_converters, plotting, solvers, tutorials
 from . import stats_accessor as _fxstats  # noqa: F401
 from .carrier import Carrier, CarrierContainer
 from .comparison import Comparison
@@ -34,8 +34,8 @@ from .core import TimeSeriesData
 from .effects import PENALTY_EFFECT_LABEL, Effect
 from .elements import Bus, Flow
 from .flow_system import FlowSystem
+from .flow_system_status import FlowSystemStatus
 from .interface import InvestParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects, StatusParameters
-from .optimization import Optimization, SegmentedOptimization
 from .plot_result import PlotResult
 
 __all__ = [
@@ -55,8 +55,7 @@ __all__ = [
     'LinearConverter',
     'Transmission',
     'FlowSystem',
-    'Optimization',
-    'SegmentedOptimization',
+    'FlowSystemStatus',
     'InvestParameters',
     'StatusParameters',
     'Piece',
@@ -66,7 +65,6 @@ __all__ = [
     'PlotResult',
     'clustering',
     'plotting',
-    'results',
     'linear_converters',
     'solvers',
     'tutorials',

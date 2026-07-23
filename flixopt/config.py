@@ -602,6 +602,29 @@ class CONFIG:
         default_qualitative_colorscale: str = _DEFAULTS['plotting']['default_qualitative_colorscale']
         default_line_shape: str = _DEFAULTS['plotting']['default_line_shape']
 
+    class Legacy:
+        """Legacy compatibility settings.
+
+        Attributes:
+            solution_access: Enable backwards-compatible solution access patterns.
+                When True, accessing `fs.solution['effect_name']` will automatically
+                translate to `fs.solution['effect|total'].sel(effect='effect_name')`,
+                emitting a DeprecationWarning. Default: True during the v8 transition
+                to the batched variable naming; set to False to opt into strict
+                new-style access.
+
+        Examples:
+            ```python
+            # Opt into strict new-style access only
+            CONFIG.Legacy.solution_access = False
+
+            # With the default (True), old-style access still works
+            fs.solution['costs']  # Returns effect total for 'costs'
+            ```
+        """
+
+        solution_access: bool = True
+
     class Carriers:
         """Default carrier definitions for common energy types.
 

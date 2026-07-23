@@ -70,9 +70,8 @@ tutorials = [
 
 # Full feature set (everything except dev tools)
 full = [
-    "tsam_xarray >= 0.6.1, < 1",  # Time series aggregation for clustering (wraps tsam); 0.6.1 adds aggregate(cluster_on=)
+    "tsam_xarray >= 0.6.4, < 1",  # Time series aggregation for clustering (wraps tsam); 0.6.4 adds aggregate(dim_names=)
     "tsam >= 3.4.0, < 4",  # Directly imported for ClusterConfig, ExtremeConfig, SegmentConfig
-    "pyvis==0.3.2",  # Visualizing FlowSystem Network
     "scipy >= 1.15.1, < 2", # Used by tsam. Prior versions have conflict with highspy. See https://github.com/scipy/scipy/issues/22257
     "gurobipy >= 10.0.0, < 14; python_version < '3.14'",  # No Python 3.14 wheels yet (expected Q1 2026)
     "dash >= 3.0.0, < 5",  # Visualizing FlowSystem Network as app
@@ -87,14 +86,13 @@ full = [
 # Development tools and testing
 dev = [
     "xarray<2026.5",  # TODO: drop once linopy ships xarray 2026.3+ compat fix
-    "tsam_xarray==0.6.1",  # Time series aggregation for clustering (wraps tsam)
+    "tsam_xarray==0.6.4",  # Time series aggregation for clustering (wraps tsam)
     "tsam==3.4.0",  # Directly imported for ClusterConfig, ExtremeConfig, SegmentConfig
     "pytest==9.1.1",
     "pytest-xdist==3.8.0",
     "nbformat==5.10.4",
     "ruff==0.15.21",
     "pre-commit==4.6.0",
-    "pyvis==0.3.2",
     "scipy==1.16.3",  # 1.16.1+ required for Python 3.14 wheels
     "highspy==1.13.1",  # Latest known-good. Bump once HiGHS#2975 fix ships in 1.14.1+
     "gurobipy==12.0.3; python_version < '3.14'",  # No Python 3.14 wheels yet
@@ -189,7 +187,6 @@ extend-fixable = ["B"]   # Enable fix for flake8-bugbear (`B`), on top of any ru
 # Apply rule exceptions to specific files or directories
 [tool.ruff.lint.per-file-ignores]
 "tests/*.py" = ["S101"]  # Ignore assertions in test files
-"tests/superseded/test_integration.py" = ["N806"]  # Ignore NOT lowercase names in test files
 "flixopt/linear_converters.py" = ["N803"]  # Parameters with NOT lowercase names
 
 [tool.ruff.format]
@@ -204,9 +201,8 @@ keep-runtime-typing = false  # Allow pyupgrade to drop runtime typing; prefer po
 markers = [
     "slow: marks tests as slow",
     "examples: marks example tests (run only on releases)",
-    "deprecated_api: marks tests using deprecated Optimization/Results API (remove in v6.0.0)",
 ]
-addopts = '-m "not examples" --ignore=tests/superseded'  # Skip examples and superseded tests by default
+addopts = '-m "not examples"'  # Skip examples by default
 
 # Warning filter configuration for pytest
 # Filters are processed in order; first match wins

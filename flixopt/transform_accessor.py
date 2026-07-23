@@ -16,8 +16,9 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from .model_coordinates import ModelCoordinates
 from .modeling import _scalar_safe_reduce
-from .structure import EXPAND_DIVIDE, EXPAND_FIRST_TIMESTEP, EXPAND_INTERPOLATE, VariableCategory
+from .structure import NAME_TO_EXPANSION, ExpansionMode
 
 if TYPE_CHECKING:
     from tsam import ClusterConfig, ExtremeConfig, SegmentConfig
@@ -48,13 +49,11 @@ class _ReducedFlowSystemBuilder:
         agg_result: Any,  # tsam_xarray.AggregationResult
         timesteps_per_cluster: int,
         dt: float,
-        unrename_map: dict[str, str] | None = None,
     ):
         self._fs = fs
         self._agg_result = agg_result
         self._timesteps_per_cluster = timesteps_per_cluster
         self._dt = dt
-        self._unrename_map = unrename_map or {}
 
         self._n_clusters = agg_result.n_clusters
         self._is_segmented = agg_result.n_segments is not None
@@ -77,18 +76,13 @@ class _ReducedFlowSystemBuilder:
 
         self._base_coords = {'cluster': self._cluster_coords, 'time': self._time_coords}
 
-    def _unrename(self, da: xr.DataArray) -> xr.DataArray:
-        """Rename tsam_xarray output dims back to original names (e.g., _period -> period)."""
-        renames = {k: v for k, v in self._unrename_map.items() if k in da.dims}
-        return da.rename(renames) if renames else da
-
     def build_cluster_weights(self) -> xr.DataArray:
         """Build cluster_weight DataArray from aggregation result.
 
         Returns:
             DataArray with dims [cluster, period?, scenario?].
         """
-        return self._unrename(self._agg_result.cluster_weights.rename('cluster_weight'))
+        return self._agg_result.cluster_weights.rename('cluster_weight')
 
     def build_typical_periods(self) -> dict[str, xr.DataArray]:
         """Build typical periods DataArrays with (cluster, time, ...) shape.
@@ -97,11 +91,10 @@ class _ReducedFlowSystemBuilder:
             Dict mapping column names to DataArrays.
         """
         representatives = self._agg_result.cluster_representatives
-        # representatives has dims: (cluster, timestep, variable, _period?, scenario?)
+        # representatives has dims: (cluster, timestep, variable, period?, scenario?)
         # We need to split by variable and rename timestep -> time
         result = {}
-        # Exclude known dims (including renamed variants like _period, _cluster)
-        known_dims = {'cluster', 'timestep', 'period', 'scenario'} | set(self._unrename_map.keys())
+        known_dims = {'cluster', 'timestep', 'period', 'scenario'}
         unknown_dims = [d for d in representatives.dims if d not in known_dims]
         if len(unknown_dims) != 1:
             raise ValueError(
@@ -117,7 +110,7 @@ class _ReducedFlowSystemBuilder:
             # Ensure cluster and time are first two dims
             other_dims = [d for d in da.dims if d not in ('cluster', 'time')]
             da = da.transpose('cluster', 'time', *other_dims)
-            result[str(var_name)] = self._unrename(da)
+            result[str(var_name)] = da
         return result
 
     def build_segment_durations(self) -> xr.DataArray:
@@ -136,7 +129,7 @@ class _ReducedFlowSystemBuilder:
         da = da.rename({'timestep': 'time'})
         da = da.assign_coords(cluster=self._cluster_coords, time=self._time_coords)
         other_dims = [d for d in da.dims if d not in ('cluster', 'time')]
-        return self._unrename(da.transpose('cluster', 'time', *other_dims).rename('timestep_duration'))
+        return da.transpose('cluster', 'time', *other_dims).rename('timestep_duration')
 
     def build_reduced_dataset(self, ds: xr.Dataset, typical_das: dict[str, xr.DataArray]) -> xr.Dataset:
         """Build the reduced dataset with (cluster, time) structure.
@@ -238,10 +231,11 @@ class _ReducedFlowSystemBuilder:
                 storage.initial_charge_state = None
 
         # Create Clustering object with full AggregationResult access
+        # Note: The clustering setter automatically resets the batched accessor
+        # to ensure storage categorization (basic vs intercluster) is recomputed.
         reduced_fs.clustering = Clustering(
             original_timesteps=self._fs.timesteps,
             _aggregation_result=self._agg_result,
-            _unrename_map=self._unrename_map,
         )
 
         return reduced_fs
@@ -271,10 +265,9 @@ class _Expander:
         self._original_timesteps = clustering.original_timesteps
         self._n_original_timesteps = len(self._original_timesteps)
 
-        # Import here to avoid circular import
-        from .flow_system import FlowSystem
+        from .model_coordinates import ModelCoordinates
 
-        self._original_timesteps_extra = FlowSystem._create_timesteps_with_extra(self._original_timesteps, None)
+        self._original_timesteps_extra = ModelCoordinates._create_timesteps_with_extra(self._original_timesteps, None)
 
         # Index of last valid original cluster (for final state)
         self._last_original_cluster_idx = min(
@@ -282,11 +275,18 @@ class _Expander:
             self._n_original_clusters - 1,
         )
 
-        # Build variable category sets from registered categories
-        variable_categories = fs._variable_categories
-        self._state_vars = {name for name, cat in variable_categories.items() if cat in EXPAND_INTERPOLATE}
-        self._first_timestep_vars = {name for name, cat in variable_categories.items() if cat in EXPAND_FIRST_TIMESTEP}
-        self._segment_total_vars = {name for name, cat in variable_categories.items() if cat in EXPAND_DIVIDE}
+        # Build consume vars for intercluster post-processing
+        from .structure import InterclusterStorageVarName
+
+        soc_boundary_suffix = InterclusterStorageVarName.SOC_BOUNDARY
+        solution_names = set(fs.solution) if fs.solution is not None else set()
+        self._consume_vars: set[str] = {
+            s for s in solution_names if s == soc_boundary_suffix or s.endswith(soc_boundary_suffix)
+        }
+
+        self._state_vars = {n for n, m in NAME_TO_EXPANSION.items() if m == ExpansionMode.INTERPOLATE}
+        self._first_timestep_vars = {n for n, m in NAME_TO_EXPANSION.items() if m == ExpansionMode.FIRST_TIMESTEP}
+        self._segment_total_vars = {n for n, m in NAME_TO_EXPANSION.items() if m == ExpansionMode.DIVIDE}
 
         # Pre-compute expansion divisor for segmented systems (segment durations on original time)
         self._expansion_divisor = None
@@ -400,7 +400,7 @@ class _Expander:
             reduced_solution: The original reduced solution dataset.
         """
         n_original_timesteps_extra = len(self._original_timesteps_extra)
-        soc_boundary_vars = self._fs.get_variables_by_category(VariableCategory.SOC_BOUNDARY)
+        soc_boundary_vars = list(self._consume_vars)
 
         for soc_boundary_name in soc_boundary_vars:
             storage_name = soc_boundary_name.rsplit('|', 1)[0]
@@ -761,7 +761,6 @@ class TransformAccessor:
         Returns:
             xr.Dataset: Selected dataset
         """
-        from .flow_system import FlowSystem
 
         indexers = {}
         if time is not None:
@@ -777,13 +776,13 @@ class TransformAccessor:
         result = dataset.sel(**indexers)
 
         if 'time' in indexers:
-            result = FlowSystem._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+            result = ModelCoordinates._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
 
         if 'period' in indexers:
-            result = FlowSystem._update_period_metadata(result)
+            result = ModelCoordinates._update_period_metadata(result)
 
         if 'scenario' in indexers:
-            result = FlowSystem._update_scenario_metadata(result)
+            result = ModelCoordinates._update_scenario_metadata(result)
 
         return result
 
@@ -811,7 +810,6 @@ class TransformAccessor:
         Returns:
             xr.Dataset: Selected dataset
         """
-        from .flow_system import FlowSystem
 
         indexers = {}
         if time is not None:
@@ -827,13 +825,13 @@ class TransformAccessor:
         result = dataset.isel(**indexers)
 
         if 'time' in indexers:
-            result = FlowSystem._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+            result = ModelCoordinates._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
 
         if 'period' in indexers:
-            result = FlowSystem._update_period_metadata(result)
+            result = ModelCoordinates._update_period_metadata(result)
 
         if 'scenario' in indexers:
-            result = FlowSystem._update_scenario_metadata(result)
+            result = ModelCoordinates._update_scenario_metadata(result)
 
         return result
 
@@ -869,7 +867,6 @@ class TransformAccessor:
         Raises:
             ValueError: If resampling creates gaps and fill_gaps is not specified.
         """
-        from .flow_system import FlowSystem
 
         available_methods = ['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count']
         if method not in available_methods:
@@ -898,7 +895,7 @@ class TransformAccessor:
             result = dataset.copy()
             result = result.assign_coords(time=resampled_time)
             result.attrs.update(original_attrs)
-            return FlowSystem._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+            return ModelCoordinates._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
 
         time_dataset = dataset[time_var_names]
         resampled_time_dataset = cls._resample_by_dimension_groups(time_dataset, freq, method, **kwargs)
@@ -940,7 +937,7 @@ class TransformAccessor:
                 result = result.assign_coords({coord_name: coord_val})
 
         result.attrs.update(original_attrs)
-        return FlowSystem._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+        return ModelCoordinates._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
 
     @staticmethod
     def _resample_by_dimension_groups(
@@ -1067,6 +1064,13 @@ class TransformAccessor:
         # Convert dict to Dataset format
         if isinstance(sizes, dict):
             sizes = xr.Dataset({k: xr.DataArray(v) for k, v in sizes.items()})
+
+        # stats.sizes returns a DataArray with an 'element' dim (possibly behind the
+        # legacy access shim); split it into per-element variables so lookup by name
+        # works uniformly below
+        sizes = getattr(sizes, '_da', sizes)
+        if isinstance(sizes, xr.DataArray):
+            sizes = xr.Dataset({str(e): sizes.sel(element=e, drop=True) for e in sizes['element'].values})
 
         # Apply rounding
         if decimal_rounding is not None:
@@ -1343,6 +1347,7 @@ class TransformAccessor:
             'rescale_exclude_columns',
             'round_decimals',
             'numerical_tolerance',
+            'dim_names',  # set explicitly to keep the 'period' slice dim from colliding
         }
         conflicts = reserved_tsam_keys & set(tsam_kwargs.keys())
         if conflicts:
@@ -1363,20 +1368,6 @@ class TransformAccessor:
                     "ExtremeConfig(..., method='replace')"
                 )
 
-        # Rename reserved dimension names to avoid conflict with tsam_xarray
-        # tsam_xarray reserves: 'period', 'cluster', 'timestep'
-        reserved_renames = {'period': '_period', 'cluster': '_cluster'}
-        # Check against full ds dims (period/cluster may only exist as coords, not in ds_for_clustering)
-        rename_map = {k: v for k, v in reserved_renames.items() if k in ds.dims}
-        unrename_map = {v: k for k, v in rename_map.items()}
-
-        if rename_map:
-            # Only rename dims that exist in each dataset
-            clustering_renames = {k: v for k, v in rename_map.items() if k in ds_for_clustering.dims}
-            if clustering_renames:
-                ds_for_clustering = ds_for_clustering.rename(clustering_renames)
-            ds = ds.rename(rename_map)
-
         # Stack Dataset into a single DataArray with 'variable' dimension
         da_for_clustering = ds_for_clustering.to_dataarray(dim='variable')
 
@@ -1384,9 +1375,9 @@ class TransformAccessor:
         # even if the data doesn't vary across them (tsam_xarray needs them for slicing)
         extra_dims = []
         if has_periods:
-            extra_dims.append(rename_map.get('period', 'period'))
+            extra_dims.append('period')
         if has_scenarios:
-            extra_dims.append(rename_map.get('scenario', 'scenario'))
+            extra_dims.append('scenario')
         for dim_name in extra_dims:
             if dim_name not in da_for_clustering.dims and dim_name in ds.dims:
                 # Drop as non-dim coordinate first (to_dataarray may keep it as scalar coord)
@@ -1451,15 +1442,12 @@ class TransformAccessor:
                 n_clusters=n_clusters,
                 weights=weights,
                 cluster_on=cluster_on,
+                dim_names=tsam_xarray.DimNames(period='original_cluster'),
                 **tsam_kwargs_full,
             )
 
-        # Rename reserved dims back to original names in the dataset
-        if unrename_map:
-            ds = ds.rename(unrename_map)
-
         # Build and return the reduced FlowSystem
-        builder = _ReducedFlowSystemBuilder(self._fs, agg_result, timesteps_per_cluster, dt, unrename_map)
+        builder = _ReducedFlowSystemBuilder(self._fs, agg_result, timesteps_per_cluster, dt)
         return builder.build(ds)
 
     def apply_clustering(
@@ -1521,47 +1509,23 @@ class TransformAccessor:
                 f'Ensure self._fs.timesteps matches the original data used for clustering.'
             )
 
-        # Rename reserved dimension names to avoid conflict with tsam_xarray
-        reserved_renames = {'period': '_period', 'cluster': '_cluster'}
-        rename_map = {k: v for k, v in reserved_renames.items() if k in ds.dims}
-        unrename_map = {v: k for k, v in rename_map.items()}
-
-        if rename_map:
-            ds = ds.rename(rename_map)
-
         # Apply existing clustering to full data
         logger.info('Applying clustering...')
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*')
             da_full = ds.to_dataarray(dim='variable')
 
-            # Ensure extra dims are present in DataArray
-            for _orig_name, renamed in rename_map.items():
-                if renamed not in da_full.dims and renamed in ds.dims:
-                    if renamed in da_full.coords:
-                        da_full = da_full.drop_vars(renamed)
-                    da_full = da_full.expand_dims({renamed: ds.coords[renamed].values})
+            # Ensure slice dims (period/scenario) are present in the DataArray
+            for dim_name in clustering.dim_names:
+                if dim_name not in da_full.dims and dim_name in ds.dims:
+                    if dim_name in da_full.coords:
+                        da_full = da_full.drop_vars(dim_name)
+                    da_full = da_full.expand_dims({dim_name: ds.coords[dim_name].values})
 
-            # Get clustering result with correct dim names for the renamed data
-            from tsam_xarray import ClusteringResult as ClusteringResultClass
-
-            cr_result = clustering.clustering_result
-            # Map dim names to renamed versions (e.g., period → _period)
-            slice_dims = [rename_map.get(d, d) for d in clustering.dim_names]
-            cr_result = ClusteringResultClass(
-                time_dim='time',
-                cluster_dim=['variable'],
-                slice_dims=slice_dims,
-                clusterings=dict(cr_result.clusterings),
-            )
-            agg_result = cr_result.apply(da_full)
-
-        # Rename back
-        if unrename_map:
-            ds = ds.rename(unrename_map)
+            agg_result = clustering.clustering_result.apply(da_full)
 
         # Build and return the reduced FlowSystem
-        builder = _ReducedFlowSystemBuilder(self._fs, agg_result, timesteps_per_cluster, dt, unrename_map)
+        builder = _ReducedFlowSystemBuilder(self._fs, agg_result, timesteps_per_cluster, dt)
         return builder.build(ds)
 
     def _validate_for_expansion(self) -> Clustering:

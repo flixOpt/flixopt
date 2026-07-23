@@ -148,29 +148,25 @@ See [Plotting Results](../results-plotting.md) for comprehensive plotting docume
 
 The `topology` accessor lets you visualize and inspect your system structure:
 
-### Static HTML Visualization
+### Sankey Diagram
 
-Generate an interactive network diagram using PyVis:
+Visualize the network structure as an interactive Plotly Sankey diagram:
 
 ```python
-# Default: saves to 'flow_system.html' and opens in browser
-flow_system.topology.plot()
+# Show in the browser
+flow_system.topology.plot(show=True)
 
-# Custom options
-flow_system.topology.plot(
-    path='output/my_network.html',
-    controls=['nodes', 'layout', 'physics'],
-    show=True
-)
+# Custom colors, export to HTML
+result = flow_system.topology.plot(colors={'Heat': 'red', 'Electricity': 'gold'})
+result.figure.write_html('output/my_network.html')
 ```
 
 **Parameters:**
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `path` | str, Path, or False | `'flow_system.html'` | Where to save the HTML file |
-| `controls` | bool or list | `True` | UI controls to show |
-| `show` | bool | `None` | Whether to open in browser |
+| `colors` | str, list, or dict | `None` | Colorscale name, color list, or bus-to-color mapping |
+| `show` | bool | `None` | Whether to open in browser (default from `CONFIG.Plotting.default_show`) |
 
 ### Interactive App
 

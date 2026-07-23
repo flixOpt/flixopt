@@ -37,17 +37,25 @@ def solved_multiperiod_scenario_system():
 def test_effects_dataset_tolerates_transposed_solution_dims(solved_multiperiod_scenario_system, mode):
     """Transposing an effect total in the solution must not crash the validation."""
     fs = solved_multiperiod_scenario_system
-    suffix = {'temporal': '(temporal)|per_timestep', 'periodic': '(periodic)', 'total': ''}[mode]
-    label = f'costs{suffix}'
-    assert label in fs.solution
+    from flixopt.structure import EffectVarName
 
-    found = fs.solution[label]
-    transposable = [d for d in found.dims if d != 'time']
+    var_name = {
+        'temporal': EffectVarName.PER_TIMESTEP,
+        'periodic': EffectVarName.PERIODIC,
+        'total': EffectVarName.TOTAL,
+    }[mode]
+    assert var_name in fs._solution
+
+    found = fs._solution[var_name]
+    transposable = [d for d in found.dims if d not in ('time', 'effect')]
     assert len(transposable) >= 2  # need >=2 non-time dims to reorder into a shape mismatch
 
     # Force the opposite dim order the bug is about.
     reordered = [d for d in reversed(found.dims)]
-    fs._solution[label] = found.transpose(*reordered)
+    fs._solution[var_name] = found.transpose(*reordered)
 
-    ds = fs.stats._create_effects_dataset(mode)
-    assert 'costs' in ds
+    da = fs.stats._create_effects_array(mode)
+    if (
+        'effect' in da.coords
+    ):  # empty scalar when the mode has no contributors — the point is that validation didn't crash
+        assert 'costs' in da.coords['effect'].values

@@ -51,6 +51,7 @@ nav:
       - Troubleshooting: user-guide/troubleshooting.md
       - Community: user-guide/support.md
     - Migration & Updates:
+      - Migration Guide v8: user-guide/migration-guide-v8.md
       - Migration Guide v7: user-guide/migration-guide-v7.md
       - Migration Guide v6: user-guide/migration-guide-v6.md
       - Migration Guide v5: user-guide/migration-guide-v5.md
@@ -84,6 +85,10 @@ nav:
       - Plotting: notebooks/09-plotting-and-data-access.ipynb
 
   - API Reference: api-reference/
+
+  - Developer Guide:
+      - Architecture: architecture/batched_modeling.md
+      - Variable Names: variable_names.md
 
   - Contributing: contribute.md
 
