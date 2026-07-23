@@ -187,7 +187,6 @@ extend-fixable = ["B"]   # Enable fix for flake8-bugbear (`B`), on top of any ru
 # Apply rule exceptions to specific files or directories
 [tool.ruff.lint.per-file-ignores]
 "tests/*.py" = ["S101"]  # Ignore assertions in test files
-"tests/superseded/test_integration.py" = ["N806"]  # Ignore NOT lowercase names in test files
 "flixopt/linear_converters.py" = ["N803"]  # Parameters with NOT lowercase names
 
 [tool.ruff.format]
