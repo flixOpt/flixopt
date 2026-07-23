@@ -1839,6 +1839,13 @@ class FlowSystemDatasetIO:
             return
 
         clustering_structure = json.loads(reference_structure['clustering'])
+        # Backward-compat: files written before flixopt 7.0 stored clustering.original_data
+        # and clustering._metrics as ':::original_data|...' / ':::metrics|...' references whose
+        # target arrays are no longer serialized (they only fed the removed plot.compare()).
+        # These keys are also not accepted by the current Clustering.__init__. Drop them so
+        # such files remain loadable.
+        clustering_structure.pop('_original_data_refs', None)
+        clustering_structure.pop('_metrics_refs', None)
         clustering = fs_cls._resolve_reference_structure(clustering_structure, {})
         flow_system.clustering = clustering
 
