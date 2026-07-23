@@ -1065,8 +1065,10 @@ class TransformAccessor:
         if isinstance(sizes, dict):
             sizes = xr.Dataset({k: xr.DataArray(v) for k, v in sizes.items()})
 
-        # stats.sizes returns a DataArray with an 'element' dim; split it into
-        # per-element variables so lookup by name works uniformly below
+        # stats.sizes returns a DataArray with an 'element' dim (possibly behind the
+        # legacy access shim); split it into per-element variables so lookup by name
+        # works uniformly below
+        sizes = getattr(sizes, '_da', sizes)
         if isinstance(sizes, xr.DataArray):
             sizes = xr.Dataset({str(e): sizes.sel(element=e, drop=True) for e in sizes['element'].values})
 

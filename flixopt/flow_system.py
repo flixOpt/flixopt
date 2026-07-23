@@ -229,7 +229,16 @@ class LegacySolutionWrapper:
         return len(object.__getattribute__(self, '_dataset'))
 
     def __contains__(self, key):
-        return key in object.__getattribute__(self, '_dataset')
+        if key in object.__getattribute__(self, '_dataset'):
+            return True
+        if isinstance(key, str):
+            import contextlib
+
+            with contextlib.suppress(KeyError), warnings.catch_warnings():
+                warnings.simplefilter('ignore', DeprecationWarning)
+                self[key]
+                return True
+        return False
 
 
 class FlowSystem(Interface, CompositeContainerMixin[Element]):

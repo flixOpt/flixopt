@@ -402,6 +402,123 @@ def _merge_color_kwargs(
 # --- Statistics Accessor (data only) ---
 
 
+def _unwrap(da):
+    """Return the underlying DataArray if wrapped in a legacy access shim."""
+    return getattr(da, '_da', da)
+
+
+class LegacyElementAccess:
+    """Backwards-compatible view of an element-dimension DataArray.
+
+    In v7 the statistics accessors returned Datasets with one variable per
+    element; the batched world returns DataArrays with an element dimension.
+    When ``CONFIG.Legacy.solution_access`` is enabled, this shim keeps the old
+    Dataset-style access patterns working (with a DeprecationWarning):
+
+        flow_rates['Boiler(Q_th)']   ->  flow_rates.sel(flow='Boiler(Q_th)')
+        flow_rates.items()           ->  per-element (label, DataArray) pairs
+        flow_rates.data_vars         ->  {label: DataArray} mapping
+
+    All other attributes and operations are proxied to the wrapped DataArray.
+    """
+
+    __slots__ = ('_da', '_dim')
+
+    def __init__(self, da: xr.DataArray, dim: str) -> None:
+        object.__setattr__(self, '_da', da)
+        object.__setattr__(self, '_dim', dim)
+
+    def _labels(self):
+        return [str(v) for v in self._da.coords[self._dim].values]
+
+    def _warn(self, pattern: str, replacement: str) -> None:
+        import warnings
+
+        warnings.warn(
+            f'Legacy statistics access: {pattern} is deprecated. Use {replacement} instead.',
+            DeprecationWarning,
+            stacklevel=3,
+        )
+
+    def __getitem__(self, key):
+        if isinstance(key, str) and key in self._labels():
+            self._warn(f'[{key!r}]', f'.sel({self._dim}={key!r})')
+            return self._da.sel({self._dim: key}, drop=True).rename(key)
+        return self._da[key]
+
+    def __contains__(self, key):
+        if isinstance(key, str):
+            return key in self._labels()
+        return key in self._da
+
+    def items(self):
+        self._warn('.items()', f'iterating .coords[{self._dim!r}] with .sel()')
+        for label in self._labels():
+            yield label, self._da.sel({self._dim: label}, drop=True).rename(label)
+
+    @property
+    def data_vars(self):
+        self._warn('.data_vars', f'.coords[{self._dim!r}]')
+        return dict(self.items())
+
+    def keys(self):
+        return iter(self._labels())
+
+    def __iter__(self):
+        return iter(self._labels())
+
+    def __getattr__(self, name):
+        return getattr(object.__getattribute__(self, '_da'), name)
+
+    def __setattr__(self, name, value):
+        setattr(object.__getattribute__(self, '_da'), name, value)
+
+    def __repr__(self):
+        return repr(object.__getattribute__(self, '_da'))
+
+    def __len__(self):
+        return len(object.__getattribute__(self, '_da'))
+
+    def __mul__(self, other):
+        return self._da * _unwrap(other)
+
+    def __rmul__(self, other):
+        return _unwrap(other) * self._da
+
+    def __add__(self, other):
+        return self._da + _unwrap(other)
+
+    def __radd__(self, other):
+        return _unwrap(other) + self._da
+
+    def __sub__(self, other):
+        return self._da - _unwrap(other)
+
+    def __rsub__(self, other):
+        return _unwrap(other) - self._da
+
+    def __truediv__(self, other):
+        return self._da / _unwrap(other)
+
+    def __neg__(self):
+        return -self._da
+
+    def __abs__(self):
+        return abs(self._da)
+
+    def __array__(self, dtype=None):
+        import numpy as _np
+
+        return _np.asarray(self._da, dtype=dtype)
+
+
+def _maybe_legacy(da: xr.DataArray, dim: str):
+    """Wrap in LegacyElementAccess when legacy access mode is on."""
+    if CONFIG.Legacy.solution_access and dim in da.dims:
+        return LegacyElementAccess(da, dim)
+    return da
+
+
 class StatisticsAccessor:
     """Statistics accessor for FlowSystem. Access via ``flow_system.stats``.
 
@@ -525,15 +642,23 @@ class StatisticsAccessor:
         return self._plot
 
     @cached_property
-    def flow_rates(self) -> xr.DataArray:
-        """All flow rates as a DataArray with 'flow' dimension."""
+    def _flow_rates_raw(self) -> xr.DataArray:
         self._require_solution()
         return self._fs.solution[FlowVarName.RATE]
 
+    @property
+    def flow_rates(self) -> xr.DataArray:
+        """All flow rates as a DataArray with 'flow' dimension."""
+        return _maybe_legacy(self._flow_rates_raw, 'flow')
+
     @cached_property
+    def _flow_hours_raw(self) -> xr.DataArray:
+        return self._flow_rates_raw * self._fs.timestep_duration
+
+    @property
     def flow_hours(self) -> xr.DataArray:
         """All flow hours (energy) as a DataArray with 'flow' dimension."""
-        return self.flow_rates * self._fs.timestep_duration
+        return _maybe_legacy(self._flow_hours_raw, 'flow')
 
     @cached_property
     def flow_sizes(self) -> xr.DataArray:
@@ -567,18 +692,29 @@ class StatisticsAccessor:
         return xr.concat(parts, dim='storage') if len(parts) > 1 else parts[0]
 
     @cached_property
-    def sizes(self) -> xr.DataArray:
-        """All investment sizes (flows and storage capacities) as a DataArray with 'element' dim."""
+    def _sizes_raw(self) -> xr.DataArray:
         return xr.concat(
-            [self.flow_sizes.rename(flow='element'), self.storage_sizes.rename(storage='element')],
+            [
+                _unwrap(self.flow_sizes).rename(flow='element'),
+                _unwrap(self.storage_sizes).rename(storage='element'),
+            ],
             dim='element',
         )
 
+    @property
+    def sizes(self) -> xr.DataArray:
+        """All investment sizes (flows and storage capacities) as a DataArray with 'element' dim."""
+        return _maybe_legacy(self._sizes_raw, 'element')
+
     @cached_property
-    def charge_states(self) -> xr.DataArray:
-        """All storage charge states as a DataArray with 'storage' dimension."""
+    def _charge_states_raw(self) -> xr.DataArray:
         self._require_solution()
         return self._fs.solution[StorageVarName.CHARGE]
+
+    @property
+    def charge_states(self) -> xr.DataArray:
+        """All storage charge states as a DataArray with 'storage' dimension."""
+        return _maybe_legacy(self._charge_states_raw, 'storage')
 
     @cached_property
     def effect_share_factors(self) -> dict[str, dict]:

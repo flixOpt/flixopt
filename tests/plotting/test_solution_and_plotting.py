@@ -178,7 +178,12 @@ class TestStatisticsAccessor:
         """Test that statistics.sizes includes all flow and storage sizes (from InvestParameters)."""
         simple_flow_system.optimize(highs_solver)
 
-        sizes = simple_flow_system.statistics.sizes
+        original = fx.CONFIG.Legacy.solution_access
+        fx.CONFIG.Legacy.solution_access = False
+        try:
+            sizes = simple_flow_system.statistics.sizes
+        finally:
+            fx.CONFIG.Legacy.solution_access = original
 
         assert isinstance(sizes, xr.DataArray)
         # Should have sizes with element dimension
@@ -208,7 +213,12 @@ class TestStatisticsAccessor:
         """Test that statistics.flow_rates returns flow rate data."""
         simple_flow_system.optimize(highs_solver)
 
-        flow_rates = simple_flow_system.statistics.flow_rates
+        original = fx.CONFIG.Legacy.solution_access
+        fx.CONFIG.Legacy.solution_access = False
+        try:
+            flow_rates = simple_flow_system.statistics.flow_rates
+        finally:
+            fx.CONFIG.Legacy.solution_access = original
 
         assert isinstance(flow_rates, xr.DataArray)
         assert 'flow' in flow_rates.dims
@@ -220,7 +230,12 @@ class TestStatisticsAccessor:
         """Test that statistics.flow_hours returns energy data."""
         simple_flow_system.optimize(highs_solver)
 
-        flow_hours = simple_flow_system.statistics.flow_hours
+        original = fx.CONFIG.Legacy.solution_access
+        fx.CONFIG.Legacy.solution_access = False
+        try:
+            flow_hours = simple_flow_system.statistics.flow_hours
+        finally:
+            fx.CONFIG.Legacy.solution_access = original
 
         assert isinstance(flow_hours, xr.DataArray)
         assert 'flow' in flow_hours.dims
