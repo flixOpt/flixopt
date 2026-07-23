@@ -365,7 +365,7 @@ def test_scenarios_selection(flow_system_piecewise_conversion_scenarios):
     scenarios = flow_system_full.scenarios
     scenario_weights = np.linspace(0.5, 1, len(scenarios)) / np.sum(np.linspace(0.5, 1, len(scenarios)))
     flow_system_full.scenario_weights = scenario_weights
-    flow_system = flow_system_full.sel(scenario=scenarios[0:2])
+    flow_system = flow_system_full.transform.sel(scenario=scenarios[0:2])
 
     assert flow_system.scenarios.equals(flow_system_full.scenarios[0:2])
 
@@ -768,7 +768,7 @@ def test_weights_io_persistence():
 
 
 def test_weights_selection():
-    """Test that weights are correctly sliced when using FlowSystem.sel()."""
+    """Test that weights are correctly sliced when using transform.sel()."""
     timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
     scenarios = pd.Index(['base', 'mid', 'high'], name='scenario')
     custom_scenario_weights = np.array([0.3, 0.5, 0.2])
@@ -795,7 +795,7 @@ def test_weights_selection():
     fs_full.add_elements(bus, source, fx.Effect('cost', 'Total cost', '€', is_objective=True))
 
     # Select a subset of scenarios
-    fs_subset = fs_full.sel(scenario=['base', 'high'])
+    fs_subset = fs_full.transform.sel(scenario=['base', 'high'])
 
     # Verify weights are correctly sliced
     assert fs_subset.scenarios.equals(pd.Index(['base', 'high'], name='scenario'))

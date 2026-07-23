@@ -77,7 +77,7 @@ One effect is the **objective** (minimized). Others are tracked or constrained.
 
     ```python
     fx.Bus(
-        excess_penalty_per_flow_hour=1e6,    # Penalty for excess
+        imbalance_penalty_per_flow_hour=1e6,    # Penalty for excess
         shortage_penalty_per_flow_hour=1e6,  # Penalty for shortage
     )
     ```
@@ -259,7 +259,7 @@ A built-in `Penalty` effect enables soft constraints and prevents infeasibility:
 
 ```python
 fx.StatusParameters(effects_per_startup={'Penalty': 1})
-fx.Bus(label='heat', excess_penalty_per_flow_hour=1e5)
+fx.Bus(label='heat', imbalance_penalty_per_flow_hour=1e5)
 ```
 
 Penalty is weighted identically to the objective effect across all dimensions.

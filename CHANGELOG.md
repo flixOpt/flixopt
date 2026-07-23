@@ -6,6 +6,7 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 !!! tip
 
+    If upgrading from v7.x, see the [Migration Guide v8](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v8/).
     If upgrading from v5.x, see the [Migration Guide v6](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v6/).
     If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide v3](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
@@ -13,9 +14,20 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ## [Unreleased]
 
-**Summary**: Performance release with **up to 67x faster model building** for large systems through batched/vectorized operations.
+**Summary**: v8 removes all v4-era deprecated APIs and rewrites model building with batched/vectorized operations — up to **67x faster** for large systems. Code that runs warning-free on v7.x runs unchanged apart from the removals below. See the [Migration Guide v8](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v8/).
+
+
+### 💥 Removed
+
+- **`Optimization` / `SegmentedOptimization` / `Results`** — use `flow_system.optimize(solver)` and read results via `flow_system.solution` / `flow_system.stats`
+- **`FlowSystem.sel()` / `isel()` / `resample()` / `coords`** — use `flow_system.transform.sel/isel/resample()` and `flow_system.indexes`
+- **`FlowSystem.plot_network()` / `network_infos()` / `start_network_app()` / `stop_network_app()`** and the PyVis-based `topology.plot_legacy()` — use `flow_system.topology.plot()` / `infos()` / `start_app()` / `stop_app()`; **pyvis is no longer a dependency**
+- **`FlowSystem.from_old_results()`** — re-run old optimizations with the current API (`from_old_dataset()` still loads pre-v5 configuration files and no longer warns)
+- **`Bus(excess_penalty_per_flow_hour=...)`** — now raises `TypeError`; use `imbalance_penalty_per_flow_hour`
+- **`normalize_weights` parameter** on `create_model` / `build_model` / `optimize()` — weights are always normalized
 
 ### 🚀 Performance
+
 
 #### Batched Model Building (#588)
 

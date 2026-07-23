@@ -5,6 +5,7 @@ import pathlib
 import pytest
 import xarray as xr
 
+import flixopt as fx
 from flixopt.io import (
     PARAMETER_RENAMES,
     VALUE_RENAMES,
@@ -627,151 +628,26 @@ class TestRealWorldScenarios:
         assert result['unit'] == '€'
 
 
-class TestFlowSystemFromOldResults:
-    """Tests for FlowSystem.from_old_results() method."""
+class TestFromOldDatasetRealFiles:
+    """Regression coverage for FlowSystem.from_old_dataset() against the real pre-v5 files.
 
-    def test_load_old_results_from_resources(self):
-        """Test loading old results files from test resources."""
-        import pathlib
+    These fixtures are the only proof that the pre-v5 file bridge survives schema
+    changes in the current API. The bridge is scheduled for removal in v9.
+    """
 
-        import flixopt as fx
+    RESOURCES = pathlib.Path(__file__).parent.parent / 'ressources'
 
-        resources_path = pathlib.Path(__file__).parent.parent / 'ressources'
-
-        # Load old results using new method
-        fs = fx.FlowSystem.from_old_results(resources_path, 'Sim1')
-
-        # Verify FlowSystem was loaded
-        assert fs is not None
-        assert fs.name == 'Sim1'
-
-        # Verify solution was attached
-        assert fs.solution is not None
-        assert len(fs.solution.data_vars) > 0
-
-    def test_old_results_can_be_saved_new_format(self, tmp_path):
-        """Test that old results can be saved in new single-file format."""
-        import pathlib
-
-        import flixopt as fx
-
-        resources_path = pathlib.Path(__file__).parent.parent / 'ressources'
-
-        # Load old results
-        fs = fx.FlowSystem.from_old_results(resources_path, 'Sim1')
-
-        # Save in new format
-        new_path = tmp_path / 'migrated.nc'
-        fs.to_netcdf(new_path)
-
-        # Verify the new file exists and can be loaded
-        assert new_path.exists()
-        loaded = fx.FlowSystem.from_netcdf(new_path)
-        assert loaded is not None
-        assert loaded.solution is not None
-
-
-class TestV4APIConversion:
-    """Tests for converting v4 API result files to the new format."""
-
-    V4_API_PATH = pathlib.Path(__file__).parent.parent / 'ressources' / 'v4-api'
-
-    # All result names in the v4-api folder
-    V4_RESULT_NAMES = [
-        '00_minimal',
-        '01_simple',
-        '02_complex',
-        '04_scenarios',
-        'io_flow_system_base',
-        'io_flow_system_long',
-        'io_flow_system_segments',
-        'io_simple_flow_system',
-        'io_simple_flow_system_scenarios',
-    ]
-
-    @pytest.mark.parametrize('result_name', V4_RESULT_NAMES)
-    def test_v4_results_can_be_loaded(self, result_name):
-        """Test that v4 API results can be loaded."""
-        import flixopt as fx
-
-        fs = fx.FlowSystem.from_old_results(self.V4_API_PATH, result_name)
-
-        # Verify FlowSystem was loaded
-        assert fs is not None
-        assert fs.name == result_name
-
-        # Verify solution was attached
-        assert fs.solution is not None
-        assert len(fs.solution.data_vars) > 0
-
-        # Verify we have components
+    @pytest.mark.parametrize(
+        'file', sorted(p.name for p in RESOURCES.rglob('*--flow_system.nc4')), ids=lambda f: f.split('--')[0]
+    )
+    def test_loads_every_pre_v5_file(self, file):
+        path = next(self.RESOURCES.rglob(file))
+        fs = fx.FlowSystem.from_old_dataset(path)
         assert len(fs.components) > 0
+        assert len(fs.buses) > 0
 
-    @pytest.mark.parametrize('result_name', V4_RESULT_NAMES)
-    def test_v4_results_can_be_saved_and_reloaded(self, result_name, tmp_path):
-        """Test that v4 API results can be saved in new format and reloaded."""
-        import flixopt as fx
-
-        # Load old results
-        fs = fx.FlowSystem.from_old_results(self.V4_API_PATH, result_name)
-
-        # Save in new format
-        new_path = tmp_path / f'{result_name}_migrated.nc'
-        fs.to_netcdf(new_path)
-
-        # Reload and verify
-        loaded = fx.FlowSystem.from_netcdf(new_path)
-        assert loaded is not None
-        assert loaded.solution is not None
-        assert len(loaded.solution.data_vars) == len(fs.solution.data_vars)
-        assert len(loaded.components) == len(fs.components)
-
-    @pytest.mark.parametrize('result_name', V4_RESULT_NAMES)
-    def test_v4_solution_variables_accessible(self, result_name):
-        """Test that solution variables from v4 results are accessible."""
-        import flixopt as fx
-
-        fs = fx.FlowSystem.from_old_results(self.V4_API_PATH, result_name)
-
-        # Check that we can access solution variables
-        for var_name in list(fs.solution.data_vars)[:5]:  # Check first 5 variables
-            var = fs.solution[var_name]
-            assert var is not None
-            # Variables should have data
-            assert var.size > 0
-
-    @pytest.mark.parametrize('result_name', V4_RESULT_NAMES)
-    def test_v4_reoptimized_objective_matches_original(self, result_name):
-        """Test that re-solving the migrated FlowSystem gives the same objective effect."""
-        import flixopt as fx
-
-        # Load old results
-        fs = fx.FlowSystem.from_old_results(self.V4_API_PATH, result_name)
-
-        # Get the objective effect label
-        objective_effect_label = fs.effects.objective_effect.label
-
-        # Get the original effect total from the old solution (sum for multi-scenario)
-        old_effect_total = float(fs.solution[objective_effect_label].values.sum())
-        old_objective = float(fs.solution['objective'].values.sum())
-
-        # Re-solve the FlowSystem
-        fs.optimize(fx.solvers.HighsSolver(mip_gap=0))
-
-        # Get new objective effect total (sum for multi-scenario)
-        new_objective = float(fs.solution['objective'].item())
-        new_effect_total = float(fs.solution['effect|total'].sel(effect=objective_effect_label).sum().item())
-
-        # Skip comparison for scenarios test case - scenario weights are now always normalized,
-        # which changes the objective value when loading old results with non-normalized weights
-        if result_name == '04_scenarios':
-            pytest.skip('Scenario weights are now always normalized - old results have different weights')
-
-        assert new_objective == pytest.approx(old_objective, rel=1e-5), (
-            f'Objective mismatch for {result_name}: new={new_objective}, old={old_objective}'
-        )
-
-        assert new_effect_total == pytest.approx(old_effect_total, rel=1e-5), (
-            f'Effect {objective_effect_label} mismatch for {result_name}: '
-            f'new={new_effect_total}, old={old_effect_total}'
-        )
+    def test_loaded_system_optimizes(self, highs_solver):
+        path = next(self.RESOURCES.rglob('01_simple--flow_system.nc4'))
+        fs = fx.FlowSystem.from_old_dataset(path)
+        fs.optimize(highs_solver)
+        assert fs.solution['objective'].item() == pytest.approx(83.88, rel=1e-3)

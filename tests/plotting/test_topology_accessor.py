@@ -1,8 +1,5 @@
 """Tests for the TopologyAccessor class."""
 
-import tempfile
-from pathlib import Path
-
 import plotly.graph_objects as go
 import pytest
 
@@ -118,66 +115,3 @@ class TestTopologyPlot:
         # Should not raise
         flow_system.topology.plot(colors='Viridis', show=False)
         flow_system.topology.plot(colors=['red', 'blue', 'green'], show=False)
-
-
-class TestTopologyPlotLegacy:
-    """Tests for topology.plot_legacy() method (PyVis-based)."""
-
-    def test_plot_legacy_returns_network_or_none(self, flow_system):
-        """Test that plot_legacy() returns a pyvis Network or None."""
-        try:
-            import pyvis
-
-            result = flow_system.topology.plot_legacy(path=False, show=False)
-            assert result is None or isinstance(result, pyvis.network.Network)
-        except ImportError:
-            # pyvis not installed, should return None
-            result = flow_system.topology.plot_legacy(path=False, show=False)
-            assert result is None
-
-    def test_plot_legacy_creates_html_file(self, flow_system):
-        """Test that plot_legacy() creates an HTML file when path is specified."""
-        pytest.importorskip('pyvis')
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            html_path = Path(tmpdir) / 'network.html'
-            flow_system.topology.plot_legacy(path=str(html_path), show=False)
-            assert html_path.exists()
-            content = html_path.read_text()
-            assert '<html>' in content.lower() or '<!doctype' in content.lower()
-
-    def test_plot_legacy_with_controls_list(self, flow_system):
-        """Test that plot_legacy() accepts a list of controls."""
-        pytest.importorskip('pyvis')
-
-        # Should not raise
-        flow_system.topology.plot_legacy(path=False, controls=['nodes', 'layout'], show=False)
-
-
-class TestDeprecatedMethods:
-    """Tests for deprecated FlowSystem methods that delegate to topology."""
-
-    def test_network_infos_deprecation_warning(self, flow_system):
-        """Test that network_infos() raises a DeprecationWarning."""
-        with pytest.warns(DeprecationWarning, match='topology.infos'):
-            flow_system.network_infos()
-
-    def test_plot_network_deprecation_warning(self, flow_system):
-        """Test that plot_network() raises a DeprecationWarning."""
-        with pytest.warns(DeprecationWarning, match='topology.plot'):
-            flow_system.plot_network(path=False, show=False)
-
-    def test_deprecated_methods_return_same_results(self, flow_system):
-        """Test that deprecated methods return the same results as topology accessor."""
-        import warnings
-
-        # Get results from new API
-        new_nodes, new_edges = flow_system.topology.infos()
-
-        # Get results from deprecated API (suppress warning)
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', DeprecationWarning)
-            old_nodes, old_edges = flow_system.network_infos()
-
-        assert new_nodes == old_nodes
-        assert new_edges == old_edges
