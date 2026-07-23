@@ -9,6 +9,11 @@
     The `transform.cluster()` call signature is unchanged — only the `Clustering`
     result object and a few helpers changed.
 
+!!! info "Upgrading to v8?"
+    v8.0.0 removes the long-deprecated v4-era APIs (`Optimization`/`Results`,
+    `FlowSystem.sel/isel/resample`, PyVis network plotting). See the
+    [Migration Guide v8](migration-guide-v8.md).
+
 ---
 
 ## Overview
