@@ -428,44 +428,6 @@ class InvestmentBuilder:
             )
 
     @staticmethod
-    def collect_effects(
-        params: dict[str, InvestParameters],
-        element_ids: list[str],
-        attr: str,
-        dim_name: str,
-    ) -> dict[str, xr.DataArray]:
-        """Collect effects dict from params into a dict of DataArrays.
-
-        Args:
-            params: Dict mapping element_id -> InvestParameters.
-            element_ids: List of element IDs to collect from.
-            attr: Attribute name on InvestParameters (e.g., 'effects_of_investment_per_size').
-            dim_name: Dimension name for the DataArrays.
-
-        Returns:
-            Dict mapping effect_name -> DataArray with element dimension.
-        """
-        # Find all effect names across all elements
-        all_effects: set[str] = set()
-        for eid in element_ids:
-            effects = getattr(params[eid], attr) or {}
-            all_effects.update(effects.keys())
-
-        if not all_effects:
-            return {}
-
-        # Build DataArray for each effect
-        result = {}
-        for effect_name in all_effects:
-            values = []
-            for eid in element_ids:
-                effects = getattr(params[eid], attr) or {}
-                values.append(effects.get(effect_name, np.nan))
-            result[effect_name] = xr.DataArray(values, dims=[dim_name], coords={dim_name: element_ids})
-
-        return result
-
-    @staticmethod
     def build_effect_factors(
         effects_dict: dict[str, xr.DataArray],
         element_ids: list[str],

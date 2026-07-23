@@ -1894,54 +1894,44 @@ class InterclusterStoragesModel(TypeModel):
             )
 
     def create_effect_shares(self) -> None:
-        """Add investment effects to the EffectsModel."""
+        """Queue investment effect contributions with the EffectsModel.
+
+        Mirrors StoragesModel.add_effect_contributions: periodic size-proportional
+        effects, invested-gated fixed/retirement effects, and mandatory constants.
+        Runs before EffectsModel.finalize_shares(), which applies the queue.
+        """
         if not self.data.with_investment:
             return
 
-        from .features import InvestmentBuilder
+        inv = self.data.investment_data
+        if inv is None:
+            return
 
-        investment_ids = self.data.with_investment
-        optional_ids = self.data.with_optional_investment
-        storages_with_investment = [self.data[sid] for sid in investment_ids]
+        dim = self.dim_name
+        effects_model = self.model.effects
 
-        size_var = self.size
-        invested_var = self.invested
+        if inv.effects_per_size is not None:
+            factors = inv.effects_per_size
+            storage_ids = factors.coords[dim].values
+            size_subset = self.size.sel({dim: storage_ids})
+            effects_model.add_periodic_contribution(size_subset * factors, contributor_dim=dim)
 
-        # Collect effects
-        effects = InvestmentBuilder.collect_effects(
-            storages_with_investment,
-            lambda s: s.capacity_in_flow_hours,
-        )
+        invested = self.invested
+        if invested is not None:
+            if (ff := inv.effects_of_investment) is not None:
+                storage_ids = ff.coords[dim].values
+                invested_subset = invested.sel({dim: storage_ids})
+                effects_model.add_periodic_contribution(invested_subset * ff, contributor_dim=dim)
 
-        # Add effect shares
-        for effect_name, effect_type, factors in effects:
-            factor_stacked = stack_along_dim(factors, self.dim_name, investment_ids)
+            if (ff := inv.effects_of_retirement) is not None:
+                storage_ids = ff.coords[dim].values
+                invested_subset = invested.sel({dim: storage_ids})
+                effects_model.add_periodic_contribution(invested_subset * (-ff), contributor_dim=dim)
 
-            if effect_type == 'per_size':
-                expr = (size_var * factor_stacked).sum(self.dim_name)
-            elif effect_type == 'fixed':
-                if invested_var is not None:
-                    mandatory_ids = self.data.with_mandatory_investment
-
-                    expr_parts = []
-                    if mandatory_ids:
-                        factor_mandatory = factor_stacked.sel({self.dim_name: mandatory_ids})
-                        expr_parts.append(factor_mandatory.sum(self.dim_name))
-                    if optional_ids:
-                        factor_optional = factor_stacked.sel({self.dim_name: optional_ids})
-                        invested_optional = invested_var.sel({self.dim_name: optional_ids})
-                        expr_parts.append((invested_optional * factor_optional).sum(self.dim_name))
-                    expr = sum(expr_parts) if expr_parts else 0
-                else:
-                    expr = factor_stacked.sum(self.dim_name)
-            else:
-                continue
-
-            if isinstance(expr, (int, float)) and expr == 0:
-                continue
-            if isinstance(expr, (int, float)):
-                expr = xr.DataArray(expr)
-            self.model.effects.add_share_periodic(expr.expand_dims(effect=[effect_name]))
+        if inv.effects_of_investment_mandatory is not None:
+            effects_model.add_periodic_contribution(inv.effects_of_investment_mandatory, contributor_dim=dim)
+        if inv.effects_of_retirement_constant is not None:
+            effects_model.add_periodic_contribution(inv.effects_of_retirement_constant, contributor_dim=dim)
 
 
 @register_class_for_io

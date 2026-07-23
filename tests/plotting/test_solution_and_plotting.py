@@ -26,9 +26,14 @@ class TestFlowSystemSolution:
     """Tests for flow_system.solution API."""
 
     def test_solution_is_xarray_dataset(self, simple_flow_system, highs_solver):
-        """Verify solution is an xarray Dataset."""
+        """Verify solution is an xarray Dataset (strict mode, without the legacy wrapper)."""
         simple_flow_system.optimize(highs_solver)
-        assert isinstance(simple_flow_system.solution, xr.Dataset)
+        original = fx.CONFIG.Legacy.solution_access
+        fx.CONFIG.Legacy.solution_access = False
+        try:
+            assert isinstance(simple_flow_system.solution, xr.Dataset)
+        finally:
+            fx.CONFIG.Legacy.solution_access = original
 
     def test_solution_has_time_dimension(self, simple_flow_system, highs_solver):
         """Verify solution has time dimension."""

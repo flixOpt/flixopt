@@ -545,11 +545,26 @@ class StatisticsAccessor:
 
     @cached_property
     def storage_sizes(self) -> xr.DataArray:
-        """Storage capacity sizes as a DataArray with 'storage' dimension."""
+        """Storage capacity sizes as a DataArray with 'storage' dimension.
+
+        Includes intercluster storages, whose size variable lives under the
+        'intercluster_storage' dimension on clustered systems.
+        """
         self._require_solution()
-        if StorageVarName.SIZE not in self._fs.solution:
+        from .structure import InterclusterStorageVarName
+
+        parts = []
+        if StorageVarName.SIZE in self._fs.solution:
+            parts.append(self._fs.solution[StorageVarName.SIZE].dropna('storage', how='all'))
+        if InterclusterStorageVarName.SIZE in self._fs.solution:
+            parts.append(
+                self._fs.solution[InterclusterStorageVarName.SIZE]
+                .rename(intercluster_storage='storage')
+                .dropna('storage', how='all')
+            )
+        if not parts:
             return xr.DataArray(np.empty(0), dims=['storage'], coords={'storage': np.array([], dtype=object)})
-        return self._fs.solution[StorageVarName.SIZE].dropna('storage', how='all')
+        return xr.concat(parts, dim='storage') if len(parts) > 1 else parts[0]
 
     @cached_property
     def sizes(self) -> xr.DataArray:
@@ -1539,6 +1554,8 @@ class StatisticsPlotAccessor:
         # Filter out flows below threshold
         da = _filter_small_dataarray(da, 'flow', threshold)
 
+        da = da.rename('flow_rate')
+
         # Build color kwargs: bus balance → component colors, component balance → carrier colors
         labels = list(str(f) for f in da.coords['flow'].values)
         color_by: Literal['component', 'carrier'] = 'component' if is_bus else 'carrier'
@@ -1776,6 +1793,8 @@ class StatisticsPlotAccessor:
                 arrays.append(self._fs.solution[var].rename(var))
             elif '|' not in var and f'{var}|flow_rate' in self._fs.solution:
                 arrays.append(self._fs.solution[f'{var}|flow_rate'].rename(var))
+            elif '|' not in var and var in self._stats.charge_states.coords['storage'].values:
+                arrays.append(self._stats.charge_states.sel(storage=var, drop=True).rename(var))
             else:
                 raise KeyError(f"Variable '{var}' not found in flow_rates or solution")
 
@@ -2152,7 +2171,7 @@ class StatisticsPlotAccessor:
             effect_names = list(str(e) for e in effects_da.coords['effect'].values)
             if effect not in effect_names:
                 raise ValueError(f"Effect '{effect}' not found. Available: {effect_names}")
-            da = effects_da.sel(effect=effect, drop=True)
+            da = effects_da.sel(effect=[effect])
         else:
             da = effects_da
 
@@ -2163,6 +2182,7 @@ class StatisticsPlotAccessor:
         da = _apply_selection(da, select)
 
         has_effect_dim = 'effect' in da.dims
+        multi_effect = has_effect_dim and da.sizes['effect'] > 1
 
         # Sum over dimensions based on 'by' parameter
         if by is None:
@@ -2175,12 +2195,12 @@ class StatisticsPlotAccessor:
             if 'time' in da.dims:
                 da = da.sum(dim='time')
             x_col = 'component'
-            color_col = 'effect' if has_effect_dim else 'component'
+            color_col = 'effect' if multi_effect else 'component'
         elif by == 'contributor':
             if 'time' in da.dims:
                 da = da.sum(dim='time')
             x_col = 'contributor'
-            color_col = 'effect' if has_effect_dim else 'contributor'
+            color_col = 'effect' if multi_effect else 'contributor'
         elif by == 'time':
             if 'time' not in da.dims:
                 raise ValueError(f"Cannot plot by 'time' for aspect '{aspect}' - no time dimension.")
@@ -2356,9 +2376,19 @@ class StatisticsPlotAccessor:
 
         component = self._fs.components[storage]
 
-        # Check if it's a storage by looking for charge_state variable
-        charge_state_var = f'{storage}|charge_state'
-        if charge_state_var not in self._fs.solution:
+        # Resolve the charge state from the batched variables (regular or intercluster)
+        from .structure import InterclusterStorageVarName, StorageVarName
+
+        solution = self._fs.solution
+        charge_da = None
+        if StorageVarName.CHARGE in solution and storage in solution[StorageVarName.CHARGE].coords['storage'].values:
+            charge_da = solution[StorageVarName.CHARGE].sel(storage=storage, drop=True)
+        elif (
+            InterclusterStorageVarName.CHARGE_STATE in solution
+            and storage in solution[InterclusterStorageVarName.CHARGE_STATE].coords['intercluster_storage'].values
+        ):
+            charge_da = solution[InterclusterStorageVarName.CHARGE_STATE].sel(intercluster_storage=storage, drop=True)
+        if charge_da is None:
             raise ValueError(f"'{storage}' is not a storage (no charge_state variable found)")
 
         # Get flow data
@@ -2378,9 +2408,6 @@ class StatisticsPlotAccessor:
             coords={'flow': available},
         )
         flow_da = flow_da * signs
-
-        # Get charge state
-        charge_da = self._fs.solution[charge_state_var]
 
         # Apply selection
         flow_da = _apply_selection(flow_da, select)

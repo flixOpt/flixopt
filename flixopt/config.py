@@ -608,20 +608,22 @@ class CONFIG:
         Attributes:
             solution_access: Enable backwards-compatible solution access patterns.
                 When True, accessing `fs.solution['effect_name']` will automatically
-                translate to `fs.solution['effect|total'].sel(effect='effect_name')`.
-                Default: False (disabled).
+                translate to `fs.solution['effect|total'].sel(effect='effect_name')`,
+                emitting a DeprecationWarning. Default: True during the v8 transition
+                to the batched variable naming; set to False to opt into strict
+                new-style access.
 
         Examples:
             ```python
-            # Enable legacy solution access
-            CONFIG.Legacy.solution_access = True
+            # Opt into strict new-style access only
+            CONFIG.Legacy.solution_access = False
 
-            # Now old-style access works
+            # With the default (True), old-style access still works
             fs.solution['costs']  # Returns effect total for 'costs'
             ```
         """
 
-        solution_access: bool = False
+        solution_access: bool = True
 
     class Carriers:
         """Default carrier definitions for common energy types.

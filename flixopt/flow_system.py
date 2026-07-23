@@ -79,6 +79,12 @@ class LegacySolutionWrapper:
         'size': ('flow', 'size'),  # For flows: Comp(flow)|size
         'status': ('flow', 'status'),
         'invested': ('flow', 'invested'),
+        'active_hours': ('flow', 'active_hours'),
+        'startup': ('flow', 'startup'),
+        'shutdown': ('flow', 'shutdown'),
+        'startup_count': ('flow', 'startup_count'),
+        'uptime': ('flow', 'uptime'),
+        'downtime': ('flow', 'downtime'),
     }
 
     # Storage-specific mappings (no parentheses in label, e.g., 'Battery|size')
@@ -86,6 +92,17 @@ class LegacySolutionWrapper:
         'size': ('storage', 'size'),
         'invested': ('storage', 'invested'),
         'charge_state': ('storage', 'charge'),  # Old: charge_state -> New: charge
+    }
+
+    # Component-level mappings (no parentheses in label, e.g., 'Boiler|status')
+    _LEGACY_COMPONENT_VAR_MAP = {
+        'status': ('component', 'status'),
+        'active_hours': ('component', 'active_hours'),
+        'startup': ('component', 'startup'),
+        'shutdown': ('component', 'shutdown'),
+        'startup_count': ('component', 'startup_count'),
+        'uptime': ('component', 'uptime'),
+        'downtime': ('component', 'downtime'),
     }
 
     def __init__(self, dataset: xr.Dataset) -> None:
@@ -109,7 +126,7 @@ class LegacySolutionWrapper:
                         DeprecationWarning,
                         stacklevel=2,
                     )
-                    return ds['effect|total'].sel(effect=key)
+                    return ds['effect|total'].sel(effect=key, drop=True)
 
                 # Pattern: 'costs(periodic)' -> 'effect|periodic'.sel(effect='costs')
                 # Pattern: 'costs(temporal)' -> 'effect|temporal'.sel(effect='costs')
@@ -127,7 +144,7 @@ class LegacySolutionWrapper:
                                 DeprecationWarning,
                                 stacklevel=2,
                             )
-                            return ds[new_key].sel(effect=effect_name)
+                            return ds[new_key].sel(effect=effect_name, drop=True)
 
                 # Pattern: 'costs(temporal)|per_timestep' -> 'effect|per_timestep'.sel(effect='costs')
                 if '|' in key:
@@ -144,7 +161,7 @@ class LegacySolutionWrapper:
                                     DeprecationWarning,
                                     stacklevel=2,
                                 )
-                                return ds[new_key].sel(effect=effect_name)
+                                return ds[new_key].sel(effect=effect_name, drop=True)
 
             # Try legacy flow/storage access: solution['Src(heat)|flow_rate'] -> solution['flow|rate'].sel(flow='Src(heat)')
             if '|' in key:
@@ -163,7 +180,20 @@ class LegacySolutionWrapper:
                                 DeprecationWarning,
                                 stacklevel=2,
                             )
-                            return ds[new_key].sel({dim: element_label})
+                            return ds[new_key].sel({dim: element_label}, drop=True)
+
+                    # Try component variables (labels without parentheses like 'Boiler')
+                    if var_suffix in self._LEGACY_COMPONENT_VAR_MAP:
+                        dim, var_name = self._LEGACY_COMPONENT_VAR_MAP[var_suffix]
+                        new_key = f'{dim}|{var_name}'
+                        if new_key in ds and dim in ds.coords and element_label in ds.coords[dim].values:
+                            warnings.warn(
+                                f"Legacy solution access: solution['{key}'] is deprecated. "
+                                f"Use solution['{new_key}'].sel({dim}='{element_label}') instead.",
+                                DeprecationWarning,
+                                stacklevel=2,
+                            )
+                            return ds[new_key].sel({dim: element_label}, drop=True)
 
                     # Try storage variables (labels without parentheses like 'Battery')
                     if var_suffix in self._LEGACY_STORAGE_VAR_MAP:
@@ -176,7 +206,7 @@ class LegacySolutionWrapper:
                                 DeprecationWarning,
                                 stacklevel=2,
                             )
-                            return ds[new_key].sel({dim: element_label})
+                            return ds[new_key].sel({dim: element_label}, drop=True)
 
             raise e
 
