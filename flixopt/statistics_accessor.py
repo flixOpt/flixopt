@@ -459,7 +459,7 @@ class LegacyElementAccess:
     @property
     def data_vars(self):
         self._warn('.data_vars', f'.coords[{self._dim!r}]')
-        return dict(self.items())
+        return {label: self._da.sel({self._dim: label}, drop=True).rename(label) for label in self._labels()}
 
     def keys(self):
         return iter(self._labels())
