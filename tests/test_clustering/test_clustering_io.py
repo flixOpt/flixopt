@@ -710,3 +710,54 @@ class TestMultiDimensionalClusteringIO:
         # Solution should be expanded
         assert fs_expanded.solution is not None
         assert 'source(out)|flow_rate' in fs_expanded.solution
+
+
+class TestLegacyClusteringBackwardCompat:
+    """Loading files written before flixopt 7.0, which stored clustering.original_data
+    and clustering._metrics as ':::original_data|...' / ':::metrics|...' references whose
+    target arrays are no longer serialized. See hotfix 7.2.2."""
+
+    def _inject_legacy_refs(self, ds: xr.Dataset) -> xr.Dataset:
+        """Mutate a clustered dataset's clustering attrs to look like a pre-7.0 file."""
+        import json
+
+        clustering = json.loads(ds.attrs['clustering'])
+        clustering['_original_data_refs'] = [
+            ':::original_data|demand(in)|fixed_relative_profile',
+        ]
+        clustering['_metrics_refs'] = None
+        ds.attrs['clustering'] = json.dumps(clustering, ensure_ascii=False)
+        return ds
+
+    def test_legacy_refs_reproduce_failure_without_shim(self, simple_system_8_days):
+        """Sanity check: the legacy references do point at arrays absent from the dataset."""
+        fs_clustered = simple_system_8_days.transform.cluster(n_clusters=2, cluster_duration='1D')
+        ds = self._inject_legacy_refs(fs_clustered.to_dataset(include_solution=False))
+        assert 'original_data|demand(in)|fixed_relative_profile' not in ds.variables
+
+    def test_load_legacy_clustered_dataset(self, simple_system_8_days):
+        """A pre-7.0 clustered dataset (with dangling original_data/metrics refs) loads cleanly."""
+        from flixopt.clustering import Clustering
+
+        fs_clustered = simple_system_8_days.transform.cluster(n_clusters=2, cluster_duration='1D')
+        ds = self._inject_legacy_refs(fs_clustered.to_dataset(include_solution=False))
+
+        fs_restored = fx.FlowSystem.from_dataset(ds)
+
+        assert isinstance(fs_restored.clustering, Clustering)
+        assert fs_restored.clustering.n_clusters == 2
+
+    def test_load_legacy_clustered_netcdf(self, simple_system_8_days, tmp_path):
+        """Same as above but through a real NetCDF file roundtrip."""
+        from flixopt.clustering import Clustering
+        from flixopt.io import save_dataset_to_netcdf
+
+        fs_clustered = simple_system_8_days.transform.cluster(n_clusters=2, cluster_duration='1D')
+        ds = self._inject_legacy_refs(fs_clustered.to_dataset(include_solution=False))
+
+        nc_path = tmp_path / 'legacy_clustered.nc'
+        save_dataset_to_netcdf(ds, nc_path)
+        fs_restored = fx.FlowSystem.from_netcdf(nc_path)
+
+        assert isinstance(fs_restored.clustering, Clustering)
+        assert fs_restored.clustering.n_clusters == 2
