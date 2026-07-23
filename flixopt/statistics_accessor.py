@@ -935,7 +935,16 @@ class StatisticsAccessor:
             if label in solution:
                 computed = ds[effect].sum('contributor')
                 found = solution[label]
-                if not np.allclose(computed.fillna(0).values, found.fillna(0).values, equal_nan=True):
+                if set(computed.dims) != set(found.dims):
+                    logger.critical(
+                        f'Results for {effect}({mode}) in effects_dataset doesnt match {label}: '
+                        f'dimension mismatch {computed.dims=} vs {found.dims=}'
+                    )
+                elif not np.allclose(
+                    computed.fillna(0).values,
+                    found.transpose(*computed.dims).fillna(0).values,
+                    equal_nan=True,
+                ):
                     logger.critical(
                         f'Results for {effect}({mode}) in effects_dataset doesnt match {label}\n{computed=}\n, {found=}'
                     )
