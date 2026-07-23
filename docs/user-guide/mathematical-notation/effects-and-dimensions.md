@@ -77,8 +77,7 @@ One effect is the **objective** (minimized). Others are tracked or constrained.
 
     ```python
     fx.Bus(
-        imbalance_penalty_per_flow_hour=1e6,    # Penalty for excess
-        shortage_penalty_per_flow_hour=1e6,  # Penalty for shortage
+        imbalance_penalty_per_flow_hour=1e6,  # Penalty for excess and shortage
     )
     ```
 

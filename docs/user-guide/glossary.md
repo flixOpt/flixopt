@@ -89,7 +89,6 @@ Key concepts and terminology used throughout flixOpt.
 | **downtime** | Continuous duration equipment is off. Can be constrained with `min_downtime`, `max_downtime` in StatusParameters. |
 | **flow_hours** | Total energy delivered by a flow: sum of flow_rate * timestep_duration. Can be constrained with `flow_hours_min`, `flow_hours_max`. |
 | **imbalance_penalty** | Penalty applied when a bus balance is violated (virtual supply/demand). Soft constraint alternative to strict balance. |
-| **shortage_penalty** | Penalty applied when bus has more demand than supply (unmet demand). |
 
 ## Weights and Aggregation
 

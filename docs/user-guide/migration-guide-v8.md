@@ -27,7 +27,7 @@ are unchanged — nothing new to learn, only old spellings to drop:
 | `topology.plot_legacy()` (PyVis) | `topology.plot()` (Plotly) |
 | `FlowSystem.from_old_results()` | re-run the optimization with the current API |
 | `Bus(excess_penalty_per_flow_hour=...)` | `Bus(imbalance_penalty_per_flow_hour=...)` |
-| `optimize(..., normalize_weights=...)` | remove the argument — weights are always normalized |
+| `normalize_weights` on `optimize()` / `build_model()` / `create_model()` | remove the argument — weights are always normalized |
 
 ---
 
