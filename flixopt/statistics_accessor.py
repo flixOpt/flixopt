@@ -1020,7 +1020,16 @@ class StatisticsAccessor:
                 if effect in solution[effect_var_name].coords.get('effect', xr.DataArray([])).values:
                     computed = result.sel(effect=effect).sum('contributor')
                     found = solution[effect_var_name].sel(effect=effect)
-                    if not np.allclose(computed.fillna(0).values, found.fillna(0).values, equal_nan=True):
+                    if set(computed.dims) != set(found.dims):
+                        logger.critical(
+                            f'Results for {effect}({mode}) in effects_array doesnt match {effect_var_name}: '
+                            f'dimension mismatch {computed.dims=} vs {found.dims=}'
+                        )
+                    elif not np.allclose(
+                        computed.fillna(0).values,
+                        found.transpose(*computed.dims).fillna(0).values,
+                        equal_nan=True,
+                    ):
                         logger.critical(
                             f'Results for {effect}({mode}) in effects_array doesnt match {effect_var_name}\n{computed=}\n, {found=}'
                         )
