@@ -11,6 +11,13 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ---
 
+## [7.2.3](https://github.com/flixOpt/flixopt/compare/v7.2.2...v7.2.3) (2026-07-23)
+
+
+### Bug Fixes
+
+* **stats:** dimension-aware effect-total consistency check (no longer crashes on transposed solution dims) ([88f09f4](https://github.com/flixOpt/flixopt/commit/88f09f42))
+
 ## [7.2.2](https://github.com/flixOpt/flixopt/compare/v7.2.1...v7.2.2) (2026-07-23)
 
 
