@@ -6,10 +6,24 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 !!! tip
 
+    If upgrading from v7.x, see the [Migration Guide v8](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v8/).
     If upgrading from v5.x, see the [Migration Guide v6](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v6/).
     If upgrading from v2.x, see the [v3.0.0 release notes](https://github.com/flixOpt/flixOpt/releases/tag/v3.0.0) and [Migration Guide v3](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v3/).
 
 ---
+
+## [Unreleased]
+
+**Summary**: Removes all v4-era APIs that were deprecated in v5/v6 and scheduled for removal in v7.0.0. Code that runs warning-free on v7.x runs unchanged on v8. See the [Migration Guide v8](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v8/).
+
+### 💥 Removed
+
+- **`Optimization` / `SegmentedOptimization` / `Results`** — use `flow_system.optimize(solver)` and read results via `flow_system.solution` / `flow_system.stats`
+- **`FlowSystem.sel()` / `isel()` / `resample()` / `coords`** — use `flow_system.transform.sel/isel/resample()` and `flow_system.indexes`
+- **`FlowSystem.plot_network()` / `network_infos()` / `start_network_app()` / `stop_network_app()`** and the PyVis-based `topology.plot_legacy()` — use `flow_system.topology.plot()` / `infos()` / `start_app()` / `stop_app()`; **pyvis is no longer a dependency**
+- **`FlowSystem.from_old_results()`** — re-run old optimizations with the current API (`from_old_dataset()` still loads pre-v5 configuration files and no longer warns)
+- **`Bus(excess_penalty_per_flow_hour=...)`** — now raises `TypeError`; use `imbalance_penalty_per_flow_hour`
+- **`normalize_weights` parameter** on `create_model` / `build_model` / `optimize()` — weights are always normalized
 
 ## [7.2.1](https://github.com/flixOpt/flixopt/compare/v7.2.0...v7.2.1) (2026-07-21)
 

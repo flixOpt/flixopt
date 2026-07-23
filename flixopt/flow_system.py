@@ -4,12 +4,11 @@ This module contains the FlowSystem class, which is used to collect instances of
 
 from __future__ import annotations
 
-import json
 import logging
 import pathlib
 import warnings
 from itertools import chain
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -17,7 +16,7 @@ import xarray as xr
 
 from . import io as fx_io
 from .components import Storage
-from .config import CONFIG, DEPRECATION_REMOVAL_VERSION
+from .config import CONFIG
 from .core import (
     ConversionError,
     DataConverter,
@@ -41,8 +40,6 @@ from .transform_accessor import TransformAccessor
 
 if TYPE_CHECKING:
     from collections.abc import Collection
-
-    import pyvis
 
     from .clustering import Clustering
     from .solvers import _Solver
@@ -140,21 +137,10 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         >>>
         >>> # Flows are automatically collected from all components
 
-        Power user pattern - Efficient chaining without conversion overhead:
+        Slicing and resampling via the transform accessor:
 
-        >>> # Instead of chaining (causes multiple conversions):
-        >>> result = flow_system.sel(time='2020-01').resample('2h')  # Slow
-        >>>
-        >>> # Use dataset methods directly (single conversion):
-        >>> ds = flow_system.to_dataset()
-        >>> ds = FlowSystem._dataset_sel(ds, time='2020-01')
-        >>> ds = flow_system._dataset_resample(ds, freq='2h', method='mean')
-        >>> result = FlowSystem.from_dataset(ds)  # Fast!
-        >>>
-        >>> # Available dataset methods:
-        >>> # - FlowSystem._dataset_sel(dataset, time=..., period=..., scenario=...)
-        >>> # - FlowSystem._dataset_isel(dataset, time=..., period=..., scenario=...)
-        >>> # - flow_system._dataset_resample(dataset, freq=..., method=..., **kwargs)
+        >>> result = flow_system.transform.sel(time='2020-01')
+        >>> result = flow_system.transform.resample('2h')
         >>> for flow in flow_system.flows.values():
         ...     print(f'{flow.label_full}: {flow.size}')
         >>>
@@ -252,7 +238,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.model: FlowSystemModel | None = None
 
         self._connected_and_transformed = False
-        self._used_in_optimization = False
 
         self._network_app = None
         self._flows_cache: ElementContainer[Flow] | None = None
@@ -820,89 +805,14 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return flow_system
 
     @classmethod
-    def from_old_results(cls, folder: str | pathlib.Path, name: str) -> FlowSystem:
-        """
-        Load a FlowSystem from old-format Results files (pre-v5 API).
-
-        This method loads results saved with the deprecated Results API
-        (which used multiple files: ``*--flow_system.nc4``, ``*--solution.nc4``)
-        and converts them to a FlowSystem with the solution attached.
-
-        The method performs the following:
-
-        - Loads the old multi-file format
-        - Renames deprecated parameters in the FlowSystem structure
-          (e.g., ``on_off_parameters`` → ``status_parameters``)
-        - Attaches the solution data to the FlowSystem
-
-        Args:
-            folder: Directory containing the saved result files
-            name: Base name of the saved files (without extensions)
-
-        Returns:
-            FlowSystem instance with solution attached
-
-        Warning:
-            This is a best-effort migration for accessing old results:
-
-            - **Solution variable names are NOT renamed** - only basic variables
-              work (flow rates, sizes, charge states, effect totals)
-            - Advanced variable access may require using the original names
-            - Summary metadata (solver info, timing) is not loaded
-
-            For full compatibility, re-run optimizations with the new API.
-
-        Examples:
-            ```python
-            # Load old results
-            fs = FlowSystem.from_old_results('results_folder', 'my_optimization')
-
-            # Access basic solution data
-            fs.solution['Boiler(Q_th)|flow_rate'].plot()
-
-            # Save in new single-file format
-            fs.to_netcdf('my_optimization.nc')
-            ```
-
-        Deprecated:
-            This method will be removed in v6.
-        """
-        warnings.warn(
-            f'from_old_results() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
-            'This utility is only for migrating results from flixopt versions before v5.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        from flixopt.io import load_dataset_from_netcdf
-
-        folder = pathlib.Path(folder)
-        flow_system_path = folder / f'{name}--flow_system.nc4'
-        solution_path = folder / f'{name}--solution.nc4'
-
-        # Load FlowSystem using from_old_dataset (suppress its deprecation warning)
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', DeprecationWarning)
-            flow_system = cls.from_old_dataset(flow_system_path)
-        flow_system.name = name
-
-        # Attach solution (convert attrs from dicts to JSON strings for consistency)
-        solution = load_dataset_from_netcdf(solution_path)
-        for key in ['Components', 'Buses', 'Effects', 'Flows']:
-            if key in solution.attrs and isinstance(solution.attrs[key], dict):
-                solution.attrs[key] = json.dumps(solution.attrs[key])
-        flow_system.solution = solution
-
-        return flow_system
-
-    @classmethod
     def from_old_dataset(cls, path: str | pathlib.Path) -> FlowSystem:
         """
         Load a FlowSystem from an old-format dataset file (pre-v5 API).
 
         This method loads a FlowSystem saved with older versions of flixopt
         (the ``*--flow_system.nc4`` file) and converts parameter names to the
-        current API. Unlike :meth:`from_old_results`, this does not require
-        a solution file and returns a FlowSystem without solution data.
+        current API. It does not require a solution file and returns a
+        FlowSystem without solution data.
 
         The method performs the following:
 
@@ -931,16 +841,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             # Save in new single-file format
             fs.to_netcdf('my_run.nc')
             ```
-
-        Deprecated:
-            This method will be removed in v6.
         """
-        warnings.warn(
-            f'from_old_dataset() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
-            'This utility is only for migrating FlowSystems from flixopt versions before v5.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
         from flixopt.io import convert_old_dataset, load_dataset_from_netcdf
 
         path = pathlib.Path(path)
@@ -1344,20 +1245,8 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
 
         return self._flow_carriers
 
-    def create_model(self, normalize_weights: bool | None = None) -> FlowSystemModel:
-        """
-        Create a linopy model from the FlowSystem.
-
-        Args:
-            normalize_weights: Deprecated. Scenario weights are now always normalized in FlowSystem.
-        """
-        if normalize_weights is not None:
-            warnings.warn(
-                f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
-                'Scenario weights are now always normalized when set on FlowSystem.\n',
-                DeprecationWarning,
-                stacklevel=2,
-            )
+    def create_model(self) -> FlowSystemModel:
+        """Create a linopy model from the FlowSystem."""
         if not self.connected_and_transformed:
             raise RuntimeError(
                 'FlowSystem is not connected_and_transformed. Call FlowSystem.connect_and_transform() first.'
@@ -1366,7 +1255,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         self.model = FlowSystemModel(self)
         return self.model
 
-    def build_model(self, normalize_weights: bool | None = None) -> FlowSystem:
+    def build_model(self) -> FlowSystem:
         """
         Build the optimization model for this FlowSystem.
 
@@ -1379,9 +1268,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         After calling this method, `self.model` will be available for inspection
         before solving.
 
-        Args:
-            normalize_weights: Deprecated. Scenario weights are now always normalized in FlowSystem.
-
         Returns:
             Self, for method chaining.
 
@@ -1390,13 +1276,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             >>> print(flow_system.model.variables)  # Inspect variables before solving
             >>> flow_system.solve(solver)
         """
-        if normalize_weights is not None:
-            warnings.warn(
-                f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
-                'Scenario weights are now always normalized when set on FlowSystem.\n',
-                DeprecationWarning,
-                stacklevel=2,
-            )
         self.connect_and_transform()
         self.create_model()
 
@@ -1788,70 +1667,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             self._topology = TopologyAccessor(self)
         return self._topology
 
-    def plot_network(
-        self,
-        path: bool | str | pathlib.Path = 'flow_system.html',
-        controls: bool
-        | list[
-            Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
-        ] = True,
-        show: bool | None = None,
-    ) -> pyvis.network.Network | None:
-        """
-        Deprecated: Use `flow_system.topology.plot()` instead.
-
-        Visualizes the network structure of a FlowSystem using PyVis.
-        """
-        warnings.warn(
-            f'plot_network() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
-            'Use flow_system.topology.plot() instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.topology.plot_legacy(path=path, controls=controls, show=show)
-
-    def start_network_app(self) -> None:
-        """
-        Deprecated: Use `flow_system.topology.start_app()` instead.
-
-        Visualizes the network structure using Dash and Cytoscape.
-        """
-        warnings.warn(
-            f'start_network_app() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
-            'Use flow_system.topology.start_app() instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.topology.start_app()
-
-    def stop_network_app(self) -> None:
-        """
-        Deprecated: Use `flow_system.topology.stop_app()` instead.
-
-        Stop the network visualization server.
-        """
-        warnings.warn(
-            f'stop_network_app() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
-            'Use flow_system.topology.stop_app() instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.topology.stop_app()
-
-    def network_infos(self) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, str]]]:
-        """
-        Deprecated: Use `flow_system.topology.infos()` instead.
-
-        Get network topology information as dictionaries.
-        """
-        warnings.warn(
-            f'network_infos() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
-            'Use flow_system.topology.infos() instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.topology.infos()
-
     def _check_if_element_is_unique(self, element: Element) -> None:
         """
         checks if element or label of element already exists in list
@@ -2114,27 +1929,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         return self.weights['time'] * cluster_weight
 
     @property
-    def coords(self) -> dict[FlowSystemDimensions, pd.Index]:
-        """Active coordinates for variable creation.
-
-        .. deprecated::
-            Use :attr:`indexes` instead.
-
-        Returns a dict of dimension names to coordinate arrays. When clustered,
-        includes 'cluster' dimension before 'time'.
-
-        Returns:
-            Dict mapping dimension names to coordinate arrays.
-        """
-        warnings.warn(
-            f'FlowSystem.coords is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
-            'Use FlowSystem.indexes instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.indexes
-
-    @property
     def _use_true_cluster_dims(self) -> bool:
         """Check if true (cluster, time) dimensions should be used."""
         return self.clusters is not None
@@ -2169,10 +1963,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         if self.is_clustered:
             return self.clustering.timesteps_per_cluster
         return len(self.timesteps)
-
-    @property
-    def used_in_calculation(self) -> bool:
-        return self._used_in_optimization
 
     @property
     def scenario_weights(self) -> xr.DataArray | None:
@@ -2365,270 +2155,6 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
         """
         self._validate_scenario_parameter(value, 'scenario_independent_flow_rates', 'Flow.label_full')
         self._scenario_independent_flow_rates = value
-
-    @classmethod
-    def _dataset_sel(
-        cls,
-        dataset: xr.Dataset,
-        time: str | slice | list[str] | pd.Timestamp | pd.DatetimeIndex | None = None,
-        period: int | slice | list[int] | pd.Index | None = None,
-        scenario: str | slice | list[str] | pd.Index | None = None,
-        hours_of_last_timestep: int | float | None = None,
-        hours_of_previous_timesteps: int | float | np.ndarray | None = None,
-    ) -> xr.Dataset:
-        """
-        Select subset of dataset by label (for power users to avoid conversion overhead).
-
-        This method operates directly on xarray Datasets, allowing power users to chain
-        operations efficiently without repeated FlowSystem conversions:
-
-        Example:
-            # Power user pattern (single conversion):
-            >>> ds = flow_system.to_dataset()
-            >>> ds = FlowSystem._dataset_sel(ds, time='2020-01')
-            >>> ds = FlowSystem._dataset_resample(ds, freq='2h', method='mean')
-            >>> result = FlowSystem.from_dataset(ds)
-
-            # vs. simple pattern (multiple conversions):
-            >>> result = flow_system.sel(time='2020-01').resample('2h')
-
-        Args:
-            dataset: xarray Dataset from FlowSystem.to_dataset()
-            time: Time selection (e.g., '2020-01', slice('2020-01-01', '2020-06-30'))
-            period: Period selection (e.g., 2020, slice(2020, 2022))
-            scenario: Scenario selection (e.g., 'Base Case', ['Base Case', 'High Demand'])
-            hours_of_last_timestep: Duration of the last timestep. If None, computed from the selected time index.
-            hours_of_previous_timesteps: Duration of previous timesteps. If None, computed from the selected time index.
-                Can be a scalar or array.
-
-        Returns:
-            xr.Dataset: Selected dataset
-        """
-        warnings.warn(
-            f'\n_dataset_sel() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
-            'Use TransformAccessor._dataset_sel() instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        from .transform_accessor import TransformAccessor
-
-        return TransformAccessor._dataset_sel(
-            dataset,
-            time=time,
-            period=period,
-            scenario=scenario,
-            hours_of_last_timestep=hours_of_last_timestep,
-            hours_of_previous_timesteps=hours_of_previous_timesteps,
-        )
-
-    def sel(
-        self,
-        time: str | slice | list[str] | pd.Timestamp | pd.DatetimeIndex | None = None,
-        period: int | slice | list[int] | pd.Index | None = None,
-        scenario: str | slice | list[str] | pd.Index | None = None,
-    ) -> FlowSystem:
-        """
-        Select a subset of the flowsystem by label.
-
-        .. deprecated::
-            Use ``flow_system.transform.sel()`` instead. Will be removed in v6.0.0.
-
-        Args:
-            time: Time selection (e.g., slice('2023-01-01', '2023-12-31'), '2023-06-15')
-            period: Period selection (e.g., slice(2023, 2024), or list of periods)
-            scenario: Scenario selection (e.g., 'scenario1', or list of scenarios)
-
-        Returns:
-            FlowSystem: New FlowSystem with selected data (no solution).
-        """
-        warnings.warn(
-            f'\nsel() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
-            'Use flow_system.transform.sel() instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.transform.sel(time=time, period=period, scenario=scenario)
-
-    @classmethod
-    def _dataset_isel(
-        cls,
-        dataset: xr.Dataset,
-        time: int | slice | list[int] | None = None,
-        period: int | slice | list[int] | None = None,
-        scenario: int | slice | list[int] | None = None,
-        hours_of_last_timestep: int | float | None = None,
-        hours_of_previous_timesteps: int | float | np.ndarray | None = None,
-    ) -> xr.Dataset:
-        """
-        Select subset of dataset by integer index (for power users to avoid conversion overhead).
-
-        See _dataset_sel() for usage pattern.
-
-        Args:
-            dataset: xarray Dataset from FlowSystem.to_dataset()
-            time: Time selection by index (e.g., slice(0, 100), [0, 5, 10])
-            period: Period selection by index
-            scenario: Scenario selection by index
-            hours_of_last_timestep: Duration of the last timestep. If None, computed from the selected time index.
-            hours_of_previous_timesteps: Duration of previous timesteps. If None, computed from the selected time index.
-                Can be a scalar or array.
-
-        Returns:
-            xr.Dataset: Selected dataset
-        """
-        warnings.warn(
-            f'\n_dataset_isel() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
-            'Use TransformAccessor._dataset_isel() instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        from .transform_accessor import TransformAccessor
-
-        return TransformAccessor._dataset_isel(
-            dataset,
-            time=time,
-            period=period,
-            scenario=scenario,
-            hours_of_last_timestep=hours_of_last_timestep,
-            hours_of_previous_timesteps=hours_of_previous_timesteps,
-        )
-
-    def isel(
-        self,
-        time: int | slice | list[int] | None = None,
-        period: int | slice | list[int] | None = None,
-        scenario: int | slice | list[int] | None = None,
-    ) -> FlowSystem:
-        """
-        Select a subset of the flowsystem by integer indices.
-
-        .. deprecated::
-            Use ``flow_system.transform.isel()`` instead. Will be removed in v6.0.0.
-
-        Args:
-            time: Time selection by integer index (e.g., slice(0, 100), 50, or [0, 5, 10])
-            period: Period selection by integer index
-            scenario: Scenario selection by integer index
-
-        Returns:
-            FlowSystem: New FlowSystem with selected data (no solution).
-        """
-        warnings.warn(
-            f'\nisel() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
-            'Use flow_system.transform.isel() instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.transform.isel(time=time, period=period, scenario=scenario)
-
-    @classmethod
-    def _dataset_resample(
-        cls,
-        dataset: xr.Dataset,
-        freq: str,
-        method: Literal['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count'] = 'mean',
-        hours_of_last_timestep: int | float | None = None,
-        hours_of_previous_timesteps: int | float | np.ndarray | None = None,
-        **kwargs: Any,
-    ) -> xr.Dataset:
-        """
-        Resample dataset along time dimension (for power users to avoid conversion overhead).
-        Preserves only the attrs of the Dataset.
-
-        Uses optimized _resample_by_dimension_groups() to avoid broadcasting issues.
-        See _dataset_sel() for usage pattern.
-
-        Args:
-            dataset: xarray Dataset from FlowSystem.to_dataset()
-            freq: Resampling frequency (e.g., '2h', '1D', '1M')
-            method: Resampling method (e.g., 'mean', 'sum', 'first')
-            hours_of_last_timestep: Duration of the last timestep after resampling. If None, computed from the last time interval.
-            hours_of_previous_timesteps: Duration of previous timesteps after resampling. If None, computed from the first time interval.
-                Can be a scalar or array.
-            **kwargs: Additional arguments passed to xarray.resample()
-
-        Returns:
-            xr.Dataset: Resampled dataset
-        """
-        warnings.warn(
-            f'\n_dataset_resample() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
-            'Use TransformAccessor._dataset_resample() instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        from .transform_accessor import TransformAccessor
-
-        return TransformAccessor._dataset_resample(
-            dataset,
-            freq=freq,
-            method=method,
-            hours_of_last_timestep=hours_of_last_timestep,
-            hours_of_previous_timesteps=hours_of_previous_timesteps,
-            **kwargs,
-        )
-
-    @classmethod
-    def _resample_by_dimension_groups(
-        cls,
-        time_dataset: xr.Dataset,
-        time: str,
-        method: str,
-        **kwargs: Any,
-    ) -> xr.Dataset:
-        """
-        Resample variables grouped by their dimension structure to avoid broadcasting.
-
-        .. deprecated::
-            Use ``TransformAccessor._resample_by_dimension_groups()`` instead.
-            Will be removed in v6.0.0.
-        """
-        warnings.warn(
-            f'\n_resample_by_dimension_groups() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
-            'Use TransformAccessor._resample_by_dimension_groups() instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        from .transform_accessor import TransformAccessor
-
-        return TransformAccessor._resample_by_dimension_groups(time_dataset, time, method, **kwargs)
-
-    def resample(
-        self,
-        time: str,
-        method: Literal['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count'] = 'mean',
-        hours_of_last_timestep: int | float | None = None,
-        hours_of_previous_timesteps: int | float | np.ndarray | None = None,
-        **kwargs: Any,
-    ) -> FlowSystem:
-        """
-        Create a resampled FlowSystem by resampling data along the time dimension.
-
-        .. deprecated::
-            Use ``flow_system.transform.resample()`` instead. Will be removed in v6.0.0.
-
-        Args:
-            time: Resampling frequency (e.g., '3h', '2D', '1M')
-            method: Resampling method. Recommended: 'mean', 'first', 'last', 'max', 'min'
-            hours_of_last_timestep: Duration of the last timestep after resampling.
-            hours_of_previous_timesteps: Duration of previous timesteps after resampling.
-            **kwargs: Additional arguments passed to xarray.resample()
-
-        Returns:
-            FlowSystem: New resampled FlowSystem (no solution).
-        """
-        warnings.warn(
-            f'\nresample() is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
-            'Use flow_system.transform.resample() instead.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.transform.resample(
-            time=time,
-            method=method,
-            hours_of_last_timestep=hours_of_last_timestep,
-            hours_of_previous_timesteps=hours_of_previous_timesteps,
-            **kwargs,
-        )
 
     @property
     def connected_and_transformed(self) -> bool:

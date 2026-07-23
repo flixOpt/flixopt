@@ -59,7 +59,6 @@ class OptimizeAccessor:
         solver: _Solver,
         before_solve: Callable[[FlowSystem], None] | None = None,
         progress: bool = True,
-        normalize_weights: bool | None = None,
     ) -> FlowSystem:
         """
         Build and solve the optimization model in one step.
@@ -74,7 +73,6 @@ class OptimizeAccessor:
                 after building the model and before solving. Use this to add custom
                 constraints via `flow_system.model.add_constraints()`.
             progress: Whether to show a tqdm progress bar during solving.
-            normalize_weights: Deprecated. Scenario weights are now always normalized in FlowSystem.
 
         Returns:
             The FlowSystem, for method chaining.
@@ -109,17 +107,6 @@ class OptimizeAccessor:
 
             >>> solution = flow_system.optimize(solver).solution
         """
-        if normalize_weights is not None:
-            import warnings
-
-            from .config import DEPRECATION_REMOVAL_VERSION
-
-            warnings.warn(
-                f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
-                'Scenario weights are now always normalized when set on FlowSystem.\n',
-                DeprecationWarning,
-                stacklevel=2,
-            )
         self._fs.build_model()
         if before_solve is not None:
             before_solve(self._fs)

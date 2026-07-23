@@ -26,7 +26,6 @@ accessible for standalone data visualization tasks.
 from __future__ import annotations
 
 import logging
-import pathlib
 from typing import TYPE_CHECKING, Any, Literal
 
 import matplotlib
@@ -43,7 +42,7 @@ from .color_processing import ColorType, process_colors
 from .config import CONFIG
 
 if TYPE_CHECKING:
-    import pyvis
+    import pathlib
 
 logger = logging.getLogger('flixopt')
 
@@ -770,90 +769,6 @@ def reshape_data_for_heatmap(
     result = result.transpose('timestep', 'timeframe', *other_dims)
 
     return result
-
-
-def plot_network(
-    node_infos: dict,
-    edge_infos: dict,
-    path: str | pathlib.Path | None = None,
-    controls: bool
-    | list[
-        Literal['nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer']
-    ] = True,
-    show: bool = False,
-) -> pyvis.network.Network | None:
-    """
-    Visualizes the network structure of a FlowSystem using PyVis, using info-dictionaries.
-
-    Args:
-        path: Path to save the HTML visualization. `False`: Visualization is created but not saved. `str` or `Path`: Specifies file path (default: 'results/network.html').
-        controls: UI controls to add to the visualization. `True`: Enables all available controls. `list`: Specify controls, e.g., ['nodes', 'layout'].
-            Options: 'nodes', 'edges', 'layout', 'interaction', 'manipulation', 'physics', 'selection', 'renderer'.
-            You can play with these and generate a Dictionary from it that can be applied to the network returned by this function.
-            network.set_options()
-            https://pyvis.readthedocs.io/en/latest/tutorial.html
-        show: Whether to open the visualization in the web browser.
-            The calculation must be saved to show it. If no path is given, it defaults to 'network.html'.
-    Returns:
-        The `Network` instance representing the visualization, or `None` if `pyvis` is not installed.
-
-    Notes:
-    - This function requires `pyvis`. If not installed, the function prints a warning and returns `None`.
-    - Nodes are styled based on type (e.g., circles for buses, boxes for components) and annotated with node information.
-    """
-    try:
-        from pyvis.network import Network
-    except ImportError:
-        logger.critical("Plotting the flow system network was not possible. Please install pyvis: 'pip install pyvis'")
-        return None
-
-    net = Network(directed=True, height='100%' if controls is False else '800px', font_color='white')
-
-    for node_id, node in node_infos.items():
-        net.add_node(
-            node_id,
-            label=node['label'],
-            shape={'Bus': 'circle', 'Component': 'box'}[node['class']],
-            color={'Bus': '#393E46', 'Component': '#00ADB5'}[node['class']],
-            title=node['infos'].replace(')', '\n)'),
-            font={'size': 14},
-        )
-
-    for edge in edge_infos.values():
-        net.add_edge(
-            edge['start'],
-            edge['end'],
-            label=edge['label'],
-            title=edge['infos'].replace(')', '\n)'),
-            font={'color': '#4D4D4D', 'size': 14},
-            color='#222831',
-        )
-
-    # Enhanced physics settings
-    net.barnes_hut(central_gravity=0.8, spring_length=50, spring_strength=0.05, gravity=-10000)
-
-    if controls:
-        net.show_buttons(filter_=controls)  # Adds UI buttons to control physics settings
-    if not show and not path:
-        return net
-    elif path:
-        path = pathlib.Path(path) if isinstance(path, str) else path
-        net.write_html(path.as_posix())
-    elif show:
-        path = pathlib.Path('network.html')
-        net.write_html(path.as_posix())
-
-    if show:
-        try:
-            import webbrowser
-
-            worked = webbrowser.open(f'file://{path.resolve()}', 2)
-            if not worked:
-                logger.error(f'Showing the network in the Browser went wrong. Open it manually. Its saved under {path}')
-        except Exception as e:
-            logger.error(
-                f'Showing the network in the Browser went wrong. Open it manually. Its saved under {path}: {e}'
-            )
 
 
 def preprocess_data_for_pie(

@@ -246,20 +246,22 @@ boiler_vars = [v for v in flow_system.solution.data_vars if 'Boiler' in v]
     solution = xr.open_dataset('results/solution.nc4')
     ```
 
-### Migrating Old Result Files
+### Migrating Old Files
 
-If you have result files saved with the old API (v4.x), you can migrate them to the new format using `FlowSystem.from_old_results()`. This method:
+If you have FlowSystem configurations saved with the old API (v4.x), load them with `FlowSystem.from_old_dataset()`. This method:
 
-- Loads the old multi-file format (`*--flow_system.nc4`, `*--solution.nc4`)
+- Loads the old `*--flow_system.nc4` file
 - Renames deprecated parameters in the FlowSystem structure (e.g., `on_off_parameters` → `status_parameters`)
-- Attaches the solution data to the FlowSystem
+- Returns a FlowSystem without solution data
+
+Old *result* files can no longer be loaded (`from_old_results()` was removed in v8) — re-run the optimization with the current API instead.
 
 ```python
-# Load old results
-flow_system = fx.FlowSystem.from_old_results('results_folder', 'my_model')
+# Load an old FlowSystem configuration
+flow_system = fx.FlowSystem.from_old_dataset('results_folder/my_model--flow_system.nc4')
 
-# Access basic solution data (flow rates, sizes, charge states, etc.)
-flow_system.solution['Boiler(Q_th)|flow_rate'].plot()
+# Re-optimize with the current API
+flow_system.optimize(solver)
 
 # Save in new single-file format
 flow_system.to_netcdf('results/my_model_migrated.nc4')
@@ -396,7 +398,7 @@ stats.total_effects['costs'].groupby('component_type').sum()
 | **Replace Optimization class** | Use `flow_system.optimize(solver)` instead |
 | **Update results access** | Use `flow_system.solution['var_name']` pattern |
 | **Update I/O code** | Use `to_netcdf()` / `from_netcdf()` |
-| **Migrate old result files** | Use `FlowSystem.from_old_results(folder, name)` |
+| **Migrate old files** | Use `FlowSystem.from_old_dataset(path)` for configurations; re-run optimizations for results |
 | **Update transform methods** | Use `flow_system.transform.sel/isel/resample()` instead |
 | **Test thoroughly** | Verify results match v4.x outputs |
 | **Remove deprecated imports** | Remove `fx.Optimization`, `fx.Results` |
