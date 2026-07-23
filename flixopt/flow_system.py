@@ -854,16 +854,7 @@ class FlowSystem(Interface, CompositeContainerMixin[Element]):
             # Save in new single-file format
             fs.to_netcdf('my_run.nc')
             ```
-
-        Deprecated:
-            This method will be removed in v6.
         """
-        warnings.warn(
-            f'from_old_dataset() is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
-            'This utility is only for migrating FlowSystems from flixopt versions before v5.',
-            DeprecationWarning,
-            stacklevel=2,
-        )
         from flixopt.io import convert_old_dataset, load_dataset_from_netcdf
 
         path = pathlib.Path(path)
