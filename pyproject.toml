@@ -203,7 +203,7 @@ markers = [
     "slow: marks tests as slow",
     "examples: marks example tests (run only on releases)",
 ]
-addopts = '-m "not examples" --ignore=tests/superseded'  # Skip examples and superseded tests by default
+addopts = '-m "not examples"'  # Skip examples by default
 
 # Warning filter configuration for pytest
 # Filters are processed in order; first match wins

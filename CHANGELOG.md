@@ -14,7 +14,8 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ## [Unreleased]
 
-**Summary**: Removes all v4-era APIs that were deprecated in v5/v6 and scheduled for removal in v7.0.0. Code that runs warning-free on v7.x runs unchanged on v8. See the [Migration Guide v8](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v8/).
+**Summary**: v8 removes all v4-era deprecated APIs and rewrites model building with batched/vectorized operations — up to **67x faster** for large systems. Code that runs warning-free on v7.x runs unchanged apart from the removals below. See the [Migration Guide v8](https://flixopt.github.io/flixopt/latest/user-guide/migration-guide-v8/).
+
 
 ### 💥 Removed
 
@@ -24,6 +25,37 @@ For more details regarding the individual PRs and contributors, please refer to 
 - **`FlowSystem.from_old_results()`** — re-run old optimizations with the current API (`from_old_dataset()` still loads pre-v5 configuration files and no longer warns)
 - **`Bus(excess_penalty_per_flow_hour=...)`** — now raises `TypeError`; use `imbalance_penalty_per_flow_hour`
 - **`normalize_weights` parameter** on `create_model` / `build_model` / `optimize()` — weights are always normalized
+
+### 🚀 Performance
+
+
+#### Batched Model Building (#588)
+
+Complete rewrite of the model building pipeline using batched operations instead of per-element loops:
+
+| System Size | Build Speedup | Write LP Speedup |
+|-------------|---------------|------------------|
+| XL (2000h, 300 converters) | **67x** (113s → 1.7s) | **5x** (45s → 9s) |
+| Complex (72h, piecewise) | **2.6x** (1s → 383ms) | **4x** (417ms → 100ms) |
+
+**Architecture Changes**:
+
+- **Type-level batched models**: New `FlowsModel`, `StoragesModel`, `BusesModel` classes process all elements of a type in single vectorized operations
+- **Pre-computed element data**: All `*Data` classes (`FlowsData`, `StoragesData`, `EffectsData`, `BusesData`, `ComponentsData`, `ConvertersData`, `TransmissionsData`) cache element parameters as xarray DataArrays with element dimensions
+- **Mask-based variables**: Use linopy's `mask=` parameter for heterogeneous elements (e.g., only some flows have status variables)
+- **Fast NumPy helpers**: `fast_notnull()` / `fast_isnull()` are ~55x faster than xarray equivalents
+
+**Model Size Reduction** (fewer, larger variables/constraints):
+
+| System | Variables (old → new) | Constraints (old → new) |
+|--------|----------------------|------------------------|
+| XL (2000h, 300 conv) | 4,917 → 21 | 5,715 → 30 |
+| Medium (720h) | 370 → 21 | 428 → 30 |
+
+### 🐛 Fixed
+
+- **Status duration constraints**: Fixed `min_downtime` and `min_uptime` constraints not being enforced in batched mode due to mask broadcasting issues
+- **Investment effects**: Fixed investment-related effects (`effects_of_investment`, `effects_of_retirement`, `effects_per_size`) not being registered when using batched operations
 
 ## [7.2.1](https://github.com/flixOpt/flixopt/compare/v7.2.0...v7.2.1) (2026-07-21)
 

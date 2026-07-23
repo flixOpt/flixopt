@@ -16,8 +16,9 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from .model_coordinates import ModelCoordinates
 from .modeling import _scalar_safe_reduce
-from .structure import EXPAND_DIVIDE, EXPAND_FIRST_TIMESTEP, EXPAND_INTERPOLATE, VariableCategory
+from .structure import NAME_TO_EXPANSION, ExpansionMode
 
 if TYPE_CHECKING:
     from tsam import ClusterConfig, ExtremeConfig, SegmentConfig
@@ -230,6 +231,8 @@ class _ReducedFlowSystemBuilder:
                 storage.initial_charge_state = None
 
         # Create Clustering object with full AggregationResult access
+        # Note: The clustering setter automatically resets the batched accessor
+        # to ensure storage categorization (basic vs intercluster) is recomputed.
         reduced_fs.clustering = Clustering(
             original_timesteps=self._fs.timesteps,
             _aggregation_result=self._agg_result,
@@ -262,10 +265,9 @@ class _Expander:
         self._original_timesteps = clustering.original_timesteps
         self._n_original_timesteps = len(self._original_timesteps)
 
-        # Import here to avoid circular import
-        from .flow_system import FlowSystem
+        from .model_coordinates import ModelCoordinates
 
-        self._original_timesteps_extra = FlowSystem._create_timesteps_with_extra(self._original_timesteps, None)
+        self._original_timesteps_extra = ModelCoordinates._create_timesteps_with_extra(self._original_timesteps, None)
 
         # Index of last valid original cluster (for final state)
         self._last_original_cluster_idx = min(
@@ -273,11 +275,18 @@ class _Expander:
             self._n_original_clusters - 1,
         )
 
-        # Build variable category sets from registered categories
-        variable_categories = fs._variable_categories
-        self._state_vars = {name for name, cat in variable_categories.items() if cat in EXPAND_INTERPOLATE}
-        self._first_timestep_vars = {name for name, cat in variable_categories.items() if cat in EXPAND_FIRST_TIMESTEP}
-        self._segment_total_vars = {name for name, cat in variable_categories.items() if cat in EXPAND_DIVIDE}
+        # Build consume vars for intercluster post-processing
+        from .structure import InterclusterStorageVarName
+
+        soc_boundary_suffix = InterclusterStorageVarName.SOC_BOUNDARY
+        solution_names = set(fs.solution) if fs.solution is not None else set()
+        self._consume_vars: set[str] = {
+            s for s in solution_names if s == soc_boundary_suffix or s.endswith(soc_boundary_suffix)
+        }
+
+        self._state_vars = {n for n, m in NAME_TO_EXPANSION.items() if m == ExpansionMode.INTERPOLATE}
+        self._first_timestep_vars = {n for n, m in NAME_TO_EXPANSION.items() if m == ExpansionMode.FIRST_TIMESTEP}
+        self._segment_total_vars = {n for n, m in NAME_TO_EXPANSION.items() if m == ExpansionMode.DIVIDE}
 
         # Pre-compute expansion divisor for segmented systems (segment durations on original time)
         self._expansion_divisor = None
@@ -391,7 +400,7 @@ class _Expander:
             reduced_solution: The original reduced solution dataset.
         """
         n_original_timesteps_extra = len(self._original_timesteps_extra)
-        soc_boundary_vars = self._fs.get_variables_by_category(VariableCategory.SOC_BOUNDARY)
+        soc_boundary_vars = list(self._consume_vars)
 
         for soc_boundary_name in soc_boundary_vars:
             storage_name = soc_boundary_name.rsplit('|', 1)[0]
@@ -752,7 +761,6 @@ class TransformAccessor:
         Returns:
             xr.Dataset: Selected dataset
         """
-        from .flow_system import FlowSystem
 
         indexers = {}
         if time is not None:
@@ -768,13 +776,13 @@ class TransformAccessor:
         result = dataset.sel(**indexers)
 
         if 'time' in indexers:
-            result = FlowSystem._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+            result = ModelCoordinates._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
 
         if 'period' in indexers:
-            result = FlowSystem._update_period_metadata(result)
+            result = ModelCoordinates._update_period_metadata(result)
 
         if 'scenario' in indexers:
-            result = FlowSystem._update_scenario_metadata(result)
+            result = ModelCoordinates._update_scenario_metadata(result)
 
         return result
 
@@ -802,7 +810,6 @@ class TransformAccessor:
         Returns:
             xr.Dataset: Selected dataset
         """
-        from .flow_system import FlowSystem
 
         indexers = {}
         if time is not None:
@@ -818,13 +825,13 @@ class TransformAccessor:
         result = dataset.isel(**indexers)
 
         if 'time' in indexers:
-            result = FlowSystem._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+            result = ModelCoordinates._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
 
         if 'period' in indexers:
-            result = FlowSystem._update_period_metadata(result)
+            result = ModelCoordinates._update_period_metadata(result)
 
         if 'scenario' in indexers:
-            result = FlowSystem._update_scenario_metadata(result)
+            result = ModelCoordinates._update_scenario_metadata(result)
 
         return result
 
@@ -860,7 +867,6 @@ class TransformAccessor:
         Raises:
             ValueError: If resampling creates gaps and fill_gaps is not specified.
         """
-        from .flow_system import FlowSystem
 
         available_methods = ['mean', 'sum', 'max', 'min', 'first', 'last', 'std', 'var', 'median', 'count']
         if method not in available_methods:
@@ -889,7 +895,7 @@ class TransformAccessor:
             result = dataset.copy()
             result = result.assign_coords(time=resampled_time)
             result.attrs.update(original_attrs)
-            return FlowSystem._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+            return ModelCoordinates._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
 
         time_dataset = dataset[time_var_names]
         resampled_time_dataset = cls._resample_by_dimension_groups(time_dataset, freq, method, **kwargs)
@@ -931,7 +937,7 @@ class TransformAccessor:
                 result = result.assign_coords({coord_name: coord_val})
 
         result.attrs.update(original_attrs)
-        return FlowSystem._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
+        return ModelCoordinates._update_time_metadata(result, hours_of_last_timestep, hours_of_previous_timesteps)
 
     @staticmethod
     def _resample_by_dimension_groups(
@@ -1058,6 +1064,13 @@ class TransformAccessor:
         # Convert dict to Dataset format
         if isinstance(sizes, dict):
             sizes = xr.Dataset({k: xr.DataArray(v) for k, v in sizes.items()})
+
+        # stats.sizes returns a DataArray with an 'element' dim (possibly behind the
+        # legacy access shim); split it into per-element variables so lookup by name
+        # works uniformly below
+        sizes = getattr(sizes, '_da', sizes)
+        if isinstance(sizes, xr.DataArray):
+            sizes = xr.Dataset({str(e): sizes.sel(element=e, drop=True) for e in sizes['element'].values})
 
         # Apply rounding
         if decimal_rounding is not None:

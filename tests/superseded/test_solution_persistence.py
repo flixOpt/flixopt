@@ -10,6 +10,7 @@
     Kept temporarily for reference. Safe to delete.
 """
 
+import numpy as np
 import pytest
 import xarray as xr
 
@@ -69,9 +70,9 @@ class TestSolutionOnFlowSystem:
 
         # Check that known variables are present (from the simple flow system)
         solution_vars = set(simple_flow_system.solution.data_vars.keys())
-        # Should have flow rates, costs, etc.
-        assert any('flow_rate' in v for v in solution_vars)
-        assert any('costs' in v for v in solution_vars)
+        # Should have flow rates, effects, etc.
+        assert any('flow|rate' in v for v in solution_vars)
+        assert 'effect|total' in solution_vars
 
 
 class TestSolutionOnElement:
@@ -102,30 +103,31 @@ class TestSolutionOnElement:
         assert isinstance(solution, xr.Dataset)
 
     def test_element_solution_contains_element_variables(self, simple_flow_system, highs_solver):
-        """Element.solution should contain only that element's variables."""
+        """Element.solution should contain batched variables with element's data selected."""
         simple_flow_system.optimize(highs_solver)
 
         boiler = simple_flow_system.components['Boiler']
         boiler_solution = boiler.solution
 
-        # All variables in element solution should start with element's label
-        for var_name in boiler_solution.data_vars:
-            assert var_name.startswith(boiler.label_full), f'{var_name} does not start with {boiler.label_full}'
+        # With batched variables, element solution contains type-level variables (e.g. flow|rate)
+        # where the element's data has been selected from the appropriate dimension
+        assert len(boiler_solution.data_vars) > 0, 'Element solution should have variables'
+        assert 'flow|rate' in boiler_solution.data_vars, 'Boiler solution should contain flow|rate'
 
     def test_different_elements_have_different_solutions(self, simple_flow_system, highs_solver):
-        """Different elements should have different solution subsets."""
+        """Different elements should have different solution data (even if variable names overlap)."""
         simple_flow_system.optimize(highs_solver)
 
         boiler = simple_flow_system.components['Boiler']
         chp = simple_flow_system.components['CHP_unit']
 
-        boiler_vars = set(boiler.solution.data_vars.keys())
-        chp_vars = set(chp.solution.data_vars.keys())
-
-        # They should have different variables
-        assert boiler_vars != chp_vars
-        # And they shouldn't overlap
-        assert len(boiler_vars & chp_vars) == 0
+        # With batched variables, both may have the same variable names (e.g. flow|rate)
+        # but the data should be different (selected from different coordinate values)
+        assert len(boiler.solution.data_vars) > 0
+        assert len(chp.solution.data_vars) > 0
+        # The flow|rate data should differ between boiler and CHP
+        if 'flow|rate' in boiler.solution and 'flow|rate' in chp.solution:
+            assert not np.array_equal(boiler.solution['flow|rate'].values, chp.solution['flow|rate'].values)
 
 
 class TestVariableNamesPopulation:
@@ -152,13 +154,12 @@ class TestVariableNamesPopulation:
         assert len(boiler._constraint_names) >= 0  # Some elements might have no constraints
 
     def test_all_elements_have_variable_names(self, simple_flow_system):
-        """All elements with submodels should have _variable_names populated."""
+        """All elements should have _variable_names populated after modeling."""
         simple_flow_system.build_model()
 
         for element in simple_flow_system.values():
-            if element.submodel is not None:
-                # Element was modeled, should have variable names
-                assert isinstance(element._variable_names, list)
+            # Element should have variable names attribute
+            assert isinstance(element._variable_names, list)
 
 
 class TestSolutionPersistence:
@@ -362,7 +363,6 @@ class TestEdgeCases:
         for element in simple_flow_system.values():
             element._variable_names = []
             element._constraint_names = []
-            element.submodel = None
 
         # Re-optimize
         simple_flow_system.optimize(highs_solver)
@@ -398,7 +398,7 @@ class TestFlowSystemDirectMethods:
 
     def test_solve_without_build_model_raises(self, simple_flow_system, highs_solver):
         """solve() should raise if model not built."""
-        with pytest.raises(RuntimeError, match='Model has not been built'):
+        with pytest.raises(RuntimeError, match='requires at least MODEL_BUILT'):
             simple_flow_system.solve(highs_solver)
 
     def test_solve_after_build_model(self, simple_flow_system, highs_solver):
@@ -470,9 +470,7 @@ class TestFlowSystemDirectMethods:
         boiler_solution = boiler.solution
 
         assert isinstance(boiler_solution, xr.Dataset)
-        # All variables should belong to boiler
-        for var_name in boiler_solution.data_vars:
-            assert var_name.startswith(boiler.label_full)
+        assert len(boiler_solution.data_vars) > 0
 
     def test_repeated_optimization_produces_consistent_results(self, simple_flow_system, highs_solver):
         """Repeated optimization should produce consistent results."""
@@ -486,7 +484,6 @@ class TestFlowSystemDirectMethods:
         for element in simple_flow_system.values():
             element._variable_names = []
             element._constraint_names = []
-            element.submodel = None
 
         # Second optimization
         simple_flow_system.optimize(highs_solver)

@@ -26,9 +26,14 @@ class TestFlowSystemSolution:
     """Tests for flow_system.solution API."""
 
     def test_solution_is_xarray_dataset(self, simple_flow_system, highs_solver):
-        """Verify solution is an xarray Dataset."""
+        """Verify solution is an xarray Dataset (strict mode, without the legacy wrapper)."""
         simple_flow_system.optimize(highs_solver)
-        assert isinstance(simple_flow_system.solution, xr.Dataset)
+        original = fx.CONFIG.Legacy.solution_access
+        fx.CONFIG.Legacy.solution_access = False
+        try:
+            assert isinstance(simple_flow_system.solution, xr.Dataset)
+        finally:
+            fx.CONFIG.Legacy.solution_access = original
 
     def test_solution_has_time_dimension(self, simple_flow_system, highs_solver):
         """Verify solution has time dimension."""
@@ -40,13 +45,14 @@ class TestFlowSystemSolution:
         simple_flow_system.optimize(highs_solver)
         solution = simple_flow_system.solution
 
-        # Check that effects are present
-        assert 'costs' in solution
-        assert 'CO2' in solution
+        # Check that effect totals are present
+        assert 'effect|total' in solution
+        assert 'costs' in solution['effect|total'].coords['effect'].values
+        assert 'CO2' in solution['effect|total'].coords['effect'].values
 
-        # Verify they are scalar values
-        assert solution['costs'].dims == ()
-        assert solution['CO2'].dims == ()
+        # Verify they are scalar values per effect
+        assert solution['effect|total'].sel(effect='costs').dims == ()
+        assert solution['effect|total'].sel(effect='CO2').dims == ()
 
     def test_solution_contains_temporal_effects(self, simple_flow_system, highs_solver):
         """Verify solution contains temporal effect components."""
@@ -54,21 +60,20 @@ class TestFlowSystemSolution:
         solution = simple_flow_system.solution
 
         # Check temporal components
-        assert 'costs(temporal)' in solution
-        assert 'costs(temporal)|per_timestep' in solution
+        assert 'effect|per_timestep' in solution
+        assert 'costs' in solution['effect|per_timestep'].coords['effect'].values
 
     def test_solution_contains_flow_rates(self, simple_flow_system, highs_solver):
         """Verify solution contains flow rate variables."""
         simple_flow_system.optimize(highs_solver)
         solution = simple_flow_system.solution
 
-        # Check flow rates for known components
-        flow_rate_vars = [v for v in solution.data_vars if '|flow_rate' in v]
-        assert len(flow_rate_vars) > 0
+        # Check flow rates exist as batched variable
+        assert 'flow|rate' in solution
 
-        # Verify flow rates have time dimension
-        for var in flow_rate_vars:
-            assert 'time' in solution[var].dims
+        # Verify flow rates have time and flow dimensions
+        assert 'time' in solution['flow|rate'].dims
+        assert 'flow' in solution['flow|rate'].dims
 
     def test_solution_contains_storage_variables(self, simple_flow_system, highs_solver):
         """Verify solution contains storage-specific variables."""
@@ -76,31 +81,30 @@ class TestFlowSystemSolution:
         solution = simple_flow_system.solution
 
         # Check storage charge state (includes extra timestep for final state)
-        assert 'Speicher|charge_state' in solution
+        assert 'storage|charge' in solution
+        assert 'Speicher' in solution['storage|charge'].coords['storage'].values
 
     def test_solution_item_returns_scalar(self, simple_flow_system, highs_solver):
         """Verify .item() returns Python scalar for 0-d arrays."""
         simple_flow_system.optimize(highs_solver)
 
-        costs = simple_flow_system.solution['costs'].item()
+        costs = simple_flow_system.solution['effect|total'].sel(effect='costs').item()
         assert isinstance(costs, (int, float))
 
     def test_solution_values_returns_numpy_array(self, simple_flow_system, highs_solver):
         """Verify .values returns numpy array for multi-dimensional data."""
         simple_flow_system.optimize(highs_solver)
 
-        # Find a flow rate variable
-        flow_vars = [v for v in simple_flow_system.solution.data_vars if '|flow_rate' in v]
-        flow_rate = simple_flow_system.solution[flow_vars[0]].values
+        # Get first flow's rate values
+        flow_rate = simple_flow_system.solution['flow|rate'].isel(flow=0).values
         assert isinstance(flow_rate, np.ndarray)
 
     def test_solution_sum_over_time(self, simple_flow_system, highs_solver):
         """Verify xarray operations work on solution data."""
         simple_flow_system.optimize(highs_solver)
 
-        # Sum flow rate over time
-        flow_vars = [v for v in simple_flow_system.solution.data_vars if '|flow_rate' in v]
-        total_flow = simple_flow_system.solution[flow_vars[0]].sum(dim='time')
+        # Sum flow rate over time for first flow
+        total_flow = simple_flow_system.solution['flow|rate'].isel(flow=0).sum(dim='time')
         assert total_flow.dims == ()
 
     def test_solution_to_dataframe(self, simple_flow_system, highs_solver):
@@ -134,9 +138,10 @@ class TestElementSolution:
         boiler = simple_flow_system.components['Boiler']
         element_solution = boiler.solution
 
-        # All variables should start with 'Boiler'
-        for var in element_solution.data_vars:
-            assert 'Boiler' in var, f"Variable {var} should contain 'Boiler'"
+        # Variables should be batched names from _variable_names
+        assert len(list(element_solution.data_vars)) > 0
+        # Element solution should contain flow|rate (Boiler has flows)
+        assert 'flow|rate' in element_solution
 
     def test_storage_element_solution(self, simple_flow_system, highs_solver):
         """Verify storage element solution contains charge state."""
@@ -145,8 +150,8 @@ class TestElementSolution:
         storage = simple_flow_system.components['Speicher']
         element_solution = storage.solution
 
-        # Should contain charge state variables
-        charge_vars = [v for v in element_solution.data_vars if 'charge_state' in v]
+        # Should contain storage charge variable
+        charge_vars = [v for v in element_solution.data_vars if 'charge' in v]
         assert len(charge_vars) > 0
 
     def test_element_solution_raises_for_unlinked_element(self):
@@ -173,17 +178,23 @@ class TestStatisticsAccessor:
         """Test that statistics.sizes includes all flow and storage sizes (from InvestParameters)."""
         simple_flow_system.optimize(highs_solver)
 
-        sizes = simple_flow_system.statistics.sizes
+        original = fx.CONFIG.Legacy.solution_access
+        fx.CONFIG.Legacy.solution_access = False
+        try:
+            sizes = simple_flow_system.statistics.sizes
+        finally:
+            fx.CONFIG.Legacy.solution_access = original
 
-        assert isinstance(sizes, xr.Dataset)
-        # Should have sizes for flows with InvestParameters
-        assert len(sizes.data_vars) > 0
+        assert isinstance(sizes, xr.DataArray)
+        # Should have sizes with element dimension
+        assert 'element' in sizes.dims
+        assert sizes.sizes['element'] > 0
 
         # Check that all size labels are valid flow or storage labels
         flow_labels = [f.label_full for f in simple_flow_system.flows.values()]
         storage_labels = [s.label_full for s in simple_flow_system.storages.values()]
         valid_labels = flow_labels + storage_labels
-        for label in sizes.data_vars:
+        for label in sizes.coords['element'].values:
             assert label in valid_labels, f'Size label {label} should be a valid flow or storage'
 
     def test_statistics_sizes_returns_correct_values(self, simple_flow_system, highs_solver):
@@ -193,18 +204,25 @@ class TestStatisticsAccessor:
         sizes = simple_flow_system.statistics.sizes
 
         # Check that all values are positive (sizes should be > 0)
-        for label in sizes.data_vars:
-            value = float(sizes[label].values) if sizes[label].dims == () else float(sizes[label].max().values)
+        for label in sizes.coords['element'].values:
+            val = sizes.sel(element=label)
+            value = float(val.values) if val.dims == () else float(val.max().values)
             assert value > 0, f'Size for {label} should be positive'
 
     def test_statistics_flow_rates(self, simple_flow_system, highs_solver):
         """Test that statistics.flow_rates returns flow rate data."""
         simple_flow_system.optimize(highs_solver)
 
-        flow_rates = simple_flow_system.statistics.flow_rates
+        original = fx.CONFIG.Legacy.solution_access
+        fx.CONFIG.Legacy.solution_access = False
+        try:
+            flow_rates = simple_flow_system.statistics.flow_rates
+        finally:
+            fx.CONFIG.Legacy.solution_access = original
 
-        assert isinstance(flow_rates, xr.Dataset)
-        assert len(flow_rates.data_vars) > 0
+        assert isinstance(flow_rates, xr.DataArray)
+        assert 'flow' in flow_rates.dims
+        assert flow_rates.sizes['flow'] > 0
         # Flow rates should have time dimension
         assert 'time' in flow_rates.dims
 
@@ -212,10 +230,16 @@ class TestStatisticsAccessor:
         """Test that statistics.flow_hours returns energy data."""
         simple_flow_system.optimize(highs_solver)
 
-        flow_hours = simple_flow_system.statistics.flow_hours
+        original = fx.CONFIG.Legacy.solution_access
+        fx.CONFIG.Legacy.solution_access = False
+        try:
+            flow_hours = simple_flow_system.statistics.flow_hours
+        finally:
+            fx.CONFIG.Legacy.solution_access = original
 
-        assert isinstance(flow_hours, xr.Dataset)
-        assert len(flow_hours.data_vars) > 0
+        assert isinstance(flow_hours, xr.DataArray)
+        assert 'flow' in flow_hours.dims
+        assert flow_hours.sizes['flow'] > 0
 
     @pytest.mark.parametrize('by', ['component', 'contributor'])
     def test_effects_threshold_drops_uninvested_component(self, highs_solver, by):
@@ -289,13 +313,18 @@ class TestStatisticsAccessor:
 class TestPlottingWithOptimizedData:
     """Tests for plotting functions using actual optimization results."""
 
+    @staticmethod
+    def _flow_rate_dataset(solution, n=3):
+        """Extract first n flows from flow|rate as a Dataset with individual flow variables."""
+        rate = solution['flow|rate']
+        flow_labels = list(rate.coords['flow'].values[:n])
+        return rate.sel(flow=flow_labels).to_dataset('flow')
+
     def test_plot_flow_rates_with_plotly(self, simple_flow_system, highs_solver):
         """Test plotting flow rates with Plotly."""
         simple_flow_system.optimize(highs_solver)
 
-        # Extract flow rate data
-        flow_vars = [v for v in simple_flow_system.solution.data_vars if '|flow_rate' in v]
-        flow_data = simple_flow_system.solution[flow_vars[:3]]  # Take first 3
+        flow_data = self._flow_rate_dataset(simple_flow_system.solution, 3)
 
         fig = plotting.with_plotly(flow_data, mode='stacked_bar')
         assert fig is not None
@@ -305,9 +334,7 @@ class TestPlottingWithOptimizedData:
         """Test plotting flow rates with Matplotlib."""
         simple_flow_system.optimize(highs_solver)
 
-        # Extract flow rate data
-        flow_vars = [v for v in simple_flow_system.solution.data_vars if '|flow_rate' in v]
-        flow_data = simple_flow_system.solution[flow_vars[:3]]
+        flow_data = self._flow_rate_dataset(simple_flow_system.solution, 3)
 
         fig, ax = plotting.with_matplotlib(flow_data, mode='stacked_bar')
         assert fig is not None
@@ -318,8 +345,7 @@ class TestPlottingWithOptimizedData:
         """Test line plotting mode."""
         simple_flow_system.optimize(highs_solver)
 
-        flow_vars = [v for v in simple_flow_system.solution.data_vars if '|flow_rate' in v]
-        flow_data = simple_flow_system.solution[flow_vars[:3]]
+        flow_data = self._flow_rate_dataset(simple_flow_system.solution, 3)
 
         fig = plotting.with_plotly(flow_data, mode='line')
         assert fig is not None
@@ -332,8 +358,7 @@ class TestPlottingWithOptimizedData:
         """Test area plotting mode (Plotly only)."""
         simple_flow_system.optimize(highs_solver)
 
-        flow_vars = [v for v in simple_flow_system.solution.data_vars if '|flow_rate' in v]
-        flow_data = simple_flow_system.solution[flow_vars[:3]]
+        flow_data = self._flow_rate_dataset(simple_flow_system.solution, 3)
 
         fig = plotting.with_plotly(flow_data, mode='area')
         assert fig is not None
@@ -342,15 +367,15 @@ class TestPlottingWithOptimizedData:
         """Test plotting with custom colors."""
         simple_flow_system.optimize(highs_solver)
 
-        flow_vars = [v for v in simple_flow_system.solution.data_vars if '|flow_rate' in v][:2]
-        flow_data = simple_flow_system.solution[flow_vars]
+        flow_data = self._flow_rate_dataset(simple_flow_system.solution, 2)
+        flow_labels = list(flow_data.data_vars)
 
         # Test with color list
         fig1 = plotting.with_plotly(flow_data, mode='line', colors=['red', 'blue'])
         assert fig1 is not None
 
         # Test with color dict
-        color_dict = {flow_vars[0]: '#ff0000', flow_vars[1]: '#0000ff'}
+        color_dict = {flow_labels[0]: '#ff0000', flow_labels[1]: '#0000ff'}
         fig2 = plotting.with_plotly(flow_data, mode='line', colors=color_dict)
         assert fig2 is not None
 
@@ -362,8 +387,7 @@ class TestPlottingWithOptimizedData:
         """Test plotting with custom title and axis labels."""
         simple_flow_system.optimize(highs_solver)
 
-        flow_vars = [v for v in simple_flow_system.solution.data_vars if '|flow_rate' in v]
-        flow_data = simple_flow_system.solution[flow_vars[:2]]
+        flow_data = self._flow_rate_dataset(simple_flow_system.solution, 2)
 
         fig = plotting.with_plotly(flow_data, mode='line', title='Energy Flows', xlabel='Time (h)', ylabel='Power (kW)')
         assert fig.layout.title.text == 'Energy Flows'
@@ -373,12 +397,8 @@ class TestPlottingWithOptimizedData:
         simple_flow_system.optimize(highs_solver)
 
         # Create dataset with scalar values
-        effects_data = xr.Dataset(
-            {
-                'costs': simple_flow_system.solution['costs'],
-                'CO2': simple_flow_system.solution['CO2'],
-            }
-        )
+        effect_total = simple_flow_system.solution['effect|total']
+        effects_data = effect_total.sel(effect=['costs', 'CO2']).to_dataset('effect')
 
         # This should handle scalar data gracefully
         fig, ax = plotting.with_matplotlib(effects_data, mode='stacked_bar')
@@ -395,16 +415,17 @@ class TestDualPiePlots:
         """Test dual pie chart with effect contributions."""
         simple_flow_system.optimize(highs_solver)
 
-        # Get temporal costs per timestep (summed to scalar for pie)
-        temporal_vars = [v for v in simple_flow_system.solution.data_vars if '->costs(temporal)' in v]
+        # Get effect per_timestep data and sum over time for pie chart
+        if 'effect|per_timestep' in simple_flow_system.solution:
+            per_ts = simple_flow_system.solution['effect|per_timestep']
+            effects = per_ts.coords['effect'].values
+            if len(effects) >= 2:
+                summed = per_ts.sum(dim='time')
+                left_data = summed.sel(effect=effects[:2]).to_dataset('effect')
+                right_data = summed.sel(effect=effects[:2]).to_dataset('effect')
 
-        if len(temporal_vars) >= 2:
-            # Sum over time to get total contributions
-            left_data = xr.Dataset({v: simple_flow_system.solution[v].sum() for v in temporal_vars[:2]})
-            right_data = xr.Dataset({v: simple_flow_system.solution[v].sum() for v in temporal_vars[:2]})
-
-            fig = plotting.dual_pie_with_plotly(left_data, right_data)
-            assert fig is not None
+                fig = plotting.dual_pie_with_plotly(left_data, right_data)
+                assert fig is not None
 
     def test_dual_pie_with_matplotlib(self, simple_flow_system, highs_solver):
         """Test dual pie chart with matplotlib backend."""
@@ -528,11 +549,13 @@ class TestVariableNamingConvention:
     """Tests verifying the new variable naming convention."""
 
     def test_flow_rate_naming_pattern(self, simple_flow_system, highs_solver):
-        """Test Component(Flow)|flow_rate naming pattern."""
+        """Test batched flow|rate variable with flow dimension."""
         simple_flow_system.optimize(highs_solver)
 
-        # Check Boiler flow rate follows pattern
-        assert 'Boiler(Q_th)|flow_rate' in simple_flow_system.solution
+        # Check batched flow rate variable exists
+        assert 'flow|rate' in simple_flow_system.solution
+        # Check Boiler's thermal flow is in the flow coordinate
+        assert 'Boiler(Q_th)' in simple_flow_system.solution['flow|rate'].coords['flow'].values
 
     def test_status_variable_naming(self, simple_flow_system, highs_solver):
         """Test status variable naming pattern."""
@@ -544,25 +567,25 @@ class TestVariableNamingConvention:
         assert len(status_vars) >= 0  # May be 0 if no status tracking
 
     def test_storage_naming_pattern(self, simple_flow_system, highs_solver):
-        """Test Storage|variable naming pattern."""
+        """Test batched storage variables with storage dimension."""
         simple_flow_system.optimize(highs_solver)
 
-        # Storage charge state follows pattern
-        assert 'Speicher|charge_state' in simple_flow_system.solution
-        assert 'Speicher|netto_discharge' in simple_flow_system.solution
+        # Storage charge state follows batched pattern
+        assert 'storage|charge' in simple_flow_system.solution
+        assert 'Speicher' in simple_flow_system.solution['storage|charge'].coords['storage'].values
+        # Storage netto variable
+        assert 'storage|netto' in simple_flow_system.solution
 
     def test_effect_naming_patterns(self, simple_flow_system, highs_solver):
-        """Test effect naming patterns."""
+        """Test batched effect naming patterns."""
         simple_flow_system.optimize(highs_solver)
 
-        # Total effect
-        assert 'costs' in simple_flow_system.solution
+        # Total effect (batched with effect dimension)
+        assert 'effect|total' in simple_flow_system.solution
+        assert 'costs' in simple_flow_system.solution['effect|total'].coords['effect'].values
 
-        # Temporal component
-        assert 'costs(temporal)' in simple_flow_system.solution
-
-        # Per timestep
-        assert 'costs(temporal)|per_timestep' in simple_flow_system.solution
+        # Per timestep (batched with effect dimension)
+        assert 'effect|per_timestep' in simple_flow_system.solution
 
     def test_list_all_variables(self, simple_flow_system, highs_solver):
         """Test that all variables can be listed."""
@@ -701,8 +724,9 @@ class TestExportFunctionality:
         """Test exporting Plotly figure to HTML."""
         simple_flow_system.optimize(highs_solver)
 
-        flow_vars = [v for v in simple_flow_system.solution.data_vars if '|flow_rate' in v][:2]
-        flow_data = simple_flow_system.solution[flow_vars]
+        rate = simple_flow_system.solution['flow|rate']
+        flow_labels = rate.coords['flow'].values[:2]
+        flow_data = rate.sel(flow=flow_labels).to_dataset('flow')
 
         fig = plotting.with_plotly(flow_data, mode='line')
 
@@ -715,8 +739,9 @@ class TestExportFunctionality:
         """Test exporting Matplotlib figure to PNG."""
         simple_flow_system.optimize(highs_solver)
 
-        flow_vars = [v for v in simple_flow_system.solution.data_vars if '|flow_rate' in v][:2]
-        flow_data = simple_flow_system.solution[flow_vars]
+        rate = simple_flow_system.solution['flow|rate']
+        flow_labels = rate.coords['flow'].values[:2]
+        flow_data = rate.sel(flow=flow_labels).to_dataset('flow')
 
         fig, ax = plotting.with_matplotlib(flow_data, mode='line')
 
@@ -743,7 +768,7 @@ class TestSankeyDiagram:
 
         assert result.figure is not None
         assert result.data is not None
-        assert 'value' in result.data
+        assert result.data.size > 0
         assert 'source' in result.data.coords
         assert 'target' in result.data.coords
         assert len(result.data.link) > 0
@@ -828,8 +853,8 @@ class TestSankeyDiagram:
         assert result_sum.figure is not None
         assert result_mean.figure is not None
         # Mean values should be smaller than sum values
-        sum_total = sum(result_sum.data.value.values)
-        mean_total = sum(result_mean.data.value.values)
+        sum_total = sum(result_sum.data.values)
+        mean_total = sum(result_mean.data.values)
         assert mean_total < sum_total, 'Mean should produce smaller values than sum'
 
     def test_sankey_returns_plot_result(self, simple_flow_system, highs_solver):
@@ -841,4 +866,4 @@ class TestSankeyDiagram:
         # Check PlotResult structure
         assert hasattr(result, 'figure')
         assert hasattr(result, 'data')
-        assert isinstance(result.data, xr.Dataset)
+        assert isinstance(result.data, xr.DataArray)

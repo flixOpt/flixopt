@@ -248,20 +248,4 @@ While our example used a heating system, flixOpt works for any flow-based optimi
 
 ## Advanced: Extending with linopy
 
-flixOpt is built on [linopy](https://github.com/PyPSA/linopy). You can access and extend the underlying optimization model for custom constraints:
-
-```python
-# Build the model (without solving)
-flow_system.build_model()
-
-# Access the linopy model
-model = flow_system.model
-
-# Add custom constraints using linopy API
-model.add_constraints(...)
-
-# Then solve
-flow_system.solve(fx.solvers.HighsSolver())
-```
-
-This allows advanced users to add domain-specific constraints while keeping flixOpt's convenience for standard modeling.
+flixOpt is built on [linopy](https://github.com/PyPSA/linopy). You can access the underlying optimization model to add custom constraints, inspect variables, and more. See [Under the Hood](building-models/index.md#under-the-hood) for details and examples.
