@@ -96,7 +96,7 @@ def test_clustered_roundtrip_and_expand(cfg, tmp_path):
     assert np.isclose(costs_before, costs_after, rtol=1e-6, atol=1e-4)
 
     # effect-total validation must not crash on any dimension layout
-    reloaded.stats._create_effects_dataset('total')
+    reloaded.stats._create_effects_array('total')
 
     expanded = reloaded.transform.expand()
     assert len(expanded.timesteps) == n_days * 24
