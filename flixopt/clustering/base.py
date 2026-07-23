@@ -44,8 +44,6 @@ class Clustering:
         original_timesteps: pd.DatetimeIndex | list[str] | None = None,
         # Internal: tsam_xarray AggregationResult for full data access
         _aggregation_result: TsamXarrayAggregationResult | None = None,
-        # Internal: mapping from renamed dims back to originals (e.g., _period -> period)
-        _unrename_map: dict[str, str] | None = None,
     ):
         # Handle ISO timestamp strings from serialization
         if (
@@ -69,14 +67,6 @@ class Clustering:
         else:
             raise ValueError('Either clustering_result or _aggregation_result must be provided')
 
-        # Resolve unrename_map: if not explicitly provided, infer from slice_dims
-        # (e.g., '_period' in slice_dims → {'_period': 'period'})
-        if _unrename_map:
-            self._unrename_map = _unrename_map
-        else:
-            known_renames = {'_period': 'period', '_cluster': 'cluster'}
-            self._unrename_map = {k: v for k, v in known_renames.items() if k in self._clustering_result.slice_dims}
-
         # Flag indicating this was loaded from serialization (missing full AggregationResult data)
         self._from_serialization = _aggregation_result is None
 
@@ -88,17 +78,6 @@ class Clustering:
         from tsam_xarray import ClusteringResult as ClusteringResultClass
 
         return ClusteringResultClass.from_dict(d)
-
-    # ==========================================================================
-    # Helper for dim unrenaming
-    # ==========================================================================
-
-    def _unrename(self, da: xr.DataArray) -> xr.DataArray:
-        """Rename tsam_xarray output dims back to original names (e.g., _period -> period)."""
-        if not self._unrename_map:
-            return da
-        renames = {k: v for k, v in self._unrename_map.items() if k in da.dims}
-        return da.rename(renames) if renames else da
 
     # ==========================================================================
     # Core properties (delegated to ClusteringResult)
@@ -137,10 +116,10 @@ class Clustering:
     @property
     def dim_names(self) -> list[str]:
         """Names of extra dimensions, e.g., ['period', 'scenario']."""
-        return [self._unrename_map.get(d, d) for d in self._clustering_result.slice_dims]
+        return list(self._clustering_result.slice_dims)
 
     # ==========================================================================
-    # DataArray properties (delegated to ClusteringResult with unrename)
+    # DataArray properties (delegated to ClusteringResult)
     # ==========================================================================
 
     @property
@@ -151,11 +130,6 @@ class Clustering:
             DataArray with dims [original_cluster, period?, scenario?].
         """
         da = self._clustering_result.cluster_assignments
-        # Rename tsam_xarray's 'period' dim to our 'original_cluster' convention
-        # (must happen before _unrename to avoid conflict with _period → period rename)
-        if 'period' in da.dims:
-            da = da.rename({'period': 'original_cluster'})
-        da = self._unrename(da)
         # Ensure original_cluster is first dim (tsam_xarray puts slice dims first)
         if 'original_cluster' in da.dims and da.dims[0] != 'original_cluster':
             other_dims = [d for d in da.dims if d != 'original_cluster']
@@ -169,7 +143,7 @@ class Clustering:
         Returns:
             DataArray with dims [cluster, period?, scenario?].
         """
-        return self._unrename(self._clustering_result.cluster_occurrences)
+        return self._clustering_result.cluster_occurrences
 
     @property
     def segment_assignments(self) -> xr.DataArray | None:
@@ -184,7 +158,7 @@ class Clustering:
         # tsam_xarray uses 'timestep', we use 'time'
         if 'timestep' in result.dims:
             result = result.rename({'timestep': 'time'})
-        return self._unrename(result)
+        return result
 
     @property
     def segment_durations(self) -> xr.DataArray | None:
@@ -199,7 +173,7 @@ class Clustering:
         # tsam_xarray uses 'timestep', we use 'segment'
         if 'timestep' in result.dims:
             result = result.rename({'timestep': 'segment'})
-        return self._unrename(result)
+        return result
 
     # ==========================================================================
     # Methods
@@ -228,13 +202,7 @@ class Clustering:
         renames_to_tsam = {k: v for k, v in flixopt_to_tsam.items() if k in data.dims}
         if renames_to_tsam:
             data = data.rename(renames_to_tsam)
-        # Rename period/scenario dims to internal names (_period, _scenario)
-        reverse_unrename = {v: k for k, v in self._unrename_map.items()}
-        renames = {k: v for k, v in reverse_unrename.items() if k in data.dims}
-        if renames:
-            data = data.rename(renames)
-        result = self._clustering_result.disaggregate(data)
-        return self._unrename(result)
+        return self._clustering_result.disaggregate(data)
 
     def apply(
         self,
@@ -350,7 +318,7 @@ class Clustering:
         Only available before serialization.
         """
         self._require_full_data('original')
-        return self._unrename(self._aggregation_result.original)
+        return self._aggregation_result.original
 
     @property
     def reconstructed(self) -> xr.DataArray:
@@ -362,8 +330,7 @@ class Clustering:
         Only available before serialization.
         """
         self._require_full_data('reconstructed')
-        da = self._unrename(self._aggregation_result.reconstructed)
-        return da.transpose(*self.original.dims)
+        return self._aggregation_result.reconstructed.transpose(*self.original.dims)
 
     @property
     def residuals(self) -> xr.DataArray:
@@ -372,7 +339,7 @@ class Clustering:
         Only available before serialization.
         """
         self._require_full_data('residuals')
-        return self._unrename(self._aggregation_result.residuals)
+        return self._aggregation_result.residuals
 
     @property
     def accuracy(self) -> TsamXarrayAccuracyMetrics:
@@ -380,17 +347,12 @@ class Clustering:
 
         Exposes ``rmse`` / ``mae`` / ``rmse_duration`` (dims ``(variable, *dim_names)``)
         and the aggregate ``weighted_rmse`` / ``weighted_mae`` / ``weighted_rmse_duration``
-        (dims ``(*dim_names,)``). Dim names are un-renamed to match ``original``.
+        (dims ``(*dim_names,)``).
 
         Only available before serialization.
         """
-        import dataclasses
-
         self._require_full_data('accuracy')
-        acc = self._aggregation_result.accuracy
-        return dataclasses.replace(
-            acc, **{f.name: self._unrename(getattr(acc, f.name)) for f in dataclasses.fields(acc)}
-        )
+        return self._aggregation_result.accuracy
 
     def compare(self, variable: str | list[str] | None = None) -> xr.Dataset:
         """Tidy original-vs-clustered comparison, ready for plotting.
