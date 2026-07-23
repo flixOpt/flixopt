@@ -366,7 +366,6 @@ class TopologyAccessor:
             Hover over nodes and links to see detailed element information.
 
         See Also:
-            - `plot_legacy()`: Previous PyVis-based network visualization.
             - `statistics.plot.sankey.flows()`: Sankey with actual flow values from optimization.
         """
         if not self._fs.connected_and_transformed:

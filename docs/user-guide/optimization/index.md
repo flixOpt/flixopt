@@ -362,7 +362,7 @@ If your model has no feasible solution:
 
 1. **Enable excess penalties on buses** to allow balance violations:
    ```python
-   # Allow imbalance with high penalty cost (default is 1e5)
+   # Allow imbalance by setting a high diagnostic penalty (default is None = strict balance)
    heat_bus = fx.Bus('Heat', imbalance_penalty_per_flow_hour=1e5)
 
    # Or disable penalty to enforce strict balance
