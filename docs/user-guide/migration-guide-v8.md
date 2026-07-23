@@ -120,6 +120,9 @@ the current API.
     `FlowSystem` ready to re-optimize. Files saved with v5+
     (`to_netcdf`/`from_netcdf`) are unaffected by any of this.
 
+    `from_old_dataset()` is planned for removal in **v9** — migrate pre-v5
+    files to the current single-file format before then.
+
 ---
 
 ## Checklist

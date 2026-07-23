@@ -1,7 +1,11 @@
 """Tests for the IO conversion utilities for backwards compatibility."""
 
+import pathlib
+
+import pytest
 import xarray as xr
 
+import flixopt as fx
 from flixopt.io import (
     PARAMETER_RENAMES,
     VALUE_RENAMES,
@@ -622,3 +626,28 @@ class TestRealWorldScenarios:
         # Labels should be preserved
         assert result['label'] == 'costs'
         assert result['unit'] == '€'
+
+
+class TestFromOldDatasetRealFiles:
+    """Regression coverage for FlowSystem.from_old_dataset() against the real pre-v5 files.
+
+    These fixtures are the only proof that the pre-v5 file bridge survives schema
+    changes in the current API. The bridge is scheduled for removal in v9.
+    """
+
+    RESOURCES = pathlib.Path(__file__).parent.parent / 'ressources'
+
+    @pytest.mark.parametrize(
+        'file', sorted(p.name for p in RESOURCES.rglob('*--flow_system.nc4')), ids=lambda f: f.split('--')[0]
+    )
+    def test_loads_every_pre_v5_file(self, file):
+        path = next(self.RESOURCES.rglob(file))
+        fs = fx.FlowSystem.from_old_dataset(path)
+        assert len(fs.components) > 0
+        assert len(fs.buses) > 0
+
+    def test_loaded_system_optimizes(self, highs_solver):
+        path = next(self.RESOURCES.rglob('01_simple--flow_system.nc4'))
+        fs = fx.FlowSystem.from_old_dataset(path)
+        fs.optimize(highs_solver)
+        assert fs.solution['objective'].item() == pytest.approx(83.88, rel=1e-3)
