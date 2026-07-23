@@ -363,12 +363,12 @@ If your model has no feasible solution:
 1. **Enable excess penalties on buses** to allow balance violations:
    ```python
    # Allow imbalance with high penalty cost (default is 1e5)
-   heat_bus = fx.Bus('Heat', excess_penalty_per_flow_hour=1e5)
+   heat_bus = fx.Bus('Heat', imbalance_penalty_per_flow_hour=1e5)
 
    # Or disable penalty to enforce strict balance
-   electricity_bus = fx.Bus('Electricity', excess_penalty_per_flow_hour=None)
+   electricity_bus = fx.Bus('Electricity', imbalance_penalty_per_flow_hour=None)
    ```
-   When `excess_penalty_per_flow_hour` is set, the optimization can violate bus balance constraints by paying a penalty, helping identify which constraints cause infeasibility.
+   When `imbalance_penalty_per_flow_hour` is set, the optimization can violate bus balance constraints by paying a penalty, helping identify which constraints cause infeasibility.
 
 2. **Use Gurobi for infeasibility analysis** - When using GurobiSolver and the model is infeasible, flixOpt automatically extracts and logs the Irreducible Inconsistent Subsystem (IIS):
    ```python

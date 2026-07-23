@@ -313,9 +313,6 @@ class Bus(Element):
         **kwargs,
     ):
         super().__init__(label, meta_data=meta_data)
-        imbalance_penalty_per_flow_hour = self._handle_deprecated_kwarg(
-            kwargs, 'excess_penalty_per_flow_hour', 'imbalance_penalty_per_flow_hour', imbalance_penalty_per_flow_hour
-        )
         self._validate_kwargs(kwargs)
         self.carrier = carrier.lower() if carrier else None  # Store as lowercase string
         self.imbalance_penalty_per_flow_hour = imbalance_penalty_per_flow_hour
