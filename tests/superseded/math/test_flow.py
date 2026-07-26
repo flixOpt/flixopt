@@ -13,7 +13,7 @@ class TestFlowModel:
         """Test that flow model constraints are correctly generated."""
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
-        flow = fx.Flow('Wärme', bus='Fernwärme', size=100)
+        flow = fx.Flow('Fernwärme', flow_id='Wärme', size=100)
 
         flow_system.add_elements(fx.Sink('Sink', inputs=[flow]))
 
@@ -34,8 +34,8 @@ class TestFlowModel:
         timesteps = flow_system.timesteps
 
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=100,
             relative_minimum=np.linspace(0, 0.5, timesteps.size),
             relative_maximum=np.linspace(0.5, 1, timesteps.size),
@@ -69,7 +69,7 @@ class TestFlowModel:
         co2_per_flow_hour = np.linspace(4, 5, timesteps.size)
 
         flow = fx.Flow(
-            'Wärme', bus='Fernwärme', effects_per_flow_hour={'costs': costs_per_flow_hour, 'CO2': co2_per_flow_hour}
+            'Fernwärme', flow_id='Wärme', effects_per_flow_hour={'costs': costs_per_flow_hour, 'CO2': co2_per_flow_hour}
         )
         flow_system.add_elements(fx.Sink('Sink', inputs=[flow]), fx.Effect('CO2', 't', ''))
         model = create_linopy_model(flow_system)
@@ -93,8 +93,8 @@ class TestFlowInvestModel:
         timesteps = flow_system.timesteps
 
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=fx.InvestParameters(minimum_size=20, maximum_size=100, mandatory=True),
             relative_minimum=np.linspace(0.1, 0.5, timesteps.size),
             relative_maximum=np.linspace(0.5, 1, timesteps.size),
@@ -127,8 +127,8 @@ class TestFlowInvestModel:
         timesteps = flow_system.timesteps
 
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=fx.InvestParameters(minimum_size=20, maximum_size=100, mandatory=False),
             relative_minimum=np.linspace(0.1, 0.5, timesteps.size),
             relative_maximum=np.linspace(0.5, 1, timesteps.size),
@@ -159,8 +159,8 @@ class TestFlowInvestModel:
         timesteps = flow_system.timesteps
 
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=fx.InvestParameters(maximum_size=100, mandatory=False),
             relative_minimum=np.linspace(0.1, 0.5, timesteps.size),
             relative_maximum=np.linspace(0.5, 1, timesteps.size),
@@ -182,8 +182,8 @@ class TestFlowInvestModel:
         timesteps = flow_system.timesteps
 
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=fx.InvestParameters(maximum_size=100, mandatory=True),
             relative_minimum=np.linspace(0.1, 0.5, timesteps.size),
             relative_maximum=np.linspace(0.5, 1, timesteps.size),
@@ -207,8 +207,8 @@ class TestFlowInvestModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=fx.InvestParameters(fixed_size=75, mandatory=True),
             relative_minimum=0.2,
             relative_maximum=0.9,
@@ -237,11 +237,11 @@ class TestFlowInvestModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         # Create effects
-        co2 = fx.Effect(label='CO2', unit='ton', description='CO2 emissions')
+        co2 = fx.Effect('CO2', unit='ton', description='CO2 emissions')
 
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=fx.InvestParameters(
                 minimum_size=20,
                 maximum_size=100,
@@ -264,8 +264,8 @@ class TestFlowInvestModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=fx.InvestParameters(
                 minimum_size=20,
                 maximum_size=100,
@@ -289,8 +289,8 @@ class TestFlowOnModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=100,
             relative_minimum=0.2,
             relative_maximum=0.8,
@@ -329,8 +329,8 @@ class TestFlowOnModel:
         co2_per_running_hour = np.linspace(4, 5, timesteps.size)
 
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=100,
             status_parameters=fx.StatusParameters(
                 effects_per_active_hour={'costs': costs_per_running_hour, 'CO2': co2_per_running_hour}
@@ -353,8 +353,8 @@ class TestFlowOnModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=100,
             previous_flow_rate=0,  # Required to get initial constraint
             status_parameters=fx.StatusParameters(
@@ -387,8 +387,8 @@ class TestFlowOnModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=100,
             status_parameters=fx.StatusParameters(
                 min_uptime=2,  # Must run for at least 2 hours when active
@@ -414,8 +414,8 @@ class TestFlowOnModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=100,
             previous_flow_rate=0,  # Required to get initial constraint (was OFF for 1h, so previous_downtime=1)
             status_parameters=fx.StatusParameters(
@@ -448,8 +448,8 @@ class TestFlowOnModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=100,
             status_parameters=fx.StatusParameters(
                 min_downtime=4,  # Must stay inactive for at least 4 hours when shut down
@@ -475,8 +475,8 @@ class TestFlowOnModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=100,
             previous_flow_rate=0,  # Required to get initial constraint
             status_parameters=fx.StatusParameters(
@@ -513,8 +513,8 @@ class TestFlowOnModel:
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
 
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=100,
             status_parameters=fx.StatusParameters(
                 active_hours_min=20,  # Minimum 20 hours of operation
@@ -544,8 +544,8 @@ class TestFlowOnInvestModel:
     def test_flow_on_invest_optional(self, basic_flow_system_linopy_coords, coords_config):
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=fx.InvestParameters(minimum_size=20, maximum_size=200, mandatory=False),
             relative_minimum=0.2,
             relative_maximum=0.8,
@@ -574,8 +574,8 @@ class TestFlowOnInvestModel:
     def test_flow_on_invest_non_optional(self, basic_flow_system_linopy_coords, coords_config):
         flow_system, coords_config = basic_flow_system_linopy_coords, coords_config
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=fx.InvestParameters(minimum_size=20, maximum_size=200, mandatory=True),
             relative_minimum=0.2,
             relative_maximum=0.8,
@@ -613,8 +613,8 @@ class TestFlowWithFixedProfile:
         profile = np.sin(np.linspace(0, 2 * np.pi, len(timesteps))) * 0.5 + 0.5  # Values between 0 and 1
 
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=100,
             fixed_relative_profile=profile,
         )
@@ -638,8 +638,8 @@ class TestFlowWithFixedProfile:
         profile = np.sin(np.linspace(0, 2 * np.pi, len(timesteps))) * 0.5 + 0.5
 
         flow = fx.Flow(
-            'Wärme',
-            bus='Fernwärme',
+            'Fernwärme',
+            flow_id='Wärme',
             size=fx.InvestParameters(minimum_size=50, maximum_size=200, mandatory=False),
             fixed_relative_profile=profile,
         )

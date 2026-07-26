@@ -154,8 +154,8 @@ class TestElementSolution:
         boiler = fx.linear_converters.Boiler(
             'TestBoiler',
             thermal_efficiency=0.9,
-            thermal_flow=fx.Flow('Q_th', bus='Heat'),
-            fuel_flow=fx.Flow('Q_fu', bus='Gas'),
+            thermal_flow=fx.Flow('Heat', flow_id='Q_th'),
+            fuel_flow=fx.Flow('Gas', flow_id='Q_fu'),
         )
         with pytest.raises(ValueError, match='not linked to a FlowSystem'):
             _ = boiler.solution

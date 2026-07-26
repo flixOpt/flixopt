@@ -842,12 +842,12 @@ class MaskHelpers:
             get_flows: Function that returns list of flows for an element.
 
         Returns:
-            Dict mapping element label -> list of flow label_full.
+            Dict mapping element id -> list of flow ids.
 
         Example:
             >>> membership = MaskHelpers.build_flow_membership(storages, lambda s: s.inputs + s.outputs)
         """
-        return {e.label: [f.label_full for f in get_flows(e)] for e in elements}
+        return {e.id: [f.id for f in get_flows(e)] for e in elements}
 
 
 class PiecewiseBuilder:

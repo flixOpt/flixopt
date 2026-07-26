@@ -16,9 +16,9 @@ import numpy as np
 import xarray as xr
 
 from .core import PlausibilityError
+from .id_list import IdList
 from .structure import (
     Element,
-    ElementContainer,
     FlowSystemModel,
     register_class_for_io,
 )
@@ -30,8 +30,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger('flixopt')
 
-# Penalty effect label constant
-PENALTY_EFFECT_LABEL = 'Penalty'
+# Penalty effect ID constant
+PENALTY_EFFECT_ID = 'Penalty'
+
+# Deprecated alias
+PENALTY_EFFECT_LABEL = PENALTY_EFFECT_ID
 
 
 @register_class_for_io
@@ -47,7 +50,7 @@ class Effect(Element):
         See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/effects-and-dimensions/>
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem.
+        id: The id of the Element. Used to identify it in the FlowSystem.
         unit: The unit of the effect (e.g., '€', 'kg_CO2', 'kWh_primary', 'm²').
             This is informative only and does not affect optimization.
         description: Descriptive name explaining what this effect represents.
@@ -93,7 +96,7 @@ class Effect(Element):
 
         ```python
         cost_effect = Effect(
-            label='system_costs',
+            id='system_costs',
             unit='€',
             description='Total system costs',
             is_objective=True,
@@ -104,7 +107,7 @@ class Effect(Element):
 
         ```python
         co2_effect = Effect(
-            label='CO2',
+            id='CO2',
             unit='kg_CO2',
             description='Carbon dioxide emissions',
             maximum_total=100_000,  # 100 t CO2 per period
@@ -115,7 +118,7 @@ class Effect(Element):
 
         ```python
         co2_effect = Effect(
-            label='CO2',
+            id='CO2',
             unit='kg_CO2',
             description='Carbon dioxide emissions',
             maximum_over_periods=1_000_000,  # 1000 t CO2 total across all periods
@@ -126,7 +129,7 @@ class Effect(Element):
 
         ```python
         land_use = Effect(
-            label='land_usage',
+            id='land_usage',
             unit='m²',
             description='Land area requirement',
             maximum_total=50_000,  # Maximum 5 hectares per period
@@ -137,7 +140,7 @@ class Effect(Element):
 
         ```python
         primary_energy = Effect(
-            label='primary_energy',
+            id='primary_energy',
             unit='kWh_primary',
             description='Primary energy consumption',
         )
@@ -147,7 +150,7 @@ class Effect(Element):
 
         ```python
         cost_effect = Effect(
-            label='system_costs',
+            id='system_costs',
             unit='€',
             description='Total system costs',
             is_objective=True,
@@ -162,7 +165,7 @@ class Effect(Element):
 
         ```python
         water_usage = Effect(
-            label='water_consumption',
+            id='water_consumption',
             unit='m³',
             description='Industrial water usage',
             minimum_per_hour=10,  # Minimum 10 m³/h for process stability
@@ -187,8 +190,8 @@ class Effect(Element):
 
     def __init__(
         self,
-        label: str,
-        unit: str,
+        id: str | None = None,
+        unit: str = '',
         description: str = '',
         meta_data: dict | None = None,
         is_standard: bool = False,
@@ -206,16 +209,18 @@ class Effect(Element):
         maximum_total: Numeric_PS | None = None,
         minimum_over_periods: Numeric_S | None = None,
         maximum_over_periods: Numeric_S | None = None,
+        **kwargs,
     ):
-        super().__init__(label, meta_data=meta_data)
+        super().__init__(id, meta_data=meta_data, **kwargs)
         self.unit = unit
         self.description = description
         self.is_standard = is_standard
 
-        # Validate that Penalty cannot be set as objective
-        if is_objective and label == PENALTY_EFFECT_LABEL:
+        # Validate that Penalty cannot be set as objective (compare resolved self.id, not the id argument,
+        # so the check is not bypassed when a deprecated label is used with id=None)
+        if is_objective and self.id == PENALTY_EFFECT_ID:
             raise ValueError(
-                f'The Penalty effect ("{PENALTY_EFFECT_LABEL}") cannot be set as the objective effect. '
+                f'The Penalty effect ("{PENALTY_EFFECT_ID}") cannot be set as the objective effect. '
                 f'Please use a different effect as the optimization objective.'
             )
 
@@ -242,9 +247,9 @@ class Effect(Element):
     def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
         """Link this effect to a FlowSystem.
 
-        Elements use their label_full as prefix by default, ignoring the passed prefix.
+        Elements use their id as prefix by default, ignoring the passed prefix.
         """
-        super().link_to_flow_system(flow_system, self.label_full)
+        super().link_to_flow_system(flow_system, self.id)
 
     def transform_data(self) -> None:
         self.minimum_per_hour = self._fit_coords(f'{self.prefix}|minimum_per_hour', self.minimum_per_hour)
@@ -301,7 +306,7 @@ class Effect(Element):
             self.minimum_over_periods is not None or self.maximum_over_periods is not None
         ) and self.flow_system.periods is None:
             raise PlausibilityError(
-                f"Effect '{self.label}': minimum_over_periods and maximum_over_periods require "
+                f"Effect '{self.id}': minimum_over_periods and maximum_over_periods require "
                 f"the FlowSystem to have a 'period' dimension. Please define periods when creating "
                 f'the FlowSystem, or remove these constraints.'
             )
@@ -532,7 +537,7 @@ class EffectsModel:
             return
         effects_with_over_periods = self.data.effects_with_over_periods
         if effects_with_over_periods:
-            over_periods_ids = [e.label for e in effects_with_over_periods]
+            over_periods_ids = [e.id for e in effects_with_over_periods]
             over_periods_coords = xr.Coordinates(
                 _merge_coords(
                     {'effect': over_periods_ids},
@@ -557,12 +562,12 @@ class EffectsModel:
             # Create constraint: total_over_periods == weighted sum for each effect
             # Can't use xr.concat with LinearExpression objects, so create individual constraints
             for e in effects_with_over_periods:
-                total_e = self.total.sel(effect=e.label)
-                weights_e = self.data.period_weights[e.label]
+                total_e = self.total.sel(effect=e.id)
+                weights_e = self.data.period_weights[e.id]
                 weighted_total = (total_e * weights_e).sum('period')
                 self.model.add_constraints(
-                    self.total_over_periods.sel(effect=e.label) == weighted_total,
-                    name=f'effect|total_over_periods|{e.label}',
+                    self.total_over_periods.sel(effect=e.id) == weighted_total,
+                    name=f'effect|total_over_periods|{e.id}',
                 )
 
     def _as_expression(self, expr) -> linopy.LinearExpression:
@@ -717,16 +722,16 @@ class EffectsModel:
         so they appear in the share variables and can be reconstructed by statistics.
         """
         for target_effect in self.data.values():
-            target_id = target_effect.label
+            target_id = target_effect.id
             # 1. temporal: <- receiving temporal shares from other effects
             for source_effect, time_series in target_effect.share_from_temporal.items():
-                source_id = self.data[source_effect].label
+                source_id = self.data[source_effect].id
                 source_per_timestep = self.get_per_timestep(source_id)
                 expr = (source_per_timestep * time_series).expand_dims(effect=[target_id], contributor=[source_id])
                 self.add_temporal_contribution(expr)
             # 2. periodic: <- receiving periodic shares from other effects
             for source_effect, factor in target_effect.share_from_periodic.items():
-                source_id = self.data[source_effect].label
+                source_id = self.data[source_effect].id
                 source_periodic = self.get_periodic(source_id)
                 expr = (source_periodic * factor).expand_dims(effect=[target_id], contributor=[source_id])
                 self.add_periodic_contribution(expr)
@@ -741,7 +746,7 @@ class EffectsModel:
         )
 
 
-class EffectCollection(ElementContainer[Effect]):
+class EffectCollection(IdList[Effect]):
     """
     Handling all Effects
     """
@@ -754,7 +759,7 @@ class EffectCollection(ElementContainer[Effect]):
             *effects: Effects to register in the collection.
             truncate_repr: Maximum number of items to show in repr. If None, show all items. Default: None
         """
-        super().__init__(element_type_name='effects', truncate_repr=truncate_repr)
+        super().__init__(key_fn=lambda e: e.id, display_name='effects', truncate_repr=truncate_repr)
         self._standard_effect: Effect | None = None
         self._objective_effect: Effect | None = None
         self._penalty_effect: Effect | None = None
@@ -767,66 +772,66 @@ class EffectCollection(ElementContainer[Effect]):
         Only creates if user hasn't already defined a Penalty effect.
         """
         # Check if user has already defined a Penalty effect
-        if PENALTY_EFFECT_LABEL in self:
-            self._penalty_effect = self[PENALTY_EFFECT_LABEL]
-            logger.info(f'Using user-defined Penalty Effect: {PENALTY_EFFECT_LABEL}')
+        if PENALTY_EFFECT_ID in self:
+            self._penalty_effect = self[PENALTY_EFFECT_ID]
+            logger.info(f'Using user-defined Penalty Effect: {PENALTY_EFFECT_ID}')
             return self._penalty_effect
 
         # Auto-create penalty effect
         self._penalty_effect = Effect(
-            label=PENALTY_EFFECT_LABEL,
+            id=PENALTY_EFFECT_ID,
             unit='penalty_units',
             description='Penalty for constraint violations and modeling artifacts',
             is_standard=False,
             is_objective=False,
         )
         self.add(self._penalty_effect)  # Add to container
-        logger.info(f'Auto-created Penalty Effect: {PENALTY_EFFECT_LABEL}')
+        logger.info(f'Auto-created Penalty Effect: {PENALTY_EFFECT_ID}')
         return self._penalty_effect
 
     def add_effects(self, *effects: Effect) -> None:
         for effect in list(effects):
             if effect in self:
-                raise ValueError(f'Effect with label "{effect.label=}" already added!')
+                raise ValueError(f'Effect with id "{effect.id=}" already added!')
             if effect.is_standard:
                 self.standard_effect = effect
             if effect.is_objective:
                 self.objective_effect = effect
-            self.add(effect)  # Use the inherited add() method from ElementContainer
-            logger.info(f'Registered new Effect: {effect.label}')
+            self.add(effect)
+            logger.info(f'Registered new Effect: {effect.id}')
 
     def create_effect_values_dict(self, effect_values_user: Numeric_TPS | Effect_TPS | None) -> Effect_TPS | None:
         """Converts effect values into a dictionary. If a scalar is provided, it is associated with a default effect type.
 
         Examples:
             ```python
-            effect_values_user = 20                               -> {'<standard_effect_label>': 20}
-            effect_values_user = {None: 20}                       -> {'<standard_effect_label>': 20}
+            effect_values_user = 20                               -> {'<standard_effect_id>': 20}
+            effect_values_user = {None: 20}                       -> {'<standard_effect_id>': 20}
             effect_values_user = None                             -> None
             effect_values_user = {'effect1': 20, 'effect2': 0.3}  -> {'effect1': 20, 'effect2': 0.3}
             ```
 
         Returns:
-            A dictionary keyed by effect label, or None if input is None.
-            Note: a standard effect must be defined when passing scalars or None labels.
+            A dictionary keyed by effect id, or None if input is None.
+            Note: a standard effect must be defined when passing scalars or None ids.
         """
 
-        def get_effect_label(eff: str | None) -> str:
-            """Get the label of an effect"""
+        def get_effect_id(eff: str | None) -> str:
+            """Get the id of an effect"""
             if eff is None:
-                return self.standard_effect.label
+                return self.standard_effect.id
             if isinstance(eff, Effect):
                 raise TypeError(
                     f'Effect objects are no longer accepted when specifying EffectValues. '
-                    f'Use the label string instead. Got: {eff.label_full}'
+                    f'Use the id string instead. Got: {eff.id}'
                 )
             return eff
 
         if effect_values_user is None:
             return None
         if isinstance(effect_values_user, dict):
-            return {get_effect_label(effect): value for effect, value in effect_values_user.items()}
-        return {self.standard_effect.label: effect_values_user}
+            return {get_effect_id(effect): value for effect, value in effect_values_user.items()}
+        return {self.standard_effect.id: effect_values_user}
 
     def validate_config(self) -> None:
         """Deprecated: Validation is now handled by EffectsData.validate().
@@ -846,10 +851,10 @@ class EffectCollection(ElementContainer[Effect]):
 
     def __getitem__(self, effect: str | Effect | None) -> Effect:
         """
-        Get an effect by label, or return the standard effect if None is passed
+        Get an effect by id, or return the standard effect if None is passed
 
         Raises:
-            KeyError: If no effect with the given label is found.
+            KeyError: If no effect with the given id is found.
             KeyError: If no standard effect is specified.
         """
         if effect is None:
@@ -860,7 +865,7 @@ class EffectCollection(ElementContainer[Effect]):
             else:
                 raise KeyError(f'Effect {effect} not found!')
         try:
-            return super().__getitem__(effect)  # Leverage ContainerMixin suggestions
+            return super().__getitem__(effect)
         except KeyError as e:
             # Extract the original message and append context for cleaner output
             original_msg = str(e).strip('\'"')
@@ -870,11 +875,11 @@ class EffectCollection(ElementContainer[Effect]):
         return iter(self.keys())  # Iterate over keys like a normal dict
 
     def __contains__(self, item: str | Effect) -> bool:
-        """Check if the effect exists. Checks for label or object"""
+        """Check if the effect exists. Checks for id or object"""
         if isinstance(item, str):
-            return super().__contains__(item)  # Check if the label exists
+            return super().__contains__(item)  # Check if the id exists
         elif isinstance(item, Effect):
-            return item.label_full in self and self[item.label_full] is item
+            return item.id in self and self[item.id] is item
         return False
 
     @property
@@ -882,14 +887,14 @@ class EffectCollection(ElementContainer[Effect]):
         if self._standard_effect is None:
             raise KeyError(
                 'No standard-effect specified! Either set an effect through is_standard=True '
-                'or pass a mapping when specifying effect values: {effect_label: value}.'
+                'or pass a mapping when specifying effect values: {effect_id: value}.'
             )
         return self._standard_effect
 
     @standard_effect.setter
     def standard_effect(self, value: Effect) -> None:
         if self._standard_effect is not None:
-            raise ValueError(f'A standard-effect already exists! ({self._standard_effect.label=})')
+            raise ValueError(f'A standard-effect already exists! ({self._standard_effect.id=})')
         self._standard_effect = value
 
     @property
@@ -901,13 +906,13 @@ class EffectCollection(ElementContainer[Effect]):
     @objective_effect.setter
     def objective_effect(self, value: Effect) -> None:
         # Check Penalty first to give users a more specific error message
-        if value.label == PENALTY_EFFECT_LABEL:
+        if value.id == PENALTY_EFFECT_ID:
             raise ValueError(
-                f'The Penalty effect ("{PENALTY_EFFECT_LABEL}") cannot be set as the objective effect. '
+                f'The Penalty effect ("{PENALTY_EFFECT_ID}") cannot be set as the objective effect. '
                 f'Please use a different effect as the optimization objective.'
             )
         if self._objective_effect is not None:
-            raise ValueError(f'An objective-effect already exists! ({self._objective_effect.label=})')
+            raise ValueError(f'An objective-effect already exists! ({self._objective_effect.id=})')
         self._objective_effect = value
 
     @property
@@ -922,14 +927,14 @@ class EffectCollection(ElementContainer[Effect]):
             return self._penalty_effect
 
         # Check if user has defined a Penalty effect
-        if PENALTY_EFFECT_LABEL in self:
-            self._penalty_effect = self[PENALTY_EFFECT_LABEL]
+        if PENALTY_EFFECT_ID in self:
+            self._penalty_effect = self[PENALTY_EFFECT_ID]
             return self._penalty_effect
 
         # Not yet created - will be created during modeling
         raise KeyError(
             f'Penalty effect not yet created. It will be auto-created during modeling, '
-            f'or you can define your own using: Effect("{PENALTY_EFFECT_LABEL}", ...)'
+            f'or you can define your own using: Effect("{PENALTY_EFFECT_ID}", ...)'
         )
 
     def calculate_effect_share_factors(

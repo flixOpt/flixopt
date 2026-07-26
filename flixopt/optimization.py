@@ -23,8 +23,8 @@ from tqdm import tqdm
 
 from . import io as fx_io
 from .components import Storage
-from .config import CONFIG, DEPRECATION_REMOVAL_VERSION, SUCCESS_LEVEL
-from .effects import PENALTY_EFFECT_LABEL
+from .config import CONFIG, DEPRECATION_REMOVAL_V7, SUCCESS_LEVEL
+from .effects import PENALTY_EFFECT_ID
 from .results import Results, SegmentedResults
 from .structure import BusVarName, FlowVarName, StorageVarName
 
@@ -109,7 +109,7 @@ def _initialize_optimization_common(
     # normalize_weights is deprecated but kept for backwards compatibility
     if normalize_weights is not None:
         warnings.warn(
-            f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_VERSION}. '
+            f'\n\nnormalize_weights parameter is deprecated and will be removed in {DEPRECATION_REMOVAL_V7}. '
             'Scenario weights are now always normalized when set on FlowSystem.\n',
             DeprecationWarning,
             stacklevel=3,
@@ -176,7 +176,7 @@ class Optimization:
         normalize_weights: bool = True,
     ):
         warnings.warn(
-            f'Optimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            f'Optimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_V7}. '
             'Use FlowSystem.optimize(solver) or FlowSystem.build_model() + FlowSystem.solve(solver) instead. '
             'Access results via FlowSystem.solution.',
             DeprecationWarning,
@@ -299,7 +299,7 @@ class Optimization:
         effects_model = self.model.effects
 
         try:
-            penalty_effect_id = PENALTY_EFFECT_LABEL
+            penalty_effect_id = PENALTY_EFFECT_ID
             penalty_section = {
                 'temporal': effects_model.temporal.sel(effect=penalty_effect_id).solution.values,
                 'periodic': effects_model.periodic.sel(effect=penalty_effect_id).solution.values,
@@ -310,10 +310,10 @@ class Optimization:
 
         # Get effect totals from type-level model
         effects_section = {}
-        for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.label_full.upper()):
-            if effect.label_full != PENALTY_EFFECT_LABEL:
-                effect_id = effect.label
-                effects_section[f'{effect.label} [{effect.unit}]'] = {
+        for effect in sorted(self.flow_system.effects.values(), key=lambda e: e.id.upper()):
+            if effect.id != PENALTY_EFFECT_ID:
+                effect_id = effect.id
+                effects_section[f'{effect.id} [{effect.unit}]'] = {
                     'temporal': effects_model.temporal.sel(effect=effect_id).solution.values,
                     'periodic': effects_model.periodic.sel(effect=effect_id).solution.values,
                     'total': effects_model.total.sel(effect=effect_id).solution.values,
@@ -353,15 +353,15 @@ class Optimization:
         if buses_model is not None:
             for bus in self.flow_system.buses.values():
                 if bus.allows_imbalance:
-                    virtual_supply = buses_model.get_variable(BusVarName.VIRTUAL_SUPPLY, bus.label_full)
-                    virtual_demand = buses_model.get_variable(BusVarName.VIRTUAL_DEMAND, bus.label_full)
+                    virtual_supply = buses_model.get_variable(BusVarName.VIRTUAL_SUPPLY, bus.id)
+                    virtual_demand = buses_model.get_variable(BusVarName.VIRTUAL_DEMAND, bus.id)
                     if virtual_supply is not None and virtual_demand is not None:
                         supply_sum = virtual_supply.solution.sum().item()
                         demand_sum = virtual_demand.solution.sum().item()
                         if supply_sum > 1e-3 or demand_sum > 1e-3:
                             buses_with_excess.append(
                                 {
-                                    bus.label_full: {
+                                    bus.id: {
                                         'virtual_supply': virtual_supply.solution.sum('time'),
                                         'virtual_demand': virtual_demand.solution.sum('time'),
                                     }
@@ -530,7 +530,7 @@ class SegmentedOptimization:
         folder: pathlib.Path | None = None,
     ):
         warnings.warn(
-            f'SegmentedOptimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_VERSION}. '
+            f'SegmentedOptimization is deprecated and will be removed in v{DEPRECATION_REMOVAL_V7}. '
             'A replacement API for segmented optimization will be provided in a future release.',
             DeprecationWarning,
             stacklevel=2,
@@ -575,9 +575,9 @@ class SegmentedOptimization:
         self.flow_system._connect_network()  # Connect network to ensure that all Flows know their Component
         # Storing all original start values
         self._original_start_values = {
-            **{flow.label_full: flow.previous_flow_rate for flow in self.flow_system.flows.values()},
+            **{flow.id: flow.previous_flow_rate for flow in self.flow_system.flows.values()},
             **{
-                comp.label_full: comp.initial_charge_state
+                comp.id: comp.initial_charge_state
                 for comp in self.flow_system.components.values()
                 if isinstance(comp, Storage)
             },
@@ -739,22 +739,22 @@ class SegmentedOptimization:
         current_model = self.sub_optimizations[i - 1].model
         flows_model = current_model._flows_model
         for current_flow in current_flow_system.flows.values():
-            next_flow = next_flow_system.flows[current_flow.label_full]
-            flow_rate = flows_model.get_variable(FlowVarName.RATE, current_flow.label_full)
+            next_flow = next_flow_system.flows[current_flow.id]
+            flow_rate = flows_model.get_variable(FlowVarName.RATE, current_flow.id)
             next_flow.previous_flow_rate = flow_rate.solution.sel(
                 time=slice(start_previous_values, end_previous_values)
             ).values
-            start_values_of_this_segment[current_flow.label_full] = next_flow.previous_flow_rate
+            start_values_of_this_segment[current_flow.id] = next_flow.previous_flow_rate
 
         # Get previous charge state from type-level model
         storages_model = current_model._storages_model
         for current_comp in current_flow_system.components.values():
-            next_comp = next_flow_system.components[current_comp.label_full]
+            next_comp = next_flow_system.components[current_comp.id]
             if isinstance(next_comp, Storage):
                 if storages_model is not None:
-                    charge_state = storages_model.get_variable(StorageVarName.CHARGE, current_comp.label_full)
+                    charge_state = storages_model.get_variable(StorageVarName.CHARGE, current_comp.id)
                     next_comp.initial_charge_state = charge_state.solution.sel(time=start).item()
-                    start_values_of_this_segment[current_comp.label_full] = next_comp.initial_charge_state
+                    start_values_of_this_segment[current_comp.id] = next_comp.initial_charge_state
 
         self._transfered_start_values.append(start_values_of_this_segment)
 

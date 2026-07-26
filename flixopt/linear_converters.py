@@ -30,7 +30,7 @@ class Boiler(LinearConverter):
     relationships for thermal generation applications.
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem.
+        id: The id of the Element. Used to identify it in the FlowSystem.
         thermal_efficiency: Thermal efficiency factor (0-1 range). Defines the ratio of thermal
             output to fuel input energy content.
         fuel_flow: Fuel input-flow representing fuel consumption.
@@ -44,7 +44,7 @@ class Boiler(LinearConverter):
 
         ```python
         gas_boiler = Boiler(
-            label='natural_gas_boiler',
+            id='natural_gas_boiler',
             thermal_efficiency=0.85,  # 85% thermal efficiency
             fuel_flow=natural_gas_flow,
             thermal_flow=hot_water_flow,
@@ -55,7 +55,7 @@ class Boiler(LinearConverter):
 
         ```python
         biomass_boiler = Boiler(
-            label='wood_chip_boiler',
+            id='wood_chip_boiler',
             thermal_efficiency=seasonal_efficiency_profile,  # Time-varying efficiency
             fuel_flow=biomass_flow,
             thermal_flow=district_heat_flow,
@@ -75,29 +75,31 @@ class Boiler(LinearConverter):
 
     def __init__(
         self,
-        label: str,
+        id: str | None = None,
         thermal_efficiency: Numeric_TPS | None = None,
         fuel_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
         status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
         color: str | None = None,
+        **kwargs,
     ):
         # Validate required parameters
         if fuel_flow is None:
-            raise ValueError(f"'{label}': fuel_flow is required and cannot be None")
+            raise ValueError(f"'{id}': fuel_flow is required and cannot be None")
         if thermal_flow is None:
-            raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
+            raise ValueError(f"'{id}': thermal_flow is required and cannot be None")
         if thermal_efficiency is None:
-            raise ValueError(f"'{label}': thermal_efficiency is required and cannot be None")
+            raise ValueError(f"'{id}': thermal_efficiency is required and cannot be None")
 
         super().__init__(
-            label,
+            id,
             inputs=[fuel_flow],
             outputs=[thermal_flow],
             status_parameters=status_parameters,
             meta_data=meta_data,
             color=color,
+            **kwargs,
         )
         self.fuel_flow = fuel_flow
         self.thermal_flow = thermal_flow
@@ -105,12 +107,12 @@ class Boiler(LinearConverter):
 
     @property
     def thermal_efficiency(self):
-        return self.conversion_factors[0][self.fuel_flow.label]
+        return self.conversion_factors[0][self.fuel_flow.flow_id]
 
     @thermal_efficiency.setter
     def thermal_efficiency(self, value):
-        check_bounds(value, 'thermal_efficiency', self.label_full, 0, 1)
-        self.conversion_factors = [{self.fuel_flow.label: value, self.thermal_flow.label: 1}]
+        check_bounds(value, 'thermal_efficiency', self.id, 0, 1)
+        self.conversion_factors = [{self.fuel_flow.flow_id: value, self.thermal_flow.flow_id: 1}]
 
 
 @register_class_for_io
@@ -124,7 +126,7 @@ class Power2Heat(LinearConverter):
     conversion relationships for electric heating applications.
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem.
+        id: The id of the Element. Used to identify it in the FlowSystem.
         thermal_efficiency: Thermal efficiency factor (0-1 range). For resistance heating this is
             typically close to 1.0 (nearly 100% efficiency), but may be lower for
             electrode boilers or systems with distribution losses.
@@ -139,7 +141,7 @@ class Power2Heat(LinearConverter):
 
         ```python
         electric_heater = Power2Heat(
-            label='resistance_heater',
+            id='resistance_heater',
             thermal_efficiency=0.98,  # 98% efficiency (small losses)
             electrical_flow=electricity_flow,
             thermal_flow=space_heating_flow,
@@ -150,7 +152,7 @@ class Power2Heat(LinearConverter):
 
         ```python
         electrode_boiler = Power2Heat(
-            label='electrode_steam_boiler',
+            id='electrode_steam_boiler',
             thermal_efficiency=0.95,  # 95% efficiency including boiler losses
             electrical_flow=industrial_electricity,
             thermal_flow=process_steam_flow,
@@ -172,29 +174,31 @@ class Power2Heat(LinearConverter):
 
     def __init__(
         self,
-        label: str,
+        id: str | None = None,
         thermal_efficiency: Numeric_TPS | None = None,
         electrical_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
         status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
         color: str | None = None,
+        **kwargs,
     ):
         # Validate required parameters
         if electrical_flow is None:
-            raise ValueError(f"'{label}': electrical_flow is required and cannot be None")
+            raise ValueError(f"'{id}': electrical_flow is required and cannot be None")
         if thermal_flow is None:
-            raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
+            raise ValueError(f"'{id}': thermal_flow is required and cannot be None")
         if thermal_efficiency is None:
-            raise ValueError(f"'{label}': thermal_efficiency is required and cannot be None")
+            raise ValueError(f"'{id}': thermal_efficiency is required and cannot be None")
 
         super().__init__(
-            label,
+            id,
             inputs=[electrical_flow],
             outputs=[thermal_flow],
             status_parameters=status_parameters,
             meta_data=meta_data,
             color=color,
+            **kwargs,
         )
 
         self.electrical_flow = electrical_flow
@@ -203,12 +207,12 @@ class Power2Heat(LinearConverter):
 
     @property
     def thermal_efficiency(self):
-        return self.conversion_factors[0][self.electrical_flow.label]
+        return self.conversion_factors[0][self.electrical_flow.flow_id]
 
     @thermal_efficiency.setter
     def thermal_efficiency(self, value):
-        check_bounds(value, 'thermal_efficiency', self.label_full, 0, 1)
-        self.conversion_factors = [{self.electrical_flow.label: value, self.thermal_flow.label: 1}]
+        check_bounds(value, 'thermal_efficiency', self.id, 0, 1)
+        self.conversion_factors = [{self.electrical_flow.flow_id: value, self.thermal_flow.flow_id: 1}]
 
 
 @register_class_for_io
@@ -222,7 +226,7 @@ class HeatPump(LinearConverter):
     conversion relationships for heat pump applications.
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem.
+        id: The id of the Element. Used to identify it in the FlowSystem.
         cop: Coefficient of Performance (typically 1-20 range). Defines the ratio of
             thermal output to electrical input. COP > 1 indicates the heat pump extracts
             additional energy from the environment.
@@ -237,7 +241,7 @@ class HeatPump(LinearConverter):
 
         ```python
         air_hp = HeatPump(
-            label='air_source_heat_pump',
+            id='air_source_heat_pump',
             cop=3.5,  # COP of 3.5 (350% efficiency)
             electrical_flow=electricity_flow,
             thermal_flow=heating_flow,
@@ -248,7 +252,7 @@ class HeatPump(LinearConverter):
 
         ```python
         ground_hp = HeatPump(
-            label='geothermal_heat_pump',
+            id='geothermal_heat_pump',
             cop=temperature_dependent_cop,  # Time-varying COP based on ground temp
             electrical_flow=electricity_flow,
             thermal_flow=radiant_heating_flow,
@@ -269,30 +273,32 @@ class HeatPump(LinearConverter):
 
     def __init__(
         self,
-        label: str,
+        id: str | None = None,
         cop: Numeric_TPS | None = None,
         electrical_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
         status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
         color: str | None = None,
+        **kwargs,
     ):
         # Validate required parameters
         if electrical_flow is None:
-            raise ValueError(f"'{label}': electrical_flow is required and cannot be None")
+            raise ValueError(f"'{id}': electrical_flow is required and cannot be None")
         if thermal_flow is None:
-            raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
+            raise ValueError(f"'{id}': thermal_flow is required and cannot be None")
         if cop is None:
-            raise ValueError(f"'{label}': cop is required and cannot be None")
+            raise ValueError(f"'{id}': cop is required and cannot be None")
 
         super().__init__(
-            label,
+            id,
             inputs=[electrical_flow],
             outputs=[thermal_flow],
             conversion_factors=[],
             status_parameters=status_parameters,
             meta_data=meta_data,
             color=color,
+            **kwargs,
         )
         self.electrical_flow = electrical_flow
         self.thermal_flow = thermal_flow
@@ -300,12 +306,12 @@ class HeatPump(LinearConverter):
 
     @property
     def cop(self):
-        return self.conversion_factors[0][self.electrical_flow.label]
+        return self.conversion_factors[0][self.electrical_flow.flow_id]
 
     @cop.setter
     def cop(self, value):
-        check_bounds(value, 'cop', self.label_full, 1, 20)
-        self.conversion_factors = [{self.electrical_flow.label: value, self.thermal_flow.label: 1}]
+        check_bounds(value, 'cop', self.id, 1, 20)
+        self.conversion_factors = [{self.electrical_flow.flow_id: value, self.thermal_flow.flow_id: 1}]
 
 
 @register_class_for_io
@@ -319,7 +325,7 @@ class CoolingTower(LinearConverter):
     has no thermal outputs as the heat is rejected to the environment.
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem.
+        id: The id of the Element. Used to identify it in the FlowSystem.
         specific_electricity_demand: Auxiliary electricity demand per unit of cooling
             power (dimensionless, typically 0.01-0.05 range). Represents the fraction
             of thermal power that must be supplied as electricity for fans and pumps.
@@ -334,7 +340,7 @@ class CoolingTower(LinearConverter):
 
         ```python
         cooling_tower = CoolingTower(
-            label='process_cooling_tower',
+            id='process_cooling_tower',
             specific_electricity_demand=0.025,  # 2.5% auxiliary power
             electrical_flow=cooling_electricity,
             thermal_flow=waste_heat_flow,
@@ -345,7 +351,7 @@ class CoolingTower(LinearConverter):
 
         ```python
         condenser_cooling = CoolingTower(
-            label='power_plant_cooling',
+            id='power_plant_cooling',
             specific_electricity_demand=0.015,  # 1.5% auxiliary power
             electrical_flow=auxiliary_electricity,
             thermal_flow=condenser_waste_heat,
@@ -368,27 +374,29 @@ class CoolingTower(LinearConverter):
 
     def __init__(
         self,
-        label: str,
-        specific_electricity_demand: Numeric_TPS,
+        id: str | None = None,
+        specific_electricity_demand: Numeric_TPS | None = None,
         electrical_flow: Flow | None = None,
         thermal_flow: Flow | None = None,
         status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
         color: str | None = None,
+        **kwargs,
     ):
         # Validate required parameters
         if electrical_flow is None:
-            raise ValueError(f"'{label}': electrical_flow is required and cannot be None")
+            raise ValueError(f"'{id}': electrical_flow is required and cannot be None")
         if thermal_flow is None:
-            raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
+            raise ValueError(f"'{id}': thermal_flow is required and cannot be None")
 
         super().__init__(
-            label,
+            id,
             inputs=[electrical_flow, thermal_flow],
             outputs=[],
             status_parameters=status_parameters,
             meta_data=meta_data,
             color=color,
+            **kwargs,
         )
 
         self.electrical_flow = electrical_flow
@@ -397,12 +405,12 @@ class CoolingTower(LinearConverter):
 
     @property
     def specific_electricity_demand(self):
-        return self.conversion_factors[0][self.thermal_flow.label]
+        return self.conversion_factors[0][self.thermal_flow.flow_id]
 
     @specific_electricity_demand.setter
     def specific_electricity_demand(self, value):
-        check_bounds(value, 'specific_electricity_demand', self.label_full, 0, 1)
-        self.conversion_factors = [{self.electrical_flow.label: -1, self.thermal_flow.label: value}]
+        check_bounds(value, 'specific_electricity_demand', self.id, 0, 1)
+        self.conversion_factors = [{self.electrical_flow.flow_id: -1, self.thermal_flow.flow_id: value}]
 
 
 @register_class_for_io
@@ -416,7 +424,7 @@ class CHP(LinearConverter):
     cogeneration applications.
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem.
+        id: The id of the Element. Used to identify it in the FlowSystem.
         thermal_efficiency: Thermal efficiency factor (0-1 range). Defines the fraction of fuel
             energy converted to useful thermal output.
         electrical_efficiency: Electrical efficiency factor (0-1 range). Defines the fraction of fuel
@@ -433,7 +441,7 @@ class CHP(LinearConverter):
 
         ```python
         gas_chp = CHP(
-            label='natural_gas_chp',
+            id='natural_gas_chp',
             thermal_efficiency=0.45,  # 45% thermal efficiency
             electrical_efficiency=0.35,  # 35% electrical efficiency (80% total)
             fuel_flow=natural_gas_flow,
@@ -446,7 +454,7 @@ class CHP(LinearConverter):
 
         ```python
         industrial_chp = CHP(
-            label='industrial_chp',
+            id='industrial_chp',
             thermal_efficiency=0.40,
             electrical_efficiency=0.38,
             fuel_flow=fuel_gas_flow,
@@ -472,7 +480,7 @@ class CHP(LinearConverter):
 
     def __init__(
         self,
-        label: str,
+        id: str | None = None,
         thermal_efficiency: Numeric_TPS | None = None,
         electrical_efficiency: Numeric_TPS | None = None,
         fuel_flow: Flow | None = None,
@@ -481,27 +489,29 @@ class CHP(LinearConverter):
         status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
         color: str | None = None,
+        **kwargs,
     ):
         # Validate required parameters
         if fuel_flow is None:
-            raise ValueError(f"'{label}': fuel_flow is required and cannot be None")
+            raise ValueError(f"'{id}': fuel_flow is required and cannot be None")
         if electrical_flow is None:
-            raise ValueError(f"'{label}': electrical_flow is required and cannot be None")
+            raise ValueError(f"'{id}': electrical_flow is required and cannot be None")
         if thermal_flow is None:
-            raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
+            raise ValueError(f"'{id}': thermal_flow is required and cannot be None")
         if thermal_efficiency is None:
-            raise ValueError(f"'{label}': thermal_efficiency is required and cannot be None")
+            raise ValueError(f"'{id}': thermal_efficiency is required and cannot be None")
         if electrical_efficiency is None:
-            raise ValueError(f"'{label}': electrical_efficiency is required and cannot be None")
+            raise ValueError(f"'{id}': electrical_efficiency is required and cannot be None")
 
         super().__init__(
-            label,
+            id,
             inputs=[fuel_flow],
             outputs=[thermal_flow, electrical_flow],
             conversion_factors=[{}, {}],
             status_parameters=status_parameters,
             meta_data=meta_data,
             color=color,
+            **kwargs,
         )
 
         self.fuel_flow = fuel_flow
@@ -513,28 +523,28 @@ class CHP(LinearConverter):
         check_bounds(
             electrical_efficiency + thermal_efficiency,
             'thermal_efficiency+electrical_efficiency',
-            self.label_full,
+            self.id,
             0,
             1,
         )
 
     @property
     def thermal_efficiency(self):
-        return self.conversion_factors[0][self.fuel_flow.label]
+        return self.conversion_factors[0][self.fuel_flow.flow_id]
 
     @thermal_efficiency.setter
     def thermal_efficiency(self, value):
-        check_bounds(value, 'thermal_efficiency', self.label_full, 0, 1)
-        self.conversion_factors[0] = {self.fuel_flow.label: value, self.thermal_flow.label: 1}
+        check_bounds(value, 'thermal_efficiency', self.id, 0, 1)
+        self.conversion_factors[0] = {self.fuel_flow.flow_id: value, self.thermal_flow.flow_id: 1}
 
     @property
     def electrical_efficiency(self):
-        return self.conversion_factors[1][self.fuel_flow.label]
+        return self.conversion_factors[1][self.fuel_flow.flow_id]
 
     @electrical_efficiency.setter
     def electrical_efficiency(self, value):
-        check_bounds(value, 'electrical_efficiency', self.label_full, 0, 1)
-        self.conversion_factors[1] = {self.fuel_flow.label: value, self.electrical_flow.label: 1}
+        check_bounds(value, 'electrical_efficiency', self.id, 0, 1)
+        self.conversion_factors[1] = {self.fuel_flow.flow_id: value, self.electrical_flow.flow_id: 1}
 
 
 @register_class_for_io
@@ -548,7 +558,7 @@ class HeatPumpWithSource(LinearConverter):
     heat source extraction and electrical consumption with their interdependent relationships.
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem.
+        id: The id of the Element. Used to identify it in the FlowSystem.
         cop: Coefficient of Performance (typically 1-20 range). Defines the ratio of
             thermal output to electrical input. The heat source extraction is automatically
             calculated as heat_source_flow = thermal_flow × (COP-1)/COP.
@@ -565,7 +575,7 @@ class HeatPumpWithSource(LinearConverter):
 
         ```python
         ground_source_hp = HeatPumpWithSource(
-            label='geothermal_heat_pump',
+            id='geothermal_heat_pump',
             cop=4.5,  # High COP due to stable ground temperature
             electrical_flow=electricity_flow,
             heat_source_flow=ground_heat_extraction,  # Heat extracted from ground loop
@@ -577,7 +587,7 @@ class HeatPumpWithSource(LinearConverter):
 
         ```python
         waste_heat_pump = HeatPumpWithSource(
-            label='waste_heat_pump',
+            id='waste_heat_pump',
             cop=temperature_dependent_cop,  # Varies with temperature of heat source
             electrical_flow=electricity_consumption,
             heat_source_flow=industrial_heat_extraction,  # Heat extracted from a industrial process or waste water
@@ -605,7 +615,7 @@ class HeatPumpWithSource(LinearConverter):
 
     def __init__(
         self,
-        label: str,
+        id: str | None = None,
         cop: Numeric_TPS | None = None,
         electrical_flow: Flow | None = None,
         heat_source_flow: Flow | None = None,
@@ -613,24 +623,26 @@ class HeatPumpWithSource(LinearConverter):
         status_parameters: StatusParameters | None = None,
         meta_data: dict | None = None,
         color: str | None = None,
+        **kwargs,
     ):
         # Validate required parameters
         if electrical_flow is None:
-            raise ValueError(f"'{label}': electrical_flow is required and cannot be None")
+            raise ValueError(f"'{id}': electrical_flow is required and cannot be None")
         if heat_source_flow is None:
-            raise ValueError(f"'{label}': heat_source_flow is required and cannot be None")
+            raise ValueError(f"'{id}': heat_source_flow is required and cannot be None")
         if thermal_flow is None:
-            raise ValueError(f"'{label}': thermal_flow is required and cannot be None")
+            raise ValueError(f"'{id}': thermal_flow is required and cannot be None")
         if cop is None:
-            raise ValueError(f"'{label}': cop is required and cannot be None")
+            raise ValueError(f"'{id}': cop is required and cannot be None")
 
         super().__init__(
-            label,
+            id,
             inputs=[electrical_flow, heat_source_flow],
             outputs=[thermal_flow],
             status_parameters=status_parameters,
             meta_data=meta_data,
             color=color,
+            **kwargs,
         )
         self.electrical_flow = electrical_flow
         self.heat_source_flow = heat_source_flow
@@ -639,16 +651,16 @@ class HeatPumpWithSource(LinearConverter):
 
     @property
     def cop(self):
-        return self.conversion_factors[0][self.electrical_flow.label]
+        return self.conversion_factors[0][self.electrical_flow.flow_id]
 
     @cop.setter
     def cop(self, value):
-        check_bounds(value, 'cop', self.label_full, 1, 20)
+        check_bounds(value, 'cop', self.id, 1, 20)
         if np.any(np.asarray(value) == 1):
-            raise ValueError(f'{self.label_full}.cop must be strictly !=1 for HeatPumpWithSource.')
+            raise ValueError(f'{self.id}.cop must be strictly !=1 for HeatPumpWithSource.')
         self.conversion_factors = [
-            {self.electrical_flow.label: value, self.thermal_flow.label: 1},
-            {self.heat_source_flow.label: value / (value - 1), self.thermal_flow.label: 1},
+            {self.electrical_flow.flow_id: value, self.thermal_flow.flow_id: 1},
+            {self.heat_source_flow.flow_id: value / (value - 1), self.thermal_flow.flow_id: 1},
         ]
 
 

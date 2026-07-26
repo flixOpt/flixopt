@@ -54,7 +54,7 @@ class LinearConverter(Component):
         See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/LinearConverter/>
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem.
+        id: The id of the Element. Used to identify it in the FlowSystem.
         inputs: list of input Flows that feed into the converter.
         outputs: list of output Flows that are produced by the converter.
         status_parameters: Information about active and inactive state of LinearConverter.
@@ -62,7 +62,7 @@ class LinearConverter(Component):
             status variable (binary) in all Flows! If possible, use StatusParameters in a
             single Flow instead to keep the number of binary variables low.
         conversion_factors: Linear relationships between flows expressed as a list of
-            dictionaries. Each dictionary maps flow labels to their coefficients in one
+            dictionaries. Each dictionary maps flow ids to their coefficients in one
             linear equation. The number of conversion factors must be less than the total
             number of flows to ensure degrees of freedom > 0. Either 'conversion_factors'
             OR 'piecewise_conversion' can be used, but not both.
@@ -79,7 +79,7 @@ class LinearConverter(Component):
 
         ```python
         heat_exchanger = LinearConverter(
-            label='primary_hx',
+            id='primary_hx',
             inputs=[hot_water_in],
             outputs=[hot_water_out],
             conversion_factors=[{'hot_water_in': 0.95, 'hot_water_out': 1}],
@@ -90,7 +90,7 @@ class LinearConverter(Component):
 
         ```python
         heat_pump = LinearConverter(
-            label='air_source_hp',
+            id='air_source_hp',
             inputs=[electricity_in],
             outputs=[heat_output],
             conversion_factors=[{'electricity_in': 3, 'heat_output': 1}],
@@ -101,7 +101,7 @@ class LinearConverter(Component):
 
         ```python
         chp_unit = LinearConverter(
-            label='gas_chp',
+            id='gas_chp',
             inputs=[natural_gas],
             outputs=[electricity_out, heat_out],
             conversion_factors=[
@@ -115,7 +115,7 @@ class LinearConverter(Component):
 
         ```python
         electrolyzer = LinearConverter(
-            label='pem_electrolyzer',
+            id='pem_electrolyzer',
             inputs=[electricity_in, water_in],
             outputs=[hydrogen_out, oxygen_out],
             conversion_factors=[
@@ -130,7 +130,7 @@ class LinearConverter(Component):
 
         ```python
         variable_efficiency_converter = LinearConverter(
-            label='variable_converter',
+            id='variable_converter',
             inputs=[fuel_in],
             outputs=[power_out],
             piecewise_conversion=PiecewiseConversion(
@@ -171,16 +171,17 @@ class LinearConverter(Component):
 
     def __init__(
         self,
-        label: str,
-        inputs: list[Flow],
-        outputs: list[Flow],
+        id: str | None = None,
+        inputs: list[Flow] | None = None,
+        outputs: list[Flow] | None = None,
         status_parameters: StatusParameters | None = None,
         conversion_factors: list[dict[str, Numeric_TPS]] | None = None,
         piecewise_conversion: PiecewiseConversion | None = None,
         meta_data: dict | None = None,
         color: str | None = None,
+        **kwargs,
     ):
-        super().__init__(label, inputs, outputs, status_parameters, meta_data=meta_data, color=color)
+        super().__init__(id, inputs, outputs, status_parameters, meta_data=meta_data, color=color, **kwargs)
         self.conversion_factors = conversion_factors or []
         self.piecewise_conversion = piecewise_conversion
 
@@ -214,15 +215,15 @@ class LinearConverter(Component):
                 for flow in conversion_factor:
                     if flow not in self.flows:
                         raise PlausibilityError(
-                            f'{self.label}: Flow {flow} in conversion_factors is not in inputs/outputs'
+                            f'{self.id}: Flow {flow} in conversion_factors is not in inputs/outputs'
                         )
         if self.piecewise_conversion:
             for flow in self.flows.values():
                 if isinstance(flow.size, InvestParameters) and flow.size.fixed_size is None:
                     logger.warning(
                         f'Using a Flow with variable size (InvestParameters without fixed_size) '
-                        f'and a piecewise_conversion in {self.label_full} is uncommon. Please verify intent '
-                        f'({flow.label_full}).'
+                        f'and a piecewise_conversion in {self.id} is uncommon. Please verify intent '
+                        f'({flow.id}).'
                     )
 
     def _plausibility_checks(self) -> None:
@@ -244,9 +245,9 @@ class LinearConverter(Component):
             transformed_dict = {}
             for flow, values in conversion_factor.items():
                 # TODO: Might be better to use the label of the component instead of the flow
-                ts = self._fit_coords(f'{self.flows[flow].label_full}|conversion_factor{idx}', values)
+                ts = self._fit_coords(f'{self.flows[flow].id}|conversion_factor{idx}', values)
                 if ts is None:
-                    raise PlausibilityError(f'{self.label_full}: conversion factor for flow "{flow}" must not be None')
+                    raise PlausibilityError(f'{self.id}: conversion factor for flow "{flow}" must not be None')
                 transformed_dict[flow] = ts
             list_of_conversion_factors.append(transformed_dict)
         return list_of_conversion_factors
@@ -274,7 +275,7 @@ class Storage(Component):
         See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/elements/Storage/>
 
     Args:
-        label: Element identifier used in the FlowSystem.
+        id: Element identifier used in the FlowSystem.
         charging: Incoming flow for loading the storage.
         discharging: Outgoing flow for unloading the storage.
         capacity_in_flow_hours: Storage capacity in flow-hours (kWh, m³, kg).
@@ -317,7 +318,7 @@ class Storage(Component):
 
         ```python
         battery = Storage(
-            label='lithium_battery',
+            id='lithium_battery',
             charging=battery_charge_flow,
             discharging=battery_discharge_flow,
             capacity_in_flow_hours=100,  # 100 kWh capacity
@@ -333,7 +334,7 @@ class Storage(Component):
 
         ```python
         thermal_storage = Storage(
-            label='hot_water_tank',
+            id='hot_water_tank',
             charging=heat_input,
             discharging=heat_output,
             capacity_in_flow_hours=500,  # 500 kWh thermal capacity
@@ -351,7 +352,7 @@ class Storage(Component):
 
         ```python
         pumped_hydro = Storage(
-            label='pumped_hydro',
+            id='pumped_hydro',
             charging=pump_flow,
             discharging=turbine_flow,
             capacity_in_flow_hours=InvestParameters(
@@ -371,7 +372,7 @@ class Storage(Component):
 
         ```python
         fuel_storage = Storage(
-            label='natural_gas_storage',
+            id='natural_gas_storage',
             charging=gas_injection,
             discharging=gas_withdrawal,
             capacity_in_flow_hours=10000,  # 10,000 m³ storage volume
@@ -408,9 +409,9 @@ class Storage(Component):
 
     def __init__(
         self,
-        label: str,
-        charging: Flow,
-        discharging: Flow,
+        id: str | None = None,
+        charging: Flow | None = None,
+        discharging: Flow | None = None,
         capacity_in_flow_hours: Numeric_PS | InvestParameters | None = None,
         relative_minimum_charge_state: Numeric_TPS = 0,
         relative_maximum_charge_state: Numeric_TPS = 1,
@@ -427,15 +428,17 @@ class Storage(Component):
         cluster_mode: Literal['independent', 'cyclic', 'intercluster', 'intercluster_cyclic'] = 'intercluster_cyclic',
         meta_data: dict | None = None,
         color: str | None = None,
+        **kwargs,
     ):
         # TODO: fixed_relative_chargeState implementieren
         super().__init__(
-            label,
+            id,
             inputs=[charging],
             outputs=[discharging],
             prevent_simultaneous_flows=[charging, discharging] if prevent_simultaneous_charge_and_discharge else None,
             meta_data=meta_data,
             color=color,
+            **kwargs,
         )
 
         self.charging = charging
@@ -521,12 +524,12 @@ class Storage(Component):
         if self.capacity_in_flow_hours is None:
             if self.relative_minimum_final_charge_state is not None:
                 raise PlausibilityError(
-                    f'Storage "{self.label_full}" has relative_minimum_final_charge_state but no capacity_in_flow_hours. '
+                    f'Storage "{self.id}" has relative_minimum_final_charge_state but no capacity_in_flow_hours. '
                     f'A capacity is required for relative final charge state constraints.'
                 )
             if self.relative_maximum_final_charge_state is not None:
                 raise PlausibilityError(
-                    f'Storage "{self.label_full}" has relative_maximum_final_charge_state but no capacity_in_flow_hours. '
+                    f'Storage "{self.id}" has relative_maximum_final_charge_state but no capacity_in_flow_hours. '
                     f'A capacity is required for relative final charge state constraints.'
                 )
 
@@ -536,7 +539,7 @@ class Storage(Component):
                 self.discharging.size, InvestParameters
             ):
                 raise PlausibilityError(
-                    f'Balancing charging and discharging Flows in {self.label_full} is only possible with Investments.'
+                    f'Balancing charging and discharging Flows in {self.id} is only possible with Investments.'
                 )
 
     def _plausibility_checks(self) -> None:
@@ -551,7 +554,7 @@ class Storage(Component):
         # Use build_repr_from_init directly to exclude charging and discharging
         return fx_io.build_repr_from_init(
             self,
-            excluded_params={'self', 'label', 'charging', 'discharging', 'kwargs'},
+            excluded_params={'self', 'id', 'charging', 'discharging', 'kwargs'},
             skip_default_size=True,
         ) + fx_io.format_flow_details(self)
 
@@ -571,7 +574,7 @@ class Transmission(Component):
     operation with flow direction constraints.
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem.
+        id: The id of the Element. Used to identify it in the FlowSystem.
         in1: The primary inflow (side A). Pass InvestParameters here for capacity optimization.
         out1: The primary outflow (side B).
         in2: Optional secondary inflow (side B) for bidirectional operation.
@@ -594,7 +597,7 @@ class Transmission(Component):
 
         ```python
         power_line = Transmission(
-            label='110kv_line',
+            id='110kv_line',
             in1=substation_a_out,
             out1=substation_b_in,
             relative_losses=0.03,  # 3% line losses
@@ -605,7 +608,7 @@ class Transmission(Component):
 
         ```python
         gas_pipeline = Transmission(
-            label='interstate_pipeline',
+            id='interstate_pipeline',
             in1=compressor_station_a,
             out1=distribution_hub_b,
             in2=compressor_station_b,
@@ -620,7 +623,7 @@ class Transmission(Component):
 
         ```python
         heating_network = Transmission(
-            label='dh_main_line',
+            id='dh_main_line',
             in1=Flow(
                 label='heat_supply',
                 bus=central_plant_bus,
@@ -640,7 +643,7 @@ class Transmission(Component):
 
         ```python
         conveyor_belt = Transmission(
-            label='material_transport',
+            id='material_transport',
             in1=loading_station,
             out1=unloading_station,
             absolute_losses=25,  # 25 kW motor power when running
@@ -669,9 +672,9 @@ class Transmission(Component):
 
     def __init__(
         self,
-        label: str,
-        in1: Flow,
-        out1: Flow,
+        id: str | None = None,
+        in1: Flow | None = None,
+        out1: Flow | None = None,
         in2: Flow | None = None,
         out2: Flow | None = None,
         relative_losses: Numeric_TPS | None = None,
@@ -681,9 +684,10 @@ class Transmission(Component):
         balanced: bool = False,
         meta_data: dict | None = None,
         color: str | None = None,
+        **kwargs,
     ):
         super().__init__(
-            label,
+            id,
             inputs=[flow for flow in (in1, in2) if flow is not None],
             outputs=[flow for flow in (out1, out2) if flow is not None],
             status_parameters=status_parameters,
@@ -692,6 +696,7 @@ class Transmission(Component):
             else [in1, in2],
             meta_data=meta_data,
             color=color,
+            **kwargs,
         )
         self.in1 = in1
         self.out1 = out1
@@ -749,9 +754,7 @@ class Transmission(Component):
             for flow in input_flows:
                 if flow.status_parameters is None:
                     flow.status_parameters = StatusParameters()
-                    flow.status_parameters.link_to_flow_system(
-                        self._flow_system, f'{flow.label_full}|status_parameters'
-                    )
+                    flow.status_parameters.link_to_flow_system(self._flow_system, f'{flow.id}|status_parameters')
                 rel_min = flow.relative_minimum
                 needs_update = (
                     rel_min is None
@@ -823,7 +826,7 @@ class StoragesModel(TypeModel):
         )
 
     def storage(self, label: str) -> Storage:
-        """Get a storage by its label_full."""
+        """Get a storage by its id."""
         return self.elements[label]
 
     @property
@@ -1069,8 +1072,8 @@ class StoragesModel(TypeModel):
         discharge_ids = []
         for sid in balanced_ids:
             s = self.data[sid]
-            cid = s.charging.label_full
-            did = s.discharging.label_full
+            cid = s.charging.id
+            did = s.discharging.id
             if cid in investment_ids_set and did in investment_ids_set:
                 charge_ids.append(cid)
                 discharge_ids.append(did)
@@ -1118,7 +1121,7 @@ class StoragesModel(TypeModel):
 
         # Batched numeric initial constraint
         if storages_numeric_initial:
-            ids = [s.label_full for s, _ in storages_numeric_initial]
+            ids = [s.id for s, _ in storages_numeric_initial]
             values = stack_along_dim([v for _, v in storages_numeric_initial], self.dim_name, ids)
             cs_initial = charge_state.sel({dim: ids}).isel(time=0)
             self.model.add_constraints(
@@ -1128,7 +1131,7 @@ class StoragesModel(TypeModel):
 
         # Batched equals_final constraint
         if storages_equals_final:
-            ids = [s.label_full for s in storages_equals_final]
+            ids = [s.id for s in storages_equals_final]
             cs_subset = charge_state.sel({dim: ids})
             self.model.add_constraints(
                 cs_subset.isel(time=0) == cs_subset.isel(time=-1),
@@ -1137,7 +1140,7 @@ class StoragesModel(TypeModel):
 
         # Batched max final constraint
         if storages_max_final:
-            ids = [s.label_full for s, _ in storages_max_final]
+            ids = [s.id for s, _ in storages_max_final]
             values = stack_along_dim([v for _, v in storages_max_final], self.dim_name, ids)
             cs_final = charge_state.sel({dim: ids}).isel(time=-1)
             self.model.add_constraints(
@@ -1147,7 +1150,7 @@ class StoragesModel(TypeModel):
 
         # Batched min final constraint
         if storages_min_final:
-            ids = [s.label_full for s, _ in storages_min_final]
+            ids = [s.id for s, _ in storages_min_final]
             values = stack_along_dim([v for _, v in storages_min_final], self.dim_name, ids)
             cs_final = charge_state.sel({dim: ids}).isel(time=-1)
             self.model.add_constraints(
@@ -1164,7 +1167,7 @@ class StoragesModel(TypeModel):
         if not cyclic_storages:
             return
 
-        ids = [s.label_full for s in cyclic_storages]
+        ids = [s.id for s in cyclic_storages]
         cs_subset = charge_state.sel({self.dim_name: ids})
         self.model.add_constraints(
             cs_subset.isel(time=0) == cs_subset.isel(time=-2),
@@ -1322,18 +1325,18 @@ class StoragesModel(TypeModel):
                 if isinstance(storage.initial_charge_state, str):  # 'equals_final'
                     self.model.add_constraints(
                         cs.isel(time=0) == cs.isel(time=-1),
-                        name=f'storage|{storage.label}|initial_charge_state',
+                        name=f'storage|{storage.id}|initial_charge_state',
                     )
                 else:
                     self.model.add_constraints(
                         cs.isel(time=0) == storage.initial_charge_state,
-                        name=f'storage|{storage.label}|initial_charge_state',
+                        name=f'storage|{storage.id}|initial_charge_state',
                     )
 
                 if storage.maximal_final_charge_state is not None:
                     self.model.add_constraints(
                         cs.isel(time=-1) >= storage.minimal_final_charge_state,
-                        name=f'storage|{storage.label}|final_charge_min',
+                        name=f'storage|{storage.id}|final_charge_min',
                     )
 
         logger.debug(f'StoragesModel created constraints for {len(self.elements)} storages')
@@ -1706,14 +1709,14 @@ class InterclusterStoragesModel(TypeModel):
 
         for storage in self.elements.values():
             if storage.cluster_mode == 'intercluster_cyclic':
-                cyclic_ids.append(storage.label_full)
+                cyclic_ids.append(storage.id)
             else:
                 initial = storage.initial_charge_state
                 if initial is not None:
                     if isinstance(initial, str) and initial == 'equals_final':
-                        cyclic_ids.append(storage.label_full)
+                        cyclic_ids.append(storage.id)
                     else:
-                        initial_fixed_ids.append(storage.label_full)
+                        initial_fixed_ids.append(storage.id)
                         initial_values.append(initial)
 
         # Add cyclic constraints
@@ -1779,9 +1782,9 @@ class InterclusterStoragesModel(TypeModel):
 
         for storage in self.elements.values():
             if isinstance(storage.capacity_in_flow_hours, InvestParameters):
-                invest_ids.append(storage.label_full)
+                invest_ids.append(storage.id)
             elif storage.capacity_in_flow_hours is not None:
-                fixed_ids.append(storage.label_full)
+                fixed_ids.append(storage.id)
                 fixed_caps.append(storage.capacity_in_flow_hours)
 
         # Investment storages: combined <= size
@@ -1954,7 +1957,7 @@ class SourceAndSink(Component):
     or bidirectional grid connections where buying and selling occur at the same location.
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem.
+        id: The id of the Element. Used to identify it in the FlowSystem.
         inputs: Input-flows into the SourceAndSink representing consumption/demand side.
         outputs: Output-flows from the SourceAndSink representing supply/generation side.
         prevent_simultaneous_flow_rates: If True, prevents simultaneous input and output
@@ -1968,7 +1971,7 @@ class SourceAndSink(Component):
 
         ```python
         electricity_market = SourceAndSink(
-            label='grid_connection',
+            id='grid_connection',
             inputs=[electricity_purchase],  # Buy from grid
             outputs=[electricity_sale],  # Sell to grid
             prevent_simultaneous_flow_rates=True,  # Can't buy and sell simultaneously
@@ -1979,7 +1982,7 @@ class SourceAndSink(Component):
 
         ```python
         gas_storage_facility = SourceAndSink(
-            label='underground_gas_storage',
+            id='underground_gas_storage',
             inputs=[gas_injection_flow],  # Inject gas into storage
             outputs=[gas_withdrawal_flow],  # Withdraw gas from storage
             prevent_simultaneous_flow_rates=True,  # Injection or withdrawal, not both
@@ -1990,7 +1993,7 @@ class SourceAndSink(Component):
 
         ```python
         dh_connection = SourceAndSink(
-            label='district_heating_tie',
+            id='district_heating_tie',
             inputs=[heat_purchase_flow],  # Purchase heat from network
             outputs=[heat_sale_flow],  # Sell excess heat to network
             prevent_simultaneous_flow_rates=False,  # May allow simultaneous flows
@@ -2001,7 +2004,7 @@ class SourceAndSink(Component):
 
         ```python
         waste_heat_exchange = SourceAndSink(
-            label='industrial_heat_hub',
+            id='industrial_heat_hub',
             inputs=[
                 waste_heat_input_a,  # Receive waste heat from process A
                 waste_heat_input_b,  # Receive waste heat from process B
@@ -2032,23 +2035,25 @@ class SourceAndSink(Component):
 
     def __init__(
         self,
-        label: str,
+        id: str | None = None,
         inputs: list[Flow] | None = None,
         outputs: list[Flow] | None = None,
         prevent_simultaneous_flow_rates: bool = True,
         meta_data: dict | None = None,
         color: str | None = None,
+        **kwargs,
     ):
-        # Convert dict to list for deserialization compatibility (FlowContainers serialize as dicts)
+        # Convert dict to list for deserialization compatibility (IdLists serialize as dicts)
         _inputs_list = list(inputs.values()) if isinstance(inputs, dict) else (inputs or [])
         _outputs_list = list(outputs.values()) if isinstance(outputs, dict) else (outputs or [])
         super().__init__(
-            label,
+            id,
             inputs=_inputs_list,
             outputs=_outputs_list,
             prevent_simultaneous_flows=_inputs_list + _outputs_list if prevent_simultaneous_flow_rates else None,
             meta_data=meta_data,
             color=color,
+            **kwargs,
         )
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
 
@@ -2063,7 +2068,7 @@ class Source(Component):
     unlimited supply capability subject to flow constraints, demand patterns and effects.
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem.
+        id: The id of the Element. Used to identify it in the FlowSystem.
         outputs: Output-flows from the source. Can be single flow or list of flows
             for sources providing multiple commodities or services.
         meta_data: Used to store additional information about the Element. Not used
@@ -2075,14 +2080,14 @@ class Source(Component):
         Simple electricity grid connection:
 
         ```python
-        grid_source = Source(label='electrical_grid', outputs=[grid_electricity_flow])
+        grid_source = Source(id='electrical_grid', outputs=[grid_electricity_flow])
         ```
 
         Natural gas supply with cost and capacity constraints:
 
         ```python
         gas_supply = Source(
-            label='gas_network',
+            id='gas_network',
             outputs=[
                 Flow(
                     label='natural_gas_flow',
@@ -2098,7 +2103,7 @@ class Source(Component):
 
         ```python
         multi_fuel_plant = Source(
-            label='flexible_generator',
+            id='flexible_generator',
             outputs=[coal_electricity, gas_electricity, biomass_electricity],
             prevent_simultaneous_flow_rates=True,  # Can only use one fuel at a time
         )
@@ -2108,7 +2113,7 @@ class Source(Component):
 
         ```python
         solar_farm = Source(
-            label='solar_pv',
+            id='solar_pv',
             outputs=[
                 Flow(
                     label='solar_power',
@@ -2131,19 +2136,21 @@ class Source(Component):
 
     def __init__(
         self,
-        label: str,
+        id: str | None = None,
         outputs: list[Flow] | None = None,
         meta_data: dict | None = None,
         prevent_simultaneous_flow_rates: bool = False,
         color: str | None = None,
+        **kwargs,
     ):
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
         super().__init__(
-            label,
+            id,
             outputs=outputs,
             meta_data=meta_data,
             prevent_simultaneous_flows=outputs if prevent_simultaneous_flow_rates else None,
             color=color,
+            **kwargs,
         )
 
 
@@ -2157,7 +2164,7 @@ class Sink(Component):
     unlimited consumption capability subject to flow constraints, demand patterns and effects.
 
     Args:
-        label: The label of the Element. Used to identify it in the FlowSystem.
+        id: The id of the Element. Used to identify it in the FlowSystem.
         inputs: Input-flows into the sink. Can be single flow or list of flows
             for sinks consuming multiple commodities or services.
         meta_data: Used to store additional information about the Element. Not used
@@ -2169,14 +2176,14 @@ class Sink(Component):
         Simple electrical demand:
 
         ```python
-        electrical_load = Sink(label='building_load', inputs=[electricity_demand_flow])
+        electrical_load = Sink(id='building_load', inputs=[electricity_demand_flow])
         ```
 
         Heat demand with time-varying profile:
 
         ```python
         heat_demand = Sink(
-            label='district_heating_load',
+            id='district_heating_load',
             inputs=[
                 Flow(
                     label='heat_consumption',
@@ -2192,7 +2199,7 @@ class Sink(Component):
 
         ```python
         flexible_building = Sink(
-            label='smart_building',
+            id='smart_building',
             inputs=[electricity_heating, gas_heating, heat_pump_heating],
             prevent_simultaneous_flow_rates=True,  # Can only use one heating mode
         )
@@ -2202,7 +2209,7 @@ class Sink(Component):
 
         ```python
         factory_load = Sink(
-            label='manufacturing_plant',
+            id='manufacturing_plant',
             inputs=[
                 Flow(
                     label='electricity_process',
@@ -2226,16 +2233,17 @@ class Sink(Component):
 
     def __init__(
         self,
-        label: str,
+        id: str | None = None,
         inputs: list[Flow] | None = None,
         meta_data: dict | None = None,
         prevent_simultaneous_flow_rates: bool = False,
         color: str | None = None,
+        **kwargs,
     ):
         """Initialize a Sink (consumes flow from the system).
 
         Args:
-            label: Unique element label.
+            id: Unique element id.
             inputs: Input flows for the sink.
             meta_data: Arbitrary metadata attached to the element.
             prevent_simultaneous_flow_rates: If True, prevents simultaneous nonzero flow rates
@@ -2245,9 +2253,10 @@ class Sink(Component):
 
         self.prevent_simultaneous_flow_rates = prevent_simultaneous_flow_rates
         super().__init__(
-            label,
+            id,
             inputs=inputs,
             meta_data=meta_data,
             prevent_simultaneous_flows=inputs if prevent_simultaneous_flow_rates else None,
             color=color,
+            **kwargs,
         )

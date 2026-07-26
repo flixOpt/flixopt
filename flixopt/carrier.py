@@ -7,7 +7,8 @@ and metadata across visualizations.
 
 from __future__ import annotations
 
-from .structure import ContainerMixin, Interface, register_class_for_io
+from .id_list import IdList
+from .structure import Interface, register_class_for_io
 
 
 @register_class_for_io
@@ -125,7 +126,7 @@ class Carrier(Interface):
         return self.name
 
 
-class CarrierContainer(ContainerMixin['Carrier']):
+class CarrierContainer(IdList['Carrier']):
     """Container for Carrier objects.
 
     Uses carrier.name for keying. Provides dict-like access to carriers
@@ -146,14 +147,10 @@ class CarrierContainer(ContainerMixin['Carrier']):
         ```
     """
 
-    def __init__(self, carriers: list[Carrier] | dict[str, Carrier] | None = None):
+    def __init__(self, carriers: list[Carrier] | None = None):
         """Initialize a CarrierContainer.
 
         Args:
             carriers: Initial carriers to add.
         """
-        super().__init__(elements=carriers, element_type_name='carriers')
-
-    def _get_label(self, carrier: Carrier) -> str:
-        """Extract name from Carrier for keying."""
-        return carrier.name
+        super().__init__(carriers, key_fn=lambda c: c.name, display_name='carriers')
