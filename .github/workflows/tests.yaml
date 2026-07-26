@@ -39,7 +39,7 @@ jobs:
           version: "0.10.9"
           enable-cache: true
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -64,7 +64,7 @@ jobs:
           version: "0.10.9"
           enable-cache: true
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -95,7 +95,7 @@ jobs:
           version: "0.10.9"
           enable-cache: true
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -116,7 +116,7 @@ jobs:
           version: "0.10.9"
           enable-cache: true
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
