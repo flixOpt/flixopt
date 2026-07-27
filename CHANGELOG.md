@@ -13,10 +13,15 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ## [8.0.0](https://github.com/flixOpt/flixopt/compare/v7.2.1...v8.0.0) (2026-07-27)
 
+!!! note
 
-### ⚠ BREAKING CHANGES
-
-* the serialized clustering format changed - slice dims are now stored as 'period' (was '_period') plus a new 'dim_names' key. Clustering artifacts saved to JSON/netCDF by an older flixopt no longer load for apply_clustering()/expand() in this version; re-run transform.cluster() to regenerate them. Fresh clustering and same-version round-trips are unaffected. Also raises the minimum tsam_xarray to 0.6.4.
+    Despite the major version, this release contains **no breaking changes**.
+    The clustering format change that justified the bump ([#739](https://github.com/flixOpt/flixopt/issues/739))
+    was reverted before release ([#746](https://github.com/flixOpt/flixopt/issues/746)),
+    but its `BREAKING CHANGE` footer still drove the version number.
+    Serialized clustering is unchanged from 7.2.1, and files written by 6.x -
+    which stopped loading under 7.0 - load again as of
+    [#757](https://github.com/flixOpt/flixopt/issues/757).
 
 ### Bug Fixes
 
@@ -26,9 +31,9 @@ For more details regarding the individual PRs and contributors, please refer to 
 * support linopy 0.9.0 ([#758](https://github.com/flixOpt/flixopt/issues/758)) ([051480b](https://github.com/flixOpt/flixopt/commit/051480b9af70933edf6afb24bfeef8e0aa7e0c10))
 
 
-### Code Refactoring
+### Reverts
 
-* drop clustering dim-rename layer via tsam-xarray DimNames ([#739](https://github.com/flixOpt/flixopt/issues/739)) ([cc56774](https://github.com/flixOpt/flixopt/commit/cc56774d31e05d637ee40424ec64af276716cc2f))
+* drop clustering dim-rename layer via tsam-xarray DimNames ([#739](https://github.com/flixOpt/flixopt/issues/739)) was merged and then reverted ([#746](https://github.com/flixOpt/flixopt/issues/746)) before release, so the serialized clustering format is unchanged from 7.2.1.
 
 ## [7.2.1](https://github.com/flixOpt/flixopt/compare/v7.2.0...v7.2.1) (2026-07-21)
 
