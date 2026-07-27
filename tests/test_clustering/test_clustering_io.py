@@ -521,50 +521,51 @@ class TestClusteringEdgeCases:
         assert 'source' in fs_expanded.components
 
 
+@pytest.fixture
+def system_with_periods_and_scenarios():
+    """Create a flow system with both periods and scenarios, with different demand patterns."""
+    n_days = 3
+    hours = 24 * n_days
+    timesteps = pd.date_range('2024-01-01', periods=hours, freq='h')
+    periods = pd.Index([2024, 2025], name='period')
+    scenarios = pd.Index(['high', 'low'], name='scenario')
+
+    # Create DIFFERENT demand patterns per period/scenario to get different cluster assignments
+    # Pattern structure: (base_mean, amplitude) for each day
+    patterns = {
+        (2024, 'high'): [(100, 40), (100, 40), (50, 20)],  # Days 0&1 similar
+        (2024, 'low'): [(50, 20), (100, 40), (100, 40)],  # Days 1&2 similar
+        (2025, 'high'): [(100, 40), (50, 20), (100, 40)],  # Days 0&2 similar
+        (2025, 'low'): [(50, 20), (50, 20), (100, 40)],  # Days 0&1 similar
+    }
+
+    demand_values = np.zeros((hours, len(periods), len(scenarios)))
+    for pi, period in enumerate(periods):
+        for si, scenario in enumerate(scenarios):
+            base = np.zeros(hours)
+            for d, (mean, amp) in enumerate(patterns[(period, scenario)]):
+                start = d * 24
+                base[start : start + 24] = mean + amp * np.sin(np.linspace(0, 2 * np.pi, 24))
+            demand_values[:, pi, si] = base
+
+    demand = xr.DataArray(
+        demand_values,
+        dims=['time', 'period', 'scenario'],
+        coords={'time': timesteps, 'period': periods, 'scenario': scenarios},
+    )
+
+    fs = fx.FlowSystem(timesteps, periods=periods, scenarios=scenarios)
+    fs.add_elements(
+        fx.Bus('heat'),
+        fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
+        fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=demand, size=1)]),
+        fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=200, effects_per_flow_hour={'costs': 0.05})]),
+    )
+    return fs
+
+
 class TestMultiDimensionalClusteringIO:
     """Test IO for clustering with both periods and scenarios (multi-dimensional)."""
-
-    @pytest.fixture
-    def system_with_periods_and_scenarios(self):
-        """Create a flow system with both periods and scenarios, with different demand patterns."""
-        n_days = 3
-        hours = 24 * n_days
-        timesteps = pd.date_range('2024-01-01', periods=hours, freq='h')
-        periods = pd.Index([2024, 2025], name='period')
-        scenarios = pd.Index(['high', 'low'], name='scenario')
-
-        # Create DIFFERENT demand patterns per period/scenario to get different cluster assignments
-        # Pattern structure: (base_mean, amplitude) for each day
-        patterns = {
-            (2024, 'high'): [(100, 40), (100, 40), (50, 20)],  # Days 0&1 similar
-            (2024, 'low'): [(50, 20), (100, 40), (100, 40)],  # Days 1&2 similar
-            (2025, 'high'): [(100, 40), (50, 20), (100, 40)],  # Days 0&2 similar
-            (2025, 'low'): [(50, 20), (50, 20), (100, 40)],  # Days 0&1 similar
-        }
-
-        demand_values = np.zeros((hours, len(periods), len(scenarios)))
-        for pi, period in enumerate(periods):
-            for si, scenario in enumerate(scenarios):
-                base = np.zeros(hours)
-                for d, (mean, amp) in enumerate(patterns[(period, scenario)]):
-                    start = d * 24
-                    base[start : start + 24] = mean + amp * np.sin(np.linspace(0, 2 * np.pi, 24))
-                demand_values[:, pi, si] = base
-
-        demand = xr.DataArray(
-            demand_values,
-            dims=['time', 'period', 'scenario'],
-            coords={'time': timesteps, 'period': periods, 'scenario': scenarios},
-        )
-
-        fs = fx.FlowSystem(timesteps, periods=periods, scenarios=scenarios)
-        fs.add_elements(
-            fx.Bus('heat'),
-            fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
-            fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=demand, size=1)]),
-            fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=200, effects_per_flow_hour={'costs': 0.05})]),
-        )
-        return fs
 
     def test_cluster_assignments_has_correct_dimensions(self, system_with_periods_and_scenarios):
         """cluster_assignments should have dimensions for original_cluster, period, and scenario."""
@@ -761,3 +762,114 @@ class TestLegacyClusteringBackwardCompat:
 
         assert isinstance(fs_restored.clustering, Clustering)
         assert fs_restored.clustering.n_clusters == 2
+
+
+class TestPreV7ClusteringSchema:
+    """Loading clustered files written before flixopt 7.0, which serialized the
+    clustering under a ``results`` key with string-joined slice keys instead of the
+    ``clustering_result`` schema that tsam_xarray's ClusteringResult now expects.
+
+    The per-slice tsam blobs are unchanged between the two layouts, so these tests
+    rewrite a current dataset into the legacy layout rather than shipping a binary
+    fixture. The layout was verified against files generated by flixopt 6.2.1.
+    """
+
+    def _to_legacy_schema(self, ds: xr.Dataset) -> xr.Dataset:
+        """Rewrite a clustered dataset's clustering attrs into the pre-7.0 layout."""
+        import json
+
+        clustering = json.loads(ds.attrs['clustering'])
+        result = clustering.pop('clustering_result')
+
+        unrename = {'_period': 'period', '_cluster': 'cluster'}
+        dim_names = [unrename.get(dim, dim) for dim in result['slice_dims']]
+
+        legacy_results = {}
+        for entry in result['clusterings']:
+            key = '|'.join(str(part) for part in entry['key']) if entry['key'] else '__single__'
+            legacy_results[key] = entry['clustering']
+
+        clustering['results'] = {'dim_names': dim_names, 'results': legacy_results}
+        # Pre-7.0 files always carried these; they are dropped on load.
+        clustering['_original_data_refs'] = []
+        clustering['_metrics_refs'] = None
+        ds.attrs['clustering'] = json.dumps(clustering, ensure_ascii=False)
+        return ds
+
+    def _assignments(self, flow_system) -> xr.DataArray:
+        return flow_system.clustering.cluster_assignments
+
+    def test_legacy_schema_is_rejected_without_migration(self, simple_system_8_days):
+        """Sanity check: the legacy key really is incompatible with Clustering.__init__."""
+        from flixopt.clustering import Clustering
+
+        fs_clustered = simple_system_8_days.transform.cluster(n_clusters=2, cluster_duration='1D')
+        ds = self._to_legacy_schema(fs_clustered.to_dataset(include_solution=False))
+
+        import json
+
+        legacy = json.loads(ds.attrs['clustering'])
+        assert 'results' in legacy and 'clustering_result' not in legacy
+        with pytest.raises(TypeError):
+            Clustering(results=legacy['results'])
+
+    def test_load_legacy_schema_preserves_assignments(self, simple_system_8_days):
+        """A pre-7.0 clustered dataset loads with its cluster assignments intact."""
+        from flixopt.clustering import Clustering
+
+        fs_clustered = simple_system_8_days.transform.cluster(n_clusters=2, cluster_duration='1D')
+        expected = self._assignments(fs_clustered).values.copy()
+        ds = self._to_legacy_schema(fs_clustered.to_dataset(include_solution=False))
+
+        fs_restored = fx.FlowSystem.from_dataset(ds)
+
+        assert isinstance(fs_restored.clustering, Clustering)
+        assert fs_restored.clustering.n_clusters == 2
+        np.testing.assert_array_equal(self._assignments(fs_restored).values, expected)
+
+    def test_load_legacy_schema_netcdf_roundtrip(self, simple_system_8_days, tmp_path):
+        """Same, but through a real NetCDF file rather than an in-memory dataset."""
+        from flixopt.io import save_dataset_to_netcdf
+
+        fs_clustered = simple_system_8_days.transform.cluster(n_clusters=2, cluster_duration='1D')
+        expected = self._assignments(fs_clustered).values.copy()
+        ds = self._to_legacy_schema(fs_clustered.to_dataset(include_solution=False))
+
+        nc_path = tmp_path / 'legacy_schema.nc'
+        save_dataset_to_netcdf(ds, nc_path)
+        fs_restored = fx.FlowSystem.from_netcdf(nc_path)
+
+        np.testing.assert_array_equal(self._assignments(fs_restored).values, expected)
+
+    def test_legacy_schema_expands_to_full_timesteps(self, simple_system_8_days):
+        """A loaded pre-7.0 file can still be expanded back to the original timesteps."""
+        fs_clustered = simple_system_8_days.transform.cluster(n_clusters=2, cluster_duration='1D')
+        ds = self._to_legacy_schema(fs_clustered.to_dataset(include_solution=False))
+
+        fs_expanded = fx.FlowSystem.from_dataset(ds).transform.expand()
+
+        assert len(fs_expanded.timesteps) == 8 * 24
+
+    def test_legacy_multi_dim_keys_map_to_the_right_slice(self, system_with_periods_and_scenarios):
+        """Legacy keys are strings ('2024|high'); each must land on its own slice.
+
+        Sensitivity: if the string keys were parsed without recovering the original
+        coordinate dtype, every lookup would miss and the assignments would silently
+        collapse onto one slice or swap between periods.
+        """
+        fs_clustered = system_with_periods_and_scenarios.transform.cluster(n_clusters=2, cluster_duration='1D')
+        expected = self._assignments(fs_clustered)
+        ds = self._to_legacy_schema(fs_clustered.to_dataset(include_solution=False))
+
+        fs_restored = fx.FlowSystem.from_dataset(ds)
+        restored = self._assignments(fs_restored)
+
+        assert set(restored.dims) == set(expected.dims)
+        for period in fs_restored.periods:
+            for scenario in fs_restored.scenarios:
+                sel = {'period': period, 'scenario': scenario}
+                np.testing.assert_array_equal(
+                    restored.sel(sel).values,
+                    expected.sel(sel).values,
+                    err_msg=f'assignments differ for {sel}',
+                )

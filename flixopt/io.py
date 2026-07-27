@@ -1846,12 +1846,71 @@ class FlowSystemDatasetIO:
         # such files remain loadable.
         clustering_structure.pop('_original_data_refs', None)
         clustering_structure.pop('_metrics_refs', None)
+        clustering_structure = cls._migrate_legacy_clustering_result(clustering_structure, flow_system)
         clustering = fs_cls._resolve_reference_structure(clustering_structure, {})
         flow_system.clustering = clustering
 
         # Restore cluster_weight from clustering's cluster_occurrences
         if hasattr(clustering, 'cluster_occurrences'):
             flow_system.cluster_weight = clustering.cluster_occurrences.rename('cluster_weight')
+
+    LEGACY_SLICE_DIM_RENAMES = {'period': '_period', 'cluster': '_cluster'}
+    LEGACY_KEY_SEPARATOR = '|'
+
+    @classmethod
+    def _migrate_legacy_clustering_result(
+        cls,
+        clustering_structure: dict[str, Any],
+        flow_system: FlowSystem,
+    ) -> dict[str, Any]:
+        """Convert a pre-7.0 ``clustering.results`` blob to the current schema.
+
+        Files written before flixopt 7.0 stored the clustering as
+        ``{'dim_names': [...], 'results': {key: tsam_blob}}``, keyed by the slice
+        coordinates joined into a string (``'2030|low'``, or ``'__single__'`` when
+        undivided). ``Clustering`` now expects a ``clustering_result`` matching
+        ``tsam_xarray.ClusteringResult.from_dict``, which takes a list of
+        ``{'key': [...], 'clustering': tsam_blob}`` entries and indexes them by the
+        coordinate values themselves -- so ``'2030'`` has to become the integer 2030
+        or every lookup silently misses. The values are recovered by matching against
+        the coordinates already restored on ``flow_system``, rather than by guessing a
+        type, so labels that merely look numeric survive unchanged.
+
+        The per-slice tsam blobs are identical between the two layouts; only the
+        structure around them is rewritten.
+        """
+        if 'clustering_result' in clustering_structure or 'results' not in clustering_structure:
+            return clustering_structure
+
+        legacy = clustering_structure.pop('results')
+        dims = list(legacy.get('dim_names') or [])
+
+        lookups = []
+        for dim in dims:
+            index = getattr(flow_system, f'{dim}s', None)
+            values = [] if index is None else list(index)
+            # .item() unwraps numpy scalars so the keys stay plain Python values
+            lookups.append({str(value): value.item() if hasattr(value, 'item') else value for value in values})
+
+        clusterings = []
+        for key, blob in legacy.get('results', {}).items():
+            # Split only when several dims share the key, so single-dim labels
+            # containing the separator stay intact.
+            parts = key.split(cls.LEGACY_KEY_SEPARATOR) if len(dims) > 1 else [key]
+            clusterings.append(
+                {
+                    'key': [lookup.get(part, part) for lookup, part in zip(lookups, parts, strict=False)],
+                    'clustering': blob,
+                }
+            )
+
+        clustering_structure['clustering_result'] = {
+            'time_dim': 'time',
+            'cluster_dim': ['variable'],
+            'slice_dims': [cls.LEGACY_SLICE_DIM_RENAMES.get(dim, dim) for dim in dims],
+            'clusterings': clusterings,
+        }
+        return clustering_structure
 
     @staticmethod
     def _restore_metadata(
