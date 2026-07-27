@@ -24,6 +24,7 @@ concurrency:
 
 env:
   PYTHON_VERSION: "3.11"
+  RUFF_VERSION: "0.15.21"  # Keep in sync with the ruff pin in pyproject.toml [dev]
   MPLBACKEND: Agg
   PLOTLY_RENDERER: json
   FLIXOPT_CI: false
@@ -45,8 +46,8 @@ jobs:
 
       - name: Run Ruff
         run: |
-          uvx ruff check . --output-format=github
-          uvx ruff format --check --diff .
+          uvx ruff@${{ env.RUFF_VERSION }} check . --output-format=github
+          uvx ruff@${{ env.RUFF_VERSION }} format --check --diff .
 
   test:
     runs-on: ubuntu-24.04
