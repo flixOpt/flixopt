@@ -11,6 +11,13 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ---
 
+## [8.0.1](https://github.com/flixOpt/flixopt/compare/v8.0.0...v8.0.1) (2026-07-27)
+
+
+### Bug Fixes
+
+* support tsam_xarray 0.6.5 by using cluster_counts ([#761](https://github.com/flixOpt/flixopt/issues/761)) ([21efda9](https://github.com/flixOpt/flixopt/commit/21efda9215527666ec50c3b9b4bd84d6781787f5))
+
 ## [8.0.0](https://github.com/flixOpt/flixopt/compare/v7.2.1...v8.0.0) (2026-07-27)
 
 !!! note
