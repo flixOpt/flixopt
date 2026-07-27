@@ -336,11 +336,15 @@ class TestClusteringExact:
         discharge_fr = fs.solution['Battery(discharge)|flow_rate'].values[:, :4]
         assert_allclose(discharge_fr, [[0, 50, 0, 50], [0, 50, 0, 50]], atol=1e-5)
 
+        # Both clusters carry identical data, so the absolute SOC offset is degenerate:
+        # any level in [50, 100] is optimal. Assert what the model actually determines --
+        # the charge/discharge pattern and the cyclic wrap -- not one arbitrary offset.
         charge_state = fs.solution['Battery|charge_state']
         assert charge_state.dims == ('cluster', 'time')
-        cs_c0 = charge_state.isel(cluster=0).values[:5]
-        cs_c1 = charge_state.isel(cluster=1).values[:5]
-        assert_allclose(cs_c0, [50, 50, 0, 50, 0], atol=1e-5)
-        assert_allclose(cs_c1, [100, 100, 50, 100, 50], atol=1e-5)
+        for cluster in (0, 1):
+            cs = charge_state.isel(cluster=cluster).values[:5]
+            assert_allclose(np.diff(cs), [0, -50, 50, -50], atol=1e-5)
+            assert_allclose(cs[0], cs[3], atol=1e-5)  # cyclic wrap within the cluster
+            assert 50 - 1e-5 <= cs[0] <= 100 + 1e-5
 
         assert_allclose(fs.solution['objective'].item(), 100.0, rtol=1e-5)
