@@ -16,7 +16,7 @@ from .config import CONFIG
 from .core import PlausibilityError
 from .features import InvestmentModel, StatusModel
 from .interface import InvestParameters, StatusParameters
-from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract
+from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilitiesAbstract, _set_constraint_lhs
 from .structure import (
     Element,
     ElementModel,
@@ -1033,7 +1033,7 @@ class BusModel(ElementModel):
             )
 
             # Σ(inflows) + virtual_supply = Σ(outflows) + virtual_demand
-            eq_bus_balance.lhs += self.virtual_supply - self.virtual_demand
+            _set_constraint_lhs(eq_bus_balance, eq_bus_balance.lhs + self.virtual_supply - self.virtual_demand)
 
             # Add penalty shares as temporal effects (time-dependent)
             from .effects import PENALTY_EFFECT_LABEL

@@ -93,8 +93,13 @@ class TestNonSegmentedExpansion:
         fs_e = fs_c.transform.expand()
 
         sol = fs_e.solution
-        # Storage dispatch varies by solver — check charge_state is non-trivial
-        assert float(np.nansum(sol['S|charge_state'].values)) > 0
+        # Gas price and boiler efficiency are flat, so storage earns nothing and its
+        # dispatch is degenerate: every cycling depth (including none) is optimal, and
+        # which one the solver lands on shifts with solver and linopy version. Assert
+        # the expansion produced a usable charge_state, not one arbitrary optimum.
+        charge_state = sol['S|charge_state'].values
+        assert charge_state.shape == (N_HOURS + 1,)
+        assert np.isfinite(charge_state).all()
         # Net discharge should be ~0 (balanced storage)
         assert float(np.nansum(sol['S|netto_discharge'].values)) == pytest.approx(0, abs=1e-4)
 
