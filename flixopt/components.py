@@ -843,15 +843,14 @@ class TransmissionModel(ComponentModel):
         """Creates an Equation for the Transmission efficiency and adds it to the model"""
         # eq: out(t) + on(t)*loss_abs(t) = in(t)*(1 - loss_rel(t))
         rel_losses = 0 if self.element.relative_losses is None else self.element.relative_losses
-        con_transmission = self.add_constraints(
-            out_flow.submodel.flow_rate == in_flow.submodel.flow_rate * (1 - rel_losses),
+        lhs = out_flow.submodel.flow_rate
+        if (self.element.absolute_losses is not None) and np.any(self.element.absolute_losses != 0):
+            lhs = lhs + in_flow.submodel.status.status * self.element.absolute_losses
+
+        return self.add_constraints(
+            lhs == in_flow.submodel.flow_rate * (1 - rel_losses),
             short_name=name,
         )
-
-        if (self.element.absolute_losses is not None) and np.any(self.element.absolute_losses != 0):
-            con_transmission.lhs += in_flow.submodel.status.status * self.element.absolute_losses
-
-        return con_transmission
 
 
 class LinearConverterModel(ComponentModel):
@@ -974,7 +973,7 @@ class StorageModel(ComponentModel):
         """For 'cyclic' cluster mode: each cluster's start equals its end."""
         if self._model.flow_system.clusters is not None and self.element.cluster_mode == 'cyclic':
             self.add_constraints(
-                self.charge_state.isel(time=0) == self.charge_state.isel(time=-2),
+                self.charge_state.isel(time=0, drop=True) == self.charge_state.isel(time=-2, drop=True),
                 short_name='cluster_cyclic',
             )
 
@@ -1018,7 +1017,7 @@ class StorageModel(ComponentModel):
         if self.element.initial_charge_state is not None:
             if isinstance(self.element.initial_charge_state, str):
                 self.add_constraints(
-                    self.charge_state.isel(time=0) == self.charge_state.isel(time=-1),
+                    self.charge_state.isel(time=0, drop=True) == self.charge_state.isel(time=-1, drop=True),
                     short_name='initial_charge_state',
                 )
             else:
@@ -1072,8 +1071,10 @@ class StorageModel(ComponentModel):
         eff_charge = self.element.eta_charge
         eff_discharge = self.element.eta_discharge
 
+        # charge_state[t+1] via shift(-1); the `.isel(time=slice(None, -1))` on the
+        # shifted term is a legacy-only boundary drop (v1 masks it natively).
         return (
-            charge_state.isel(time=slice(1, None))
+            charge_state.shift(time=-1).isel(time=slice(None, -1))
             - charge_state.isel(time=slice(None, -1)) * ((1 - rel_loss) ** timestep_duration)
             - charge_rate * eff_charge * timestep_duration
             + discharge_rate * timestep_duration / eff_discharge
@@ -1415,7 +1416,8 @@ class InterclusterStorageModel(StorageModel):
         # 6. Add cyclic or initial constraint
         if self.element.cluster_mode == 'intercluster_cyclic':
             self.add_constraints(
-                soc_boundary.isel(cluster_boundary=0) == soc_boundary.isel(cluster_boundary=n_original_clusters),
+                soc_boundary.isel(cluster_boundary=0, drop=True)
+                == soc_boundary.isel(cluster_boundary=n_original_clusters, drop=True),
                 short_name='cyclic',
             )
         else:
@@ -1425,13 +1427,13 @@ class InterclusterStorageModel(StorageModel):
                 if isinstance(initial, str):
                     # 'equals_final' means cyclic
                     self.add_constraints(
-                        soc_boundary.isel(cluster_boundary=0)
-                        == soc_boundary.isel(cluster_boundary=n_original_clusters),
+                        soc_boundary.isel(cluster_boundary=0, drop=True)
+                        == soc_boundary.isel(cluster_boundary=n_original_clusters, drop=True),
                         short_name='initial_SOC_boundary',
                     )
                 else:
                     self.add_constraints(
-                        soc_boundary.isel(cluster_boundary=0) == initial,
+                        soc_boundary.isel(cluster_boundary=0, drop=True) == initial,
                         short_name='initial_SOC_boundary',
                     )
 
@@ -1482,7 +1484,7 @@ class InterclusterStorageModel(StorageModel):
             DataArray with 'cluster' dimension containing delta_SOC for each cluster.
         """
         # With 2D structure: result already has cluster dimension
-        return self.charge_state.isel(time=-1) - self.charge_state.isel(time=0)
+        return self.charge_state.isel(time=-1, drop=True) - self.charge_state.isel(time=0, drop=True)
 
     def _add_linking_constraints(
         self,
@@ -1595,7 +1597,7 @@ class InterclusterStorageModel(StorageModel):
 
         for sample_name, offset in zip(['start', 'mid', 'end'], sample_offsets, strict=False):
             # With 2D structure: select time offset, then reorder by cluster_assignments
-            cs_at_offset = charge_state.isel(time=offset)  # Shape: (cluster, ...)
+            cs_at_offset = charge_state.isel(time=offset, drop=True)  # Shape: (cluster, ...)
             # Reorder to original_cluster order using cluster_assignments indexer
             cs_t = cs_at_offset.isel(cluster=cluster_assignments)
             # Suppress xarray warning about index loss - we immediately assign new coords anyway
@@ -1607,7 +1609,7 @@ class InterclusterStorageModel(StorageModel):
             # Apply decay factor (1-loss)^hours to SOC_boundary per Eq. 9
             # Convert timestep offset to hours using cumulative duration for non-uniform timesteps
             if cumulative_hours is not None:
-                hours_offset = cumulative_hours.isel(time=offset)
+                hours_offset = cumulative_hours.isel(time=offset, drop=True)
             else:
                 hours_offset = offset * mean_timestep_duration
             decay_t = (1 - rel_loss) ** hours_offset

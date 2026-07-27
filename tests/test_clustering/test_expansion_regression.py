@@ -93,8 +93,13 @@ class TestNonSegmentedExpansion:
         fs_e = fs_c.transform.expand()
 
         sol = fs_e.solution
-        # Storage dispatch varies by solver — check charge_state is non-trivial
-        assert float(np.nansum(sol['S|charge_state'].values)) > 0
+        # The inter-cluster SOC level is unpinned (no explicit capacity bound), so its
+        # absolute value is degenerate and solver-dependent — an all-zero SOC is a valid
+        # optimum. Assert the determinate invariants instead: SOC stays finite and within
+        # its non-negative bound, and net discharge balances to ~0. See issue #733.
+        cs = sol['S|charge_state'].values
+        assert np.all(np.isfinite(cs))
+        assert float(np.nanmin(cs)) >= -1e-5
         # Net discharge should be ~0 (balanced storage)
         assert float(np.nansum(sol['S|netto_discharge'].values)) == pytest.approx(0, abs=1e-4)
 

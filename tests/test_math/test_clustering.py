@@ -340,7 +340,11 @@ class TestClusteringExact:
         assert charge_state.dims == ('cluster', 'time')
         cs_c0 = charge_state.isel(cluster=0).values[:5]
         cs_c1 = charge_state.isel(cluster=1).values[:5]
-        assert_allclose(cs_c0, [50, 50, 0, 50, 0], atol=1e-5)
-        assert_allclose(cs_c1, [100, 100, 50, 100, 50], atol=1e-5)
+        # In 'cyclic' cluster mode the absolute SOC level of each cluster is unpinned
+        # (only the per-step change is fixed by the charge/discharge flows), so the
+        # solution is degenerate in the level and solver-dependent — assert the
+        # determinate charge/discharge dynamics instead. See issue #733.
+        assert_allclose(np.diff(cs_c0), [0, -50, 50, -50], atol=1e-5)
+        assert_allclose(np.diff(cs_c1), [0, -50, 50, -50], atol=1e-5)
 
         assert_allclose(fs.solution['objective'].item(), 100.0, rtol=1e-5)

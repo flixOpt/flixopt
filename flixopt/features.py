@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import linopy
 import numpy as np
 
-from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
+from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities, _set_constraint_lhs
 from .structure import FlowSystemModel, Submodel, VariableCategory
 
 if TYPE_CHECKING:
@@ -91,8 +91,10 @@ class InvestmentModel(Submodel):
 
         if self.parameters.linked_periods is not None:
             masked_size = self.size.where(self.parameters.linked_periods, drop=True)
+            # size[p] == size[p+1]; size[p+1] via shift(-1). The `.isel(period=slice(None, -1))`
+            # on the shifted term is a legacy-only boundary drop (v1 masks it natively).
             self.add_constraints(
-                masked_size.isel(period=slice(None, -1)) == masked_size.isel(period=slice(1, None)),
+                masked_size.isel(period=slice(None, -1)) == masked_size.shift(period=-1).isel(period=slice(None, -1)),
                 short_name='linked_periods',
             )
 
@@ -236,7 +238,9 @@ class StatusModel(Submodel):
             )
 
             # Determine previous_state: None means relaxed (no constraint at t=0)
-            previous_state = self._previous_status.isel(time=-1) if self._previous_status is not None else None
+            previous_state = (
+                self._previous_status.isel(time=-1, drop=True) if self._previous_status is not None else None
+            )
 
             BoundingPatterns.state_transition_bounds(
                 self,
@@ -295,7 +299,7 @@ class StatusModel(Submodel):
         """For 'cyclic' cluster mode: each cluster's start status equals its end status."""
         if self._model.flow_system.clusters is not None and self.parameters.cluster_mode == 'cyclic':
             self.add_constraints(
-                self.status.isel(time=0) == self.status.isel(time=-1),
+                self.status.isel(time=0, drop=True) == self.status.isel(time=-1, drop=True),
                 short_name='cluster_cyclic',
             )
 
@@ -664,7 +668,9 @@ class ShareAllocationModel(Submodel):
             # Add it to the total (cluster_weight handles cluster representation, defaults to 1.0)
             # Sum over all temporal dimensions (time, and cluster if present)
             weighted_per_timestep = self.total_per_timestep * self._model.weights.get('cluster', 1.0)
-            self._eq_total.lhs -= weighted_per_timestep.sum(dim=self._model.temporal_dims)
+            _set_constraint_lhs(
+                self._eq_total, self._eq_total.lhs - weighted_per_timestep.sum(dim=self._model.temporal_dims)
+            )
 
     def add_share(
         self,
@@ -694,7 +700,7 @@ class ShareAllocationModel(Submodel):
                 raise ValueError('Cannot add share with scenario-dim to a model without scenario-dim')
 
         if name in self.shares:
-            self.share_constraints[name].lhs -= expression
+            _set_constraint_lhs(self.share_constraints[name], self.share_constraints[name].lhs - expression)
         else:
             # Temporal shares (with 'time' dim) are segment totals that need division
             category = VariableCategory.SHARE if 'time' in dims else None
@@ -710,6 +716,6 @@ class ShareAllocationModel(Submodel):
             )
 
             if 'time' not in dims:
-                self._eq_total.lhs -= self.shares[name]
+                _set_constraint_lhs(self._eq_total, self._eq_total.lhs - self.shares[name])
             else:
-                self._eq_total_per_timestep.lhs -= self.shares[name]
+                _set_constraint_lhs(self._eq_total_per_timestep, self._eq_total_per_timestep.lhs - self.shares[name])
