@@ -88,7 +88,7 @@ class _ReducedFlowSystemBuilder:
         Returns:
             DataArray with dims [cluster, period?, scenario?].
         """
-        return self._unrename(self._agg_result.cluster_weights.rename('cluster_weight'))
+        return self._unrename(self._agg_result.cluster_counts.rename('cluster_weight'))
 
     def build_typical_periods(self) -> dict[str, xr.DataArray]:
         """Build typical periods DataArrays with (cluster, time, ...) shape.
