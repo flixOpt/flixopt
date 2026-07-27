@@ -17,7 +17,13 @@ from .core import PlausibilityError
 from .elements import Component, ComponentModel, Flow
 from .features import InvestmentModel, PiecewiseModel
 from .interface import InvestParameters, PiecewiseConversion, StatusParameters
-from .modeling import BoundingPatterns, _scalar_safe_isel, _scalar_safe_isel_drop, _scalar_safe_reduce
+from .modeling import (
+    BoundingPatterns,
+    _scalar_safe_isel,
+    _scalar_safe_isel_drop,
+    _scalar_safe_reduce,
+    _set_constraint_lhs,
+)
 from .structure import FlowSystemModel, VariableCategory, register_class_for_io
 
 if TYPE_CHECKING:
@@ -849,7 +855,10 @@ class TransmissionModel(ComponentModel):
         )
 
         if (self.element.absolute_losses is not None) and np.any(self.element.absolute_losses != 0):
-            con_transmission.lhs += in_flow.submodel.status.status * self.element.absolute_losses
+            _set_constraint_lhs(
+                con_transmission,
+                con_transmission.lhs + in_flow.submodel.status.status * self.element.absolute_losses,
+            )
 
         return con_transmission
 
