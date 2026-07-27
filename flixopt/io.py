@@ -1865,75 +1865,52 @@ class FlowSystemDatasetIO:
     ) -> dict[str, Any]:
         """Convert a pre-7.0 ``clustering.results`` blob to the current schema.
 
-        Files written before flixopt 7.0 stored the clustering under a ``results``
-        key holding ``{'dim_names': [...], 'results': {key: tsam_blob}}``, where the
-        keys are the slice coordinates joined into a string (``'__single__'`` when
+        Files written before flixopt 7.0 stored the clustering as
+        ``{'dim_names': [...], 'results': {key: tsam_blob}}``, keyed by the slice
+        coordinates joined into a string (``'2030|low'``, or ``'__single__'`` when
         undivided). ``Clustering`` now expects a ``clustering_result`` matching
         ``tsam_xarray.ClusteringResult.from_dict``, which takes a list of
-        ``{'key': [...], 'clustering': tsam_blob}`` entries. The per-slice tsam blobs
-        themselves are unchanged, so only the surrounding structure is rewritten.
+        ``{'key': [...], 'clustering': tsam_blob}`` entries and indexes them by the
+        coordinate values themselves -- so ``'2030'`` has to become the integer 2030
+        or every lookup silently misses. The values are recovered by matching against
+        the coordinates already restored on ``flow_system``, rather than by guessing a
+        type, so labels that merely look numeric survive unchanged.
 
-        Args:
-            clustering_structure: Deserialized ``clustering`` attribute.
-            flow_system: Partially restored FlowSystem, used to recover the original
-                dtype of the slice coordinates that the legacy keys stringified.
-
-        Returns:
-            The structure, converted in place when it used the legacy layout.
+        The per-slice tsam blobs are identical between the two layouts; only the
+        structure around them is rewritten.
         """
         if 'clustering_result' in clustering_structure or 'results' not in clustering_structure:
             return clustering_structure
 
         legacy = clustering_structure.pop('results')
-        legacy_dims = list(legacy.get('dim_names') or [])
+        dims = list(legacy.get('dim_names') or [])
 
-        clusterings = [
-            {
-                'key': cls._restore_legacy_clustering_key(key, legacy_dims, flow_system),
-                'clustering': blob,
-            }
-            for key, blob in legacy.get('results', {}).items()
-        ]
+        lookups = []
+        for dim in dims:
+            index = getattr(flow_system, f'{dim}s', None)
+            values = [] if index is None else list(index)
+            # .item() unwraps numpy scalars so the keys stay plain Python values
+            lookups.append({str(value): value.item() if hasattr(value, 'item') else value for value in values})
+
+        clusterings = []
+        for key, blob in legacy.get('results', {}).items():
+            # Split only when several dims share the key, so single-dim labels
+            # containing the separator stay intact.
+            parts = key.split(cls.LEGACY_KEY_SEPARATOR) if len(dims) > 1 else [key]
+            clusterings.append(
+                {
+                    'key': [lookup.get(part, part) for lookup, part in zip(lookups, parts, strict=False)],
+                    'clustering': blob,
+                }
+            )
 
         clustering_structure['clustering_result'] = {
             'time_dim': 'time',
             'cluster_dim': ['variable'],
-            'slice_dims': [cls.LEGACY_SLICE_DIM_RENAMES.get(dim, dim) for dim in legacy_dims],
+            'slice_dims': [cls.LEGACY_SLICE_DIM_RENAMES.get(dim, dim) for dim in dims],
             'clusterings': clusterings,
         }
         return clustering_structure
-
-    @staticmethod
-    def _restore_legacy_clustering_key(
-        key: str,
-        legacy_dims: list[str],
-        flow_system: FlowSystem,
-    ) -> list[Any]:
-        """Turn a stringified legacy clustering key back into coordinate values.
-
-        Legacy keys are strings ('2030', '2030|lo'), but the current schema indexes
-        clusterings by the coordinate values themselves, so '2030' has to become the
-        integer 2030 to match a period index. The value is recovered by matching
-        against the restored coordinate rather than guessing a type, so labels that
-        merely look numeric survive unchanged.
-        """
-        if not legacy_dims:
-            return []
-
-        # Only split when several dims share the key, so single-dim labels
-        # containing the separator stay intact.
-        parts = key.split(FlowSystemDatasetIO.LEGACY_KEY_SEPARATOR) if len(legacy_dims) > 1 else [key]
-
-        restored: list[Any] = []
-        for dim, part in zip(legacy_dims, parts, strict=False):
-            index = getattr(flow_system, f'{dim}s', None)
-            match = next((value for value in index if str(value) == part), None) if index is not None else None
-            if match is None:
-                restored.append(part)
-            else:
-                # numpy scalars would keep the key untypeable for later lookups
-                restored.append(match.item() if hasattr(match, 'item') else match)
-        return restored
 
     @staticmethod
     def _restore_metadata(
