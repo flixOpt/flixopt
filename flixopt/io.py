@@ -1846,12 +1846,94 @@ class FlowSystemDatasetIO:
         # such files remain loadable.
         clustering_structure.pop('_original_data_refs', None)
         clustering_structure.pop('_metrics_refs', None)
+        clustering_structure = cls._migrate_legacy_clustering_result(clustering_structure, flow_system)
         clustering = fs_cls._resolve_reference_structure(clustering_structure, {})
         flow_system.clustering = clustering
 
         # Restore cluster_weight from clustering's cluster_occurrences
         if hasattr(clustering, 'cluster_occurrences'):
             flow_system.cluster_weight = clustering.cluster_occurrences.rename('cluster_weight')
+
+    LEGACY_SLICE_DIM_RENAMES = {'period': '_period', 'cluster': '_cluster'}
+    LEGACY_KEY_SEPARATOR = '|'
+
+    @classmethod
+    def _migrate_legacy_clustering_result(
+        cls,
+        clustering_structure: dict[str, Any],
+        flow_system: FlowSystem,
+    ) -> dict[str, Any]:
+        """Convert a pre-7.0 ``clustering.results`` blob to the current schema.
+
+        Files written before flixopt 7.0 stored the clustering under a ``results``
+        key holding ``{'dim_names': [...], 'results': {key: tsam_blob}}``, where the
+        keys are the slice coordinates joined into a string (``'__single__'`` when
+        undivided). ``Clustering`` now expects a ``clustering_result`` matching
+        ``tsam_xarray.ClusteringResult.from_dict``, which takes a list of
+        ``{'key': [...], 'clustering': tsam_blob}`` entries. The per-slice tsam blobs
+        themselves are unchanged, so only the surrounding structure is rewritten.
+
+        Args:
+            clustering_structure: Deserialized ``clustering`` attribute.
+            flow_system: Partially restored FlowSystem, used to recover the original
+                dtype of the slice coordinates that the legacy keys stringified.
+
+        Returns:
+            The structure, converted in place when it used the legacy layout.
+        """
+        if 'clustering_result' in clustering_structure or 'results' not in clustering_structure:
+            return clustering_structure
+
+        legacy = clustering_structure.pop('results')
+        legacy_dims = list(legacy.get('dim_names') or [])
+
+        clusterings = [
+            {
+                'key': cls._restore_legacy_clustering_key(key, legacy_dims, flow_system),
+                'clustering': blob,
+            }
+            for key, blob in legacy.get('results', {}).items()
+        ]
+
+        clustering_structure['clustering_result'] = {
+            'time_dim': 'time',
+            'cluster_dim': ['variable'],
+            'slice_dims': [cls.LEGACY_SLICE_DIM_RENAMES.get(dim, dim) for dim in legacy_dims],
+            'clusterings': clusterings,
+        }
+        return clustering_structure
+
+    @staticmethod
+    def _restore_legacy_clustering_key(
+        key: str,
+        legacy_dims: list[str],
+        flow_system: FlowSystem,
+    ) -> list[Any]:
+        """Turn a stringified legacy clustering key back into coordinate values.
+
+        Legacy keys are strings ('2030', '2030|lo'), but the current schema indexes
+        clusterings by the coordinate values themselves, so '2030' has to become the
+        integer 2030 to match a period index. The value is recovered by matching
+        against the restored coordinate rather than guessing a type, so labels that
+        merely look numeric survive unchanged.
+        """
+        if not legacy_dims:
+            return []
+
+        # Only split when several dims share the key, so single-dim labels
+        # containing the separator stay intact.
+        parts = key.split(FlowSystemDatasetIO.LEGACY_KEY_SEPARATOR) if len(legacy_dims) > 1 else [key]
+
+        restored: list[Any] = []
+        for dim, part in zip(legacy_dims, parts, strict=False):
+            index = getattr(flow_system, f'{dim}s', None)
+            match = next((value for value in index if str(value) == part), None) if index is not None else None
+            if match is None:
+                restored.append(part)
+            else:
+                # numpy scalars would keep the key untypeable for later lookups
+                restored.append(match.item() if hasattr(match, 'item') else match)
+        return restored
 
     @staticmethod
     def _restore_metadata(
