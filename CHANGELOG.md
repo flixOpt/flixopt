@@ -11,6 +11,25 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ---
 
+## [8.0.0](https://github.com/flixOpt/flixopt/compare/v7.2.1...v8.0.0) (2026-07-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* the serialized clustering format changed - slice dims are now stored as 'period' (was '_period') plus a new 'dim_names' key. Clustering artifacts saved to JSON/netCDF by an older flixopt no longer load for apply_clustering()/expand() in this version; re-run transform.cluster() to regenerate them. Fresh clustering and same-version round-trips are unaffected. Also raises the minimum tsam_xarray to 0.6.4.
+
+### Bug Fixes
+
+* dimension-aware effect-total consistency check ([#745](https://github.com/flixOpt/flixopt/issues/745)) ([2b2720c](https://github.com/flixOpt/flixopt/commit/2b2720c20b5d19f3935759904f2b9199e466493a))
+* load clustered NetCDF files written before flixopt 7.0 ([#757](https://github.com/flixOpt/flixopt/issues/757)) ([f8e53bd](https://github.com/flixOpt/flixopt/commit/f8e53bddcc2c844178ee557ad19568f8886e22af))
+* load pre-7.0 clustered NetCDF files with legacy original_data refs ([#742](https://github.com/flixOpt/flixopt/issues/742)) ([6962e5e](https://github.com/flixOpt/flixopt/commit/6962e5e066c2f251ed5768a4804b5fe5185aa689))
+* support linopy 0.9.0 ([#758](https://github.com/flixOpt/flixopt/issues/758)) ([051480b](https://github.com/flixOpt/flixopt/commit/051480b9af70933edf6afb24bfeef8e0aa7e0c10))
+
+
+### Code Refactoring
+
+* drop clustering dim-rename layer via tsam-xarray DimNames ([#739](https://github.com/flixOpt/flixopt/issues/739)) ([cc56774](https://github.com/flixOpt/flixopt/commit/cc56774d31e05d637ee40424ec64af276716cc2f))
+
 ## [7.2.1](https://github.com/flixOpt/flixopt/compare/v7.2.0...v7.2.1) (2026-07-21)
 
 
