@@ -16,6 +16,10 @@ on:
     branches: ["**"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: read  # `changes` reads the PR's file list via gh
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -45,9 +49,14 @@ jobs:
             echo 'source=true' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          paths=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json files --jq '.files[].path')
-          # Treat an unreadable or truncated listing as a source change, so a
-          # detection failure costs a test run rather than skipping one.
+          # Treat a failed, empty or truncated listing as a source change, so a
+          # detection failure costs a test run rather than skipping one. The guard
+          # is required: steps run under `bash -e`, where a failing command
+          # substitution aborts the step instead of falling through.
+          if ! paths=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json files --jq '.files[].path'); then
+            echo 'source=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [[ -z "$paths" ]] || grep -qE '^(flixopt/|tests/|pyproject\.toml$|\.github/workflows/)' <<< "$paths"; then
             echo 'source=true' >> "$GITHUB_OUTPUT"
           else
