@@ -87,7 +87,7 @@ full = [
 # Development tools and testing
 dev = [
     "xarray<2026.8",  # TODO: drop once linopy ships xarray 2026.3+ compat fix
-    "tsam_xarray==0.6.5",  # Time series aggregation for clustering (wraps tsam)
+    "tsam_xarray==0.6.6",  # Time series aggregation for clustering (wraps tsam)
     "tsam==3.4.0",  # Directly imported for ClusterConfig, ExtremeConfig, SegmentConfig
     "pytest==9.1.1",
     "pytest-xdist==3.8.0",
