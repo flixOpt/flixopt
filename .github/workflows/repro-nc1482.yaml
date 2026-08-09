@@ -1,0 +1,44 @@
+name: Repro netcdf4-python#1482
+
+# Throwaway investigation workflow: netCDF4 raises PermissionError when a
+# directory component of the path contains non-ASCII characters, on Windows.
+# macOS/Linux are reported unaffected, so this needs a Windows runner - the
+# regular test matrix is ubuntu-only. Manual trigger only.
+# https://github.com/Unidata/netcdf4-python/issues/1482
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repro:
+    name: ${{ matrix.os }} / netcdf4 ${{ matrix.netcdf4 }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    continue-on-error: true  # a reproduced failure is a result, not a broken run
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-24.04]
+        netcdf4: ['1.7.2', '1.7.3', '1.7.4']
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.10.9"
+          enable-cache: true
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          uv pip install --system .
+          uv pip install --system "netcdf4==${{ matrix.netcdf4 }}" h5netcdf
+
+      - name: Reproduce
+        run: python scripts/repro_nc1482.py
