@@ -81,9 +81,9 @@ jobs:
             h5netcdf
             h5py
 
+      # `micromamba-shell` is not generated on Windows, so invoke the env directly.
       - name: Reproduce
-        shell: micromamba-shell {0}
         env:
           PYTHONUTF8: "1"
           PYTHONIOENCODING: utf-8
-        run: python scripts/repro_nc1482.py
+        run: micromamba run -n nc1482 python scripts/repro_nc1482.py
