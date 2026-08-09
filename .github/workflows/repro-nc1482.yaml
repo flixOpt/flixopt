@@ -43,12 +43,46 @@ jobs:
       - name: Install
         run: |
           uv pip install --system .
-          uv pip install --system "netcdf4==${{ matrix.netcdf4 }}" h5netcdf
+          uv pip install --system "netcdf4==${{ matrix.netcdf4 }}" h5netcdf h5py
 
       - name: Reproduce
         # Windows stdout defaults to cp1252, which cannot encode the paths under
         # test - without this the first failure dies in print() instead of being
         # reported, taking the remaining cases with it.
+        env:
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: utf-8
+        run: python scripts/repro_nc1482.py
+
+  # The PyPI wheels bundle netcdf-C 4.9.2/4.9.3 only. The maintainer asked for a
+  # retest against 4.10.1, which on Windows means conda-forge.
+  conda:
+    name: windows / conda-forge libnetcdf ${{ matrix.libnetcdf }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        libnetcdf: ['4.9.3', '4.10.0', '4.10.1']
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: nc1482
+          condarc: |
+            channels: [conda-forge]
+          create-args: >-
+            python=3.11
+            netcdf4=1.7.4
+            libnetcdf=${{ matrix.libnetcdf }}
+            xarray
+            h5netcdf
+            h5py
+
+      - name: Reproduce
+        shell: micromamba-shell {0}
         env:
           PYTHONUTF8: "1"
           PYTHONIOENCODING: utf-8

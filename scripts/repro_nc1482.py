@@ -19,8 +19,12 @@ import netCDF4
 import numpy as np
 import xarray as xr
 
-import flixopt as fx
-from flixopt import io as fx_io
+try:
+    import flixopt as fx
+    from flixopt import io as fx_io
+except ImportError:  # pure-netCDF4 environments (e.g. the conda-forge matrix)
+    fx = None
+    fx_io = None
 
 
 def _dataset() -> xr.Dataset:
@@ -51,7 +55,7 @@ def main() -> int:
     print(f'netCDF4      : {netCDF4.__version__}')
     print(f'libnetcdf    : {netCDF4.__netcdf4libversion__}')
     print(f'xarray       : {xr.__version__}')
-    print(f'flixopt      : {fx.__version__}')
+    print(f'flixopt      : {fx.__version__ if fx is not None else "not installed"}')
     print()
 
     ds = _dataset()
@@ -82,12 +86,15 @@ def main() -> int:
             lambda: xr.load_dataset(str(uni_dir / 'xr.nc'), engine='netcdf4'),
         )
 
-        ok &= _case(
-            'umlaut dir / fx save_dataset_to_netcdf', lambda: fx_io.save_dataset_to_netcdf(ds, uni_dir / 'fx.nc')
-        )
-        ok &= _case(
-            'umlaut dir / fx load_dataset_from_netcdf', lambda: fx_io.load_dataset_from_netcdf(uni_dir / 'fx.nc')
-        )
+        if fx_io is None:
+            _print('skip  umlaut dir / fx save+load (flixopt not installed)')
+        else:
+            ok &= _case(
+                'umlaut dir / fx save_dataset_to_netcdf', lambda: fx_io.save_dataset_to_netcdf(ds, uni_dir / 'fx.nc')
+            )
+            ok &= _case(
+                'umlaut dir / fx load_dataset_from_netcdf', lambda: fx_io.load_dataset_from_netcdf(uni_dir / 'fx.nc')
+            )
 
         # Comparison engine - reported to handle the same paths fine.
         try:
