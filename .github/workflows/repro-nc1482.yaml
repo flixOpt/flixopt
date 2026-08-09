@@ -3,10 +3,15 @@ name: Repro netcdf4-python#1482
 # Throwaway investigation workflow: netCDF4 raises PermissionError when a
 # directory component of the path contains non-ASCII characters, on Windows.
 # macOS/Linux are reported unaffected, so this needs a Windows runner - the
-# regular test matrix is ubuntu-only. Manual trigger only.
+# regular test matrix is ubuntu-only.
 # https://github.com/Unidata/netcdf4-python/issues/1482
+#
+# Push-triggered on this branch only: workflow_dispatch is not selectable until
+# the file lands on the default branch.
 
 on:
+  push:
+    branches: [ci/repro-nc1482]
   workflow_dispatch:
 
 permissions:
