@@ -46,4 +46,10 @@ jobs:
           uv pip install --system "netcdf4==${{ matrix.netcdf4 }}" h5netcdf
 
       - name: Reproduce
+        # Windows stdout defaults to cp1252, which cannot encode the paths under
+        # test - without this the first failure dies in print() instead of being
+        # reported, taking the remaining cases with it.
+        env:
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: utf-8
         run: python scripts/repro_nc1482.py

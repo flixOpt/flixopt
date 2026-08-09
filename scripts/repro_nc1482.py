@@ -27,13 +27,19 @@ def _dataset() -> xr.Dataset:
     return xr.Dataset({'a': ('time', np.arange(5.0))}, coords={'time': np.arange(5)})
 
 
+def _print(line: str) -> None:
+    """Never let a console that cannot encode the path under test kill the run."""
+    enc = sys.stdout.encoding or 'ascii'
+    sys.stdout.write(line.encode(enc, 'backslashreplace').decode(enc) + '\n')
+
+
 def _case(name: str, fn) -> bool:
     try:
         fn()
     except Exception as e:  # noqa: BLE001 - we want the type name in the report
-        print(f'FAIL  {name}: {type(e).__name__}: {e}')
+        _print(f'FAIL  {name}: {type(e).__name__}: {e}')
         return False
-    print(f'ok    {name}')
+    _print(f'ok    {name}')
     return True
 
 
@@ -41,6 +47,7 @@ def main() -> int:
     print(f'platform     : {platform.platform()}')
     print(f'python       : {sys.version.split()[0]}')
     print(f'filesystem   : {sys.getfilesystemencoding()}')
+    print(f'stdout       : {sys.stdout.encoding}  (utf8_mode={sys.flags.utf8_mode})')
     print(f'netCDF4      : {netCDF4.__version__}')
     print(f'libnetcdf    : {netCDF4.__netcdf4libversion__}')
     print(f'xarray       : {xr.__version__}')
