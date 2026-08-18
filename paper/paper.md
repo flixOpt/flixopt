@@ -38,7 +38,7 @@ bibliography: paper.bib
 
 Flixopt is an open-source Python framework for the mixed-integer linear optimization of systems with energy and material flows. It addresses the growing complexity of modern supply systems, characterized by fluctuating renewables, sector coupling, storage integration, and diverse technology portfolios, by providing a general, extensible, and vectorized modeling architecture. Built on the linear optimization package Linopy [@Hofmann2023], Flixopt allows users to represent system topologies flexibly, configure operational and investment decisions, and evaluate multiple metrics through its novel *Effects* concept. While it was developed primarily for energy-system studies such as heat supply systems, the framework is domain-agnostic and suitable for any flow-based system where modular modeling and transparency are essential.
 
-## Statement of Need
+## Statement of Need and state of field
 Existing energy system modeling frameworks, as surveyed in [@HOFFMANN2024100190], are often tailored to particular use cases, have limited flexibility for extensions, exhibit inflexible handling of timesteps, or do not support evaluation metrics beyond monetary costs. These limitations highlight the need for more flexible, framework-based modeling tools capable of addressing diverse research questions. 
 Beyond flexibility in scope, the efficient handling of equations in vector form has become a key requirement, as it supports rigorous mathematical modeling, enhances computational performance, and improves transparency and manageability of the model's equation system [@PyPSA].
 
@@ -52,7 +52,7 @@ Flixopt fills this gap by enabling:
 
 Flixopt is designed for broad applicability across various disciplines, encompassing research questions and practical tasks ranging from operational dispatch to strategic planning.
 
-## Software Description
+## Software Design
 
 The Flixopt package follows a three-step workflow: initialization, modeling and solving, and postprocessing of results as illustrated in \autoref{fig:architecture}. Users begin by defining a flow system, specifying the network topology and all element parameters. The flow system describes the structural representation of a physical system to be modeled. It consists of Flows, Components, and Buses, following the design proposed in [@oemof_2020]. Based on any chosen subset of the flow system, one or more calculation setups can then be configured.
 During modeling, Flixopt constructs the optimization problem in a fully vectorized manner using Linopy. After solving, Flixopt provides a postprocessing environment that yields structured access to results, facilitates visualization and statistical analysis, and enables saving and restoring complete solution states.
@@ -95,9 +95,14 @@ Flixopt introduces a freely definable system of evaluation metrics called *Effec
 
 Periods typically refer to multi-year time segments within a long-term planning horizon. Periods are employed to structure the model across several years, specifically by modeling investment or transformation stages. This enables the representation of system evolution over time, including capacity expansion, technology diffusion, or changing boundary conditions, while keeping the optimization problem tractable. Scenarios, in contrast, describe alternative assumptions about external developments or system configurations within one period. Scenarios enable the structured comparison of different futures, such as varying fuel prices, policy settings, technology costs, or demand trajectories, within a consistent modeling framework. The use of scenarios thereby supports robust decision-making under varying assumptions. Periods and scenarios can be combined in one model, which is illustrated in \ref{fig:scen_and_periods}.
 
-## Acknowledgements
+## Research impact statement
+widely used in research projects (DigiHast, KI-Sken), has become a main strategic decision tool for district heating investment planning for a Energieversorger in Germany [Reference]. Furthermore it is used in studentische Arbeiten (Referenzen,...). 
 
+## Acknowledgements
 Flixopt was originally developed at [TU Dresden](https://github.com/gewv-tu-dresden) for the SMARTBIOGRID project (funded by the German Federal Ministry for Economic Affairs and Energy, FKZ: 03KB159B).
+
+# AI usage disclosure
+
 
 # References
 * todo: Prüfen, dass möglichst alle Literaturquellen verwendet 
