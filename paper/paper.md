@@ -103,6 +103,6 @@ Flixopt was originally developed at [TU Dresden](https://github.com/gewv-tu-dres
 
 # AI usage disclosure
 AI tools were used to support the ongoing development of FlixOpt and its documentation. Claude and ChatGPT were used for code generation, refactoring, debugging and documentation, while CodeRabbit AI was used for code review. All AI-assisted changes were reviewed and tested by the developers.
-The fundamental architecture and core design of FlixOpt were developed before the emergence of publicly available generative AI tools such as ChatGPT [@PanitzStange2022].
+The fundamental architecture and core design of FlixOpt [@PanitzStange2022] were developed before the emergence of publicly available generative AI tools such as ChatGPT .
 
 # References
