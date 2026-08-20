@@ -6,11 +6,65 @@ into a label-to-color mapping dictionary, without needing to know about the plot
 
 from __future__ import annotations
 
+import logging
+
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import plotly.express as px
-from loguru import logger
 from plotly.exceptions import PlotlyError
+
+logger = logging.getLogger('flixopt')
+
+# Type alias for flexible color input
+ColorType = str | list[str] | dict[str, str]
+"""Flexible color specification type supporting multiple input formats for visualization.
+
+Color specifications can take several forms to accommodate different use cases:
+
+**Named colorscales** (str):
+    - Standard colorscales: 'turbo', 'plasma', 'cividis', 'tab10', 'Set1'
+    - Energy-focused: 'portland' (custom flixopt colorscale for energy systems)
+    - Backend-specific maps available in Plotly and Matplotlib
+
+**Color Lists** (list[str]):
+    - Explicit color sequences: ['red', 'blue', 'green', 'orange']
+    - HEX codes: ['#FF0000', '#0000FF', '#00FF00', '#FFA500']
+    - Mixed formats: ['red', '#0000FF', 'green', 'orange']
+
+**Label-to-Color Mapping** (dict[str, str]):
+    - Explicit associations: {'Wind': 'skyblue', 'Solar': 'gold', 'Gas': 'brown'}
+    - Ensures consistent colors across different plots and datasets
+    - Ideal for energy system components with semantic meaning
+
+Examples:
+    ```python
+    # Named colorscale
+    colors = 'turbo'  # Automatic color generation
+
+    # Explicit color list
+    colors = ['red', 'blue', 'green', '#FFD700']
+
+    # Component-specific mapping
+    colors = {
+        'Wind_Turbine': 'skyblue',
+        'Solar_Panel': 'gold',
+        'Natural_Gas': 'brown',
+        'Battery': 'green',
+        'Electric_Load': 'darkred'
+    }
+    ```
+
+Color Format Support:
+    - **Named Colors**: 'red', 'blue', 'forestgreen', 'darkorange'
+    - **HEX Codes**: '#FF0000', '#0000FF', '#228B22', '#FF8C00'
+    - **RGB Tuples**: (255, 0, 0), (0, 0, 255) [Matplotlib only]
+    - **RGBA**: 'rgba(255,0,0,0.8)' [Plotly only]
+
+References:
+    - HTML Color Names: https://htmlcolorcodes.com/color-names/
+    - Matplotlib colorscales: https://matplotlib.org/stable/tutorials/colors/colorscales.html
+    - Plotly Built-in Colorscales: https://plotly.com/python/builtin-colorscales/
+"""
 
 
 def _rgb_string_to_hex(color: str) -> str:
@@ -55,10 +109,63 @@ def _rgb_string_to_hex(color: str) -> str:
         return color
 
 
+def color_to_rgba(color: str | None, alpha: float = 1.0) -> str:
+    """Convert any valid color to RGBA string format.
+
+    Handles hex colors (with or without #), named colors, and rgb/rgba strings.
+
+    Args:
+        color: Color in any valid format (hex '#FF0000' or 'FF0000',
+               named 'red', rgb 'rgb(255,0,0)', rgba 'rgba(255,0,0,1)').
+        alpha: Alpha/opacity value between 0.0 and 1.0.
+
+    Returns:
+        Color in RGBA format 'rgba(R, G, B, A)'.
+
+    Examples:
+        >>> color_to_rgba('#FF0000')
+        'rgba(255, 0, 0, 1.0)'
+        >>> color_to_rgba('FF0000')
+        'rgba(255, 0, 0, 1.0)'
+        >>> color_to_rgba('red', 0.5)
+        'rgba(255, 0, 0, 0.5)'
+        >>> color_to_rgba('forestgreen', 0.4)
+        'rgba(34, 139, 34, 0.4)'
+        >>> color_to_rgba(None)
+        'rgba(200, 200, 200, 1.0)'
+    """
+    if not color:
+        return f'rgba(200, 200, 200, {alpha})'
+
+    try:
+        # Use matplotlib's robust color conversion (handles hex, named, etc.)
+        rgba = mcolors.to_rgba(color)
+    except ValueError:
+        # Try adding # prefix for bare hex colors (e.g., 'FF0000' -> '#FF0000')
+        if len(color) == 6 and all(c in '0123456789ABCDEFabcdef' for c in color):
+            try:
+                rgba = mcolors.to_rgba(f'#{color}')
+            except ValueError:
+                return f'rgba(200, 200, 200, {alpha})'
+        else:
+            return f'rgba(200, 200, 200, {alpha})'
+    except TypeError:
+        return f'rgba(200, 200, 200, {alpha})'
+
+    r = int(round(rgba[0] * 255))
+    g = int(round(rgba[1] * 255))
+    b = int(round(rgba[2] * 255))
+    return f'rgba({r}, {g}, {b}, {alpha})'
+
+
+# Alias for backwards compatibility
+hex_to_rgba = color_to_rgba
+
+
 def process_colors(
     colors: None | str | list[str] | dict[str, str],
     labels: list[str],
-    default_colorscale: str = 'turbo',
+    default_colorscale: str | None = None,
 ) -> dict[str, str]:
     """Process color input and return a label-to-color mapping.
 
@@ -73,7 +180,8 @@ def process_colors(
             - list[str]: List of color strings (hex, named colors, etc.)
             - dict[str, str]: Direct label-to-color mapping
         labels: List of labels that need colors assigned
-        default_colorscale: Fallback colorscale name if requested scale not found
+        default_colorscale: Fallback colorscale name if requested scale not found.
+            Defaults to CONFIG.Plotting.default_qualitative_colorscale.
 
     Returns:
         Dictionary mapping each label to a color string
@@ -97,6 +205,12 @@ def process_colors(
     """
     if not labels:
         return {}
+
+    # Resolve default colorscale from CONFIG if not provided
+    if default_colorscale is None:
+        from .config import CONFIG
+
+        default_colorscale = CONFIG.Plotting.default_qualitative_colorscale
 
     # Case 1: Already a mapping dictionary
     if isinstance(colors, dict):

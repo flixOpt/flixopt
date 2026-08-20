@@ -6,12 +6,18 @@ These classes are not directly used by the end user, but are used by other modul
 from __future__ import annotations
 
 import inspect
+import json
+import logging
+import pathlib
 import re
+import warnings
 from dataclasses import dataclass
 from difflib import get_close_matches
+from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
+    ClassVar,
     Generic,
     Literal,
     TypeVar,
@@ -21,17 +27,119 @@ import linopy
 import numpy as np
 import pandas as pd
 import xarray as xr
-from loguru import logger
 
 from . import io as fx_io
-from .core import TimeSeriesData, get_dataarray_stats
+from .config import DEPRECATION_REMOVAL_VERSION
+from .core import FlowSystemDimensions, TimeSeriesData, get_dataarray_stats
 
 if TYPE_CHECKING:  # for type checking and preventing circular imports
-    import pathlib
     from collections.abc import Collection, ItemsView, Iterator
 
     from .effects import EffectCollectionModel
     from .flow_system import FlowSystem
+    from .types import Effect_TPS, Numeric_TPS, NumericOrBool
+
+logger = logging.getLogger('flixopt')
+
+
+def _ensure_coords(
+    data: xr.DataArray | float | int,
+    coords: xr.Coordinates | dict,
+) -> xr.DataArray | float:
+    """Broadcast data to coords if needed.
+
+    This is used at the linopy interface to ensure bounds are properly broadcasted
+    to the target variable shape. Linopy needs at least one bound to have all
+    dimensions to determine the variable shape.
+
+    Note: Infinity values (-inf, inf) are kept as scalars because linopy uses
+    special checks like `if (lower != -inf)` that fail with DataArrays.
+    """
+    # Handle both dict and xr.Coordinates
+    if isinstance(coords, dict):
+        coord_dims = list(coords.keys())
+    else:
+        coord_dims = list(coords.dims)
+
+    # Keep infinity values as scalars (linopy uses them for special checks)
+    if not isinstance(data, xr.DataArray):
+        if np.isinf(data):
+            return data
+        # Finite scalar - create full DataArray
+        return xr.DataArray(data, coords=coords, dims=coord_dims)
+
+    if set(data.dims) == set(coord_dims):
+        # Has all dims - ensure correct order
+        if data.dims != tuple(coord_dims):
+            return data.transpose(*coord_dims)
+        return data
+
+    # Broadcast to full coords (broadcast_like ensures correct dim order)
+    template = xr.DataArray(coords=coords, dims=coord_dims)
+    return data.broadcast_like(template)
+
+
+class VariableCategory(Enum):
+    """Fine-grained variable categories - names mirror variable names.
+
+    Each variable type has its own category for precise handling during
+    segment expansion and statistics calculation.
+    """
+
+    # === State variables ===
+    CHARGE_STATE = 'charge_state'  # Storage SOC (interpolate between boundaries)
+    SOC_BOUNDARY = 'soc_boundary'  # Intercluster SOC boundaries
+
+    # === Rate/Power variables ===
+    FLOW_RATE = 'flow_rate'  # Flow rate (kW)
+    NETTO_DISCHARGE = 'netto_discharge'  # Storage net discharge
+    VIRTUAL_FLOW = 'virtual_flow'  # Bus penalty slack variables
+
+    # === Binary state ===
+    STATUS = 'status'  # On/off status (persists through segment)
+    INACTIVE = 'inactive'  # Complementary inactive status
+
+    # === Binary events ===
+    STARTUP = 'startup'  # Startup event
+    SHUTDOWN = 'shutdown'  # Shutdown event
+
+    # === Effect variables ===
+    PER_TIMESTEP = 'per_timestep'  # Effect per timestep
+    SHARE = 'share'  # All temporal contributions (flow, active, startup)
+    TOTAL = 'total'  # Effect total (per period/scenario)
+    TOTAL_OVER_PERIODS = 'total_over_periods'  # Effect total over all periods
+
+    # === Investment ===
+    SIZE = 'size'  # Generic investment size (for backwards compatibility)
+    FLOW_SIZE = 'flow_size'  # Flow investment size
+    STORAGE_SIZE = 'storage_size'  # Storage capacity size
+    INVESTED = 'invested'  # Invested yes/no binary
+
+    # === Counting/Duration ===
+    STARTUP_COUNT = 'startup_count'  # Count of startups
+    DURATION = 'duration'  # Duration tracking (uptime/downtime)
+
+    # === Piecewise linearization ===
+    INSIDE_PIECE = 'inside_piece'  # Binary segment selection
+    LAMBDA0 = 'lambda0'  # Interpolation weight
+    LAMBDA1 = 'lambda1'  # Interpolation weight
+    ZERO_POINT = 'zero_point'  # Zero point handling
+
+    # === Other ===
+    OTHER = 'other'  # Uncategorized
+
+
+# === Logical Groupings for Segment Expansion ===
+# Default behavior (not listed): repeat value within segment
+
+EXPAND_INTERPOLATE: set[VariableCategory] = {VariableCategory.CHARGE_STATE}
+"""State variables that should be interpolated between segment boundaries."""
+
+EXPAND_DIVIDE: set[VariableCategory] = {VariableCategory.PER_TIMESTEP, VariableCategory.SHARE}
+"""Segment totals that should be divided by expansion factor to preserve sums."""
+
+EXPAND_FIRST_TIMESTEP: set[VariableCategory] = {VariableCategory.STARTUP, VariableCategory.SHUTDOWN}
+"""Binary events that should appear only at the first timestep of the segment."""
 
 
 CLASS_REGISTRY = {}
@@ -84,17 +192,35 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
     Args:
         flow_system: The flow_system that is used to create the model.
-        normalize_weights: Whether to automatically normalize the weights to sum up to 1 when solving.
     """
 
-    def __init__(self, flow_system: FlowSystem, normalize_weights: bool):
+    def __init__(self, flow_system: FlowSystem):
         super().__init__(force_dim_names=True)
         self.flow_system = flow_system
-        self.normalize_weights = normalize_weights
         self.effects: EffectCollectionModel | None = None
         self.submodels: Submodels = Submodels({})
+        self.variable_categories: dict[str, VariableCategory] = {}
+
+    def add_variables(
+        self,
+        lower: xr.DataArray | float = -np.inf,
+        upper: xr.DataArray | float = np.inf,
+        coords: xr.Coordinates | None = None,
+        **kwargs,
+    ) -> linopy.Variable:
+        """Override to ensure bounds are broadcasted to coords shape.
+
+        Linopy uses the union of all DataArray dimensions to determine variable shape.
+        This override ensures at least one bound has all target dimensions when coords
+        is provided, allowing internal data to remain compact (scalars, 1D arrays).
+        """
+        if coords is not None:
+            lower = _ensure_coords(lower, coords)
+            upper = _ensure_coords(upper, coords)
+        return super().add_variables(lower=lower, upper=upper, coords=coords, **kwargs)
 
     def do_modeling(self):
+        # Create all element models
         self.effects = self.flow_system.effects.create_model(self)
         for component in self.flow_system.components.values():
             component.create_model(self)
@@ -103,6 +229,16 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         # Add scenario equality constraints after all elements are modeled
         self._add_scenario_equality_constraints()
+
+        # Populate _variable_names and _constraint_names on each Element
+        self._populate_element_variable_names()
+
+    def _populate_element_variable_names(self):
+        """Populate _variable_names and _constraint_names on each Element from its submodel."""
+        for element in self.flow_system.values():
+            if element.submodel is not None:
+                element._variable_names = list(element.submodel.variables)
+                element._constraint_names = list(element.submodel.constraints)
 
     def _add_scenario_equality_for_parameter_type(
         self,
@@ -152,37 +288,131 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
     @property
     def solution(self):
-        solution = super().solution
+        """Build solution dataset, reindexing to timesteps_extra for consistency."""
+        # Suppress the linopy warning about coordinate mismatch.
+        # This warning is expected when storage charge_state has one more timestep than other variables.
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                'ignore',
+                category=UserWarning,
+                message='Coordinates across variables not equal',
+            )
+            solution = super().solution
         solution['objective'] = self.objective.value
+        # Store attrs as JSON strings for netCDF compatibility
         solution.attrs = {
-            'Components': {
-                comp.label_full: comp.submodel.results_structure()
-                for comp in sorted(
-                    self.flow_system.components.values(), key=lambda component: component.label_full.upper()
-                )
-            },
-            'Buses': {
-                bus.label_full: bus.submodel.results_structure()
-                for bus in sorted(self.flow_system.buses.values(), key=lambda bus: bus.label_full.upper())
-            },
-            'Effects': {
-                effect.label_full: effect.submodel.results_structure()
-                for effect in sorted(self.flow_system.effects.values(), key=lambda effect: effect.label_full.upper())
-            },
-            'Flows': {
-                flow.label_full: flow.submodel.results_structure()
-                for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
-            },
+            'Components': json.dumps(
+                {
+                    comp.label_full: comp.submodel.results_structure()
+                    for comp in sorted(
+                        self.flow_system.components.values(), key=lambda component: component.label_full.upper()
+                    )
+                }
+            ),
+            'Buses': json.dumps(
+                {
+                    bus.label_full: bus.submodel.results_structure()
+                    for bus in sorted(self.flow_system.buses.values(), key=lambda bus: bus.label_full.upper())
+                }
+            ),
+            'Effects': json.dumps(
+                {
+                    effect.label_full: effect.submodel.results_structure()
+                    for effect in sorted(
+                        self.flow_system.effects.values(), key=lambda effect: effect.label_full.upper()
+                    )
+                }
+            ),
+            'Flows': json.dumps(
+                {
+                    flow.label_full: flow.submodel.results_structure()
+                    for flow in sorted(self.flow_system.flows.values(), key=lambda flow: flow.label_full.upper())
+                }
+            ),
         }
-        return solution.reindex(time=self.flow_system.timesteps_extra)
+        # Ensure solution is always indexed by timesteps_extra for consistency.
+        # Variables without extra timestep data will have NaN at the final timestep.
+        if 'time' in solution.coords:
+            if not solution.indexes['time'].equals(self.flow_system.timesteps_extra):
+                solution = solution.reindex(time=self.flow_system.timesteps_extra)
+        if 'cluster' in solution.dims and 'time' in solution.dims:
+            solution = solution.transpose('cluster', 'time', ...)
+        return solution
 
     @property
-    def hours_per_step(self):
-        return self.flow_system.hours_per_timestep
+    def timestep_duration(self) -> xr.DataArray:
+        """Duration of each timestep in hours."""
+        return self.flow_system.timestep_duration
 
     @property
     def hours_of_previous_timesteps(self):
         return self.flow_system.hours_of_previous_timesteps
+
+    @property
+    def dims(self) -> list[str]:
+        """Active dimension names."""
+        return self.flow_system.dims
+
+    @property
+    def indexes(self) -> dict[str, pd.Index]:
+        """Indexes for active dimensions."""
+        return self.flow_system.indexes
+
+    @property
+    def weights(self) -> dict[str, xr.DataArray]:
+        """Weights for active dimensions (unit weights if not set).
+
+        Scenario weights are always normalized (handled by FlowSystem).
+        """
+        return self.flow_system.weights
+
+    @property
+    def temporal_dims(self) -> list[str]:
+        """Temporal dimensions for summing over time.
+
+        Returns ['time', 'cluster'] for clustered systems, ['time'] otherwise.
+        """
+        return self.flow_system.temporal_dims
+
+    @property
+    def temporal_weight(self) -> xr.DataArray:
+        """Combined temporal weight (timestep_duration × cluster_weight)."""
+        return self.flow_system.temporal_weight
+
+    def sum_temporal(self, data: xr.DataArray) -> xr.DataArray:
+        """Sum data over temporal dimensions with full temporal weighting.
+
+        Example:
+            >>> total_energy = model.sum_temporal(flow_rate)
+        """
+        return self.flow_system.sum_temporal(data)
+
+    @property
+    def scenario_weights(self) -> xr.DataArray:
+        """Scenario weights of model.
+
+        Returns:
+            - Scalar 1 if no scenarios defined
+            - Unit weights (all 1.0) if scenarios exist but no explicit weights set
+            - Normalized explicit weights if set via FlowSystem.scenario_weights
+        """
+        if self.flow_system.scenarios is None:
+            return xr.DataArray(1)
+
+        if self.flow_system.scenario_weights is None:
+            return self.flow_system._unit_weight('scenario')
+
+        return self.flow_system.scenario_weights
+
+    @property
+    def objective_weights(self) -> xr.DataArray:
+        """
+        Objective weights of model (period_weights × scenario_weights).
+        """
+        period_weights = self.flow_system.effects.objective_effect.submodel.period_weights
+        scenario_weights = self.scenario_weights
+
+        return period_weights * scenario_weights
 
     def get_coords(
         self,
@@ -194,7 +424,8 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
 
         Args:
             dims: The dimensions to include in the coordinates. If None, includes all dimensions
-            extra_timestep: If True, uses extra timesteps instead of regular timesteps
+            extra_timestep: If True, uses extra timesteps instead of regular timesteps.
+                For clustered FlowSystems, extends time by 1 (for charge_state boundaries).
 
         Returns:
             The coordinates of the model, or None if no coordinates are available
@@ -206,27 +437,19 @@ class FlowSystemModel(linopy.Model, SubmodelsMixin):
             raise ValueError('extra_timestep=True requires "time" to be included in dims')
 
         if dims is None:
-            coords = dict(self.flow_system.coords)
+            coords = dict(self.flow_system.indexes)
         else:
-            coords = {k: v for k, v in self.flow_system.coords.items() if k in dims}
+            # In clustered systems, 'time' is always paired with 'cluster'
+            # So when 'time' is requested, also include 'cluster' if available
+            effective_dims = set(dims)
+            if 'time' in dims and 'cluster' in self.flow_system.indexes:
+                effective_dims.add('cluster')
+            coords = {k: v for k, v in self.flow_system.indexes.items() if k in effective_dims}
 
         if extra_timestep and coords:
             coords['time'] = self.flow_system.timesteps_extra
 
         return xr.Coordinates(coords) if coords else None
-
-    @property
-    def weights(self) -> int | xr.DataArray:
-        """Returns the weights of the FlowSystem. Normalizes to 1 if normalize_weights is True"""
-        if self.flow_system.weights is not None:
-            weights = self.flow_system.weights
-        else:
-            weights = self.flow_system.fit_to_model_coords('weights', 1, dims=['period', 'scenario'])
-
-        if not self.normalize_weights:
-            return weights
-
-        return weights / weights.sum()
 
     def __repr__(self) -> str:
         """
@@ -264,20 +487,132 @@ class Interface:
         - Recursive handling of complex nested structures
 
     Subclasses must implement:
-        transform_data(flow_system): Transform data to match FlowSystem dimensions
+        transform_data(): Transform data to match FlowSystem dimensions
     """
 
-    def transform_data(self, flow_system: FlowSystem, name_prefix: str = '') -> None:
+    # Class-level defaults for attributes set by link_to_flow_system()
+    # These provide type hints and default values without requiring __init__ in subclasses
+    _flow_system: FlowSystem | None = None
+    _prefix: str = ''
+
+    def transform_data(self) -> None:
         """Transform the data of the interface to match the FlowSystem's dimensions.
 
-        Args:
-            flow_system: The FlowSystem containing timing and dimensional information
-            name_prefix: The prefix to use for the names of the variables. Defaults to '', which results in no prefix.
+        Uses `self._prefix` (set during `link_to_flow_system()`) to name transformed data.
 
         Raises:
             NotImplementedError: Must be implemented by subclasses
+
+        Note:
+            The FlowSystem reference is available via self._flow_system (for Interface objects)
+            or self.flow_system property (for Element objects). Elements must be registered
+            to a FlowSystem before calling this method.
         """
         raise NotImplementedError('Every Interface subclass needs a transform_data() method')
+
+    @property
+    def prefix(self) -> str:
+        """The prefix used for naming transformed data (e.g., 'Boiler(Q_th)|status_parameters')."""
+        return self._prefix
+
+    def _sub_prefix(self, name: str) -> str:
+        """Build a prefix for a nested interface by appending name to current prefix."""
+        return f'{self._prefix}|{name}' if self._prefix else name
+
+    def link_to_flow_system(self, flow_system: FlowSystem, prefix: str = '') -> None:
+        """Link this interface and all nested interfaces to a FlowSystem.
+
+        This method is called automatically during element registration to enable
+        elements to access FlowSystem properties without passing the reference
+        through every method call. It also sets the prefix used for naming
+        transformed data.
+
+        Subclasses with nested Interface objects should override this method
+        to propagate the link to their nested interfaces by calling
+        `super().link_to_flow_system(flow_system, prefix)` first, then linking
+        nested objects with appropriate prefixes.
+
+        Args:
+            flow_system: The FlowSystem to link to
+            prefix: The prefix for naming transformed data (e.g., 'Boiler(Q_th)')
+
+        Examples:
+            Override in a subclass with nested interfaces:
+
+            ```python
+            def link_to_flow_system(self, flow_system, prefix: str = '') -> None:
+                super().link_to_flow_system(flow_system, prefix)
+                if self.nested_interface is not None:
+                    self.nested_interface.link_to_flow_system(flow_system, f'{prefix}|nested' if prefix else 'nested')
+            ```
+
+            Creating an Interface dynamically during modeling:
+
+            ```python
+            # In a Model class
+            if flow.status_parameters is None:
+                flow.status_parameters = StatusParameters()
+                flow.status_parameters.link_to_flow_system(self._model.flow_system, f'{flow.label_full}')
+            ```
+        """
+        self._flow_system = flow_system
+        self._prefix = prefix
+
+    @property
+    def flow_system(self) -> FlowSystem:
+        """Access the FlowSystem this interface is linked to.
+
+        Returns:
+            The FlowSystem instance this interface belongs to.
+
+        Raises:
+            RuntimeError: If interface has not been linked to a FlowSystem yet.
+
+        Note:
+            For Elements, this is set during add_elements().
+            For parameter classes, this is set recursively when the parent Element is registered.
+        """
+        if self._flow_system is None:
+            raise RuntimeError(
+                f'{self.__class__.__name__} is not linked to a FlowSystem. '
+                f'Ensure the parent element is registered via flow_system.add_elements() first.'
+            )
+        return self._flow_system
+
+    def _fit_coords(
+        self, name: str, data: NumericOrBool | None, dims: Collection[FlowSystemDimensions] | None = None
+    ) -> xr.DataArray | None:
+        """Convenience wrapper for FlowSystem.fit_to_model_coords().
+
+        Args:
+            name: The name for the data variable
+            data: The data to transform
+            dims: Optional dimension names
+
+        Returns:
+            Transformed data aligned to FlowSystem coordinates
+        """
+        return self.flow_system.fit_to_model_coords(name, data, dims=dims)
+
+    def _fit_effect_coords(
+        self,
+        prefix: str | None,
+        effect_values: Effect_TPS | Numeric_TPS | None,
+        suffix: str | None = None,
+        dims: Collection[FlowSystemDimensions] | None = None,
+    ) -> Effect_TPS | None:
+        """Convenience wrapper for FlowSystem.fit_effects_to_model_coords().
+
+        Args:
+            prefix: Label prefix for effect names
+            effect_values: The effect values to transform
+            suffix: Optional label suffix
+            dims: Optional dimension names
+
+        Returns:
+            Transformed effect values aligned to FlowSystem coordinates
+        """
+        return self.flow_system.fit_effects_to_model_coords(prefix, effect_values, suffix, dims=dims)
 
     def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
         """
@@ -388,6 +723,17 @@ class Interface:
                 processed_items.append(processed_item)
             return processed_items, extracted_arrays
 
+        # Handle ContainerMixin (FlowContainer, etc.) - serialize as list of values
+        # Must come BEFORE dict check since ContainerMixin inherits from dict
+        elif isinstance(obj, ContainerMixin):
+            processed_items = []
+            for i, item in enumerate(obj.values()):
+                item_context = f'{context_name}[{i}]' if context_name else f'item[{i}]'
+                processed_item, nested_arrays = self._extract_dataarrays_recursive(item, item_context)
+                extracted_arrays.update(nested_arrays)
+                processed_items.append(processed_item)
+            return processed_items, extracted_arrays
+
         # Handle dictionaries
         elif isinstance(obj, dict):
             processed_dict = {}
@@ -420,6 +766,7 @@ class Interface:
         current_value: Any = None,
         transform: callable = None,
         check_conflict: bool = True,
+        additional_warning_message: str = '',
     ) -> Any:
         """
         Handle a deprecated keyword argument by issuing a warning and returning the appropriate value.
@@ -435,6 +782,7 @@ class Interface:
             check_conflict: Whether to check if both old and new parameters are specified (default: True).
                 Note: For parameters with non-None default values (e.g., bool parameters with default=False),
                 set check_conflict=False since we cannot distinguish between an explicit value and the default.
+            additional_warning_message: Add a custom message which gets appended with a line break to the default warning.
 
         Returns:
             The value to use (either from old parameter or current_value)
@@ -457,8 +805,18 @@ class Interface:
 
         old_value = kwargs.pop(old_name, None)
         if old_value is not None:
+            # Build base warning message
+            base_warning = f'The use of the "{old_name}" argument is deprecated. Use the "{new_name}" argument instead. Will be removed in v{DEPRECATION_REMOVAL_VERSION}.'
+
+            # Append additional message on a new line if provided
+            if additional_warning_message:
+                # Normalize whitespace: strip leading/trailing whitespace
+                extra_msg = additional_warning_message.strip()
+                if extra_msg:
+                    base_warning += '\n' + extra_msg
+
             warnings.warn(
-                f'The use of the "{old_name}" argument is deprecated. Use the "{new_name}" argument instead.',
+                base_warning,
                 DeprecationWarning,
                 stacklevel=3,  # Stack: this method -> __init__ -> caller
             )
@@ -553,8 +911,11 @@ class Interface:
 
         array = arrays_dict[array_name]
 
-        # Handle null values with warning
-        if array.isnull().any():
+        # Handle null values with warning (use numpy for performance - 200x faster than xarray)
+        has_nulls = (np.issubdtype(array.dtype, np.floating) and np.any(np.isnan(array.values))) or (
+            array.dtype == object and pd.isna(array.values).any()
+        )
+        if has_nulls:
             logger.error(f"DataArray '{array_name}' contains null values. Dropping all-null along present dims.")
             if 'time' in array.dims:
                 array = array.dropna(dim='time', how='all')
@@ -609,7 +970,34 @@ class Interface:
                 resolved_nested_data = cls._resolve_reference_structure(nested_data, arrays_dict)
 
                 try:
-                    return nested_class(**resolved_nested_data)
+                    # Get valid constructor parameters for this class
+                    init_params = set(inspect.signature(nested_class.__init__).parameters.keys())
+
+                    # Check for deferred init attributes (defined as class attribute on Element subclasses)
+                    # These are serialized but set after construction, not passed to child __init__
+                    deferred_attr_names = getattr(nested_class, '_deferred_init_attrs', set())
+                    deferred_attrs = {k: v for k, v in resolved_nested_data.items() if k in deferred_attr_names}
+                    constructor_data = {k: v for k, v in resolved_nested_data.items() if k not in deferred_attr_names}
+
+                    # Check for unknown parameters - these could be typos or renamed params
+                    unknown_params = set(constructor_data.keys()) - init_params
+                    if unknown_params:
+                        raise TypeError(
+                            f'{class_name}.__init__() got unexpected keyword arguments: {unknown_params}. '
+                            f'This may indicate renamed parameters that need conversion. '
+                            f'Valid parameters are: {init_params - {"self"}}'
+                        )
+
+                    # Create instance with constructor parameters
+                    instance = nested_class(**constructor_data)
+
+                    # Set internal attributes after construction
+                    for attr_name, attr_value in deferred_attrs.items():
+                        setattr(instance, attr_name, attr_value)
+
+                    return instance
+                except TypeError as e:
+                    raise ValueError(f'Failed to create instance of {class_name}: {e}') from e
                 except Exception as e:
                     raise ValueError(f'Failed to create instance of {class_name}: {e}') from e
             else:
@@ -644,6 +1032,10 @@ class Interface:
             return bool(obj)
         elif isinstance(obj, (np.ndarray, pd.Series, pd.DataFrame)):
             return obj.tolist() if hasattr(obj, 'tolist') else list(obj)
+        # Handle ContainerMixin (FlowContainer, etc.) - serialize as list of values
+        # Must come BEFORE dict check since ContainerMixin inherits from dict
+        elif isinstance(obj, ContainerMixin):
+            return [self._serialize_to_basic_types(item) for item in obj.values()]
         elif isinstance(obj, dict):
             return {k: self._serialize_to_basic_types(v) for k, v in obj.items()}
         elif isinstance(obj, (list, tuple)):
@@ -685,18 +1077,29 @@ class Interface:
                 f'Original Error: {e}'
             ) from e
 
-    def to_netcdf(self, path: str | pathlib.Path, compression: int = 0):
+    def to_netcdf(self, path: str | pathlib.Path, compression: int = 5, overwrite: bool = False):
         """
         Save the object to a NetCDF file.
 
         Args:
-            path: Path to save the NetCDF file
+            path: Path to save the NetCDF file. Parent directories are created if they don't exist.
             compression: Compression level (0-9)
+            overwrite: If True, overwrite existing file. If False, raise error if file exists.
 
         Raises:
+            FileExistsError: If overwrite=False and file already exists.
             ValueError: If serialization fails
             IOError: If file cannot be written
         """
+        path = pathlib.Path(path)
+
+        # Check if file exists (unless overwrite is True)
+        if not overwrite and path.exists():
+            raise FileExistsError(f'File already exists: {path}. Use overwrite=True to overwrite existing file.')
+
+        # Create parent directories if they don't exist
+        path.parent.mkdir(parents=True, exist_ok=True)
+
         try:
             ds = self.to_dataset()
             fx_io.save_dataset_to_netcdf(ds, path, compression=compression)
@@ -730,7 +1133,19 @@ class Interface:
             reference_structure.pop('__class__', None)
 
             # Create arrays dictionary from dataset variables
-            arrays_dict = {name: array for name, array in ds.data_vars.items()}
+            # Use ds.variables with coord_cache for faster DataArray construction
+            variables = ds.variables
+            coord_cache = {k: ds.coords[k] for k in ds.coords}
+            coord_names = set(coord_cache)
+            arrays_dict = {
+                name: xr.DataArray(
+                    variables[name],
+                    coords={k: coord_cache[k] for k in variables[name].dims if k in coord_cache},
+                    name=name,
+                )
+                for name in variables
+                if name not in coord_names
+            }
 
             # Resolve all references using the centralized method
             resolved_params = cls._resolve_reference_structure(reference_structure, arrays_dict)
@@ -847,15 +1262,34 @@ class Element(Interface):
 
     submodel: ElementModel | None
 
-    def __init__(self, label: str, meta_data: dict | None = None):
+    # Attributes that are serialized but set after construction (not passed to child __init__)
+    # These are internal state populated during modeling, not user-facing parameters
+    _deferred_init_attrs: ClassVar[set[str]] = {'_variable_names', '_constraint_names'}
+
+    def __init__(
+        self,
+        label: str,
+        meta_data: dict | None = None,
+        color: str | None = None,
+        _variable_names: list[str] | None = None,
+        _constraint_names: list[str] | None = None,
+    ):
         """
         Args:
             label: The label of the element
             meta_data: used to store more information about the Element. Is not used internally, but saved in the results. Only use python native types.
+            color: Optional color for visualizations (e.g., '#FF6B6B'). If not provided, a color will be automatically assigned during FlowSystem.connect_and_transform().
+            _variable_names: Internal. Variable names for this element (populated after modeling).
+            _constraint_names: Internal. Constraint names for this element (populated after modeling).
         """
         self.label = Element._valid_label(label)
         self.meta_data = meta_data if meta_data is not None else {}
+        self.color = color
         self.submodel = None
+        self._flow_system: FlowSystem | None = None
+        # Variable/constraint names - populated after modeling, serialized for results
+        self._variable_names: list[str] = _variable_names if _variable_names is not None else []
+        self._constraint_names: list[str] = _constraint_names if _constraint_names is not None else []
 
     def _plausibility_checks(self) -> None:
         """This function is used to do some basic plausibility checks for each Element during initialization.
@@ -868,6 +1302,40 @@ class Element(Interface):
     @property
     def label_full(self) -> str:
         return self.label
+
+    @property
+    def solution(self) -> xr.Dataset:
+        """Solution data for this element's variables.
+
+        Returns a view into FlowSystem.solution containing only this element's variables.
+
+        Raises:
+            ValueError: If no solution is available (optimization not run or not solved).
+        """
+        if self._flow_system is None:
+            raise ValueError(f'Element "{self.label}" is not linked to a FlowSystem.')
+        if self._flow_system.solution is None:
+            raise ValueError(f'No solution available for "{self.label}". Run optimization first or load results.')
+        if not self._variable_names:
+            raise ValueError(f'No variable names available for "{self.label}". Element may not have been modeled yet.')
+        return self._flow_system.solution[self._variable_names]
+
+    def _create_reference_structure(self) -> tuple[dict, dict[str, xr.DataArray]]:
+        """
+        Override to include _variable_names and _constraint_names in serialization.
+
+        These attributes are defined in Element but may not be in subclass constructors,
+        so we need to add them explicitly.
+        """
+        reference_structure, all_extracted_arrays = super()._create_reference_structure()
+
+        # Always include variable/constraint names for solution access after loading
+        if self._variable_names:
+            reference_structure['_variable_names'] = self._variable_names
+        if self._constraint_names:
+            reference_structure['_constraint_names'] = self._constraint_names
+
+        return reference_structure, all_extracted_arrays
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -917,16 +1385,20 @@ class ContainerMixin(dict[str, T]):
         elements: list[T] | dict[str, T] | None = None,
         element_type_name: str = 'elements',
         truncate_repr: int | None = None,
+        item_name: str | None = None,
     ):
         """
         Args:
             elements: Initial elements to add (list or dict)
             element_type_name: Name for display (e.g., 'components', 'buses')
             truncate_repr: Maximum number of items to show in repr. If None, show all items. Default: None
+            item_name: Singular name for error messages (e.g., 'Component', 'Carrier').
+                If None, inferred from first added item's class name.
         """
         super().__init__()
         self._element_type_name = element_type_name
         self._truncate_repr = truncate_repr
+        self._item_name = item_name
 
         if elements is not None:
             if isinstance(elements, dict):
@@ -948,13 +1420,28 @@ class ContainerMixin(dict[str, T]):
         """
         raise NotImplementedError('Subclasses must implement _get_label()')
 
+    def _get_item_name(self) -> str:
+        """Get the singular item name for error messages.
+
+        Returns the explicitly set item_name, or infers from the first item's class name.
+        Falls back to 'Item' if container is empty and no name was set.
+        """
+        if self._item_name is not None:
+            return self._item_name
+        # Infer from first item's class name
+        if self:
+            first_item = next(iter(self.values()))
+            return first_item.__class__.__name__
+        return 'Item'
+
     def add(self, element: T) -> None:
         """Add an element to the container."""
         label = self._get_label(element)
         if label in self:
+            item_name = element.__class__.__name__
             raise ValueError(
-                f'Element with label "{label}" already exists in {self._element_type_name}. '
-                f'Each element must have a unique label.'
+                f'{item_name} with label "{label}" already exists in {self._element_type_name}. '
+                f'Each {item_name.lower()} must have a unique label.'
             )
         self[label] = element
 
@@ -985,8 +1472,9 @@ class ContainerMixin(dict[str, T]):
             return super().__getitem__(label)
         except KeyError:
             # Provide helpful error with close matches suggestions
+            item_name = self._get_item_name()
             suggestions = get_close_matches(label, self.keys(), n=3, cutoff=0.6)
-            error_msg = f'Element "{label}" not found in {self._element_type_name}.'
+            error_msg = f'{item_name} "{label}" not found in {self._element_type_name}.'
             if suggestions:
                 error_msg += f' Did you mean: {", ".join(suggestions)}?'
             else:
@@ -1037,6 +1525,25 @@ class ContainerMixin(dict[str, T]):
         """Return a string representation using the instance's truncate_repr setting."""
         return self._get_repr()
 
+    def __add__(self, other: ContainerMixin[T]) -> ContainerMixin[T]:
+        """Concatenate two containers.
+
+        Returns a new container of the same type containing elements from both containers.
+        Does not modify the original containers.
+
+        Args:
+            other: Another container to concatenate
+
+        Returns:
+            New container with elements from both containers
+        """
+        result = self.__class__(element_type_name=self._element_type_name)
+        for element in self.values():
+            result.add(element)
+        for element in other.values():
+            result.add(element)
+        return result
+
 
 class ElementContainer(ContainerMixin[T]):
     """
@@ -1060,6 +1567,95 @@ class ResultsContainer(ContainerMixin[T]):
     def _get_label(self, element: T) -> str:
         """Extract label from Results object."""
         return element.label
+
+
+class FlowContainer(ContainerMixin[T]):
+    """Container for Flow objects with dual access: by index or by label_full.
+
+    Supports:
+        - container['Boiler(Q_th)']  # label_full-based access
+        - container['Q_th']          # short-label access (when all flows share same component)
+        - container[0]               # index-based access
+        - container.add(flow)
+        - for flow in container.values()
+        - container1 + container2    # concatenation
+
+    Examples:
+        >>> boiler = Boiler(label='Boiler', inputs=[Flow('Q_th', bus=heat_bus)])
+        >>> boiler.inputs[0]  # Index access
+        >>> boiler.inputs['Boiler(Q_th)']  # Full label access
+        >>> boiler.inputs['Q_th']  # Short label access (same component)
+        >>> for flow in boiler.inputs.values():
+        ...     print(flow.label_full)
+    """
+
+    def _get_label(self, flow: T) -> str:
+        """Extract label_full from Flow."""
+        return flow.label_full
+
+    def __getitem__(self, key: str | int) -> T:
+        """Get flow by label_full, short label, or index.
+
+        Args:
+            key: Flow's label_full (string), short label (string), or index (int).
+                Short label access (e.g., 'Q_th' instead of 'Boiler(Q_th)') is only
+                supported when all flows in the container belong to the same component.
+
+        Returns:
+            The Flow at the given key/index
+
+        Raises:
+            KeyError: If string key not found
+            IndexError: If integer index out of range
+        """
+        if isinstance(key, int):
+            # Index-based access: convert to list and index
+            try:
+                return list(self.values())[key]
+            except IndexError:
+                raise IndexError(f'Flow index {key} out of range (container has {len(self)} flows)') from None
+
+        # Try exact label_full match first
+        if dict.__contains__(self, key):
+            return super().__getitem__(key)
+
+        # Try short-label match if all flows share the same component
+        if len(self) > 0:
+            components = {flow.component for flow in self.values()}
+            if len(components) == 1:
+                component = next(iter(components))
+                full_key = f'{component}({key})'
+                if dict.__contains__(self, full_key):
+                    return super().__getitem__(full_key)
+
+        # Key not found - raise with helpful message
+        raise KeyError(f"'{key}' not found in {self._element_type_name}")
+
+    def __contains__(self, key: object) -> bool:
+        """Check if key exists (supports label_full or short label).
+
+        Args:
+            key: Flow's label_full or short label
+
+        Returns:
+            True if the key matches a flow in the container
+        """
+        if not isinstance(key, str):
+            return False
+
+        # Try exact label_full match first
+        if dict.__contains__(self, key):
+            return True
+
+        # Try short-label match if all flows share the same component
+        if len(self) > 0:
+            components = {flow.component for flow in self.values()}
+            if len(components) == 1:
+                component = next(iter(components))
+                full_key = f'{component}({key})'
+                return dict.__contains__(self, full_key)
+
+        return False
 
 
 T_element = TypeVar('T_element')
@@ -1268,8 +1864,22 @@ class Submodel(SubmodelsMixin):
         logger.debug(f'Creating {self.__class__.__name__}  "{self.label_full}"')
         self._do_modeling()
 
-    def add_variables(self, short_name: str = None, **kwargs) -> linopy.Variable:
-        """Create and register a variable in one step"""
+    def add_variables(
+        self,
+        short_name: str = None,
+        category: VariableCategory = None,
+        **kwargs: Any,
+    ) -> linopy.Variable:
+        """Create and register a variable in one step.
+
+        Args:
+            short_name: Short name for the variable (used as suffix in full name).
+            category: Category for segment expansion handling. See VariableCategory.
+            **kwargs: Additional arguments passed to linopy.Model.add_variables().
+
+        Returns:
+            The created linopy Variable.
+        """
         if kwargs.get('name') is None:
             if short_name is None:
                 raise ValueError('Short name must be provided when no name is given')
@@ -1277,6 +1887,11 @@ class Submodel(SubmodelsMixin):
 
         variable = self._model.add_variables(**kwargs)
         self.register_variable(variable, short_name)
+
+        # Register category in FlowSystemModel for segment expansion handling
+        if category is not None:
+            self._model.variable_categories[variable.name] = category
+
         return variable
 
     def add_constraints(self, expression, short_name: str = None, **kwargs) -> linopy.Constraint:
@@ -1413,11 +2028,16 @@ class Submodel(SubmodelsMixin):
         return f'{model_string}\n{"=" * len(model_string)}\n\n{all_sections}'
 
     @property
-    def hours_per_step(self):
-        return self._model.hours_per_step
+    def timestep_duration(self):
+        return self._model.timestep_duration
 
     def _do_modeling(self):
-        """Called at the end of initialization. Override in subclasses to create variables and constraints."""
+        """
+        Override in subclasses to create variables, constraints, and submodels.
+
+        This method is called during __init__. Create all nested submodels first
+        (so their variables exist), then create constraints that reference those variables.
+        """
         pass
 
 

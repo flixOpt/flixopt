@@ -3,18 +3,20 @@ This module contains the core functionality of the flixopt framework.
 It provides Datatypes, logging functionality, and some functions to transform data structures.
 """
 
+import logging
 import warnings
 from itertools import permutations
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-from loguru import logger
 
 from .types import NumericOrBool
 
-FlowSystemDimensions = Literal['time', 'period', 'scenario']
+logger = logging.getLogger('flixopt')
+
+FlowSystemDimensions = Literal['time', 'cluster', 'period', 'scenario']
 """Possible dimensions of a FlowSystem."""
 
 
@@ -31,46 +33,17 @@ class ConversionError(Exception):
 
 
 class TimeSeriesData(xr.DataArray):
-    """Minimal TimeSeriesData that inherits from xr.DataArray with aggregation metadata."""
+    """Minimal TimeSeriesData that inherits from xr.DataArray with clustering metadata."""
 
     __slots__ = ()  # No additional instance attributes - everything goes in attrs
 
     def __init__(
         self,
         *args: Any,
-        aggregation_group: str | None = None,
-        aggregation_weight: float | None = None,
-        agg_group: str | None = None,
-        agg_weight: float | None = None,
         **kwargs: Any,
     ):
-        """
-        Args:
-            *args: Arguments passed to DataArray
-            aggregation_group: Aggregation group name
-            aggregation_weight: Aggregation weight (0-1)
-            agg_group: Deprecated, use aggregation_group instead
-            agg_weight: Deprecated, use aggregation_weight instead
-            **kwargs: Additional arguments passed to DataArray
-        """
-        if agg_group is not None:
-            warnings.warn('agg_group is deprecated, use aggregation_group instead', DeprecationWarning, stacklevel=2)
-            aggregation_group = agg_group
-        if agg_weight is not None:
-            warnings.warn('agg_weight is deprecated, use aggregation_weight instead', DeprecationWarning, stacklevel=2)
-            aggregation_weight = agg_weight
-
-        if (aggregation_group is not None) and (aggregation_weight is not None):
-            raise ValueError('Use either aggregation_group or aggregation_weight, not both')
-
         # Let xarray handle all the initialization complexity
         super().__init__(*args, **kwargs)
-
-        # Add our metadata to attrs after initialization
-        if aggregation_group is not None:
-            self.attrs['aggregation_group'] = aggregation_group
-        if aggregation_weight is not None:
-            self.attrs['aggregation_weight'] = aggregation_weight
 
         # Always mark as TimeSeriesData
         self.attrs['__timeseries_data__'] = True
@@ -87,33 +60,16 @@ class TimeSeriesData(xr.DataArray):
         da = DataConverter.to_dataarray(self.data, coords=coords)
         return self.__class__(
             da,
-            aggregation_group=self.aggregation_group,
-            aggregation_weight=self.aggregation_weight,
             name=name if name is not None else self.name,
         )
 
-    @property
-    def aggregation_group(self) -> str | None:
-        return self.attrs.get('aggregation_group')
-
-    @property
-    def aggregation_weight(self) -> float | None:
-        return self.attrs.get('aggregation_weight')
-
     @classmethod
     def from_dataarray(
-        cls, da: xr.DataArray, aggregation_group: str | None = None, aggregation_weight: float | None = None
+        cls,
+        da: xr.DataArray,
     ):
         """Create TimeSeriesData from DataArray, extracting metadata from attrs."""
-        # Get aggregation metadata from attrs or parameters
-        final_aggregation_group = (
-            aggregation_group if aggregation_group is not None else da.attrs.get('aggregation_group')
-        )
-        final_aggregation_weight = (
-            aggregation_weight if aggregation_weight is not None else da.attrs.get('aggregation_weight')
-        )
-
-        return cls(da, aggregation_group=final_aggregation_group, aggregation_weight=final_aggregation_weight)
+        return cls(da)
 
     @classmethod
     def is_timeseries_data(cls, obj) -> bool:
@@ -121,24 +77,8 @@ class TimeSeriesData(xr.DataArray):
         return isinstance(obj, xr.DataArray) and obj.attrs.get('__timeseries_data__', False)
 
     def __repr__(self):
-        agg_info = []
-        if self.aggregation_group:
-            agg_info.append(f"aggregation_group='{self.aggregation_group}'")
-        if self.aggregation_weight is not None:
-            agg_info.append(f'aggregation_weight={self.aggregation_weight}')
-
-        info_str = f'TimeSeriesData({", ".join(agg_info)})' if agg_info else 'TimeSeriesData'
+        info_str = 'TimeSeriesData'
         return f'{info_str}\n{super().__repr__()}'
-
-    @property
-    def agg_group(self):
-        warnings.warn('agg_group is deprecated, use aggregation_group instead', DeprecationWarning, stacklevel=2)
-        return self.aggregation_group
-
-    @property
-    def agg_weight(self):
-        warnings.warn('agg_weight is deprecated, use aggregation_weight instead', DeprecationWarning, stacklevel=2)
-        return self.aggregation_weight
 
 
 class DataConverter:
@@ -383,6 +323,56 @@ class DataConverter:
         broadcasted = source_data.broadcast_like(target_template)
         return broadcasted.transpose(*target_dims)
 
+    @staticmethod
+    def _validate_dataarray_dims(
+        data: xr.DataArray, target_coords: dict[str, pd.Index], target_dims: tuple[str, ...]
+    ) -> xr.DataArray:
+        """
+        Validate that DataArray dims are a subset of target dims (without broadcasting).
+
+        This method validates compatibility without expanding to full dimensions,
+        allowing data to remain in compact form. Broadcasting happens later at
+        the linopy interface (FlowSystemModel.add_variables).
+
+        Also reduces constant dimensions and transposes data to canonical dimension
+        order (matching target_dims order).
+
+        Args:
+            data: DataArray to validate
+            target_coords: Target coordinates {dim_name: coordinate_index}
+            target_dims: Target dimension names in canonical order
+
+        Returns:
+            DataArray with validated dims, reduced constants, transposed to canonical order
+
+        Raises:
+            ConversionError: If data has dimensions not in target_dims,
+                           or coordinate values don't match
+        """
+        # Validate: all data dimensions must exist in target
+        extra_dims = set(data.dims) - set(target_dims)
+        if extra_dims:
+            raise ConversionError(f'Data has dimensions {extra_dims} not in target dimensions {target_dims}')
+
+        # Validate: coordinate compatibility for overlapping dimensions
+        for dim in data.dims:
+            if dim in data.coords and dim in target_coords:
+                data_coords = data.coords[dim]
+                target_coords_for_dim = target_coords[dim]
+
+                if not np.array_equal(data_coords.values, target_coords_for_dim.values):
+                    raise ConversionError(
+                        f'Coordinate mismatch for dimension "{dim}". Data and target coordinates have different values.'
+                    )
+
+        # Transpose to canonical dimension order (subset of target_dims that data has)
+        if data.dims:
+            canonical_order = tuple(d for d in target_dims if d in data.dims)
+            if data.dims != canonical_order:
+                data = data.transpose(*canonical_order)
+
+        return data
+
     @classmethod
     def to_dataarray(
         cls,
@@ -497,8 +487,9 @@ class DataConverter:
                 f'Unsupported data type: {type(data).__name__}. Supported types: {", ".join(supported_types)}'
             )
 
-        # Broadcast intermediate result to target specification
-        return cls._broadcast_dataarray_to_target_specification(intermediate, validated_coords, target_dims)
+        # Validate dims are compatible (no broadcasting - data stays compact)
+        # Broadcasting happens at FlowSystemModel.add_variables() via _ensure_coords
+        return cls._validate_dataarray_dims(intermediate, validated_coords, target_dims)
 
     @staticmethod
     def _validate_and_prepare_target_coordinates(
@@ -539,7 +530,9 @@ class DataConverter:
                 coord_index = coord_index.rename(dim_name)
 
             # Special validation for time dimensions (common pattern)
-            if dim_name == 'time' and not isinstance(coord_index, pd.DatetimeIndex):
+            # Allow integer indices when 'cluster' dimension is present (clustered mode)
+            has_cluster_dim = 'cluster' in coords
+            if dim_name == 'time' and not isinstance(coord_index, pd.DatetimeIndex) and not has_cluster_dim:
                 raise ConversionError(
                     f'Dimension named "time" should use DatetimeIndex for proper '
                     f'time-series functionality, got {type(coord_index).__name__}'
@@ -578,28 +571,40 @@ def get_dataarray_stats(arr: xr.DataArray) -> dict:
     return stats
 
 
-def drop_constant_arrays(ds: xr.Dataset, dim: str = 'time', drop_arrays_without_dim: bool = True) -> xr.Dataset:
+def drop_constant_arrays(
+    ds: xr.Dataset, dim: str = 'time', drop_arrays_without_dim: bool = True, atol: float = 1e-10
+) -> xr.Dataset:
     """Drop variables with constant values along a dimension.
 
     Args:
         ds: Input dataset to filter.
         dim: Dimension along which to check for constant values.
         drop_arrays_without_dim: If True, also drop variables that don't have the specified dimension.
+        atol: Absolute tolerance for considering values as constant (based on max - min).
 
     Returns:
         Dataset with constant variables removed.
     """
     drop_vars = []
+    # Use ds.variables for faster access (avoids _construct_dataarray overhead)
+    variables = ds.variables
 
-    for name, da in ds.data_vars.items():
+    for name in ds.data_vars:
+        var = variables[name]
         # Skip variables without the dimension
-        if dim not in da.dims:
+        if dim not in var.dims:
             if drop_arrays_without_dim:
                 drop_vars.append(name)
             continue
 
-        # Check if variable is constant along the dimension
-        if (da.max(dim, skipna=True) == da.min(dim, skipna=True)).all().item():
+        # Check if variable is constant along the dimension using numpy (ptp < atol)
+        axis = var.dims.index(dim)
+        data = var.values
+        # Use numpy operations directly for speed
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=RuntimeWarning, message='All-NaN slice')
+            ptp = np.nanmax(data, axis=axis) - np.nanmin(data, axis=axis)
+        if np.all(ptp < atol):
             drop_vars.append(name)
 
     if drop_vars:

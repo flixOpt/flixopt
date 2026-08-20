@@ -11,7 +11,6 @@ recursive-include flixopt *.py
 global-exclude *.pyc *.pyo __pycache__
 prune .github
 prune docs
-prune examples
 prune tests
 prune pics
 prune scripts
@@ -21,6 +20,5 @@ prune .venv
 prune venv
 exclude .gitignore
 exclude .pre-commit-config.yaml
-exclude renovate.json
 exclude mkdocs.yml
 exclude test_package.sh

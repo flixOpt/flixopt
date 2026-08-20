@@ -25,8 +25,7 @@ accessible for standalone data visualization tasks.
 
 from __future__ import annotations
 
-import itertools
-import os
+import logging
 import pathlib
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -39,13 +38,14 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotly.offline
 import xarray as xr
-from loguru import logger
 
-from .color_processing import process_colors
+from .color_processing import ColorType, process_colors
 from .config import CONFIG
 
 if TYPE_CHECKING:
     import pyvis
+
+logger = logging.getLogger('flixopt')
 
 # Define the colors for the 'portland' colorscale in matplotlib
 _portland_colors = [
@@ -65,56 +65,6 @@ else:  # Matplotlib < 3.7
     if 'portland' not in [c for c in plt.colormaps()]:
         plt.register_cmap(name='portland', cmap=mcolors.LinearSegmentedColormap.from_list('portland', _portland_colors))
 
-
-ColorType = str | list[str] | dict[str, str]
-"""Flexible color specification type supporting multiple input formats for visualization.
-
-Color specifications can take several forms to accommodate different use cases:
-
-**Named colorscales** (str):
-    - Standard colorscales: 'turbo', 'plasma', 'cividis', 'tab10', 'Set1'
-    - Energy-focused: 'portland' (custom flixopt colorscale for energy systems)
-    - Backend-specific maps available in Plotly and Matplotlib
-
-**Color Lists** (list[str]):
-    - Explicit color sequences: ['red', 'blue', 'green', 'orange']
-    - HEX codes: ['#FF0000', '#0000FF', '#00FF00', '#FFA500']
-    - Mixed formats: ['red', '#0000FF', 'green', 'orange']
-
-**Label-to-Color Mapping** (dict[str, str]):
-    - Explicit associations: {'Wind': 'skyblue', 'Solar': 'gold', 'Gas': 'brown'}
-    - Ensures consistent colors across different plots and datasets
-    - Ideal for energy system components with semantic meaning
-
-Examples:
-    ```python
-    # Named colorscale
-    colors = 'turbo'  # Automatic color generation
-
-    # Explicit color list
-    colors = ['red', 'blue', 'green', '#FFD700']
-
-    # Component-specific mapping
-    colors = {
-        'Wind_Turbine': 'skyblue',
-        'Solar_Panel': 'gold',
-        'Natural_Gas': 'brown',
-        'Battery': 'green',
-        'Electric_Load': 'darkred'
-    }
-    ```
-
-Color Format Support:
-    - **Named Colors**: 'red', 'blue', 'forestgreen', 'darkorange'
-    - **HEX Codes**: '#FF0000', '#0000FF', '#228B22', '#FF8C00'
-    - **RGB Tuples**: (255, 0, 0), (0, 0, 255) [Matplotlib only]
-    - **RGBA**: 'rgba(255,0,0,0.8)' [Plotly only]
-
-References:
-    - HTML Color Names: https://htmlcolorcodes.com/color-names/
-    - Matplotlib colorscales: https://matplotlib.org/stable/tutorials/colors/colorscales.html
-    - Plotly Built-in Colorscales: https://plotly.com/python/builtin-colorscales/
-"""
 
 PlottingEngine = Literal['plotly', 'matplotlib']
 """Identifier for the plotting engine to use."""
@@ -1192,6 +1142,57 @@ def dual_pie_with_matplotlib(
     return fig, axes
 
 
+def heatmap_with_plotly_v2(
+    data: xr.DataArray,
+    colors: ColorType | None = None,
+    title: str = '',
+    facet_col: str | None = None,
+    animation_frame: str | None = None,
+    facet_col_wrap: int | None = None,
+    **imshow_kwargs: Any,
+) -> go.Figure:
+    """
+    Plot a heatmap using Plotly's imshow.
+
+    Data should be prepared with dims in order: (y_axis, x_axis, [facet_col], [animation_frame]).
+    Use reshape_data_for_heatmap() to prepare time-series data before calling this.
+
+    Args:
+        data: DataArray with 2-4 dimensions. First two are heatmap axes.
+        colors: Colorscale name ('viridis', 'plasma', etc.).
+        title: Plot title.
+        facet_col: Dimension name for subplot columns (3rd dim).
+        animation_frame: Dimension name for animation (4th dim).
+        facet_col_wrap: Max columns before wrapping (only if < n_facets).
+        **imshow_kwargs: Additional args for px.imshow.
+
+    Returns:
+        Plotly Figure object.
+    """
+    if data.size == 0:
+        return go.Figure()
+
+    colors = colors or CONFIG.Plotting.default_sequential_colorscale
+    facet_col_wrap = facet_col_wrap or CONFIG.Plotting.default_facet_cols
+
+    imshow_args: dict[str, Any] = {
+        'img': data,
+        'color_continuous_scale': colors,
+        'title': title,
+        **imshow_kwargs,
+    }
+
+    if facet_col and facet_col in data.dims:
+        imshow_args['facet_col'] = facet_col
+        if facet_col_wrap < data.sizes[facet_col]:
+            imshow_args['facet_col_wrap'] = facet_col_wrap
+
+    if animation_frame and animation_frame in data.dims:
+        imshow_args['animation_frame'] = animation_frame
+
+    return px.imshow(**imshow_args)
+
+
 def heatmap_with_plotly(
     data: xr.DataArray,
     colors: ColorType | None = None,
@@ -1267,7 +1268,7 @@ def heatmap_with_plotly(
         Automatic time reshaping (when only time dimension remains):
 
         ```python
-        # Data with dims ['time', 'scenario', 'period']
+        # Data with dims ['time', 'period','scenario']
         # After faceting and animation, only 'time' remains -> auto-reshapes to (timestep, timeframe)
         fig = heatmap_with_plotly(data_array, facet_by='scenario', animate_by='period')
         ```

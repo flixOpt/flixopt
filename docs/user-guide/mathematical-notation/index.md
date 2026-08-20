@@ -1,123 +1,107 @@
-
 # Mathematical Notation
 
-This section provides the **mathematical formulations** underlying FlixOpt's optimization models. It is intended as **reference documentation** for users who want to understand the mathematical details behind the high-level FlixOpt API described in the [FlixOpt Concepts](../core-concepts.md) guide.
+This section provides the detailed mathematical formulations behind flixOpt. It expands on the concepts introduced in [Core Concepts](../core-concepts.md) with precise equations, variables, and constraints.
 
-**For typical usage**, refer to the [FlixOpt Concepts](../core-concepts.md) guide, [Examples](../../examples/index.md), and [API Reference](../../api-reference/index.md) - you don't need to understand these mathematical formulations to use FlixOpt effectively.
+!!! tip "When to read this"
+    You don't need this section to use flixOpt effectively. It's here for:
 
----
+    - Understanding exactly what the solver is optimizing
+    - Debugging unexpected model behavior
+    - Extending flixOpt with custom constraints
+    - Academic work requiring formal notation
 
-## Naming Conventions
+## Structure
 
-FlixOpt uses the following naming conventions:
+The documentation follows the same structure as Core Concepts:
 
-- All optimization variables are denoted by italic letters (e.g., $x$, $y$, $z$)
-- All parameters and constants are denoted by non italic small letters (e.g., $\text{a}$, $\text{b}$, $\text{c}$)
-- All Sets are denoted by greek capital letters (e.g., $\mathcal{F}$, $\mathcal{E}$)
-- All units of a set are denoted by greek small letters (e.g., $\mathcal{f}$, $\mathcal{e}$)
-- The letter $i$ is used to denote an index (e.g., $i=1,\dots,\text n$)
-- All time steps are denoted by the letter $\text{t}$ (e.g., $\text{t}_0$, $\text{t}_1$, $\text{t}_i$)
+| Core Concept | Mathematical Details |
+|--------------|---------------------|
+| **Buses** — where things connect | [Bus](elements/Bus.md) — balance equations, penalty terms |
+| **Flows** — what moves | [Flow](elements/Flow.md) — capacity bounds, load factors, profiles |
+| **Converters** — transform things | [LinearConverter](elements/LinearConverter.md) — conversion ratios |
+| **Storages** — save for later | [Storage](elements/Storage.md) — charge dynamics, efficiency losses |
+| **Effects** — what you track | [Effects & Dimensions](effects-and-dimensions.md) — objectives, costs, scenarios, periods |
 
-## Dimensions and Time Steps
+## Notation Conventions
 
-FlixOpt supports multi-dimensional optimization with up to three dimensions: **time** (mandatory), **period** (optional), and **scenario** (optional).
+### Variables (What the optimizer decides)
 
-**All mathematical formulations in this documentation are independent of whether periods or scenarios are present.** The equations shown are written with time index $\text{t}_i$ only, but automatically expand to additional dimensions when periods/scenarios are added.
+Optimization variables are shown in *italic*:
 
-For complete details on dimensions, their relationships, and influence on formulations, see **[Dimensions](dimensions.md)**.
+| Symbol | Meaning | Example |
+|--------|---------|---------|
+| $p(t)$ | Flow rate at time $t$ | Heat output of a boiler |
+| $c(t)$ | Charge state at time $t$ | Energy stored in a battery |
+| $P$ | Size/capacity (when optimized) | Installed capacity of a heat pump |
+| $s(t)$ | Binary on/off state | Whether a generator is running |
 
-### Time Steps
+### Parameters (What you provide)
 
-Time steps are defined as a sequence of discrete time steps $\text{t}_i \in \mathcal{T} \quad \text{for} \quad i \in \{1, 2, \dots, \text{n}\}$ (left-aligned in its timespan).
-From this sequence, the corresponding time intervals $\Delta \text{t}_i \in \Delta \mathcal{T}$ are derived as
+Parameters and constants are shown in upright text:
 
-$$\Delta \text{t}_i = \text{t}_{i+1} - \text{t}_i \quad \text{for} \quad i \in \{1, 2, \dots, \text{n}-1\}$$
+| Symbol | Meaning | Example |
+|--------|---------|---------|
+| $\eta$ | Efficiency | Boiler thermal efficiency (0.9) |
+| $\Delta t$ | Timestep duration | 1 hour |
+| $p_{min}$, $p_{max}$ | Flow bounds | Min/max operating power |
 
-The final time interval $\Delta \text{t}_\text n$ defaults to $\Delta \text{t}_\text n = \Delta \text{t}_{\text n-1}$, but is of course customizable.
-Non-equidistant time steps are also supported.
+### Sets and Indices
 
----
+| Symbol | Meaning |
+|--------|---------|
+| $t \in \mathcal{T}$ | Time steps |
+| $f \in \mathcal{F}$ | Flows |
+| $e \in \mathcal{E}$ | Effects |
 
-## Documentation Structure
+## The Optimization Problem
 
-This reference is organized to match the FlixOpt API structure:
+At its core, flixOpt solves:
 
-### Elements
-Mathematical formulations for core FlixOpt elements (corresponding to [`flixopt.elements`][flixopt.elements]):
+$$
+\min \quad objective + penalty
+$$
 
-- [Flow](elements/Flow.md) - Flow rate constraints and bounds
-- [Bus](elements/Bus.md) - Nodal balance equations
-- [Storage](elements/Storage.md) - Storage balance and charge state evolution
-- [LinearConverter](elements/LinearConverter.md) - Linear conversion relationships
+**Subject to:**
 
-**User API:** When you create a `Flow`, `Bus`, `Storage`, or `LinearConverter` in your FlixOpt model, these mathematical formulations are automatically applied.
+- Balance constraints at each bus
+- Capacity bounds on each flow
+- Storage dynamics over time
+- Conversion relationships in converters
+- Any additional effect constraints
 
-### Features
-Mathematical formulations for optional features (corresponding to parameters in FlixOpt classes):
+The following pages detail each of these components.
 
-- [InvestParameters](features/InvestParameters.md) - Investment decision modeling
-- [OnOffParameters](features/OnOffParameters.md) - Binary on/off operation
-- [Piecewise](features/Piecewise.md) - Piecewise linear approximations
+## Quick Example
 
-**User API:** When you pass `invest_parameters` or `on_off_parameters` to a `Flow` or component, these formulations are applied.
+Consider a simple system: a gas boiler connected to a heat bus serving a demand.
 
-### System-Level
-- [Effects, Penalty & Objective](effects-penalty-objective.md) - Cost allocation and objective function
+**Variables:**
 
-**User API:** When you create [`Effect`][flixopt.effects.Effect] objects and set `effects_per_flow_hour`, these formulations govern how costs are calculated.
+- $p_{gas}(t)$ — gas consumption at each timestep
+- $p_{heat}(t)$ — heat production at each timestep
 
-### Modeling Patterns (Advanced)
-**Internal implementation details** - These low-level patterns are used internally by Elements and Features. They are documented here for:
+**Constraints:**
 
-- Developers extending FlixOpt
-- Advanced users debugging models or understanding solver behavior
-- Researchers comparing mathematical formulations
+1. **Conversion** (boiler efficiency 90%):
+   $$p_{heat}(t) = 0.9 \cdot p_{gas}(t)$$
 
-**Normal users do not need to read this section** - the patterns are automatically applied when you use Elements and Features:
+2. **Capacity bounds** (boiler max 100 kW):
+   $$0 \leq p_{heat}(t) \leq 100$$
 
-- [Bounds and States](modeling-patterns/bounds-and-states.md) - Variable bounding patterns
-- [Duration Tracking](modeling-patterns/duration-tracking.md) - Consecutive time period tracking
-- [State Transitions](modeling-patterns/state-transitions.md) - State change modeling
+3. **Balance** (meet demand):
+   $$p_{heat}(t) = demand(t)$$
 
----
+**Objective** (minimize gas cost at €50/MWh):
+$$\min \sum_t p_{gas}(t) \cdot \Delta t \cdot 50$$
 
-## Quick Reference
+This simple example shows how the concepts combine. Real models have many more components, but the principles remain the same.
 
-### Components Cross-Reference
+## Next Steps
 
-| Concept | Documentation | Python Class |
-|---------|---------------|--------------|
-| **Flow rate bounds** | [Flow](elements/Flow.md) | [`Flow`][flixopt.elements.Flow] |
-| **Bus balance** | [Bus](elements/Bus.md) | [`Bus`][flixopt.elements.Bus] |
-| **Storage balance** | [Storage](elements/Storage.md) | [`Storage`][flixopt.components.Storage] |
-| **Linear conversion** | [LinearConverter](elements/LinearConverter.md) | [`LinearConverter`][flixopt.components.LinearConverter] |
+Start with the element that's most relevant to your question:
 
-### Features Cross-Reference
-
-| Concept | Documentation | Python Class |
-|---------|---------------|--------------|
-| **Binary investment** | [InvestParameters](features/InvestParameters.md) | [`InvestParameters`][flixopt.interface.InvestParameters] |
-| **On/off operation** | [OnOffParameters](features/OnOffParameters.md) | [`OnOffParameters`][flixopt.interface.OnOffParameters] |
-| **Piecewise segments** | [Piecewise](features/Piecewise.md) | [`Piecewise`][flixopt.interface.Piecewise] |
-
-### Modeling Patterns Cross-Reference
-
-| Pattern | Documentation | Implementation |
-|---------|---------------|----------------|
-| **Basic bounds** | [bounds-and-states](modeling-patterns/bounds-and-states.md#basic-bounds) | [`BoundingPatterns.basic_bounds()`][flixopt.modeling.BoundingPatterns.basic_bounds] |
-| **Bounds with state** | [bounds-and-states](modeling-patterns/bounds-and-states.md#bounds-with-state) | [`BoundingPatterns.bounds_with_state()`][flixopt.modeling.BoundingPatterns.bounds_with_state] |
-| **Scaled bounds** | [bounds-and-states](modeling-patterns/bounds-and-states.md#scaled-bounds) | [`BoundingPatterns.scaled_bounds()`][flixopt.modeling.BoundingPatterns.scaled_bounds] |
-| **Duration tracking** | [duration-tracking](modeling-patterns/duration-tracking.md) | [`ModelingPrimitives.consecutive_duration_tracking()`][flixopt.modeling.ModelingPrimitives.consecutive_duration_tracking] |
-| **State transitions** | [state-transitions](modeling-patterns/state-transitions.md) | [`BoundingPatterns.state_transition_bounds()`][flixopt.modeling.BoundingPatterns.state_transition_bounds] |
-
-### Python Class Lookup
-
-| Class | Documentation | API Reference |
-|-------|---------------|---------------|
-| `Flow` | [Flow](elements/Flow.md) | [`Flow`][flixopt.elements.Flow] |
-| `Bus` | [Bus](elements/Bus.md) | [`Bus`][flixopt.elements.Bus] |
-| `Storage` | [Storage](elements/Storage.md) | [`Storage`][flixopt.components.Storage] |
-| `LinearConverter` | [LinearConverter](elements/LinearConverter.md) | [`LinearConverter`][flixopt.components.LinearConverter] |
-| `InvestParameters` | [InvestParameters](features/InvestParameters.md) | [`InvestParameters`][flixopt.interface.InvestParameters] |
-| `OnOffParameters` | [OnOffParameters](features/OnOffParameters.md) | [`OnOffParameters`][flixopt.interface.OnOffParameters] |
-| `Piecewise` | [Piecewise](features/Piecewise.md) | [`Piecewise`][flixopt.interface.Piecewise] |
+- **Why isn't my demand being met?** → [Bus](elements/Bus.md) (balance constraints)
+- **Why is my component not running?** → [Flow](elements/Flow.md) (capacity bounds)
+- **How does storage charge/discharge?** → [Storage](elements/Storage.md) (charge dynamics)
+- **How are efficiencies handled?** → [LinearConverter](elements/LinearConverter.md) (conversion)
+- **How are costs calculated?** → [Effects & Dimensions](effects-and-dimensions.md)

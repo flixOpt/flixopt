@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import logging
 import socket
 import threading
 from typing import TYPE_CHECKING, Any
-
-from loguru import logger
 
 try:
     import dash_cytoscape as cyto
@@ -20,10 +19,13 @@ except ImportError as e:
     VISUALIZATION_ERROR = str(e)
 
 from .components import LinearConverter, Sink, Source, SourceAndSink, Storage
+from .config import SUCCESS_LEVEL
 from .elements import Bus
 
 if TYPE_CHECKING:
     from .flow_system import FlowSystem
+
+logger = logging.getLogger('flixopt')
 
 
 # Configuration class for better organization
@@ -779,7 +781,7 @@ def shownetwork(graph: nx.DiGraph):
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
 
-    print(f'Network visualization started on http://127.0.0.1:{port}/')
+    logger.log(SUCCESS_LEVEL, f'Network visualization started on http://127.0.0.1:{port}/')
 
     # Store server reference for cleanup
     app.server_instance = server

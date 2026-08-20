@@ -1,0 +1,173 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'flixopt/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - '.github/workflows/**'
+  # No paths filter here: lint and test are required checks, and a workflow that
+  # never triggers never reports, leaving such PRs permanently blocked. The filter
+  # lives in the `changes` job below, which skips the expensive steps instead.
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read  # `changes` reads the PR's file list via gh
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  RUFF_VERSION: "0.15.21"  # Keep in sync with the ruff pin in pyproject.toml [dev]
+  MPLBACKEND: Agg
+  PLOTLY_RENDERER: json
+  FLIXOPT_CI: false
+
+jobs:
+  changes:
+    name: Detect source changes
+    runs-on: ubuntu-24.04
+    outputs:
+      source: ${{ steps.detect.outputs.source }}
+    steps:
+      - name: Detect source changes
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [[ "${{ github.event_name }}" != 'pull_request' ]]; then
+            echo 'source=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Treat a failed, empty or truncated listing as a source change, so a
+          # detection failure costs a test run rather than skipping one. The guard
+          # is required: steps run under `bash -e`, where a failing command
+          # substitution aborts the step instead of falling through.
+          if ! paths=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json files --jq '.files[].path'); then
+            echo 'source=true' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ -z "$paths" ]] || grep -qE '^(flixopt/|tests/|pyproject\.toml$|\.github/workflows/)' <<< "$paths"; then
+            echo 'source=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'source=false' >> "$GITHUB_OUTPUT"
+          fi
+
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.10.9"
+          enable-cache: true
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Run Ruff
+        run: |
+          uvx ruff@${{ env.RUFF_VERSION }} check . --output-format=github
+          uvx ruff@${{ env.RUFF_VERSION }} format --check --diff .
+
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: [lint, changes]
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12', '3.13', '3.14']
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.10.9"
+          enable-cache: true
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        if: needs.changes.outputs.source == 'true'
+        run: uv pip install --system .[dev]
+
+      - name: Run tests
+        if: needs.changes.outputs.source == 'true'
+        run: |
+          if [[ "${{ github.event.pull_request.draft }}" == "true" ]]; then
+            # Draft PR: skip examples, slow, and deprecated_api
+            pytest -v --numprocesses=auto -m "not examples and not slow and not deprecated_api"
+          else
+            # Ready PR & main push: examples excluded via addopts
+            pytest -v --numprocesses=auto
+          fi
+
+      - name: Report skipped tests
+        if: needs.changes.outputs.source != 'true'
+        run: echo 'No changes under flixopt/, tests/, pyproject.toml or .github/workflows/ - tests skipped.'
+
+  test-examples:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    needs: lint
+    # Only run on main branch or when called by release workflow (not on PRs)
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.10.9"
+          enable-cache: true
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: uv pip install --system .[dev]
+
+      - name: Run example tests
+        run: pytest -v -m examples --numprocesses=auto
+
+  security:
+    runs-on: ubuntu-24.04
+    needs: lint
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.10.9"
+          enable-cache: true
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Run Bandit
+        run: |
+          uvx bandit -r flixopt/ -c pyproject.toml -f json -o bandit-report.json -q --severity-level high --confidence-level medium
+          uvx bandit -r flixopt/ -c pyproject.toml -q --exit-zero
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-report
+          path: bandit-report.json
+          retention-days: 30

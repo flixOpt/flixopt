@@ -2,7 +2,7 @@
 This module bundles all common functionality of flixopt and sets up the logging
 """
 
-import warnings
+import logging
 from importlib.metadata import PackageNotFoundError, version
 
 try:
@@ -12,9 +12,15 @@ except (PackageNotFoundError, TypeError):
     __version__ = '0.0.0.dev0'
 
 # Import commonly used classes and functions
-from . import linear_converters, plotting, results, solvers
-from .aggregation import AggregationParameters
-from .calculation import AggregatedCalculation, FullCalculation, SegmentedCalculation
+# Register xarray accessors:
+# - xr.Dataset.plotly / xr.DataArray.plotly (from xarray_plotly package)
+# - xr.Dataset.fxstats (from stats_accessor)
+import xarray_plotly as _xpx  # noqa: F401
+
+from . import clustering, linear_converters, plotting, results, solvers, tutorials
+from . import stats_accessor as _fxstats  # noqa: F401
+from .carrier import Carrier, CarrierContainer
+from .comparison import Comparison
 from .components import (
     LinearConverter,
     Sink,
@@ -23,20 +29,25 @@ from .components import (
     Storage,
     Transmission,
 )
-from .config import CONFIG, change_logging_level
+from .config import CONFIG
 from .core import TimeSeriesData
-from .effects import Effect
+from .effects import PENALTY_EFFECT_LABEL, Effect
 from .elements import Bus, Flow
 from .flow_system import FlowSystem
-from .interface import InvestParameters, OnOffParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects
+from .interface import InvestParameters, Piece, Piecewise, PiecewiseConversion, PiecewiseEffects, StatusParameters
+from .optimization import Optimization, SegmentedOptimization
+from .plot_result import PlotResult
 
 __all__ = [
     'TimeSeriesData',
     'CONFIG',
-    'change_logging_level',
+    'Carrier',
+    'CarrierContainer',
+    'Comparison',
     'Flow',
     'Bus',
     'Effect',
+    'PENALTY_EFFECT_LABEL',
     'Source',
     'Sink',
     'SourceAndSink',
@@ -44,45 +55,24 @@ __all__ = [
     'LinearConverter',
     'Transmission',
     'FlowSystem',
-    'FullCalculation',
-    'SegmentedCalculation',
-    'AggregatedCalculation',
+    'Optimization',
+    'SegmentedOptimization',
     'InvestParameters',
-    'OnOffParameters',
+    'StatusParameters',
     'Piece',
     'Piecewise',
     'PiecewiseConversion',
     'PiecewiseEffects',
-    'AggregationParameters',
+    'PlotResult',
+    'clustering',
     'plotting',
     'results',
     'linear_converters',
     'solvers',
+    'tutorials',
 ]
 
-# === Runtime warning suppression for third-party libraries ===
-# These warnings are from dependencies and cannot be fixed by end users.
-# They are suppressed at runtime to provide a cleaner user experience.
-# These filters match the test configuration in pyproject.toml for consistency.
-
-# tsam: Time series aggregation library
-# - UserWarning: Informational message about minimal value constraints during clustering.
-warnings.filterwarnings('ignore', category=UserWarning, message='.*minimal value.*exceeds.*', module='tsam')
-# TODO: Might be able to fix it in flixopt?
-
-# linopy: Linear optimization library
-# - UserWarning: Coordinate mismatch warnings that don't affect functionality and are expected.
-warnings.filterwarnings(
-    'ignore', category=UserWarning, message='Coordinates across variables not equal', module='linopy'
-)
-# - FutureWarning: join parameter default will change in future versions
-warnings.filterwarnings(
-    'ignore',
-    category=FutureWarning,
-    message="In a future version of xarray the default value for join will change from join='outer' to join='exact'",
-    module='linopy',
-)
-
-# numpy: Core numerical library
-# - RuntimeWarning: Binary incompatibility warnings from compiled extensions (safe to ignore). numpy 1->2
-warnings.filterwarnings('ignore', category=RuntimeWarning, message='numpy\\.ndarray size changed')
+# Initialize logger with default configuration (silent: WARNING level, NullHandler).
+logger = logging.getLogger('flixopt')
+logger.setLevel(logging.WARNING)
+logger.addHandler(logging.NullHandler())

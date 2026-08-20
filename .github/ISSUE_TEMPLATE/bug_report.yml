@@ -29,9 +29,7 @@ body:
       import numpy as np
       import flixopt as fx
 
-      fx.CONFIG.Logging.console = True
-      fx.CONFIG.Logging.level = 'DEBUG'
-      fx.CONFIG.apply()
+      fx.CONFIG.Logging.enable_console('DEBUG')
       flow_system = fx.FlowSystem(pd.date_range('2020-01-01', periods=3, freq='h'))
 
       flow_system.add_elements(

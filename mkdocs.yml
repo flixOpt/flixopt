@@ -1,4 +1,4 @@
-# flixOpt Documentation Configuration
+# FlixOpt Documentation Configuration
 # https://mkdocstrings.github.io/python/usage/configuration/docstrings/
 # https://squidfunk.github.io/mkdocs-material/setup/
 
@@ -7,41 +7,90 @@ site_description: Energy and Material Flow Optimization Framework
 site_url: https://flixopt.github.io/flixopt/
 repo_url: https://github.com/flixOpt/flixopt
 repo_name: flixOpt/flixopt
+edit_uri: edit/main/docs/
 
 nav:
-  - Home: index.md
+  - Home:
+    - Home: index.md
+    - Getting Started:
+      - Installation: home/installation.md
+      - Quick Start: home/quick-start.md
+    - About:
+      - Users: home/users.md
+      - Citing: home/citing.md
+      - License: home/license.md
+
   - User Guide:
-    - Getting Started: getting-started.md
+    - Overview: user-guide/index.md
     - Core Concepts: user-guide/core-concepts.md
-    - Migration to v3.0.0: user-guide/migration-guide-v3.md
+    - Glossary: user-guide/glossary.md
+    - Building Models:
+      - Overview: user-guide/building-models/index.md
+      - Choosing Components: user-guide/building-models/choosing-components.md
+    - Running Optimizations: user-guide/optimization/index.md
+    - Analyzing Results: user-guide/results/index.md
+    - Plotting:
+      - Plotting Results: user-guide/results-plotting.md
+      - Color Management: user-guide/colors.md
+      - Plotly Customization: user-guide/plotly-customization.md
     - Mathematical Notation:
       - Overview: user-guide/mathematical-notation/index.md
-      - Dimensions: user-guide/mathematical-notation/dimensions.md
-      - Elements:
-        - Flow: user-guide/mathematical-notation/elements/Flow.md
-        - Bus: user-guide/mathematical-notation/elements/Bus.md
-        - Storage: user-guide/mathematical-notation/elements/Storage.md
-        - LinearConverter: user-guide/mathematical-notation/elements/LinearConverter.md
-      - Features:
-        - InvestParameters: user-guide/mathematical-notation/features/InvestParameters.md
-        - OnOffParameters: user-guide/mathematical-notation/features/OnOffParameters.md
-        - Piecewise: user-guide/mathematical-notation/features/Piecewise.md
-      - Effects, Penalty & Objective: user-guide/mathematical-notation/effects-penalty-objective.md
-      - Modeling Patterns:
-        - Overview: user-guide/mathematical-notation/modeling-patterns/index.md
-        - Bounds and States: user-guide/mathematical-notation/modeling-patterns/bounds-and-states.md
-        - Duration Tracking: user-guide/mathematical-notation/modeling-patterns/duration-tracking.md
-        - State Transitions: user-guide/mathematical-notation/modeling-patterns/state-transitions.md
-    - Recipes: user-guide/recipes/index.md
-    - Roadmap: roadmap.md
-  - Examples: examples/
-  - Contribute: contribute.md
+      - Bus: user-guide/mathematical-notation/elements/Bus.md
+      - Flow: user-guide/mathematical-notation/elements/Flow.md
+      - LinearConverter: user-guide/mathematical-notation/elements/LinearConverter.md
+      - Storage: user-guide/mathematical-notation/elements/Storage.md
+      - Effects & Dimensions: user-guide/mathematical-notation/effects-and-dimensions.md
+      - Investment: user-guide/mathematical-notation/features/InvestParameters.md
+      - Status: user-guide/mathematical-notation/features/StatusParameters.md
+      - Piecewise: user-guide/mathematical-notation/features/Piecewise.md
+    - Recipes:
+      - user-guide/recipes/index.md
+      - Plotting Custom Data: user-guide/recipes/plotting-custom-data.md
+    - Support:
+      - FAQ: user-guide/faq.md
+      - Troubleshooting: user-guide/troubleshooting.md
+      - Community: user-guide/support.md
+    - Migration & Updates:
+      - Migration Guide v7: user-guide/migration-guide-v7.md
+      - Migration Guide v6: user-guide/migration-guide-v6.md
+      - Migration Guide v5: user-guide/migration-guide-v5.md
+      - Migration Guide v3: user-guide/migration-guide-v3.md
+      - Release Notes: changelog.md
+      - Roadmap: roadmap.md
+
+  - Examples:
+    - Overview: notebooks/index.md
+    - Basics:
+      - Quickstart: notebooks/01-quickstart.ipynb
+      - Heat System: notebooks/02-heat-system.ipynb
+    - Investment:
+      - Sizing: notebooks/03-investment-optimization.ipynb
+      - Constraints: notebooks/04-operational-constraints.ipynb
+    - Advanced:
+      - Multi-Carrier: notebooks/05-multi-carrier-system.ipynb
+      - Transmission: notebooks/10-transmission.ipynb
+    - Non-Linear Modeling:
+      - Time-Varying Parameters: notebooks/06a-time-varying-parameters.ipynb
+      - Piecewise Conversion: notebooks/06b-piecewise-conversion.ipynb
+      - Piecewise Effects: notebooks/06c-piecewise-effects.ipynb
+    - Scaling:
+      - Scenarios: notebooks/07-scenarios-and-periods.ipynb
+      - Aggregation: notebooks/08a-aggregation.ipynb
+      - Rolling Horizon: notebooks/08b-rolling-horizon.ipynb
+      - Clustering:
+        - Introduction: notebooks/08c-clustering.ipynb
+        - Storage Modes: notebooks/08c2-clustering-storage-modes.ipynb
+    - Results:
+      - Plotting: notebooks/09-plotting-and-data-access.ipynb
+
   - API Reference: api-reference/
-  - Release Notes: changelog/
+
+  - Contributing: contribute.md
 
 theme:
   name: material
   language: en
+  custom_dir: docs/overrides
 
   palette:
     # Palette toggle for automatic mode
@@ -69,7 +118,7 @@ theme:
         name: Switch to system preference
 
   font:
-    text: Inter  # Modern, readable font
+    text: Roboto  # Clean, technical documentation font
     code: Fira Code  # Beautiful code font with ligatures
 
   logo: images/flixopt-icon.svg
@@ -90,7 +139,6 @@ theme:
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.sections
-    - navigation.expand  # Expand navigation by default
     - navigation.path  # Show breadcrumb path
     - navigation.prune  # Only render visible navigation
     - navigation.indexes
@@ -99,7 +147,6 @@ theme:
 
     # Table of contents
     - toc.follow
-    - toc.integrate  # Integrate TOC into navigation (optional)
 
     # Search
     - search.suggest
@@ -131,13 +178,15 @@ markdown_extensions:
       permalink: true
       permalink_title: Anchor link to this section
       toc_depth: 3
+      title: On this page
 
   # Code blocks
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
       pygments_lang_class: true
-      auto_title: true
+      auto_title: false
+      use_pygments: true
   - pymdownx.inlinehilite
   - pymdownx.snippets:
       base_path: ..
@@ -147,6 +196,9 @@ markdown_extensions:
         - name: mermaid
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
+        - name: plotly
+          class: mkdocs-plotly
+          format: !!python/name:mkdocs_plotly_plugin.fences.fence_plotly
 
   # Enhanced content
   - pymdownx.details
@@ -184,6 +236,18 @@ markdown_extensions:
 plugins:
   - search:
       separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+
+  - mkdocs-jupyter:
+      execute: !ENV [MKDOCS_JUPYTER_EXECUTE, true]  # CI pre-executes in parallel
+      allow_errors: false
+      include_source: true
+      include_requirejs: true
+      ignore:
+        - "notebooks/data/*.py"  # Data generation scripts, not notebooks
+      execute_ignore:
+        - "notebooks/data/*.py"
+
+  - plotly
 
   - table-reader
 
@@ -278,10 +342,10 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/flixOpt/flixopt
-      name: flixOpt on GitHub
+      name: FlixOpt on GitHub
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/flixopt/
-      name: flixOpt on PyPI
+      name: FlixOpt on PyPI
 
   analytics:
     provider: google
@@ -310,8 +374,8 @@ extra_css:
 
 extra_javascript:
   - javascripts/mathjax.js
+  - javascripts/plotly-instant.js
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
-  - https://polyfill.io/v3/polyfill.min.js?features=es6
 
 watch:
   - flixopt

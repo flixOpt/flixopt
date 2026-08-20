@@ -10,26 +10,34 @@ from typing import TYPE_CHECKING
 import linopy
 import numpy as np
 
-from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities
-from .structure import FlowSystemModel, Submodel
+from .modeling import BoundingPatterns, ModelingPrimitives, ModelingUtilities, _set_constraint_lhs
+from .structure import FlowSystemModel, Submodel, VariableCategory
 
 if TYPE_CHECKING:
+    from collections.abc import Collection
+
+    import xarray as xr
+
     from .core import FlowSystemDimensions
-    from .interface import InvestParameters, OnOffParameters, Piecewise
+    from .interface import InvestParameters, Piecewise, StatusParameters
     from .types import Numeric_PS, Numeric_TPS
 
 
 class InvestmentModel(Submodel):
-    """
-    This feature model is used to model the investment of a variable.
-    It applies the corresponding bounds to the variable and the on/off state of the variable.
+    """Mathematical model implementation for investment decisions.
+
+    Creates optimization variables and constraints for investment sizing decisions,
+    supporting both binary and continuous sizing with comprehensive effect modeling.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/InvestParameters/>
 
     Args:
         model: The optimization model instance
         label_of_element: The label of the parent (Element). Used to construct the full label of the model.
         parameters: The parameters of the feature model.
         label_of_model: The label of the model. This is needed to construct the full label of the model.
-
+        size_category: Category for the size variable (FLOW_SIZE, STORAGE_SIZE, or SIZE for generic).
     """
 
     parameters: InvestParameters
@@ -40,9 +48,11 @@ class InvestmentModel(Submodel):
         label_of_element: str,
         parameters: InvestParameters,
         label_of_model: str | None = None,
+        size_category: VariableCategory = VariableCategory.SIZE,
     ):
         self.piecewise_effects: PiecewiseEffectsModel | None = None
         self.parameters = parameters
+        self._size_category = size_category
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
     def _do_modeling(self):
@@ -62,6 +72,7 @@ class InvestmentModel(Submodel):
             lower=size_min if self.parameters.mandatory else 0,
             upper=size_max,
             coords=self._model.get_coords(['period', 'scenario']),
+            category=self._size_category,
         )
 
         if not self.parameters.mandatory:
@@ -69,11 +80,12 @@ class InvestmentModel(Submodel):
                 binary=True,
                 coords=self._model.get_coords(['period', 'scenario']),
                 short_name='invested',
+                category=VariableCategory.INVESTED,
             )
             BoundingPatterns.bounds_with_state(
                 self,
                 variable=self.size,
-                variable_state=self._variables['invested'],
+                state=self._variables['invested'],
                 bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
             )
 
@@ -142,124 +154,168 @@ class InvestmentModel(Submodel):
         return self._variables['invested']
 
 
-class OnOffModel(Submodel):
-    """OnOff model using factory patterns"""
+class StatusModel(Submodel):
+    """Mathematical model implementation for binary status.
+
+    Creates optimization variables and constraints for binary status modeling,
+    state transitions, duration tracking, and operational effects.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/StatusParameters/>
+    """
 
     def __init__(
         self,
         model: FlowSystemModel,
         label_of_element: str,
-        parameters: OnOffParameters,
-        on_variable: linopy.Variable,
-        previous_states: Numeric_TPS | None,
+        parameters: StatusParameters,
+        status: linopy.Variable,
+        previous_status: xr.DataArray | None,
         label_of_model: str | None = None,
     ):
         """
-        This feature model is used to model the on/off state of flow_rate(s). It does not matter of the flow_rates are
-        bounded by a size variable or by a hard bound. THe used bound here is the absolute highest/lowest bound!
+        This feature model is used to model the status (active/inactive) state of flow_rate(s).
+        It does not matter if the flow_rates are bounded by a size variable or by a hard bound.
+        The used bound here is the absolute highest/lowest bound!
 
         Args:
             model: The optimization model instance
             label_of_element: The label of the parent (Element). Used to construct the full label of the model.
             parameters: The parameters of the feature model.
-            on_variable: The variable that determines the on state
-            previous_states: The previous flow_rates
+            status: The variable that determines the active state
+            previous_status: The previous flow_rates
             label_of_model: The label of the model. This is needed to construct the full label of the model.
         """
-        self.on = on_variable
-        self._previous_states = previous_states
+        self.status = status
+        self._previous_status = previous_status
         self.parameters = parameters
         super().__init__(model, label_of_element, label_of_model=label_of_model)
 
     def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
 
-        if self.parameters.use_off:
-            off = self.add_variables(binary=True, short_name='off', coords=self._model.get_coords())
-            self.add_constraints(self.on + off == 1, short_name='complementary')
+        # Create a separate binary 'inactive' variable when needed for downtime tracking or explicit use
+        # When not needed, the expression (1 - self.status) can be used instead
+        if self.parameters.use_downtime_tracking:
+            inactive = self.add_variables(
+                binary=True,
+                short_name='inactive',
+                coords=self._model.get_coords(),
+                category=VariableCategory.INACTIVE,
+            )
+            self.add_constraints(self.status + inactive == 1, short_name='complementary')
 
-        # 3. Total duration tracking using existing pattern
+        # 3. Total duration tracking
+        total_hours = self._model.temporal_weight.sum(self._model.temporal_dims)
         ModelingPrimitives.expression_tracking_variable(
             self,
-            tracked_expression=(self.on * self._model.hours_per_step).sum('time'),
+            tracked_expression=self._model.sum_temporal(self.status),
             bounds=(
-                self.parameters.on_hours_total_min if self.parameters.on_hours_total_min is not None else 0,
-                self.parameters.on_hours_total_max if self.parameters.on_hours_total_max is not None else np.inf,
-            ),  # TODO: self._model.hours_per_step.sum('time').item() + self._get_previous_on_duration())
-            short_name='on_hours_total',
+                self.parameters.active_hours_min if self.parameters.active_hours_min is not None else 0,
+                self.parameters.active_hours_max if self.parameters.active_hours_max is not None else total_hours,
+            ),
+            short_name='active_hours',
             coords=['period', 'scenario'],
+            category=VariableCategory.TOTAL,
         )
 
         # 4. Switch tracking using existing pattern
-        if self.parameters.use_switch_on:
-            self.add_variables(binary=True, short_name='switch|on', coords=self.get_coords())
-            self.add_variables(binary=True, short_name='switch|off', coords=self.get_coords())
+        if self.parameters.use_startup_tracking:
+            self.add_variables(
+                binary=True,
+                short_name='startup',
+                coords=self.get_coords(),
+                category=VariableCategory.STARTUP,
+            )
+            self.add_variables(
+                binary=True,
+                short_name='shutdown',
+                coords=self.get_coords(),
+                category=VariableCategory.SHUTDOWN,
+            )
+
+            # Determine previous_state: None means relaxed (no constraint at t=0)
+            previous_state = self._previous_status.isel(time=-1) if self._previous_status is not None else None
 
             BoundingPatterns.state_transition_bounds(
                 self,
-                state_variable=self.on,
-                switch_on=self.switch_on,
-                switch_off=self.switch_off,
+                state=self.status,
+                activate=self.startup,
+                deactivate=self.shutdown,
                 name=f'{self.label_of_model}|switch',
-                previous_state=self._previous_states.isel(time=-1) if self._previous_states is not None else 0,
+                previous_state=previous_state,
                 coord='time',
             )
 
-            if self.parameters.switch_on_total_max is not None:
+            if self.parameters.startup_limit is not None:
                 count = self.add_variables(
                     lower=0,
-                    upper=self.parameters.switch_on_total_max,
+                    upper=self.parameters.startup_limit,
                     coords=self._model.get_coords(('period', 'scenario')),
-                    short_name='switch|count',
+                    short_name='startup_count',
+                    category=VariableCategory.STARTUP_COUNT,
                 )
-                self.add_constraints(count == self.switch_on.sum('time'), short_name='switch|count')
+                # Sum over all temporal dimensions (time, and cluster if present)
+                startup_temporal_dims = [d for d in self.startup.dims if d not in ('period', 'scenario')]
+                self.add_constraints(count == self.startup.sum(startup_temporal_dims), short_name='startup_count')
 
-        # 5. Consecutive on duration using existing pattern
-        if self.parameters.use_consecutive_on_hours:
+        # 5. Consecutive active duration (uptime) using existing pattern
+        if self.parameters.use_uptime_tracking:
             ModelingPrimitives.consecutive_duration_tracking(
                 self,
-                state_variable=self.on,
-                short_name='consecutive_on_hours',
-                minimum_duration=self.parameters.consecutive_on_hours_min,
-                maximum_duration=self.parameters.consecutive_on_hours_max,
-                duration_per_step=self.hours_per_step,
+                state=self.status,
+                short_name='uptime',
+                minimum_duration=self.parameters.min_uptime,
+                maximum_duration=self.parameters.max_uptime,
+                duration_per_step=self.timestep_duration,
                 duration_dim='time',
-                previous_duration=self._get_previous_on_duration(),
+                previous_duration=self._get_previous_uptime(),
             )
 
-        # 6. Consecutive off duration using existing pattern
-        if self.parameters.use_consecutive_off_hours:
+        # 6. Consecutive inactive duration (downtime) using existing pattern
+        if self.parameters.use_downtime_tracking:
             ModelingPrimitives.consecutive_duration_tracking(
                 self,
-                state_variable=self.off,
-                short_name='consecutive_off_hours',
-                minimum_duration=self.parameters.consecutive_off_hours_min,
-                maximum_duration=self.parameters.consecutive_off_hours_max,
-                duration_per_step=self.hours_per_step,
+                state=self.inactive,
+                short_name='downtime',
+                minimum_duration=self.parameters.min_downtime,
+                maximum_duration=self.parameters.max_downtime,
+                duration_per_step=self.timestep_duration,
                 duration_dim='time',
-                previous_duration=self._get_previous_off_duration(),
+                previous_duration=self._get_previous_downtime(),
             )
-            # TODO:
+
+        # 7. Cyclic constraint for clustered systems
+        self._add_cluster_cyclic_constraint()
 
         self._add_effects()
 
+    def _add_cluster_cyclic_constraint(self):
+        """For 'cyclic' cluster mode: each cluster's start status equals its end status."""
+        if self._model.flow_system.clusters is not None and self.parameters.cluster_mode == 'cyclic':
+            self.add_constraints(
+                self.status.isel(time=0) == self.status.isel(time=-1),
+                short_name='cluster_cyclic',
+            )
+
     def _add_effects(self):
-        """Add operational effects"""
-        if self.parameters.effects_per_running_hour:
+        """Add operational effects (use timestep_duration only, cluster_weight is applied when summing to total)"""
+        if self.parameters.effects_per_active_hour:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
-                    effect: self.on * factor * self._model.hours_per_step
-                    for effect, factor in self.parameters.effects_per_running_hour.items()
+                    effect: self.status * factor * self._model.timestep_duration
+                    for effect, factor in self.parameters.effects_per_active_hour.items()
                 },
                 target='temporal',
             )
 
-        if self.parameters.effects_per_switch_on:
+        if self.parameters.effects_per_startup:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={
-                    effect: self.switch_on * factor for effect, factor in self.parameters.effects_per_switch_on.items()
+                    effect: self.startup * factor for effect, factor in self.parameters.effects_per_startup.items()
                 },
                 target='temporal',
             )
@@ -267,55 +323,64 @@ class OnOffModel(Submodel):
     # Properties access variables from Submodel's tracking system
 
     @property
-    def on_hours_total(self) -> linopy.Variable:
-        """Total on hours variable"""
-        return self['on_hours_total']
+    def active_hours(self) -> linopy.Variable:
+        """Total active hours variable"""
+        return self['active_hours']
 
     @property
-    def off(self) -> linopy.Variable | None:
-        """Binary off state variable"""
-        return self.get('off')
+    def inactive(self) -> linopy.Variable | None:
+        """Binary inactive state variable.
+
+        Note:
+            Only created when downtime tracking is enabled (min_downtime or max_downtime set).
+            For general use, prefer the expression `1 - status` instead of this variable.
+        """
+        return self.get('inactive')
 
     @property
-    def switch_on(self) -> linopy.Variable | None:
-        """Switch on variable"""
-        return self.get('switch|on')
+    def startup(self) -> linopy.Variable | None:
+        """Startup variable"""
+        return self.get('startup')
 
     @property
-    def switch_off(self) -> linopy.Variable | None:
-        """Switch off variable"""
-        return self.get('switch|off')
+    def shutdown(self) -> linopy.Variable | None:
+        """Shutdown variable"""
+        return self.get('shutdown')
 
     @property
-    def switch_on_nr(self) -> linopy.Variable | None:
-        """Number of switch-ons variable"""
-        return self.get('switch|count')
+    def startup_count(self) -> linopy.Variable | None:
+        """Number of startups variable"""
+        return self.get('startup_count')
 
     @property
-    def consecutive_on_hours(self) -> linopy.Variable | None:
-        """Consecutive on hours variable"""
-        return self.get('consecutive_on_hours')
+    def uptime(self) -> linopy.Variable | None:
+        """Consecutive active hours (uptime) variable"""
+        return self.get('uptime')
 
     @property
-    def consecutive_off_hours(self) -> linopy.Variable | None:
-        """Consecutive off hours variable"""
-        return self.get('consecutive_off_hours')
+    def downtime(self) -> linopy.Variable | None:
+        """Consecutive inactive hours (downtime) variable"""
+        return self.get('downtime')
 
-    def _get_previous_on_duration(self):
-        """Get previous on duration. Previously OFF by default, for one timestep"""
-        hours_per_step = self._model.hours_per_step.isel(time=0).min().item()
-        if self._previous_states is None:
-            return 0
-        else:
-            return ModelingUtilities.compute_consecutive_hours_in_state(self._previous_states, hours_per_step)
+    def _get_previous_uptime(self):
+        """Get previous uptime (consecutive active hours).
 
-    def _get_previous_off_duration(self):
-        """Get previous off duration. Previously OFF by default, for one timestep"""
-        hours_per_step = self._model.hours_per_step.isel(time=0).min().item()
-        if self._previous_states is None:
-            return hours_per_step
-        else:
-            return ModelingUtilities.compute_consecutive_hours_in_state(self._previous_states * -1 + 1, hours_per_step)
+        Returns None if no previous status is provided (relaxed mode - no constraint at t=0).
+        """
+        if self._previous_status is None:
+            return None  # Relaxed mode
+        hours_per_step = self._model.timestep_duration.isel(time=0).min().item()
+        return ModelingUtilities.compute_consecutive_hours_in_state(self._previous_status, hours_per_step)
+
+    def _get_previous_downtime(self):
+        """Get previous downtime (consecutive inactive hours).
+
+        Returns None if no previous status is provided (relaxed mode - no constraint at t=0).
+        """
+        if self._previous_status is None:
+            return None  # Relaxed mode
+        hours_per_step = self._model.timestep_duration.isel(time=0).min().item()
+        return ModelingUtilities.compute_consecutive_hours_in_state(1 - self._previous_status, hours_per_step)
 
 
 class PieceModel(Submodel):
@@ -326,7 +391,7 @@ class PieceModel(Submodel):
         model: FlowSystemModel,
         label_of_element: str,
         label_of_model: str,
-        dims: FlowSystemDimensions | None,
+        dims: Collection[FlowSystemDimensions] | None,
     ):
         self.inside_piece: linopy.Variable | None = None
         self.lambda0: linopy.Variable | None = None
@@ -336,17 +401,22 @@ class PieceModel(Submodel):
         super().__init__(model, label_of_element, label_of_model)
 
     def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
+
+        # Create variables
         self.inside_piece = self.add_variables(
             binary=True,
             short_name='inside_piece',
             coords=self._model.get_coords(dims=self.dims),
+            category=VariableCategory.INSIDE_PIECE,
         )
         self.lambda0 = self.add_variables(
             lower=0,
             upper=1,
             short_name='lambda0',
             coords=self._model.get_coords(dims=self.dims),
+            category=VariableCategory.LAMBDA0,
         )
 
         self.lambda1 = self.add_variables(
@@ -354,13 +424,24 @@ class PieceModel(Submodel):
             upper=1,
             short_name='lambda1',
             coords=self._model.get_coords(dims=self.dims),
+            category=VariableCategory.LAMBDA1,
         )
 
+        # Create constraints
         # eq:  lambda0(t) + lambda1(t) = inside_piece(t)
         self.add_constraints(self.inside_piece == self.lambda0 + self.lambda1, short_name='inside_piece')
 
 
 class PiecewiseModel(Submodel):
+    """Mathematical model implementation for piecewise linear approximations.
+
+    Creates optimization variables and constraints for piecewise linear relationships,
+    including lambda variables, piece activation binaries, and coupling constraints.
+
+    Mathematical Formulation:
+        See <https://flixopt.github.io/flixopt/latest/user-guide/mathematical-notation/features/Piecewise/>
+    """
+
     def __init__(
         self,
         model: FlowSystemModel,
@@ -368,7 +449,7 @@ class PiecewiseModel(Submodel):
         label_of_model: str,
         piecewise_variables: dict[str, Piecewise],
         zero_point: bool | linopy.Variable | None,
-        dims: FlowSystemDimensions | None,
+        dims: Collection[FlowSystemDimensions] | None,
     ):
         """
         Modeling a Piecewise relation between miultiple variables.
@@ -392,12 +473,15 @@ class PiecewiseModel(Submodel):
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
     def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
+
         # Validate all piecewise variables have the same number of segments
         segment_counts = [len(pw) for pw in self._piecewise_variables.values()]
         if not all(count == segment_counts[0] for count in segment_counts):
             raise ValueError(f'All piecewises must have the same number of pieces, got {segment_counts}')
 
+        # Create PieceModel submodels (which creates their variables and constraints)
         for i in range(len(list(self._piecewise_variables.values())[0])):
             new_piece = self.add_submodels(
                 PieceModel(
@@ -436,11 +520,16 @@ class PiecewiseModel(Submodel):
                     coords=self._model.get_coords(self.dims),
                     binary=True,
                     short_name='zero_point',
+                    category=VariableCategory.ZERO_POINT,
                 )
                 rhs = self.zero_point
             else:
                 rhs = 1
 
+            # This constraint ensures at most one segment is active at a time.
+            # When zero_point is a binary variable, it acts as a gate:
+            # - zero_point=1: at most one segment can be active (normal piecewise operation)
+            # - zero_point=0: all segments must be inactive (effectively disables the piecewise)
             self.add_constraints(
                 sum([piece.inside_piece for piece in self.pieces]) <= rhs,
                 name=f'{self.label_full}|{variable.name}|single_segment',
@@ -475,6 +564,10 @@ class PiecewiseEffectsModel(Submodel):
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
     def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
+        super()._do_modeling()
+
+        # Create variables
         self.shares = {
             effect: self.add_variables(coords=self._model.get_coords(['period', 'scenario']), short_name=effect)
             for effect in self._piecewise_shares
@@ -488,6 +581,7 @@ class PiecewiseEffectsModel(Submodel):
             },
         }
 
+        # Create piecewise model (which creates its variables and constraints)
         self.piecewise_model = self.add_submodels(
             PiecewiseModel(
                 model=self._model,
@@ -500,7 +594,7 @@ class PiecewiseEffectsModel(Submodel):
             short_name='PiecewiseEffects',
         )
 
-        # Shares
+        # Add shares to effects
         self._model.effects.add_share_to_effects(
             name=self.label_of_element,
             expressions={effect: variable * 1 for effect, variable in self.shares.items()},
@@ -521,7 +615,7 @@ class ShareAllocationModel(Submodel):
         min_per_hour: Numeric_TPS | None = None,
     ):
         if 'time' not in dims and (max_per_hour is not None or min_per_hour is not None):
-            raise ValueError('Both max_per_hour and min_per_hour cannot be used when has_time_dim is False')
+            raise ValueError("max_per_hour and min_per_hour require 'time' dimension in dims")
 
         self._dims = dims
         self.total_per_timestep: linopy.Variable | None = None
@@ -541,29 +635,38 @@ class ShareAllocationModel(Submodel):
         super().__init__(model, label_of_element=label_of_element, label_of_model=label_of_model)
 
     def _do_modeling(self):
+        """Create variables, constraints, and nested submodels"""
         super()._do_modeling()
+
+        # Create variables
         self.total = self.add_variables(
             lower=self._total_min if self._total_min is not None else -np.inf,
             upper=self._total_max if self._total_max is not None else np.inf,
             coords=self._model.get_coords([dim for dim in self._dims if dim != 'time']),
             name=self.label_full,
             short_name='total',
+            category=VariableCategory.TOTAL,
         )
         # eq: sum = sum(share_i) # skalar
         self._eq_total = self.add_constraints(self.total == 0, name=self.label_full)
 
         if 'time' in self._dims:
             self.total_per_timestep = self.add_variables(
-                lower=-np.inf if (self._min_per_hour is None) else self._min_per_hour * self._model.hours_per_step,
-                upper=np.inf if (self._max_per_hour is None) else self._max_per_hour * self._model.hours_per_step,
+                lower=-np.inf if (self._min_per_hour is None) else self._min_per_hour * self._model.timestep_duration,
+                upper=np.inf if (self._max_per_hour is None) else self._max_per_hour * self._model.timestep_duration,
                 coords=self._model.get_coords(self._dims),
                 short_name='per_timestep',
+                category=VariableCategory.PER_TIMESTEP,
             )
 
             self._eq_total_per_timestep = self.add_constraints(self.total_per_timestep == 0, short_name='per_timestep')
 
-            # Add it to the total
-            self._eq_total.lhs -= self.total_per_timestep.sum(dim='time')
+            # Add it to the total (cluster_weight handles cluster representation, defaults to 1.0)
+            # Sum over all temporal dimensions (time, and cluster if present)
+            weighted_per_timestep = self.total_per_timestep * self._model.weights.get('cluster', 1.0)
+            _set_constraint_lhs(
+                self._eq_total, self._eq_total.lhs - weighted_per_timestep.sum(dim=self._model.temporal_dims)
+            )
 
     def add_share(
         self,
@@ -593,12 +696,15 @@ class ShareAllocationModel(Submodel):
                 raise ValueError('Cannot add share with scenario-dim to a model without scenario-dim')
 
         if name in self.shares:
-            self.share_constraints[name].lhs -= expression
+            _set_constraint_lhs(self.share_constraints[name], self.share_constraints[name].lhs - expression)
         else:
+            # Temporal shares (with 'time' dim) are segment totals that need division
+            category = VariableCategory.SHARE if 'time' in dims else None
             self.shares[name] = self.add_variables(
                 coords=self._model.get_coords(dims),
                 name=f'{name}->{self.label_full}',
                 short_name=name,
+                category=category,
             )
 
             self.share_constraints[name] = self.add_constraints(
@@ -606,6 +712,6 @@ class ShareAllocationModel(Submodel):
             )
 
             if 'time' not in dims:
-                self._eq_total.lhs -= self.shares[name]
+                _set_constraint_lhs(self._eq_total, self._eq_total.lhs - self.shares[name])
             else:
-                self._eq_total_per_timestep.lhs -= self.shares[name]
+                _set_constraint_lhs(self._eq_total_per_timestep, self._eq_total_per_timestep.lhs - self.shares[name])

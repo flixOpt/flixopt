@@ -1,0 +1,875 @@
+"""Tests for clustering serialization and deserialization."""
+
+import numpy as np
+import pandas as pd
+import pytest
+import xarray as xr
+
+import flixopt as fx
+
+
+@pytest.fixture
+def simple_system_24h():
+    """Create a simple flow system with 24 hourly timesteps."""
+    timesteps = pd.date_range('2023-01-01', periods=24, freq='h')
+
+    fs = fx.FlowSystem(timesteps)
+    fs.add_elements(
+        fx.Bus('heat'),
+        fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
+    )
+    fs.add_elements(
+        fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=np.ones(24), size=10)]),
+        fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50, effects_per_flow_hour={'costs': 0.05})]),
+    )
+    return fs
+
+
+@pytest.fixture
+def simple_system_8_days():
+    """Create a simple flow system with 8 days of hourly timesteps."""
+    timesteps = pd.date_range('2023-01-01', periods=8 * 24, freq='h')
+
+    # Create varying demand profile with different patterns for different days
+    # 4 "weekdays" with high demand, 4 "weekend" days with low demand
+    hourly_pattern = np.sin(np.linspace(0, 2 * np.pi, 24)) * 0.5 + 0.5
+    weekday_profile = hourly_pattern * 1.5  # Higher demand
+    weekend_profile = hourly_pattern * 0.5  # Lower demand
+    demand_profile = np.concatenate(
+        [
+            weekday_profile,
+            weekday_profile,
+            weekday_profile,
+            weekday_profile,
+            weekend_profile,
+            weekend_profile,
+            weekend_profile,
+            weekend_profile,
+        ]
+    )
+
+    fs = fx.FlowSystem(timesteps)
+    fs.add_elements(
+        fx.Bus('heat'),
+        fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
+    )
+    fs.add_elements(
+        fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=demand_profile, size=10)]),
+        fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50, effects_per_flow_hour={'costs': 0.05})]),
+    )
+    return fs
+
+
+class TestClusteringRoundtrip:
+    """Test that clustering survives dataset roundtrip."""
+
+    def test_clustering_to_dataset_has_clustering_attrs(self, simple_system_8_days):
+        """Clustered FlowSystem dataset should have clustering info."""
+        fs = simple_system_8_days
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        ds = fs_clustered.to_dataset(include_solution=False)
+
+        # Check that clustering attrs are present (serialized as JSON string)
+        assert 'clustering' in ds.attrs
+
+    def test_clustering_roundtrip_preserves_clustering_object(self, simple_system_8_days):
+        """Clustering object should be restored after roundtrip."""
+        from flixopt.clustering import Clustering
+
+        fs = simple_system_8_days
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        # Roundtrip
+        ds = fs_clustered.to_dataset(include_solution=False)
+        fs_restored = fx.FlowSystem.from_dataset(ds)
+
+        # Clustering should be restored as proper Clustering instance
+        assert fs_restored.clustering is not None
+        assert isinstance(fs_restored.clustering, Clustering)
+
+    def test_clustering_roundtrip_preserves_n_clusters(self, simple_system_8_days):
+        """Number of clusters should be preserved after roundtrip."""
+        fs = simple_system_8_days
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        ds = fs_clustered.to_dataset(include_solution=False)
+        fs_restored = fx.FlowSystem.from_dataset(ds)
+
+        assert fs_restored.clustering.n_clusters == 2
+
+    def test_clustering_roundtrip_preserves_timesteps_per_cluster(self, simple_system_8_days):
+        """Timesteps per cluster should be preserved after roundtrip."""
+        fs = simple_system_8_days
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        ds = fs_clustered.to_dataset(include_solution=False)
+        fs_restored = fx.FlowSystem.from_dataset(ds)
+
+        assert fs_restored.clustering.timesteps_per_cluster == 24
+
+    def test_clustering_roundtrip_preserves_original_timesteps(self, simple_system_8_days):
+        """Original timesteps should be preserved after roundtrip."""
+        fs = simple_system_8_days
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+        original_timesteps = fs_clustered.clustering.original_timesteps
+
+        ds = fs_clustered.to_dataset(include_solution=False)
+        fs_restored = fx.FlowSystem.from_dataset(ds)
+
+        # check_names=False because index name may be lost during serialization
+        pd.testing.assert_index_equal(fs_restored.clustering.original_timesteps, original_timesteps, check_names=False)
+
+
+class TestClusteringWithSolutionRoundtrip:
+    """Test that clustering with solution survives roundtrip."""
+
+    def test_expand_after_roundtrip(self, simple_system_8_days, solver_fixture):
+        """expand should work after loading from dataset."""
+        fs = simple_system_8_days
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        # Solve
+        fs_clustered.optimize(solver_fixture)
+
+        # Roundtrip
+        ds = fs_clustered.to_dataset(include_solution=True)
+        fs_restored = fx.FlowSystem.from_dataset(ds)
+
+        # expand should work
+        fs_expanded = fs_restored.transform.expand()
+
+        # Check expanded FlowSystem has correct number of timesteps
+        assert len(fs_expanded.timesteps) == 8 * 24
+
+    def test_expand_after_netcdf_roundtrip(self, simple_system_8_days, tmp_path, solver_fixture):
+        """expand should work after loading from NetCDF file."""
+        fs = simple_system_8_days
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        # Solve
+        fs_clustered.optimize(solver_fixture)
+
+        # Save to NetCDF
+        nc_path = tmp_path / 'clustered.nc'
+        fs_clustered.to_netcdf(nc_path)
+
+        # Load from NetCDF
+        fs_restored = fx.FlowSystem.from_netcdf(nc_path)
+
+        # expand should work
+        fs_expanded = fs_restored.transform.expand()
+
+        # Check expanded FlowSystem has correct number of timesteps
+        assert len(fs_expanded.timesteps) == 8 * 24
+
+
+class TestClusteringDerivedProperties:
+    """Test derived properties on Clustering object."""
+
+    def test_original_timesteps_property(self, simple_system_8_days):
+        """original_timesteps property should return correct DatetimeIndex."""
+        fs = simple_system_8_days
+        original_timesteps = fs.timesteps
+
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        # Check values are equal (name attribute may differ)
+        pd.testing.assert_index_equal(
+            fs_clustered.clustering.original_timesteps,
+            original_timesteps,
+            check_names=False,
+        )
+
+    def test_simple_system_has_no_periods_or_scenarios(self, simple_system_8_days):
+        """Clustered simple system should preserve that it has no periods/scenarios."""
+        fs = simple_system_8_days
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        # FlowSystem without periods/scenarios should remain so after clustering
+        assert fs_clustered.periods is None
+        assert fs_clustered.scenarios is None
+
+
+class TestClusteringWithScenarios:
+    """Test clustering IO with scenarios."""
+
+    @pytest.fixture
+    def system_with_scenarios(self):
+        """Create a flow system with scenarios."""
+        timesteps = pd.date_range('2023-01-01', periods=4 * 24, freq='h')
+        scenarios = pd.Index(['Low', 'High'], name='scenario')
+
+        # Create varying demand profile for clustering
+        demand_profile = np.tile(np.sin(np.linspace(0, 2 * np.pi, 24)) * 0.5 + 0.5, 4)
+
+        fs = fx.FlowSystem(timesteps, scenarios=scenarios)
+        fs.add_elements(
+            fx.Bus('heat'),
+            fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
+        )
+        fs.add_elements(
+            fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=demand_profile, size=10)]),
+            fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50, effects_per_flow_hour={'costs': 0.05})]),
+        )
+        return fs
+
+    def test_clustering_roundtrip_preserves_scenarios(self, system_with_scenarios):
+        """Scenarios should be preserved after clustering and roundtrip."""
+        fs = system_with_scenarios
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        ds = fs_clustered.to_dataset(include_solution=False)
+        fs_restored = fx.FlowSystem.from_dataset(ds)
+
+        # Scenarios should be preserved in the FlowSystem itself (order may differ due to coordinate sorting)
+        assert set(fs_restored.scenarios) == {'Low', 'High'}
+
+
+class TestClusteringJsonExport:
+    """Test that clustering can be exported to JSON."""
+
+    def test_clustering_json_export_unsolved(self, simple_system_8_days, tmp_path):
+        """Unsolved clustered FlowSystem should export to JSON without error."""
+        fs = simple_system_8_days
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        # Save to JSON should work
+        json_path = tmp_path / 'clustered.json'
+        fs_clustered.to_json(json_path)
+
+        # File should exist and be valid JSON
+        assert json_path.exists()
+        import json
+
+        with open(json_path) as f:
+            data = json.load(f)
+        assert isinstance(data, dict)
+
+    def test_clustering_json_export_solved(self, simple_system_8_days, tmp_path, solver_fixture):
+        """Solved clustered FlowSystem should export to JSON without error."""
+        fs = simple_system_8_days
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+        fs_clustered.optimize(solver_fixture)
+
+        # Save to JSON should work
+        json_path = tmp_path / 'clustered_solved.json'
+        fs_clustered.to_json(json_path)
+
+        # File should exist
+        assert json_path.exists()
+
+
+class TestExpandedFlowSystemIO:
+    """Test that expanded FlowSystems can be saved and loaded."""
+
+    def test_expanded_flowsystem_to_dataset(self, simple_system_8_days, solver_fixture):
+        """Expanded FlowSystem should be convertible to dataset."""
+        fs = simple_system_8_days
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+        fs_clustered.optimize(solver_fixture)
+
+        fs_expanded = fs_clustered.transform.expand()
+
+        # Should be able to convert to dataset
+        ds = fs_expanded.to_dataset(include_solution=True)
+
+        # Should have correct timesteps
+        assert len(ds.coords['time']) == 8 * 24
+
+        # Should NOT have clustering info (it was expanded)
+        assert fs_expanded.clustering is None
+
+    def test_expanded_flowsystem_netcdf_roundtrip(self, simple_system_8_days, tmp_path, solver_fixture):
+        """Expanded FlowSystem should roundtrip through NetCDF."""
+        fs = simple_system_8_days
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+        fs_clustered.optimize(solver_fixture)
+
+        fs_expanded = fs_clustered.transform.expand()
+
+        # Save to NetCDF
+        nc_path = tmp_path / 'expanded.nc'
+        fs_expanded.to_netcdf(nc_path)
+
+        # Load from NetCDF
+        fs_restored = fx.FlowSystem.from_netcdf(nc_path)
+
+        # Should have correct timesteps
+        assert len(fs_restored.timesteps) == 8 * 24
+
+        # Solution should be preserved
+        assert fs_restored.solution is not None
+
+    def test_expanded_flowsystem_json_export(self, simple_system_8_days, tmp_path, solver_fixture):
+        """Expanded FlowSystem should export to JSON without error."""
+        fs = simple_system_8_days
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+        fs_clustered.optimize(solver_fixture)
+
+        fs_expanded = fs_clustered.transform.expand()
+
+        # Save to JSON should work
+        json_path = tmp_path / 'expanded.json'
+        fs_expanded.to_json(json_path)
+
+        # File should exist
+        assert json_path.exists()
+
+
+class TestClusteringWithPeriodsIO:
+    """Test clustering IO with periods."""
+
+    @pytest.fixture
+    def system_with_periods(self):
+        """Create a flow system with periods."""
+        timesteps = pd.date_range('2023-01-01', periods=4 * 24, freq='h')
+        periods = pd.Index([2023, 2024], name='period')
+
+        demand_profile = np.tile(np.sin(np.linspace(0, 2 * np.pi, 24)) * 0.5 + 0.5, 4)
+
+        fs = fx.FlowSystem(timesteps, periods=periods)
+        fs.add_elements(
+            fx.Bus('heat'),
+            fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
+        )
+        fs.add_elements(
+            fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=demand_profile, size=10)]),
+            fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50, effects_per_flow_hour={'costs': 0.05})]),
+        )
+        return fs
+
+    def test_clustering_with_periods_netcdf_roundtrip(self, system_with_periods, tmp_path, solver_fixture):
+        """Clustered FlowSystem with periods should roundtrip through NetCDF."""
+        fs = system_with_periods
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+        fs_clustered.optimize(solver_fixture)
+
+        # Save to NetCDF
+        nc_path = tmp_path / 'clustered_periods.nc'
+        fs_clustered.to_netcdf(nc_path)
+
+        # Load from NetCDF
+        fs_restored = fx.FlowSystem.from_netcdf(nc_path)
+
+        # Clustering should be preserved
+        assert fs_restored.clustering is not None
+        assert fs_restored.clustering.n_clusters == 2
+
+        # Periods should be preserved
+        pd.testing.assert_index_equal(fs_restored.periods, pd.Index([2023, 2024], name='period'), check_names=False)
+
+        # expand should work
+        fs_expanded = fs_restored.transform.expand()
+        assert len(fs_expanded.timesteps) == 4 * 24
+
+
+class TestClusterWeightRoundtrip:
+    """Test that cluster_weight is properly preserved."""
+
+    def test_cluster_weight_in_dataset(self, simple_system_8_days):
+        """cluster_weight should be present in dataset."""
+        fs = simple_system_8_days
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        ds = fs_clustered.to_dataset(include_solution=False)
+
+        # cluster_weight should be in data_vars
+        assert 'cluster_weight' in ds.data_vars
+
+    def test_cluster_weight_roundtrip(self, simple_system_8_days):
+        """cluster_weight should be preserved after roundtrip."""
+        fs = simple_system_8_days
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+        original_weight = fs_clustered.cluster_weight.values.copy()
+
+        ds = fs_clustered.to_dataset(include_solution=False)
+        fs_restored = fx.FlowSystem.from_dataset(ds)
+
+        np.testing.assert_array_equal(fs_restored.cluster_weight.values, original_weight)
+
+    def test_cluster_weight_sums_to_original_clusters(self, simple_system_8_days):
+        """cluster_weight should sum to number of original clusters."""
+        fs = simple_system_8_days
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        # 8 days clustered -> weights should sum to 8
+        assert fs_clustered.cluster_weight.sum() == 8
+
+        # After roundtrip
+        ds = fs_clustered.to_dataset(include_solution=False)
+        fs_restored = fx.FlowSystem.from_dataset(ds)
+        assert fs_restored.cluster_weight.sum() == 8
+
+
+class TestInterclusterStorageIO:
+    """Test IO for intercluster storage mode."""
+
+    @pytest.fixture
+    def system_with_intercluster_storage(self):
+        """Create system with intercluster storage."""
+        timesteps = pd.date_range('2023-01-01', periods=4 * 24, freq='h')
+
+        # Varying demand to make storage useful
+        demand_profile = np.tile(np.sin(np.linspace(0, 2 * np.pi, 24)) * 0.5 + 0.5, 4)
+
+        fs = fx.FlowSystem(timesteps)
+        fs.add_elements(
+            fx.Bus('heat'),
+            fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
+        )
+        fs.add_elements(
+            fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=demand_profile, size=10)]),
+            fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=50, effects_per_flow_hour={'costs': 0.1})]),
+            fx.Storage(
+                'storage',
+                charging=fx.Flow('in', bus='heat', size=20),
+                discharging=fx.Flow('out', bus='heat', size=20),
+                capacity_in_flow_hours=100,
+                cluster_mode='intercluster',  # Key: intercluster mode
+            ),
+        )
+        return fs
+
+    def test_intercluster_storage_solution_roundtrip(self, system_with_intercluster_storage, solver_fixture):
+        """Intercluster storage solution should roundtrip correctly."""
+        fs = system_with_intercluster_storage
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+        fs_clustered.optimize(solver_fixture)
+
+        # Solution should have SOC_boundary variable
+        assert 'storage|SOC_boundary' in fs_clustered.solution
+
+        # Roundtrip
+        ds = fs_clustered.to_dataset(include_solution=True)
+        fs_restored = fx.FlowSystem.from_dataset(ds)
+
+        # SOC_boundary should be preserved
+        assert 'storage|SOC_boundary' in fs_restored.solution
+
+        # expand should work
+        fs_expanded = fs_restored.transform.expand()
+
+        # After expansion, SOC_boundary is combined into charge_state
+        assert 'storage|SOC_boundary' not in fs_expanded.solution
+        assert 'storage|charge_state' in fs_expanded.solution
+
+    def test_intercluster_storage_netcdf_roundtrip(self, system_with_intercluster_storage, tmp_path, solver_fixture):
+        """Intercluster storage solution should roundtrip through NetCDF."""
+        fs = system_with_intercluster_storage
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+        fs_clustered.optimize(solver_fixture)
+
+        # Save to NetCDF
+        nc_path = tmp_path / 'intercluster.nc'
+        fs_clustered.to_netcdf(nc_path)
+
+        # Load from NetCDF
+        fs_restored = fx.FlowSystem.from_netcdf(nc_path)
+
+        # expand should produce valid charge_state
+        fs_expanded = fs_restored.transform.expand()
+        charge_state = fs_expanded.solution['storage|charge_state']
+
+        # Charge state should be non-negative (after combining with SOC_boundary)
+        assert (charge_state >= -1e-6).all()
+
+
+class TestClusteringEdgeCases:
+    """Test edge cases in clustering IO."""
+
+    def test_single_cluster_roundtrip(self, simple_system_8_days):
+        """Single cluster should work correctly."""
+        fs = simple_system_8_days
+        # 8 days with 1 cluster = all days map to same cluster
+        fs_clustered = fs.transform.cluster(n_clusters=1, cluster_duration='1D')
+
+        ds = fs_clustered.to_dataset(include_solution=False)
+        fs_restored = fx.FlowSystem.from_dataset(ds)
+
+        assert fs_restored.clustering.n_clusters == 1
+        assert fs_restored.cluster_weight.sum() == 8  # All 8 days in one cluster
+
+    def test_max_clusters_roundtrip(self, simple_system_8_days):
+        """Maximum clusters (one per day) should work correctly."""
+        fs = simple_system_8_days
+        # 8 days with 8 clusters = each day is its own cluster
+        fs_clustered = fs.transform.cluster(n_clusters=8, cluster_duration='1D')
+
+        ds = fs_clustered.to_dataset(include_solution=False)
+        fs_restored = fx.FlowSystem.from_dataset(ds)
+
+        assert fs_restored.clustering.n_clusters == 8
+        # Each cluster represents 1 day
+        np.testing.assert_array_equal(fs_restored.cluster_weight.values, np.ones(8))
+
+    def test_clustering_preserves_component_labels(self, simple_system_8_days, solver_fixture):
+        """Component labels should be preserved through clustering and expansion."""
+        fs = simple_system_8_days
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+        fs_clustered.optimize(solver_fixture)
+
+        # Roundtrip
+        ds = fs_clustered.to_dataset(include_solution=True)
+        fs_restored = fx.FlowSystem.from_dataset(ds)
+
+        # Expand
+        fs_expanded = fs_restored.transform.expand()
+
+        # Component labels should be preserved
+        assert 'demand' in fs_expanded.components
+        assert 'source' in fs_expanded.components
+
+
+@pytest.fixture
+def system_with_periods_and_scenarios():
+    """Create a flow system with both periods and scenarios, with different demand patterns."""
+    n_days = 3
+    hours = 24 * n_days
+    timesteps = pd.date_range('2024-01-01', periods=hours, freq='h')
+    periods = pd.Index([2024, 2025], name='period')
+    scenarios = pd.Index(['high', 'low'], name='scenario')
+
+    # Create DIFFERENT demand patterns per period/scenario to get different cluster assignments
+    # Pattern structure: (base_mean, amplitude) for each day
+    patterns = {
+        (2024, 'high'): [(100, 40), (100, 40), (50, 20)],  # Days 0&1 similar
+        (2024, 'low'): [(50, 20), (100, 40), (100, 40)],  # Days 1&2 similar
+        (2025, 'high'): [(100, 40), (50, 20), (100, 40)],  # Days 0&2 similar
+        (2025, 'low'): [(50, 20), (50, 20), (100, 40)],  # Days 0&1 similar
+    }
+
+    demand_values = np.zeros((hours, len(periods), len(scenarios)))
+    for pi, period in enumerate(periods):
+        for si, scenario in enumerate(scenarios):
+            base = np.zeros(hours)
+            for d, (mean, amp) in enumerate(patterns[(period, scenario)]):
+                start = d * 24
+                base[start : start + 24] = mean + amp * np.sin(np.linspace(0, 2 * np.pi, 24))
+            demand_values[:, pi, si] = base
+
+    demand = xr.DataArray(
+        demand_values,
+        dims=['time', 'period', 'scenario'],
+        coords={'time': timesteps, 'period': periods, 'scenario': scenarios},
+    )
+
+    fs = fx.FlowSystem(timesteps, periods=periods, scenarios=scenarios)
+    fs.add_elements(
+        fx.Bus('heat'),
+        fx.Effect('costs', unit='EUR', description='costs', is_objective=True, is_standard=True),
+        fx.Sink('demand', inputs=[fx.Flow('in', bus='heat', fixed_relative_profile=demand, size=1)]),
+        fx.Source('source', outputs=[fx.Flow('out', bus='heat', size=200, effects_per_flow_hour={'costs': 0.05})]),
+    )
+    return fs
+
+
+class TestMultiDimensionalClusteringIO:
+    """Test IO for clustering with both periods and scenarios (multi-dimensional)."""
+
+    def test_cluster_assignments_has_correct_dimensions(self, system_with_periods_and_scenarios):
+        """cluster_assignments should have dimensions for original_cluster, period, and scenario."""
+        fs = system_with_periods_and_scenarios
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        cluster_assignments = fs_clustered.clustering.cluster_assignments
+        assert 'original_cluster' in cluster_assignments.dims
+        assert 'period' in cluster_assignments.dims
+        assert 'scenario' in cluster_assignments.dims
+        assert cluster_assignments.shape == (3, 2, 2)  # 3 days, 2 periods, 2 scenarios
+
+    def test_different_assignments_per_period_scenario(self, system_with_periods_and_scenarios):
+        """Different period/scenario combinations should have different cluster assignments."""
+        fs = system_with_periods_and_scenarios
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        # Collect all unique assignment patterns
+        assignments = set()
+        for period in fs_clustered.periods:
+            for scenario in fs_clustered.scenarios:
+                order = tuple(fs_clustered.clustering.cluster_assignments.sel(period=period, scenario=scenario).values)
+                assignments.add(order)
+
+        # We expect at least 2 different patterns (the demand was designed to create different patterns)
+        assert len(assignments) >= 2, f'Expected at least 2 unique patterns, got {len(assignments)}'
+
+    def test_cluster_assignments_preserved_after_roundtrip(self, system_with_periods_and_scenarios, tmp_path):
+        """cluster_assignments should be exactly preserved after netcdf roundtrip."""
+        fs = system_with_periods_and_scenarios
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        # Store original cluster_assignments
+        original_cluster_assignments = fs_clustered.clustering.cluster_assignments.copy()
+
+        # Roundtrip via netcdf
+        nc_path = tmp_path / 'multi_dim_clustering.nc'
+        fs_clustered.to_netcdf(nc_path)
+        fs_restored = fx.FlowSystem.from_netcdf(nc_path)
+
+        # cluster_assignments should be exactly preserved
+        xr.testing.assert_equal(original_cluster_assignments, fs_restored.clustering.cluster_assignments)
+
+    def test_clustering_result_preserved_after_load(self, system_with_periods_and_scenarios, tmp_path):
+        """ClusteringResult structure should be preserved after netcdf roundtrip."""
+        fs = system_with_periods_and_scenarios
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        nc_path = tmp_path / 'multi_dim_clustering.nc'
+        fs_clustered.to_netcdf(nc_path)
+        fs_restored = fx.FlowSystem.from_netcdf(nc_path)
+
+        before = fs_clustered.clustering
+        after = fs_restored.clustering
+
+        # Structural metadata
+        assert after.clustering_result is not None
+        assert len(after) == len(before)
+        assert after.n_clusters == before.n_clusters
+        assert after.timesteps_per_cluster == before.timesteps_per_cluster
+        assert after.n_original_clusters == before.n_original_clusters
+        assert after.n_segments == before.n_segments
+        assert after.dim_names == before.dim_names
+
+        # Data: cluster_assignments and cluster_occurrences should match exactly
+        xr.testing.assert_equal(after.cluster_assignments, before.cluster_assignments)
+        xr.testing.assert_equal(after.cluster_occurrences, before.cluster_occurrences)
+
+    def test_derived_properties_work_after_load(self, system_with_periods_and_scenarios, tmp_path):
+        """Derived properties should work correctly after loading (computed from cluster_assignments)."""
+        fs = system_with_periods_and_scenarios
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        # Roundtrip
+        nc_path = tmp_path / 'multi_dim_clustering.nc'
+        fs_clustered.to_netcdf(nc_path)
+        fs_restored = fx.FlowSystem.from_netcdf(nc_path)
+
+        # These properties should work correctly after roundtrip
+        assert fs_restored.clustering.n_clusters == 2
+        assert fs_restored.clustering.timesteps_per_cluster == 24
+
+        # cluster_occurrences should be derived from cluster_assignments
+        occurrences = fs_restored.clustering.cluster_occurrences
+        assert occurrences is not None
+        # For each period/scenario, occurrences should sum to n_original_clusters (3 days)
+        for period in fs_restored.periods:
+            for scenario in fs_restored.scenarios:
+                occ = occurrences.sel(period=period, scenario=scenario)
+                assert occ.sum().item() == 3
+
+    def test_apply_clustering_after_load(self, system_with_periods_and_scenarios, tmp_path):
+        """apply_clustering should work with a clustering loaded from netcdf."""
+        fs = system_with_periods_and_scenarios
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+
+        # Save clustered system
+        nc_path = tmp_path / 'multi_dim_clustering.nc'
+        fs_clustered.to_netcdf(nc_path)
+
+        # Load the full FlowSystem with clustering
+        fs_loaded = fx.FlowSystem.from_netcdf(nc_path)
+        clustering_loaded = fs_loaded.clustering
+        # ClusteringResult should be fully preserved after load
+        assert clustering_loaded.clustering_result is not None
+
+        # Create a fresh FlowSystem (copy the original, unclustered one)
+        fs_fresh = fs.copy()
+
+        # Apply the loaded clustering to the fresh FlowSystem
+        fs_new_clustered = fs_fresh.transform.apply_clustering(clustering_loaded)
+
+        # Should have same cluster structure
+        assert fs_new_clustered.clustering.n_clusters == 2
+        # Clustered FlowSystem has 'cluster' and 'time' dimensions
+        # timesteps gives time dimension (24 hours per cluster), cluster is separate
+        assert len(fs_new_clustered.timesteps) == 24  # 24 hours per typical period
+        assert 'cluster' in fs_new_clustered.dims
+        assert len(fs_new_clustered.indexes['cluster']) == 2  # 2 clusters
+
+        # cluster_assignments should match
+        xr.testing.assert_equal(
+            fs_clustered.clustering.cluster_assignments, fs_new_clustered.clustering.cluster_assignments
+        )
+
+    def test_expand_after_load_and_optimize(self, system_with_periods_and_scenarios, tmp_path, solver_fixture):
+        """expand() should work correctly after loading a solved clustered system."""
+        fs = system_with_periods_and_scenarios
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D')
+        fs_clustered.optimize(solver_fixture)
+
+        # Roundtrip
+        nc_path = tmp_path / 'multi_dim_clustering_solved.nc'
+        fs_clustered.to_netcdf(nc_path)
+        fs_restored = fx.FlowSystem.from_netcdf(nc_path)
+
+        # expand should work
+        fs_expanded = fs_restored.transform.expand()
+
+        # Should have original number of timesteps
+        assert len(fs_expanded.timesteps) == 24 * 3  # 3 days × 24 hours
+
+        # Solution should be expanded
+        assert fs_expanded.solution is not None
+        assert 'source(out)|flow_rate' in fs_expanded.solution
+
+
+class TestLegacyClusteringBackwardCompat:
+    """Loading files written before flixopt 7.0, which stored clustering.original_data
+    and clustering._metrics as ':::original_data|...' / ':::metrics|...' references whose
+    target arrays are no longer serialized. See hotfix 7.2.2."""
+
+    def _inject_legacy_refs(self, ds: xr.Dataset) -> xr.Dataset:
+        """Mutate a clustered dataset's clustering attrs to look like a pre-7.0 file."""
+        import json
+
+        clustering = json.loads(ds.attrs['clustering'])
+        clustering['_original_data_refs'] = [
+            ':::original_data|demand(in)|fixed_relative_profile',
+        ]
+        clustering['_metrics_refs'] = None
+        ds.attrs['clustering'] = json.dumps(clustering, ensure_ascii=False)
+        return ds
+
+    def test_legacy_refs_reproduce_failure_without_shim(self, simple_system_8_days):
+        """Sanity check: the legacy references do point at arrays absent from the dataset."""
+        fs_clustered = simple_system_8_days.transform.cluster(n_clusters=2, cluster_duration='1D')
+        ds = self._inject_legacy_refs(fs_clustered.to_dataset(include_solution=False))
+        assert 'original_data|demand(in)|fixed_relative_profile' not in ds.variables
+
+    def test_load_legacy_clustered_dataset(self, simple_system_8_days):
+        """A pre-7.0 clustered dataset (with dangling original_data/metrics refs) loads cleanly."""
+        from flixopt.clustering import Clustering
+
+        fs_clustered = simple_system_8_days.transform.cluster(n_clusters=2, cluster_duration='1D')
+        ds = self._inject_legacy_refs(fs_clustered.to_dataset(include_solution=False))
+
+        fs_restored = fx.FlowSystem.from_dataset(ds)
+
+        assert isinstance(fs_restored.clustering, Clustering)
+        assert fs_restored.clustering.n_clusters == 2
+
+    def test_load_legacy_clustered_netcdf(self, simple_system_8_days, tmp_path):
+        """Same as above but through a real NetCDF file roundtrip."""
+        from flixopt.clustering import Clustering
+        from flixopt.io import save_dataset_to_netcdf
+
+        fs_clustered = simple_system_8_days.transform.cluster(n_clusters=2, cluster_duration='1D')
+        ds = self._inject_legacy_refs(fs_clustered.to_dataset(include_solution=False))
+
+        nc_path = tmp_path / 'legacy_clustered.nc'
+        save_dataset_to_netcdf(ds, nc_path)
+        fs_restored = fx.FlowSystem.from_netcdf(nc_path)
+
+        assert isinstance(fs_restored.clustering, Clustering)
+        assert fs_restored.clustering.n_clusters == 2
+
+
+class TestPreV7ClusteringSchema:
+    """Loading clustered files written before flixopt 7.0, which serialized the
+    clustering under a ``results`` key with string-joined slice keys instead of the
+    ``clustering_result`` schema that tsam_xarray's ClusteringResult now expects.
+
+    The per-slice tsam blobs are unchanged between the two layouts, so these tests
+    rewrite a current dataset into the legacy layout rather than shipping a binary
+    fixture. The layout was verified against files generated by flixopt 6.2.1.
+    """
+
+    def _to_legacy_schema(self, ds: xr.Dataset) -> xr.Dataset:
+        """Rewrite a clustered dataset's clustering attrs into the pre-7.0 layout."""
+        import json
+
+        clustering = json.loads(ds.attrs['clustering'])
+        result = clustering.pop('clustering_result')
+
+        unrename = {'_period': 'period', '_cluster': 'cluster'}
+        dim_names = [unrename.get(dim, dim) for dim in result['slice_dims']]
+
+        legacy_results = {}
+        for entry in result['clusterings']:
+            key = '|'.join(str(part) for part in entry['key']) if entry['key'] else '__single__'
+            legacy_results[key] = entry['clustering']
+
+        clustering['results'] = {'dim_names': dim_names, 'results': legacy_results}
+        # Pre-7.0 files always carried these; they are dropped on load.
+        clustering['_original_data_refs'] = []
+        clustering['_metrics_refs'] = None
+        ds.attrs['clustering'] = json.dumps(clustering, ensure_ascii=False)
+        return ds
+
+    def _assignments(self, flow_system) -> xr.DataArray:
+        return flow_system.clustering.cluster_assignments
+
+    def test_legacy_schema_is_rejected_without_migration(self, simple_system_8_days):
+        """Sanity check: the legacy key really is incompatible with Clustering.__init__."""
+        from flixopt.clustering import Clustering
+
+        fs_clustered = simple_system_8_days.transform.cluster(n_clusters=2, cluster_duration='1D')
+        ds = self._to_legacy_schema(fs_clustered.to_dataset(include_solution=False))
+
+        import json
+
+        legacy = json.loads(ds.attrs['clustering'])
+        assert 'results' in legacy and 'clustering_result' not in legacy
+        with pytest.raises(TypeError):
+            Clustering(results=legacy['results'])
+
+    def test_load_legacy_schema_preserves_assignments(self, simple_system_8_days):
+        """A pre-7.0 clustered dataset loads with its cluster assignments intact."""
+        from flixopt.clustering import Clustering
+
+        fs_clustered = simple_system_8_days.transform.cluster(n_clusters=2, cluster_duration='1D')
+        expected = self._assignments(fs_clustered).values.copy()
+        ds = self._to_legacy_schema(fs_clustered.to_dataset(include_solution=False))
+
+        fs_restored = fx.FlowSystem.from_dataset(ds)
+
+        assert isinstance(fs_restored.clustering, Clustering)
+        assert fs_restored.clustering.n_clusters == 2
+        np.testing.assert_array_equal(self._assignments(fs_restored).values, expected)
+
+    def test_load_legacy_schema_netcdf_roundtrip(self, simple_system_8_days, tmp_path):
+        """Same, but through a real NetCDF file rather than an in-memory dataset."""
+        from flixopt.io import save_dataset_to_netcdf
+
+        fs_clustered = simple_system_8_days.transform.cluster(n_clusters=2, cluster_duration='1D')
+        expected = self._assignments(fs_clustered).values.copy()
+        ds = self._to_legacy_schema(fs_clustered.to_dataset(include_solution=False))
+
+        nc_path = tmp_path / 'legacy_schema.nc'
+        save_dataset_to_netcdf(ds, nc_path)
+        fs_restored = fx.FlowSystem.from_netcdf(nc_path)
+
+        np.testing.assert_array_equal(self._assignments(fs_restored).values, expected)
+
+    def test_legacy_schema_expands_to_full_timesteps(self, simple_system_8_days):
+        """A loaded pre-7.0 file can still be expanded back to the original timesteps."""
+        fs_clustered = simple_system_8_days.transform.cluster(n_clusters=2, cluster_duration='1D')
+        ds = self._to_legacy_schema(fs_clustered.to_dataset(include_solution=False))
+
+        fs_expanded = fx.FlowSystem.from_dataset(ds).transform.expand()
+
+        assert len(fs_expanded.timesteps) == 8 * 24
+
+    def test_legacy_multi_dim_keys_map_to_the_right_slice(self, system_with_periods_and_scenarios):
+        """Legacy keys are strings ('2024|high'); each must land on its own slice.
+
+        Sensitivity: if the string keys were parsed without recovering the original
+        coordinate dtype, every lookup would miss and the assignments would silently
+        collapse onto one slice or swap between periods.
+        """
+        fs_clustered = system_with_periods_and_scenarios.transform.cluster(n_clusters=2, cluster_duration='1D')
+        expected = self._assignments(fs_clustered)
+        ds = self._to_legacy_schema(fs_clustered.to_dataset(include_solution=False))
+
+        fs_restored = fx.FlowSystem.from_dataset(ds)
+        restored = self._assignments(fs_restored)
+
+        assert set(restored.dims) == set(expected.dims)
+        for period in fs_restored.periods:
+            for scenario in fs_restored.scenarios:
+                sel = {'period': period, 'scenario': scenario}
+                np.testing.assert_array_equal(
+                    restored.sel(sel).values,
+                    expected.sel(sel).values,
+                    err_msg=f'assignments differ for {sel}',
+                )
