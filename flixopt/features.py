@@ -94,6 +94,13 @@ class InvestmentModel(Submodel):
                     short_name='mandatory',
                 )
 
+            investable = (size_max != 0).astype(int)
+            if not bool(np.all(investable)):
+                self.add_constraints(
+                    self._variables['invested'] <= investable,
+                    short_name='investable',
+                )
+
         if self.parameters.linked_periods is not None:
             masked_size = self.size.where(self.parameters.linked_periods, drop=True)
             self.add_constraints(

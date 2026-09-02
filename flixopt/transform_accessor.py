@@ -1011,10 +1011,10 @@ class TransformAccessor:
 
         The returned FlowSystem has InvestParameters with fixed_size set,
         turning those sizes into constants rather than decision variables. The
-        investment is made mandatory in every period/scenario with a non-zero size, so
-        the solver cannot drop it to avoid the fixed effects_of_investment. Where the
-        size is 0 the investment stays optional, so those fixed effects are not charged
-        - letting the dispatch objective match the sizing run.
+        investment decision itself is fixed along with the size: it is mandatory in
+        every period/scenario with a non-zero size, and impossible where the size is 0.
+        The solver can therefore neither drop an investment to avoid its fixed
+        effects_of_investment, nor claim them for a plant it does not build.
 
         Args:
             sizes: The sizes to fix. Can be:
@@ -1089,8 +1089,9 @@ class TransformAccessor:
             base_name = size_var[: -len('|size')] if size_var.endswith('|size') else size_var
             fixed_value = sizes[size_var]
 
-            # A fixed size of 0 means "do not invest": keep the investment optional there so
-            # its flat effects_of_investment are not charged. Everywhere else it is mandatory.
+            # A fixed size of 0 means "do not invest", every other size means "invest".
+            # A size of 0 also bounds the invested binary to 0, so the periods that do not
+            # build are not charged the flat effects_of_investment.
             mandatory = (fixed_value != 0).astype(int)
 
             found = False

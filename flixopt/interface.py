@@ -982,7 +982,8 @@ class InvestParameters(Interface):
         minimum_size: Lower bound for continuous sizing. Default: CONFIG.Modeling.epsilon.
             Ignored if fixed_size is specified.
         maximum_size: Upper bound for continuous sizing. Required if fixed_size is not set.
-            Ignored if fixed_size is specified.
+            Ignored if fixed_size is specified. A maximum (or fixed) size of 0 forbids
+            the investment.
         mandatory: Controls whether investment is required. When True, forces investment
             to occur (useful for mandatory upgrades or replacement decisions).
             When False (default), optimization can choose not to invest.

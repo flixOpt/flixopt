@@ -543,6 +543,59 @@ class TestMultiPeriod:
         # The fixed investment effect is charged in 2021 only
         assert_allclose(fs_dispatch.solution['Boiler(heat)->costs(periodic)'].values, [0.0, 190.0], rtol=1e-5)
 
+    def test_fix_sizes_forbids_investment_in_zero_size_periods(self, optimize):
+        """Proves: transform.fix_sizes() pins the invested binary, not just the size.
+        A period fixed to size 0 cannot "invest" to dodge effects_of_retirement.
+
+        periods=[2020, 2021], weights [1, 1], 3 ts each. Demand is 0 in 2020 and
+        [10, 90, 10] in 2021. Boiler: 10€ fixed invest, 1€ per size, 50€ retirement
+        (charged when NOT investing). Sizes are fixed to [0, 90].
+
+        2020 does not build, so it pays the 50€ retirement. 2021 builds 90 kW:
+        10 + 90 periodic + 110 fuel = 210. Objective = 50 + 210 = 260.
+
+        Sensitivity: with the size pinned to 0 but the binary left free, invested=1
+        still satisfies size = 0 · invested, and buying the 10€ investment to avoid the
+        50€ retirement is 40€ cheaper - the solver "invests" in a plant of size 0 and
+        the objective drops to 220.
+        """
+        fs = make_multi_period_flow_system(n_timesteps=3, periods=[2020, 2021], weight_of_last_period=1)
+        demand = xr.DataArray(
+            np.array([[0, 0, 0], [10, 90, 10]], dtype=float),
+            coords={'period': [2020, 2021], 'time': fs.timesteps},
+            dims=['period', 'time'],
+        )
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink('Demand', inputs=[fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=demand)]),
+            fx.Source('GasSrc', outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)]),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=fx.InvestParameters(
+                        maximum_size=200,
+                        effects_of_investment=10,
+                        effects_of_investment_per_size=1,
+                        effects_of_retirement=50,
+                    ),
+                ),
+            ),
+        )
+        sizes = xr.Dataset(
+            {'Boiler(heat)': xr.DataArray([0.0, 90.0], coords={'period': [2020, 2021]}, dims=['period'])}
+        )
+        fs_dispatch = fs.transform.fix_sizes(sizes)
+        fs_dispatch.optimize(_SOLVER)
+        assert_allclose(fs_dispatch.solution['Boiler(heat)|size'].values, [0.0, 90.0], atol=1e-6)
+        assert_allclose(fs_dispatch.solution['Boiler(heat)|invested'].values, [0.0, 1.0], atol=1e-6)
+        assert_allclose(fs_dispatch.solution['objective'].item(), 260.0, rtol=1e-5)
+
     def test_fix_sizes_mixed_period_invest_reproduces_objective(self, optimize):
         """Proves: transform.fix_sizes() charges investment per period, not globally.
 
