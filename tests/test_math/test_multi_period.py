@@ -484,6 +484,131 @@ class TestMultiPeriod:
         assert_allclose(fs_dispatch.solution['Boiler(heat)|size'].item(), 0.0, atol=1e-6)
         assert_allclose(fs_dispatch.solution['objective'].item(), 160.0, rtol=1e-5)
 
+    def test_fix_sizes_and_decisions_reach_storage_capacity(self, optimize):
+        """Proves: both fix_sizes() and fix_invest_decisions() reach a storage capacity
+        investment, not just flow sizes.
+
+        4 ts, Demand=[0, 30, 0, 30], gas @[1, 20, 1, 20]. A Battery charges cheap and
+        discharges at the peak. Capacity invest: 5€ fixed + 1€/kWh.
+        Optimal: capacity 30, fuel 60 @1 = 60, invest 5 + 30 -> objective 95.
+
+        Sensitivity: storage investments live in Storage.capacity_in_flow_hours, not in
+        Flow.size, so a lookup that only scans flows would silently leave the capacity a
+        free variable - and fix_invest_decisions() would not make it mandatory.
+        """
+        fs = make_flow_system(n_timesteps=4)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow(
+                        'heat',
+                        bus='Heat',
+                        size=1,
+                        fixed_relative_profile=np.array([0.0, 30.0, 0.0, 30.0]),
+                    )
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=np.array([1.0, 20.0, 1.0, 20.0]))],
+            ),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow('heat', bus='Heat', size=100),
+            ),
+            fx.Storage(
+                'Battery',
+                charging=fx.Flow('in', bus='Heat', size=100),
+                discharging=fx.Flow('out', bus='Heat', size=100),
+                capacity_in_flow_hours=fx.InvestParameters(
+                    maximum_size=100,
+                    effects_of_investment=5,
+                    effects_of_investment_per_size=1,
+                ),
+                initial_charge_state=0,
+            ),
+        )
+        fs_sizing = optimize(fs)
+        assert_allclose(fs_sizing.solution['Battery|size'].item(), 30.0, rtol=1e-5)
+        assert_allclose(fs_sizing.solution['objective'].item(), 95.0, rtol=1e-5)
+        assert list(fs_sizing.stats.invested.data_vars) == ['Battery']
+
+        fs_fixed = fs.transform.fix_sizes(fs_sizing.stats.sizes)
+        assert fs_fixed.components['Battery'].capacity_in_flow_hours.fixed_size == 30.0
+        fs_fixed.optimize(_SOLVER)
+        assert_allclose(fs_fixed.solution['Battery|size'].item(), 30.0, rtol=1e-5)
+        assert_allclose(fs_fixed.solution['objective'].item(), 95.0, rtol=1e-5)
+
+        fs_decided = fs.transform.fix_invest_decisions(fs_sizing.stats.invested)
+        assert fs_decided.components['Battery'].capacity_in_flow_hours.fixed_size is None
+        fs_decided.optimize(_SOLVER)
+        assert_allclose(fs_decided.solution['Battery|size'].item(), 30.0, rtol=1e-5)
+        assert_allclose(fs_decided.solution['objective'].item(), 95.0, rtol=1e-5)
+
+    def test_fix_invest_decisions_forbids_unbuilt_storage(self, optimize):
+        """Proves: an unbuilt storage capacity is capped at 0 by fix_invest_decisions(),
+        so its fixed effects_of_investment are not charged.
+
+        Same system, but the capacity investment costs a prohibitive 5000€. Not building
+        and buying at the peak is cheaper: 60 @20 = 1200.
+
+        Sensitivity: leaving the capacity free would let the dispatch stage build the
+        battery after all; making it mandatory would charge the 5000€.
+        """
+        fs = make_flow_system(n_timesteps=4)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow(
+                        'heat',
+                        bus='Heat',
+                        size=1,
+                        fixed_relative_profile=np.array([0.0, 30.0, 0.0, 30.0]),
+                    )
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=np.array([1.0, 20.0, 1.0, 20.0]))],
+            ),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow('heat', bus='Heat', size=100),
+            ),
+            fx.Storage(
+                'Battery',
+                charging=fx.Flow('in', bus='Heat', size=100),
+                discharging=fx.Flow('out', bus='Heat', size=100),
+                capacity_in_flow_hours=fx.InvestParameters(
+                    maximum_size=100,
+                    effects_of_investment=5000,
+                    effects_of_investment_per_size=1,
+                ),
+                initial_charge_state=0,
+            ),
+        )
+        fs_sizing = optimize(fs)
+        assert_allclose(fs_sizing.solution['Battery|size'].item(), 0.0, atol=1e-6)
+        assert_allclose(fs_sizing.solution['objective'].item(), 1200.0, rtol=1e-5)
+
+        fs_decided = fs.transform.fix_invest_decisions(fs_sizing.stats.invested)
+        assert fs_decided.components['Battery'].capacity_in_flow_hours.maximum_size == 0
+        fs_decided.optimize(_SOLVER)
+        assert_allclose(fs_decided.solution['Battery|size'].item(), 0.0, atol=1e-6)
+        assert_allclose(fs_decided.solution['objective'].item(), 1200.0, rtol=1e-5)
+
     def test_fix_invest_decisions_keeps_sizes_free(self, optimize):
         """Proves: transform.fix_invest_decisions() carries over what gets built, but lets
         the size re-optimize - so a higher peak at full resolution is absorbed by resizing.
