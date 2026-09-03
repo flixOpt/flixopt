@@ -11,6 +11,13 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ---
 
+## [8.1.0](https://github.com/flixOpt/flixopt/compare/v8.0.1...v8.1.0) (2026-09-03)
+
+
+### Features
+
+* per-period mandatory investment, fixing transform.fix_sizes() ([#772](https://github.com/flixOpt/flixopt/issues/772)) ([57a7c25](https://github.com/flixOpt/flixopt/commit/57a7c250f43800ef3262dbb74e42acc8622068cc))
+
 ## [8.0.1](https://github.com/flixOpt/flixopt/compare/v8.0.0...v8.0.1) (2026-07-27)
 
 
