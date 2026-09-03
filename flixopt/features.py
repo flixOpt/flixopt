@@ -69,13 +69,13 @@ class InvestmentModel(Submodel):
 
         self.add_variables(
             short_name='size',
-            lower=size_min if self.parameters.mandatory else 0,
+            lower=size_min * self.parameters.mandatory,
             upper=size_max,
             coords=self._model.get_coords(['period', 'scenario']),
             category=self._size_category,
         )
 
-        if not self.parameters.mandatory:
+        if not self.parameters.always_mandatory:
             self.add_variables(
                 binary=True,
                 coords=self._model.get_coords(['period', 'scenario']),
@@ -88,6 +88,18 @@ class InvestmentModel(Submodel):
                 state=self._variables['invested'],
                 bounds=(self.parameters.minimum_or_fixed_size, self.parameters.maximum_or_fixed_size),
             )
+            if self.parameters.ever_mandatory:
+                self.add_constraints(
+                    self._variables['invested'] >= self.parameters.mandatory,
+                    short_name='mandatory',
+                )
+
+            investable = (size_max != 0).astype(int)
+            if not bool(np.all(investable)):
+                self.add_constraints(
+                    self._variables['invested'] <= investable,
+                    short_name='investable',
+                )
 
         if self.parameters.linked_periods is not None:
             masked_size = self.size.where(self.parameters.linked_periods, drop=True)
@@ -108,7 +120,7 @@ class InvestmentModel(Submodel):
                 target='periodic',
             )
 
-        if self.parameters.effects_of_retirement and not self.parameters.mandatory:
+        if self.parameters.effects_of_retirement and self.invested is not None:
             self._model.effects.add_share_to_effects(
                 name=self.label_of_element,
                 expressions={

@@ -61,6 +61,26 @@ By default, investment is **optional** — the optimizer can choose $P = 0$ (don
     # → 50 ≤ P ≤ 200 (no zero option)
     ```
 
+    `mandatory` can be set per period or scenario, forcing the investment only
+    where it applies:
+
+    ```python
+    fx.InvestParameters(
+        minimum_size=50,
+        maximum_size=200,
+        mandatory=[True, False],  # forced in the first period, optional in the second
+    )
+    ```
+
+In general the investment decision is bounded by
+
+$$
+mandatory \leq s_{inv} \leq \mathbb{1}[P^{max} \neq 0]
+$$
+
+so an investment is forced where `mandatory` applies, and impossible where the
+maximum size is zero.
+
 ---
 
 ## Investment Effects

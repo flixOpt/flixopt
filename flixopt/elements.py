@@ -938,9 +938,9 @@ class FlowModel(ElementModel):
                 # Basic case without investment and without Status
                 if self.element.size is not None:
                     lb = lb_relative * self.element.size
-            elif self.with_investment and self.element.size.mandatory:
-                # With mandatory Investment
-                lb = lb_relative * self.element.size.minimum_or_fixed_size
+            elif self.with_investment and self.element.size.ever_mandatory:
+                # With mandatory Investment (masked to the periods/scenarios it is mandatory in)
+                lb = lb_relative * self.element.size.minimum_or_fixed_size * self.element.size.mandatory
 
         if self.with_investment:
             ub = ub_relative * self.element.size.maximum_or_fixed_size

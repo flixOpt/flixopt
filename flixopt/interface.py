@@ -982,11 +982,13 @@ class InvestParameters(Interface):
         minimum_size: Lower bound for continuous sizing. Default: CONFIG.Modeling.epsilon.
             Ignored if fixed_size is specified.
         maximum_size: Upper bound for continuous sizing. Required if fixed_size is not set.
-            Ignored if fixed_size is specified.
+            Ignored if fixed_size is specified. A maximum (or fixed) size of 0 forbids
+            the investment.
         mandatory: Controls whether investment is required. When True, forces investment
             to occur (useful for mandatory upgrades or replacement decisions).
             When False (default), optimization can choose not to invest.
-            With multiple periods, at least one period has to have an investment.
+            Can be specified per period/scenario to force the investment only in some
+            of them (e.g. ``[True, False]`` for two periods).
         effects_of_investment: Fixed costs if investment is made, regardless of size.
             Dict: {'effect_name': value} (e.g., {'cost': 10000}).
         effects_of_investment_per_size: Variable costs proportional to size (per-unit costs).
@@ -1148,7 +1150,7 @@ class InvestParameters(Interface):
         fixed_size: Numeric_PS | None = None,
         minimum_size: Numeric_PS | None = None,
         maximum_size: Numeric_PS | None = None,
-        mandatory: bool = False,
+        mandatory: Numeric_PS | bool = False,
         effects_of_investment: Effect_PS | Numeric_PS | None = None,
         effects_of_investment_per_size: Effect_PS | Numeric_PS | None = None,
         effects_of_retirement: Effect_PS | Numeric_PS | None = None,
@@ -1237,6 +1239,21 @@ class InvestParameters(Interface):
             f'{self.prefix}|linked_periods', self.linked_periods, dims=['period', 'scenario']
         )
         self.fixed_size = self._fit_coords(f'{self.prefix}|fixed_size', self.fixed_size, dims=['period', 'scenario'])
+        self.mandatory = self._fit_coords(
+            f'{self.prefix}|mandatory',
+            self.mandatory if self.mandatory is not None else False,
+            dims=['period', 'scenario'],
+        ).astype(int)
+
+    @property
+    def always_mandatory(self) -> bool:
+        """Whether the investment is forced in every period and scenario."""
+        return bool(np.all(np.asarray(self.mandatory)))
+
+    @property
+    def ever_mandatory(self) -> bool:
+        """Whether the investment is forced in at least one period or scenario."""
+        return bool(np.any(np.asarray(self.mandatory)))
 
     @property
     def minimum_or_fixed_size(self) -> Numeric_PS:
@@ -1256,7 +1273,12 @@ class InvestParameters(Interface):
 
         if self.fixed_size is not None:
             val = numeric_to_str_for_repr(self.fixed_size)
-            status = 'mandatory' if self.mandatory else 'optional'
+            if self.always_mandatory:
+                status = 'mandatory'
+            elif self.ever_mandatory:
+                status = 'partly mandatory'
+            else:
+                status = 'optional'
             return f'{val} ({status})'
 
         # Show range if available
