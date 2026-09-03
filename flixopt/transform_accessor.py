@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
     from .clustering import Clustering
     from .flow_system import FlowSystem
+    from .interface import InvestParameters
 
 logger = logging.getLogger('flixopt')
 
@@ -1055,7 +1056,6 @@ class TransformAccessor:
             >>> fs_fixed.optimize(solver)
         """
         from .flow_system import FlowSystem
-        from .interface import InvestParameters
 
         # Get sizes from solution if not provided
         if sizes is None:
@@ -1089,43 +1089,134 @@ class TransformAccessor:
             base_name = size_var[: -len('|size')] if size_var.endswith('|size') else size_var
             fixed_value = sizes[size_var]
 
-            # A fixed size of 0 means "do not invest", every other size means "invest".
-            # A size of 0 also bounds the invested binary to 0, so the periods that do not
-            # build are not charged the flat effects_of_investment.
-            mandatory = (fixed_value != 0).astype(int)
-
-            found = False
-            for flow in new_fs.flows.values():
-                if flow.label_full == base_name and isinstance(flow.size, InvestParameters):
-                    flow.size.fixed_size = fixed_value
-                    flow.size.mandatory = mandatory
-                    found = True
-                    modified = True
-                    logger.debug(f'Fixed size of {base_name} to {fixed_value} (mandatory={mandatory})')
-                    break
-
-            if not found:
-                for component in new_fs.components.values():
-                    if hasattr(component, 'capacity_in_flow_hours'):
-                        if component.label == base_name and isinstance(
-                            component.capacity_in_flow_hours, InvestParameters
-                        ):
-                            component.capacity_in_flow_hours.fixed_size = fixed_value
-                            component.capacity_in_flow_hours.mandatory = mandatory
-                            found = True
-                            modified = True
-                            logger.debug(f'Fixed size of {base_name} to {fixed_value} (mandatory={mandatory})')
-                            break
-
-            if not found:
+            invest_parameters = self._invest_parameters_of(new_fs, base_name)
+            if invest_parameters is None:
                 logger.warning(
                     f'Size variable "{base_name}" not found as InvestParameters in FlowSystem. '
                     f'It may be a fixed-size component or the name may not match.'
                 )
+                continue
+
+            # A fixed size of 0 means "do not invest", every other size means "invest".
+            # A size of 0 also bounds the invested binary to 0, so the periods that do not
+            # build are not charged the flat effects_of_investment.
+            mandatory = (fixed_value != 0).astype(int)
+            invest_parameters.fixed_size = fixed_value
+            invest_parameters.mandatory = mandatory
+            modified = True
+            logger.debug(f'Fixed size of {base_name} to {fixed_value} (mandatory={mandatory})')
 
         # from_dataset() restores the stage-1 solution; drop it so the returned system
         # is an unsolved dispatch problem (as documented) and re-transforms cleanly
         # with the sizes we just assigned on the next optimize().
+        if modified:
+            new_fs.reset()
+
+        return new_fs
+
+    @staticmethod
+    def _invest_parameters_of(flow_system: FlowSystem, label: str) -> InvestParameters | None:
+        """Return the InvestParameters of the flow or storage capacity called ``label``."""
+        from .interface import InvestParameters
+
+        flow = flow_system.flows.get(label)
+        if flow is not None and isinstance(flow.size, InvestParameters):
+            return flow.size
+
+        component = flow_system.components.get(label)
+        if component is not None and isinstance(getattr(component, 'capacity_in_flow_hours', None), InvestParameters):
+            return component.capacity_in_flow_hours
+
+        return None
+
+    def fix_invest_decisions(
+        self,
+        decisions: xr.Dataset | dict[str, bool] | None = None,
+    ) -> FlowSystem:
+        """
+        Create a new FlowSystem with the investment decisions fixed, but the sizes free.
+
+        This is the counterpart to :meth:`fix_sizes` for two-stage workflows where only the
+        combinatorics should be carried over:
+
+        1. Solve a sizing problem (possibly resampled for speed)
+        2. Fix what gets built and re-optimize the sizes at full resolution
+
+        Where an element was built, the investment becomes mandatory and its size stays a
+        decision variable between ``minimum_size`` and ``maximum_size``. Where it was not
+        built, the size is capped at 0, which also rules the investment out - so its fixed
+        effects_of_investment are not charged. Unlike :meth:`fix_sizes`, the dispatch stage
+        can still resize, which keeps it feasible when the full resolution has a higher
+        peak than the aggregated sizing run.
+
+        Args:
+            decisions: The investment decisions to fix. Can be:
+                - None: Uses the decisions from this FlowSystem's solution (must be solved)
+                - xr.Dataset: Dataset with invested variables (e.g., from statistics.invested)
+                - dict: Mapping of element names to decisions (e.g., {'Boiler(Q_fu)': True})
+                Decisions with period/scenario dimensions are preserved, fixing each
+                period/scenario on its own. Elements that are absent are left untouched -
+                an investment that was mandatory in the sizing run has no decision to fix.
+
+        Returns:
+            FlowSystem: New FlowSystem with fixed investment decisions (no solution).
+
+        Raises:
+            ValueError: If no decisions are provided and the FlowSystem has no solution.
+
+        Examples:
+            Size on aggregated data, then re-optimize the sizes at full resolution:
+
+            >>> fs_sizing = flow_system.transform.resample('4h')
+            >>> fs_sizing.optimize(solver)
+            >>>
+            >>> fs_dispatch = flow_system.transform.fix_invest_decisions(fs_sizing.stats.invested)
+            >>> fs_dispatch.optimize(solver)
+
+            Using a dict:
+
+            >>> fs_fixed = flow_system.transform.fix_invest_decisions({'Boiler(Q_fu)': True, 'Storage': False})
+            >>> fs_fixed.optimize(solver)
+        """
+        from .flow_system import FlowSystem
+
+        if decisions is None:
+            if self._fs.solution is None:
+                raise ValueError(
+                    'No decisions provided and FlowSystem has no solution. '
+                    'Either provide decisions or optimize the FlowSystem first.'
+                )
+            decisions = self._fs.stats.invested
+
+        if isinstance(decisions, dict):
+            decisions = xr.Dataset({k: xr.DataArray(v) for k, v in decisions.items()})
+
+        if not self._fs.connected_and_transformed:
+            self._fs.connect_and_transform()
+
+        new_fs = FlowSystem.from_dataset(self._fs.to_dataset())
+
+        modified = False
+        for decision_var in decisions.data_vars:
+            base_name = decision_var[: -len('|invested')] if decision_var.endswith('|invested') else decision_var
+            built = (decisions[decision_var] != 0).astype(int)
+
+            invest_parameters = self._invest_parameters_of(new_fs, base_name)
+            if invest_parameters is None:
+                logger.warning(
+                    f'Invested variable "{base_name}" not found as InvestParameters in FlowSystem. '
+                    f'It may be a fixed-size component or the name may not match.'
+                )
+                continue
+
+            invest_parameters.mandatory = built
+            if invest_parameters.fixed_size is not None:
+                invest_parameters.fixed_size = xr.where(built, invest_parameters.fixed_size, 0)
+            else:
+                invest_parameters.maximum_size = xr.where(built, invest_parameters.maximum_size, 0)
+            modified = True
+            logger.debug(f'Fixed investment decision of {base_name} to {built}')
+
         if modified:
             new_fs.reset()
 
