@@ -873,3 +873,96 @@ class TestPreV7ClusteringSchema:
                     expected.sel(sel).values,
                     err_msg=f'assignments differ for {sel}',
                 )
+
+
+class TestApplyClusteringFromClusteringResult:
+    """``apply_clustering()`` accepts a raw tsam_xarray ``ClusteringResult``.
+
+    A clustering computed outside flixopt (``tsam_xarray.aggregate(...).clustering``
+    or ``tsam_xarray.load_clustering(path)``) can be applied directly, without the
+    caller constructing a ``Clustering`` wrapper by hand.
+    """
+
+    @staticmethod
+    def _reference(simple_system_8_days):
+        fs_clustered = simple_system_8_days.transform.cluster(n_clusters=2, cluster_duration='1D')
+        return fs_clustered.clustering
+
+    def test_accepts_clustering_result(self, simple_system_8_days):
+        pytest.importorskip('tsam')
+        clustering = self._reference(simple_system_8_days)
+
+        applied = simple_system_8_days.copy().transform.apply_clustering(clustering.clustering_result)
+
+        assert applied.clustering.n_clusters == clustering.n_clusters
+        xr.testing.assert_equal(applied.clustering.cluster_assignments, clustering.cluster_assignments)
+
+    def test_accepts_clustering_result_dict(self, simple_system_8_days):
+        """The ``to_dict()`` form is what lands in a JSON file."""
+        pytest.importorskip('tsam')
+        clustering = self._reference(simple_system_8_days)
+
+        applied = simple_system_8_days.copy().transform.apply_clustering(clustering.clustering_result.to_dict())
+
+        assert applied.clustering.n_clusters == clustering.n_clusters
+        xr.testing.assert_equal(applied.clustering.cluster_assignments, clustering.cluster_assignments)
+
+    def test_matches_clustering_wrapper(self, simple_system_8_days):
+        """Passing the raw result is equivalent to passing the Clustering."""
+        pytest.importorskip('tsam')
+        clustering = self._reference(simple_system_8_days)
+
+        via_wrapper = simple_system_8_days.copy().transform.apply_clustering(clustering)
+        via_raw = simple_system_8_days.copy().transform.apply_clustering(clustering.clustering_result)
+
+        xr.testing.assert_equal(via_wrapper.clustering.cluster_assignments, via_raw.clustering.cluster_assignments)
+        assert via_raw.clustering.timesteps_per_cluster == via_wrapper.clustering.timesteps_per_cluster
+
+    def test_defaults_original_timesteps_to_flow_system(self, simple_system_8_days):
+        """Without explicit timesteps, the FlowSystem's own grid is used."""
+        pytest.importorskip('tsam')
+        clustering = self._reference(simple_system_8_days)
+
+        applied = simple_system_8_days.copy().transform.apply_clustering(clustering.clustering_result)
+
+        pd.testing.assert_index_equal(
+            applied.clustering.original_timesteps,
+            simple_system_8_days.timesteps,
+        )
+
+    def test_explicit_original_timesteps_is_honored(self, simple_system_8_days):
+        pytest.importorskip('tsam')
+        clustering = self._reference(simple_system_8_days)
+        timesteps = simple_system_8_days.timesteps
+
+        applied = simple_system_8_days.copy().transform.apply_clustering(
+            clustering.clustering_result,
+            original_timesteps=timesteps,
+        )
+
+        pd.testing.assert_index_equal(applied.clustering.original_timesteps, timesteps)
+
+    def test_original_timesteps_with_clustering_raises(self, simple_system_8_days):
+        """A Clustering already carries its timesteps — silently ignoring them would hide a mistake."""
+        pytest.importorskip('tsam')
+        clustering = self._reference(simple_system_8_days)
+
+        with pytest.raises(ValueError, match='cannot be combined with a Clustering'):
+            simple_system_8_days.copy().transform.apply_clustering(
+                clustering,
+                original_timesteps=simple_system_8_days.timesteps,
+            )
+
+    def test_roundtrips_through_tsam_xarray_json(self, simple_system_8_days, tmp_path):
+        """The documented cross-tool path: tsam_xarray writes JSON, flixopt reads it."""
+        tsam_xarray = pytest.importorskip('tsam_xarray')
+        clustering = self._reference(simple_system_8_days)
+
+        path = tmp_path / 'clustering.json'
+        clustering.clustering_result.to_json(path)
+        loaded = tsam_xarray.load_clustering(path)
+
+        applied = simple_system_8_days.copy().transform.apply_clustering(loaded)
+
+        assert applied.clustering.n_clusters == clustering.n_clusters
+        xr.testing.assert_equal(applied.clustering.cluster_assignments, clustering.cluster_assignments)
