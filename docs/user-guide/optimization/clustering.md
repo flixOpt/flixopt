@@ -178,6 +178,57 @@ preserved).
     [v7 migration guide](../migration-guide-v7.md#comparing-original-vs-clustered-profiles)
     for the multi-variable / multi-period recipe.
 
+## Reusing a Clustering
+
+`transform.apply_clustering()` applies an existing clustering to a different
+FlowSystem instead of computing a new one. Use it to compare scenarios under
+**identical** cluster assignments, or to reuse a reference clustering on new data.
+
+```python
+fs_ref = fs_base.transform.cluster(n_clusters=8, cluster_duration='1D')
+fs_other = fs_high_demand.transform.apply_clustering(fs_ref.clustering)
+```
+
+It accepts three forms:
+
+| Input | Where it comes from |
+|-------|---------------------|
+| `Clustering` | `fs.clustering` of a clustered FlowSystem, or `Clustering.from_json(path)` |
+| `ClusteringResult` | `tsam_xarray.load_clustering(path)` or `tsam_xarray.aggregate(...).clustering` |
+| `dict` | `ClusteringResult.to_dict()` — the form stored in JSON |
+
+So a clustering computed outside flixopt can be applied directly:
+
+```python
+import tsam_xarray
+
+cr = tsam_xarray.load_clustering('clustering.json')
+fs_clustered = flow_system.transform.apply_clustering(cr)
+```
+
+To persist a flixopt clustering for later reuse:
+
+```python
+fs_ref.clustering.to_json('clustering.json')
+
+# ... later, or in another process ...
+from flixopt.clustering import Clustering
+
+fs_other = fs_new.transform.apply_clustering(Clustering.from_json('clustering.json'))
+```
+
+!!! warning "The time grid must match"
+    `apply_clustering()` requires the target FlowSystem to have
+    `n_original_clusters × timesteps_per_cluster` timesteps — it raises a
+    `ValueError` naming both numbers otherwise. It is for *different data on the
+    same time grid*, not for re-clustering a series of a different length.
+
+    For a `ClusteringResult` or dict, `original_timesteps` defaults to the target
+    FlowSystem's own timesteps, which is what you want in that case. Pass it
+    explicitly only if the clustering was computed on a different grid. Passing it
+    alongside a `Clustering` raises `ValueError`, since a `Clustering` already
+    carries its own timesteps.
+
 ## Storage Modes
 
 Storage behavior during clustering is controlled via the `cluster_mode` parameter:

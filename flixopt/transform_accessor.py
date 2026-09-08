@@ -21,6 +21,7 @@ from .structure import EXPAND_DIVIDE, EXPAND_FIRST_TIMESTEP, EXPAND_INTERPOLATE,
 
 if TYPE_CHECKING:
     from tsam import ClusterConfig, ExtremeConfig, SegmentConfig
+    from tsam_xarray import ClusteringResult
 
     from .clustering import Clustering
     from .flow_system import FlowSystem
@@ -1453,9 +1454,37 @@ class TransformAccessor:
         builder = _ReducedFlowSystemBuilder(self._fs, agg_result, timesteps_per_cluster, dt, unrename_map)
         return builder.build(ds)
 
+    def _as_clustering(
+        self,
+        clustering: Clustering | ClusteringResult | dict,
+        original_timesteps: pd.DatetimeIndex | None,
+    ) -> Clustering:
+        """Coerce a tsam_xarray ``ClusteringResult`` (or its dict form) to a ``Clustering``.
+
+        A ``Clustering`` already carries its own ``original_timesteps``, so passing them
+        alongside one is a mistake rather than a no-op and is rejected.
+        """
+        from .clustering import Clustering
+
+        if isinstance(clustering, Clustering):
+            if original_timesteps is not None:
+                raise ValueError(
+                    'original_timesteps cannot be combined with a Clustering, which already '
+                    'carries its own timesteps. Drop original_timesteps, or pass a tsam_xarray '
+                    'ClusteringResult instead.'
+                )
+            return clustering
+
+        return Clustering(
+            clustering_result=clustering,
+            original_timesteps=self._fs.timesteps if original_timesteps is None else original_timesteps,
+        )
+
     def apply_clustering(
         self,
-        clustering: Clustering,
+        clustering: Clustering | ClusteringResult | dict,
+        *,
+        original_timesteps: pd.DatetimeIndex | None = None,
     ) -> FlowSystem:
         """
         Apply an existing clustering to this FlowSystem.
@@ -1468,10 +1497,25 @@ class TransformAccessor:
         Use this to:
         - Compare different scenarios with identical cluster assignments
         - Apply a reference clustering to new data
+        - Reuse a clustering computed outside flixopt with tsam_xarray
 
         Args:
-            clustering: A ``Clustering`` object from a previously clustered FlowSystem.
-                Obtain this via ``fs.clustering`` from a clustered FlowSystem.
+            clustering: The clustering to apply. Accepts any of:
+
+                - a flixopt ``Clustering`` — via ``fs.clustering`` from a clustered
+                  FlowSystem, or ``Clustering.from_json(...)``;
+                - a tsam_xarray ``ClusteringResult`` — e.g. from
+                  ``tsam_xarray.load_clustering(path)`` or
+                  ``tsam_xarray.aggregate(...).clustering``;
+                - a ``dict`` in ``ClusteringResult.to_dict()`` form.
+
+                The latter two are wrapped in a ``Clustering`` for you.
+            original_timesteps: Timesteps of the data the clustering was computed on.
+                Only meaningful when ``clustering`` is a ``ClusteringResult`` or dict;
+                defaults to this FlowSystem's own timesteps, which is correct whenever
+                you are applying the clustering to data on the same time grid. Passing
+                this together with a ``Clustering`` raises ``ValueError``, since a
+                ``Clustering`` already carries its own timesteps.
 
         Returns:
             A new FlowSystem with reduced timesteps (only typical clusters).
@@ -1480,13 +1524,22 @@ class TransformAccessor:
         Raises:
             ValueError: If the clustering dimensions don't match this FlowSystem's
                 periods/scenarios.
+            ValueError: If ``original_timesteps`` is passed alongside a ``Clustering``.
 
         Examples:
             Apply clustering from one FlowSystem to another:
 
             >>> fs_reference = fs_base.transform.cluster(n_clusters=8, cluster_duration='1D')
             >>> fs_other = fs_high.transform.apply_clustering(fs_reference.clustering)
+
+            Reuse a clustering computed outside flixopt:
+
+            >>> import tsam_xarray
+            >>> cr = tsam_xarray.load_clustering('clustering.json')
+            >>> fs_clustered = flow_system.transform.apply_clustering(cr)
         """
+        clustering = self._as_clustering(clustering, original_timesteps)
+
         # Validation
         dt = float(self._fs.timestep_duration.min().item())
         if not np.isclose(dt, float(self._fs.timestep_duration.max().item())):
