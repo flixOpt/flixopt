@@ -52,9 +52,9 @@ flow_rates = fs_expanded.solution['Boiler(Q_th)|flow_rate']
 | `n_clusters` | Number of typical periods | `12` (typical days for a year) |
 | `cluster_duration` | Duration of each cluster | `'1D'`, `'24h'`, or `24` (hours) |
 | `weights` | Clustering weights per time series | `{'demand': 2.0, 'solar': 1.0}` |
+| `cluster_on` | Cluster on these variables only (genuine exclusion) | `['HeatDemand(Q)|fixed_relative_profile']` |
 | `cluster` | tsam `ClusterConfig` for clustering options | `ClusterConfig(method='k_medoids')` |
 | `extremes` | tsam `ExtremeConfig` for peak preservation | `ExtremeConfig(method='new_cluster', max_value=[...])` |
-| `predef_cluster_assignments` | Manual cluster assignments | Array of cluster indices |
 
 ### Peak Selection with ExtremeConfig
 
@@ -129,7 +129,7 @@ For additional tsam parameters, pass them as keyword arguments:
 fs_clustered = flow_system.transform.cluster(
     n_clusters=8,
     cluster_duration='1D',
-    normalize_column_means=True,  # Normalize all time series to same mean
+    cluster=ClusterConfig(scale_by_column_means=True),  # Scale all time series to the same mean
     preserve_column_means=True,  # Rescale results to match original means
 )
 ```

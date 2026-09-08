@@ -55,8 +55,13 @@ variables are aggregated but have **no** influence on the assignments.
     )
     ```
 
-`cluster_on` combines with `ClusterConfig(weights=...)` to set relative importance
-among the kept variables (weights may not reference an excluded variable).
+`cluster_on` combines with `weights=...` to set relative importance among the kept
+variables (weights may not reference an excluded variable).
+
+!!! warning "Updated in v9.0.0"
+    These recipes originally passed weights via `ClusterConfig(weights={...})`.
+    tsam 4 removed that field, so weights are now a top-level `cluster(weights=...)`
+    argument. The snippets below use the current API.
 
 !!! note "Why not `weights={var: 0}`?"
     You *can* express exclusion through weights, but a `0` weight is **not** true
@@ -71,7 +76,7 @@ among the kept variables (weights may not reference an excluded variable).
 ### Removed: `TimeSeriesData(clustering_group=..., clustering_weight=...)`
 
 Auto-weighting from these attributes is gone. Pass weights explicitly via
-`ClusterConfig(weights={...})`.
+`cluster(weights={...})`.
 
 ### Removed: `flow_system.transform.clustering_data()`
 
@@ -214,7 +219,7 @@ weights = {target: 1, **{v: 0 for v in cols if v != target}}
 
 fs_clustered = flow_system.transform.cluster(
     n_clusters=8, cluster_duration='1D',
-    cluster=ClusterConfig(weights=weights),
+    weights=weights,
 )
 ```
 

@@ -177,10 +177,9 @@ class TestClusterInputs:
 
         Regression test for the v6 migration recipe — users discovering clustering
         inputs via cluster_inputs() and feeding the names back into
-        ClusterConfig(weights={...}) should not raise.
+        cluster(weights={...}) should not raise.
         """
         pytest.importorskip('tsam')
-        from tsam import ClusterConfig
 
         fs = self._two_var_system()
 
@@ -192,7 +191,7 @@ class TestClusterInputs:
         weights = {target: 1}
         weights.update({v: 0 for v in ds_time_vars.data_vars if v != target})
 
-        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D', cluster=ClusterConfig(weights=weights))
+        fs_clustered = fs.transform.cluster(n_clusters=2, cluster_duration='1D', weights=weights)
         assert fs_clustered.clustering.n_clusters == 2
 
     def test_matches_what_cluster_sees(self):
@@ -371,12 +370,10 @@ class TestClusterAdvancedOptions:
         assert len(fs_clustered.clusters) == 2
 
     def test_unknown_weight_keys_raise(self, basic_flow_system):
-        """Test that unknown keys in ClusterConfig.weights raise ValueError.
+        """Test that unknown keys in weights raise ValueError.
 
         tsam_xarray validates weight keys and raises ValueError for unknown coords.
         """
-        from tsam import ClusterConfig
-
         # Get actual clustering column names
         ds = basic_flow_system.to_dataset(include_solution=False)
         real_columns = [n for n in ds.data_vars if 'time' in ds[n].dims]
@@ -390,13 +387,12 @@ class TestClusterAdvancedOptions:
             basic_flow_system.transform.cluster(
                 n_clusters=2,
                 cluster_duration='1D',
-                cluster=ClusterConfig(weights=weights),
+                weights=weights,
             )
 
     def test_unknown_weight_keys_raise_multiperiod(self):
         """Test that unknown weight keys raise ValueError in multi-period clustering."""
         pytest.importorskip('tsam')
-        from tsam import ClusterConfig
 
         from flixopt import Bus, Flow, Sink, Source
         from flixopt.core import TimeSeriesData
@@ -428,7 +424,7 @@ class TestClusterAdvancedOptions:
             fs.transform.cluster(
                 n_clusters=2,
                 cluster_duration='1D',
-                cluster=ClusterConfig(weights=weights),
+                weights=weights,
             )
 
     def test_valid_weight_keys_multiperiod(self):
@@ -438,7 +434,6 @@ class TestClusterAdvancedOptions:
         must be filtered per slice so no extra keys leak through to tsam.
         """
         pytest.importorskip('tsam')
-        from tsam import ClusterConfig
 
         from flixopt import Bus, Flow, Sink, Source
         from flixopt.core import TimeSeriesData
@@ -468,7 +463,7 @@ class TestClusterAdvancedOptions:
         fs_clustered = fs.transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
-            cluster=ClusterConfig(weights=weights),
+            weights=weights,
         )
         assert len(fs_clustered.clusters) == 2
 
@@ -613,13 +608,11 @@ class TestClusterOn:
 
     def test_combines_with_weights(self):
         """cluster_on may carry relative weights among the kept variables."""
-        from tsam import ClusterConfig
-
         fs_clustered = self._two_var_system().transform.cluster(
             n_clusters=2,
             cluster_duration='1D',
             cluster_on=[self.VAR_A, self.VAR_B],
-            cluster=ClusterConfig(weights={self.VAR_A: 5.0}),
+            weights={self.VAR_A: 5.0},
         )
         assert fs_clustered.clustering.n_clusters == 2
 
@@ -632,14 +625,12 @@ class TestClusterOn:
             self._two_var_system().transform.cluster(n_clusters=2, cluster_duration='1D', cluster_on=['does_not_exist'])
 
     def test_weights_for_excluded_variable_raises(self):
-        from tsam import ClusterConfig
-
         with pytest.raises(ValueError, match='excluded by cluster_on'):
             self._two_var_system().transform.cluster(
                 n_clusters=2,
                 cluster_duration='1D',
                 cluster_on=[self.VAR_A],
-                cluster=ClusterConfig(weights={self.VAR_B: 3.0}),
+                weights={self.VAR_B: 3.0},
             )
 
 
