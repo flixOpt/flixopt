@@ -1134,7 +1134,7 @@ class TransformAccessor:
     def cluster_inputs(self) -> xr.Dataset:
         """Return the variables that ``cluster()`` will feed to tsam_xarray.
 
-        Use this to enumerate the columns available for ``ClusterConfig(weights={...})``
+        Use this to enumerate the columns available for ``cluster(weights={...})``
         — for example to assign ``weight=0`` to the variables you want excluded from
         cluster-assignment scoring.
 
@@ -1155,17 +1155,16 @@ class TransformAccessor:
             ['HeatDemand(Q)|fixed_relative_profile',
              'GasSource(Gas)|costs|per_flow_hour']
             >>>
-            >>> from tsam import ClusterConfig
             >>> fs.transform.cluster(
             ...     n_clusters=8,
             ...     cluster_duration='1D',
-            ...     cluster=ClusterConfig(weights={'GasSource(Gas)|costs|per_flow_hour': 0}),
+            ...     weights={'GasSource(Gas)|costs|per_flow_hour': 0},
             ... )
 
         Note:
-            Variables omitted from ``ClusterConfig.weights`` receive the default
-            weight of **1.0** (they still influence cluster assignments). To
-            exclude a variable, set its weight to ``0`` explicitly.
+            Variables omitted from ``weights`` receive the default weight of
+            **1.0** (they still influence cluster assignments). To exclude a
+            variable, set its weight to ``0`` explicitly.
         """
         if not self._fs.connected_and_transformed:
             self._fs.connect_and_transform()
@@ -1177,8 +1176,10 @@ class TransformAccessor:
         self,
         n_clusters: int,
         cluster_duration: str | float,
+        *,
         cluster: ClusterConfig | None = None,
         cluster_on: list[str] | None = None,
+        weights: dict[str, float] | None = None,
         extremes: ExtremeConfig | None = None,
         segments: SegmentConfig | None = None,
         preserve_column_means: bool = True,
@@ -1209,23 +1210,25 @@ class TransformAccessor:
             n_clusters: Number of clusters (typical periods) to extract (e.g., 8 typical days).
             cluster_duration: Duration of each cluster. Can be a pandas-style string
                 ('1D', '24h', '6h') or a numeric value in hours.
-            cluster: Optional tsam ``ClusterConfig`` object specifying clustering algorithm,
-                representation method, and weights. Variables not listed in ``weights``
-                receive the default weight of **1.0** (they still influence cluster
-                assignments). Use ``weights={var: 0}`` to *exclude* a specific variable
-                from influencing cluster assignments while still aggregating its values.
-                Call ``transform.cluster_inputs()`` to list the available variable names.
-                If None, uses default settings (hierarchical clustering with medoid
-                representation) and weight 1.0 for every time-varying variable.
+            cluster: Optional tsam ``ClusterConfig`` object specifying the clustering
+                algorithm and representation method. If None, uses default settings
+                (hierarchical clustering with medoid representation).
             cluster_on: Restrict clustering to these variables ("cluster on these only").
                 The clustering is computed on this subset and the resulting cluster
                 assignments are then applied to the full dataset, so the excluded variables
                 are aggregated but have **no** influence on the assignments. This is genuine
                 exclusion — stronger than a 0 weight, which tsam clamps up to a minimal
                 tolerable value. Acts as a *filter on top of* ``weights``: variables listed
-                here may still carry a relative weight via ``ClusterConfig(weights=...)``,
-                but ``weights`` may not reference a variable that ``cluster_on`` excludes.
+                here may still carry a relative weight via ``weights``, but ``weights``
+                may not reference a variable that ``cluster_on`` excludes.
                 Call ``transform.cluster_inputs()`` to list the available variable names.
+            weights: Optional per-variable clustering weights, mapping variable name to
+                relative importance. Variables not listed receive the default weight of
+                **1.0** (they still influence cluster assignments). Use ``{var: 0}`` to
+                *downweight* a variable — note this is not true exclusion, since tsam
+                clamps a 0 weight up to a minimal tolerable value; use ``cluster_on`` for
+                genuine exclusion. Call ``transform.cluster_inputs()`` to list the
+                available variable names.
             extremes: Optional tsam ``ExtremeConfig`` object specifying how to handle
                 extreme periods (peaks). Use this to ensure peak demand days are captured.
                 Example: ``ExtremeConfig(method='new_cluster', max_value=['demand'])``.
@@ -1281,16 +1284,13 @@ class TransformAccessor:
             true exclusion (tsam clamps it up to a minimal tolerable value); use
             ``cluster_on`` when you want a variable to have no influence at all:
 
-            >>> from tsam import ClusterConfig
             >>> fs_clustered = flow_system.transform.cluster(
             ...     n_clusters=8,
             ...     cluster_duration='1D',
-            ...     cluster=ClusterConfig(
-            ...         weights={
-            ...             'HeatDemand(Q)|fixed_relative_profile': 2,  # twice the influence
-            ...             'SolarThermal(Q)|fixed_relative_profile': 1,
-            ...         }
-            ...     ),
+            ...     weights={
+            ...         'HeatDemand(Q)|fixed_relative_profile': 2,  # twice the influence
+            ...         'SolarThermal(Q)|fixed_relative_profile': 1,
+            ...     },
             ... )
 
         Note:
@@ -1340,6 +1340,7 @@ class TransformAccessor:
             'cluster',
             'segments',
             'extremes',
+            'weights',
             'preserve_column_means',
             'rescale_exclude_columns',
             'round_decimals',
@@ -1395,7 +1396,7 @@ class TransformAccessor:
                     da_for_clustering = da_for_clustering.drop_vars(dim_name)
                 da_for_clustering = da_for_clustering.expand_dims({dim_name: ds.coords[dim_name].values})
 
-        weights = dict(cluster.weights) if (cluster is not None and cluster.weights is not None) else {}
+        weights = dict(weights) if weights else {}
         if cluster_on is not None:
             if not cluster_on:
                 raise ValueError('cluster_on must list at least one variable to cluster on.')
@@ -1410,8 +1411,8 @@ class TransformAccessor:
             masked = [name for name in weights if name not in cluster_on_set]
             if masked:
                 raise ValueError(
-                    f'ClusterConfig(weights=...) sets weights for variables excluded by cluster_on: '
-                    f'{masked}. Remove them from weights or add them to cluster_on.'
+                    f'weights=... sets weights for variables excluded by cluster_on: {masked}. '
+                    f'Remove them from weights or add them to cluster_on.'
                 )
 
         # Build tsam_kwargs with explicit parameters
@@ -1427,19 +1428,8 @@ class TransformAccessor:
             **tsam_kwargs,
         }
 
-        # Pass cluster config settings (without weights, which go to tsam_xarray directly)
         if cluster is not None:
-            from tsam import ClusterConfig
-
-            cluster_config = ClusterConfig(
-                method=cluster.method,
-                representation=cluster.representation,
-                normalize_column_means=cluster.normalize_column_means,
-                use_duration_curves=cluster.use_duration_curves,
-                include_period_sums=cluster.include_period_sums,
-                solver=cluster.solver,
-            )
-            tsam_kwargs_full['cluster'] = cluster_config
+            tsam_kwargs_full['cluster'] = cluster
 
         # Suppress tsam warning about minimal value constraints (informational, not actionable)
         with warnings.catch_warnings():
