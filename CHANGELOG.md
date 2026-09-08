@@ -11,6 +11,18 @@ For more details regarding the individual PRs and contributors, please refer to 
 
 ---
 
+## [9.0.0](https://github.com/flixOpt/flixopt/compare/v8.1.0...v9.0.0) (2026-09-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* clustering weights move from `ClusterConfig(weights={...})` to `transform.cluster(weights={...})`, and `cluster()` arguments after `cluster_duration` are now keyword-only so a positional argument cannot silently bind to the wrong parameter. tsam requirement is now `>= 4.0.0, < 5`.
+
+### Features
+
+* accept a tsam_xarray ClusteringResult in apply_clustering() ([#777](https://github.com/flixOpt/flixopt/issues/777)) ([e33918a](https://github.com/flixOpt/flixopt/commit/e33918adfc37450836d2fd3527c90df14e197fe3))
+* bump tsam to 4.0.0 and move clustering weights to a top-level argument ([#766](https://github.com/flixOpt/flixopt/issues/766)) ([83bfdc6](https://github.com/flixOpt/flixopt/commit/83bfdc6511a90921de9c694fa3d8728377f12b68))
+
 ## [8.1.0](https://github.com/flixOpt/flixopt/compare/v8.0.1...v8.1.0) (2026-09-03)
 
 
