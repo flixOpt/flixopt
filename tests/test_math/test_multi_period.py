@@ -484,6 +484,246 @@ class TestMultiPeriod:
         assert_allclose(fs_dispatch.solution['Boiler(heat)|size'].item(), 0.0, atol=1e-6)
         assert_allclose(fs_dispatch.solution['objective'].item(), 160.0, rtol=1e-5)
 
+    def test_fix_sizes_and_decisions_reach_storage_capacity(self, optimize):
+        """Proves: both fix_sizes() and fix_invest_decisions() reach a storage capacity
+        investment, not just flow sizes.
+
+        4 ts, Demand=[0, 30, 0, 30], gas @[1, 20, 1, 20]. A Battery charges cheap and
+        discharges at the peak. Capacity invest: 5€ fixed + 1€/kWh.
+        Optimal: capacity 30, fuel 60 @1 = 60, invest 5 + 30 -> objective 95.
+
+        Sensitivity: storage investments live in Storage.capacity_in_flow_hours, not in
+        Flow.size, so a lookup that only scans flows would silently leave the capacity a
+        free variable - and fix_invest_decisions() would not make it mandatory.
+        """
+        fs = make_flow_system(n_timesteps=4)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow(
+                        'heat',
+                        bus='Heat',
+                        size=1,
+                        fixed_relative_profile=np.array([0.0, 30.0, 0.0, 30.0]),
+                    )
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=np.array([1.0, 20.0, 1.0, 20.0]))],
+            ),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow('heat', bus='Heat', size=100),
+            ),
+            fx.Storage(
+                'Battery',
+                charging=fx.Flow('in', bus='Heat', size=100),
+                discharging=fx.Flow('out', bus='Heat', size=100),
+                capacity_in_flow_hours=fx.InvestParameters(
+                    maximum_size=100,
+                    effects_of_investment=5,
+                    effects_of_investment_per_size=1,
+                ),
+                initial_charge_state=0,
+            ),
+        )
+        fs_sizing = optimize(fs)
+        assert_allclose(fs_sizing.solution['Battery|size'].item(), 30.0, rtol=1e-5)
+        assert_allclose(fs_sizing.solution['objective'].item(), 95.0, rtol=1e-5)
+        assert list(fs_sizing.stats.invested.data_vars) == ['Battery']
+
+        fs_fixed = fs.transform.fix_sizes(fs_sizing.stats.sizes)
+        assert fs_fixed.components['Battery'].capacity_in_flow_hours.fixed_size == 30.0
+        fs_fixed.optimize(_SOLVER)
+        assert_allclose(fs_fixed.solution['Battery|size'].item(), 30.0, rtol=1e-5)
+        assert_allclose(fs_fixed.solution['objective'].item(), 95.0, rtol=1e-5)
+
+        fs_decided = fs.transform.fix_invest_decisions(fs_sizing.stats.invested)
+        assert fs_decided.components['Battery'].capacity_in_flow_hours.fixed_size is None
+        fs_decided.optimize(_SOLVER)
+        assert_allclose(fs_decided.solution['Battery|size'].item(), 30.0, rtol=1e-5)
+        assert_allclose(fs_decided.solution['objective'].item(), 95.0, rtol=1e-5)
+
+    def test_fix_invest_decisions_forbids_unbuilt_storage(self, optimize):
+        """Proves: an unbuilt storage capacity is capped at 0 by fix_invest_decisions(),
+        so its fixed effects_of_investment are not charged.
+
+        Same system, but the capacity investment costs a prohibitive 5000€. Not building
+        and buying at the peak is cheaper: 60 @20 = 1200.
+
+        Sensitivity: leaving the capacity free would let the dispatch stage build the
+        battery after all; making it mandatory would charge the 5000€.
+        """
+        fs = make_flow_system(n_timesteps=4)
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink(
+                'Demand',
+                inputs=[
+                    fx.Flow(
+                        'heat',
+                        bus='Heat',
+                        size=1,
+                        fixed_relative_profile=np.array([0.0, 30.0, 0.0, 30.0]),
+                    )
+                ],
+            ),
+            fx.Source(
+                'GasSrc',
+                outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=np.array([1.0, 20.0, 1.0, 20.0]))],
+            ),
+            fx.linear_converters.Boiler(
+                'Boiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow('heat', bus='Heat', size=100),
+            ),
+            fx.Storage(
+                'Battery',
+                charging=fx.Flow('in', bus='Heat', size=100),
+                discharging=fx.Flow('out', bus='Heat', size=100),
+                capacity_in_flow_hours=fx.InvestParameters(
+                    maximum_size=100,
+                    effects_of_investment=5000,
+                    effects_of_investment_per_size=1,
+                ),
+                initial_charge_state=0,
+            ),
+        )
+        fs_sizing = optimize(fs)
+        assert_allclose(fs_sizing.solution['Battery|size'].item(), 0.0, atol=1e-6)
+        assert_allclose(fs_sizing.solution['objective'].item(), 1200.0, rtol=1e-5)
+
+        fs_decided = fs.transform.fix_invest_decisions(fs_sizing.stats.invested)
+        assert fs_decided.components['Battery'].capacity_in_flow_hours.maximum_size == 0
+        fs_decided.optimize(_SOLVER)
+        assert_allclose(fs_decided.solution['Battery|size'].item(), 0.0, atol=1e-6)
+        assert_allclose(fs_decided.solution['objective'].item(), 1200.0, rtol=1e-5)
+
+    def test_fix_invest_decisions_keeps_sizes_free(self, optimize):
+        """Proves: transform.fix_invest_decisions() carries over what gets built, but lets
+        the size re-optimize - so a higher peak at full resolution is absorbed by resizing.
+
+        periods=[2020, 2021], weights [1, 1], 3 ts each. Demand is 0 in 2020 and peaks in
+        2021. Boiler: 100€ fixed invest, 1€ per size, fuel @1€.
+
+        Stage 1 sizes against a peak of 90 and builds in 2021 only: invested [0, 1].
+        Stage 2 keeps that decision but faces the true peak of 140, so the size grows to
+        140: 100 + 140 + 160 fuel = 400.
+
+        Sensitivity: fix_sizes() pins the size at 90, which makes the 140 peak infeasible.
+        If the decision were not carried over at all, 2020 could build as well.
+        """
+
+        def build(peak):
+            fs = make_multi_period_flow_system(n_timesteps=3, periods=[2020, 2021], weight_of_last_period=1)
+            demand = xr.DataArray(
+                np.array([[0, 0, 0], [10, peak, 10]], dtype=float),
+                coords={'period': [2020, 2021], 'time': fs.timesteps},
+                dims=['period', 'time'],
+            )
+            fs.add_elements(
+                fx.Bus('Heat'),
+                fx.Bus('Gas'),
+                fx.Effect('costs', '€', is_standard=True, is_objective=True),
+                fx.Sink('Demand', inputs=[fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=demand)]),
+                fx.Source('GasSrc', outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)]),
+                fx.linear_converters.Boiler(
+                    'Boiler',
+                    thermal_efficiency=1.0,
+                    fuel_flow=fx.Flow('fuel', bus='Gas'),
+                    thermal_flow=fx.Flow(
+                        'heat',
+                        bus='Heat',
+                        size=fx.InvestParameters(
+                            maximum_size=200,
+                            effects_of_investment=100,
+                            effects_of_investment_per_size=1,
+                        ),
+                    ),
+                ),
+            )
+            return fs
+
+        fs_sizing = optimize(build(peak=90))
+        assert_allclose(fs_sizing.solution['Boiler(heat)|invested'].values, [0.0, 1.0], atol=1e-6)
+        assert_allclose(fs_sizing.solution['Boiler(heat)|size'].values, [0.0, 90.0], rtol=1e-5)
+
+        fs_dispatch = build(peak=140).transform.fix_invest_decisions(fs_sizing.stats.invested)
+        fs_dispatch.optimize(_SOLVER)
+        assert_allclose(fs_dispatch.solution['Boiler(heat)|invested'].values, [0.0, 1.0], atol=1e-6)
+        assert_allclose(fs_dispatch.solution['Boiler(heat)|size'].values, [0.0, 140.0], rtol=1e-5)
+        assert_allclose(fs_dispatch.solution['objective'].item(), 400.0, rtol=1e-5)
+
+    def test_fix_invest_decisions_leaves_mandatory_elements_untouched(self, optimize):
+        """Proves: transform.fix_invest_decisions() does not forbid an investment that was
+        mandatory in the sizing run and therefore has no decision to carry over.
+
+        3 ts, Demand=[10, 10, 10]. MustBoiler is mandatory (10€ invest + 1€ per size),
+        OptBoiler is optional but prohibitively expensive (10000€) and stays unbuilt.
+        A mandatory investment has no invested binary, so it is absent from
+        statistics.invested. MustBoiler serves everything: 10 + 10 periodic + 30 fuel = 50.
+
+        Sensitivity: reading a missing entry as "not built" would cap MustBoiler at size 0,
+        leaving the demand unservable.
+        """
+        fs = make_flow_system(n_timesteps=3)
+        demand = xr.DataArray(np.array([10, 10, 10], dtype=float), coords={'time': fs.timesteps}, dims=['time'])
+        fs.add_elements(
+            fx.Bus('Heat'),
+            fx.Bus('Gas'),
+            fx.Effect('costs', '€', is_standard=True, is_objective=True),
+            fx.Sink('Demand', inputs=[fx.Flow('heat', bus='Heat', size=1, fixed_relative_profile=demand)]),
+            fx.Source('GasSrc', outputs=[fx.Flow('gas', bus='Gas', effects_per_flow_hour=1)]),
+            fx.linear_converters.Boiler(
+                'MustBoiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=fx.InvestParameters(
+                        maximum_size=200,
+                        mandatory=True,
+                        effects_of_investment=10,
+                        effects_of_investment_per_size=1,
+                    ),
+                ),
+            ),
+            fx.linear_converters.Boiler(
+                'OptBoiler',
+                thermal_efficiency=1.0,
+                fuel_flow=fx.Flow('fuel', bus='Gas'),
+                thermal_flow=fx.Flow(
+                    'heat',
+                    bus='Heat',
+                    size=fx.InvestParameters(
+                        maximum_size=200,
+                        effects_of_investment=10000,
+                        effects_of_investment_per_size=1,
+                    ),
+                ),
+            ),
+        )
+        fs_sizing = optimize(fs)
+        # A mandatory investment has no decision, so only the optional one shows up
+        assert list(fs_sizing.stats.invested.data_vars) == ['OptBoiler(heat)']
+
+        fs_dispatch = fs.transform.fix_invest_decisions(fs_sizing.stats.invested)
+        fs_dispatch.optimize(_SOLVER)
+        assert_allclose(fs_dispatch.solution['MustBoiler(heat)|size'].item(), 10.0, rtol=1e-5)
+        assert_allclose(fs_dispatch.solution['OptBoiler(heat)|size'].item(), 0.0, atol=1e-6)
+        assert_allclose(fs_dispatch.solution['objective'].item(), 50.0, rtol=1e-5)
+
     def test_fix_sizes_enforces_investment_in_nonzero_periods(self, optimize):
         """Proves: transform.fix_sizes() forces the investment in every period with a
         non-zero size, even when skipping it would be cheaper.

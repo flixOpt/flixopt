@@ -461,6 +461,7 @@ class StatisticsAccessor:
         self._flow_sizes: xr.Dataset | None = None
         self._storage_sizes: xr.Dataset | None = None
         self._sizes: xr.Dataset | None = None
+        self._invested: xr.Dataset | None = None
         self._charge_states: xr.Dataset | None = None
         self._effect_share_factors: dict[str, dict] | None = None
         self._temporal_effects: xr.Dataset | None = None
@@ -629,6 +630,19 @@ class StatisticsAccessor:
         if self._sizes is None:
             self._sizes = xr.merge([self.flow_sizes, self.storage_sizes])
         return self._sizes
+
+    @property
+    def invested(self) -> xr.Dataset:
+        """Investment decisions (build / do not build) as a Dataset with element labels as variable names.
+
+        Only elements whose investment is a decision appear here. An investment that is
+        mandatory everywhere has no binary and is therefore absent.
+        """
+        self._require_solution()
+        if self._invested is None:
+            invested_vars = self._fs.get_variables_by_category(VariableCategory.INVESTED)
+            self._invested = xr.Dataset({v.rsplit('|', 1)[0]: self._fs.solution[v] for v in invested_vars})
+        return self._invested
 
     @property
     def charge_states(self) -> xr.Dataset:

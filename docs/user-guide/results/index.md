@@ -433,6 +433,21 @@ diff = comp.diff()
 print(f"Cost difference: {diff['costs'].sel(case='Two-Stage').item():.0f} €")
 ```
 
+!!! tip "Fixing the decision instead of the size"
+
+    `fix_sizes()` carries the sizes over as constants, so the dispatch stage cannot react
+    when the full resolution has a higher peak than the aggregated sizing run - it becomes
+    infeasible. `fix_invest_decisions()` carries over only *what gets built* and leaves the
+    sizes free, so the second stage can resize:
+
+    ```python
+    fs_dispatch = flow_system.transform.fix_invest_decisions(fs_sizing.statistics.invested)
+    fs_dispatch.optimize(solver)
+    ```
+
+    Elements whose investment was mandatory have no decision to carry over and are left
+    untouched.
+
 ## Next Steps
 
 - [Plotting Results](../results-plotting.md) - Detailed plotting documentation
