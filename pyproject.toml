@@ -119,7 +119,7 @@ docs = [
     "mkdocs-jupyter==0.26.3",
     "markdown-include==0.8.1",
     "pymdown-extensions==11.0.1",
-    "pygments==2.20.0",
+    "pygments==2.21.0",
     "mike==2.2.0",
     "mkdocs-git-revision-date-localized-plugin==1.5.3",
     "mkdocs-minify-plugin==0.8.0",
