@@ -66,7 +66,7 @@ Learn flixopt through practical examples organized by topic. Each notebook inclu
 | `PiecewiseConversion`, part-load efficiency | Piecewise Conversion |
 | `PiecewiseEffects`, economies of scale | Piecewise Effects |
 | Periods, scenarios, weights | Scenarios |
-| `transform.resample()`, `fix_sizes()` | Aggregation |
+| `transform.resample()`, `fix_sizes()`, `fix_invest_decisions()` | Aggregation |
 | `optimize.rolling_horizon()` | Rolling Horizon |
 | `transform.cluster()`, typical periods | Clustering |
 | `cluster_mode`, inter-cluster storage | Storage Modes |
